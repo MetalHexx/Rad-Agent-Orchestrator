@@ -30,4 +30,23 @@ const bindByName = { 'fake-api': { state: 'bound' as const, path: '/clones/fake-
   assert.ok(!html.includes('/repo-registry?repo='), 'side-project renders no registry link');
 }
 
+// FR-10: side-project branch arrow suppressed — branch alone, no → base_branch
+{
+  const html = renderToStaticMarkup(createElement(SourceControlPanel, {
+    repos: [{ ...repo, name: 'TOY', branch: 'feature/xyz', base_branch: 'main' }],
+    projectName: 'TOY', projectType: 'side-project', bindByName: {},
+  }));
+  assert.ok(!html.includes('→'), 'side-project must NOT render → arrow');
+  assert.ok(html.includes('feature/xyz'), 'side-project branch name still present');
+}
+
+// FR-10: non-side-project renders branch → base_branch arrow
+{
+  const html = renderToStaticMarkup(createElement(SourceControlPanel, {
+    repos: [repo], projectName: 'FAKE-NEWS', projectType: 'standard', bindByName,
+  }));
+  assert.ok(html.includes('→'), 'non-side-project must render → arrow');
+  assert.ok(html.includes('main'), 'base branch present after arrow');
+}
+
 console.log('SourceControlPanel rows ✓');

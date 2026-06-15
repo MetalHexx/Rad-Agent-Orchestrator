@@ -112,8 +112,8 @@ export function SourceControlPanel({ repos, projectName, projectType, autoCommit
                       <TooltipContent>Open {repo.name} in Repo Registry</TooltipContent>
                     </Tooltip>
                   )}
-                  {/* branch → base (DD-6: page font, no monospace) */}
-                  <span className="text-sm text-muted-foreground">{repo.branch} → {repo.base_branch}</span>
+                  {/* branch → base (DD-6: page font, no monospace); FR-10: side-project shows branch only */}
+                  <span className="text-sm text-muted-foreground">{repo.branch}{!isSide && <> → {repo.base_branch}</>}</span>
                   {/* Trailing actions (Folder / Compare / PR) — FR-7, FR-8, FR-9, DD-4 */}
                   {(() => {
                     const folderPath = resolveRepoFolderPath({ locationKind: kind, projectName, repoName: repo.name, registryPath: bind?.path ?? null });

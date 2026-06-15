@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useRegistryStore } from '@/components/repo-registry/use-registry-store';
 import { buildRailSections } from '@/components/repo-registry/rail-grouping';
@@ -27,13 +27,40 @@ export default function RepoRegistryPage() {
   );
   const [drawer, setDrawer] = useState<'add-repo' | 'add-group' | null>(null);
   const [paneDirty, setPaneDirty] = useState(false);
-  const { open, guard, onConfirm, onCancel } = useNavGuard();
+  const { open, guard, onConfirm, onCancel: guardOnCancel } = useNavGuard();
+
+  // When the guard is cancelled after a URL-driven selection change, restore the URL to match
+  // the currently active selection so the address bar and the pane stay in sync (FR-13).
+  const cancelRestoreUrlRef = useRef<string | null>(null);
+  const onCancel = useCallback(() => {
+    guardOnCancel();
+    if (cancelRestoreUrlRef.current !== null) {
+      router.replace(cancelRestoreUrlRef.current, { scroll: false });
+      cancelRestoreUrlRef.current = null;
+    }
+  }, [guardOnCancel, router]);
 
   useRegistryLive({ dirty: paneDirty, onRefetch: refetch });
 
-  // Reflect back/forward + direct URL edits into selection (AD-4).
+  // Reflect back/forward + direct URL edits into selection (AD-4, FR-13).
+  // Routes through guard() when paneDirty so unsaved changes are not silently discarded.
   useEffect(() => {
-    setSelected(parseRegistrySelection({ repo: searchParams.get('repo'), group: searchParams.get('group') }));
+    const parsed = parseRegistrySelection({ repo: searchParams.get('repo'), group: searchParams.get('group') });
+    // Avoid re-triggering when our own cancel router.replace fires or selection already matches.
+    setSelected((current) => {
+      const sameKind = current?.kind === parsed?.kind;
+      const sameSlug = current?.slug === parsed?.slug;
+      const isSame = (current === null && parsed === null) || (current !== null && parsed !== null && sameKind && sameSlug);
+      if (isSame) return current;
+      if (paneDirty) {
+        // Stash the restore URL (current selection) so onCancel can push it back.
+        cancelRestoreUrlRef.current = selectionToQuery(current);
+        guard(true, () => setSelected(parsed));
+        return current; // leave selection unchanged until confirmed
+      }
+      return parsed;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
   // Scroll the selected rail entry into view on selection (FR-13).

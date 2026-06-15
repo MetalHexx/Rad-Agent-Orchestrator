@@ -151,3 +151,30 @@ test('detail wrapper drops the redundant p-6 so padding is a single layer (match
   assert.match(page, /<div className="flex flex-1 flex-col">/);
   assert.doesNotMatch(page, /flex flex-1 flex-col p-6/);
 });
+
+// --- FR-13 nav-guard bypass fix: back/forward searchParams change routes through guard() ---
+
+test('searchParams useEffect calls guard() with paneDirty and a setSelected intent when dirty (FR-13)', () => {
+  // The effect must use guard() when paneDirty is true, not call setSelected directly.
+  // We verify the pattern: guard(true, ...) or guard(paneDirty, ...) wrapping setSelected(parsed).
+  assert.match(page, /guard\(true,\s*\(\)\s*=>\s*setSelected\(parsed\)\)/);
+});
+
+test('searchParams useEffect compares parsed selection against current to avoid infinite loops (FR-13)', () => {
+  // The effect must check whether the incoming selection matches the current one before acting.
+  assert.match(page, /isSame/);
+  // It must use the functional setSelected form to read current inside the effect.
+  assert.match(page, /setSelected\(\s*\(current\)/);
+});
+
+test('page creates a cancelRestoreUrlRef to restore the URL when guard is cancelled (FR-13)', () => {
+  assert.match(page, /cancelRestoreUrlRef/);
+  // The ref must be populated before calling guard, using selectionToQuery(current).
+  assert.match(page, /selectionToQuery\(current\)/);
+});
+
+test('page wraps onCancel to restore the URL via router.replace when a URL-driven guard is cancelled (FR-13)', () => {
+  // The local onCancel must call guardOnCancel and then conditionally router.replace from the ref.
+  assert.match(page, /guardOnCancel\(\)/);
+  assert.match(page, /cancelRestoreUrlRef\.current/);
+});

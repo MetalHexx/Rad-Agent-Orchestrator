@@ -13,6 +13,7 @@ const sourceControl = {
 
 const html = renderToStaticMarkup(createElement(ProjectHeader, {
   projectName: 'FAKE-NEWS', tier: 'execution', sourceControl, followMode: false, onToggleFollowMode: () => {},
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 } as any));
 
 assert.ok(html.includes('FAKE-NEWS'), 'project name still present');
