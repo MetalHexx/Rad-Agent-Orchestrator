@@ -27,14 +27,9 @@ Original handoffs (emitted by the explosion script) and corrective handoffs (aut
 1. **Read the handoff** at `handoff_doc` end-to-end before touching code.
 2. **Understand** the Intent, Requirements, File Targets, Steps, Acceptance, and any other section the handoff carries. Handoffs vary in section names — read what the document actually uses.
 3. **Implement** step-by-step in the order written. Match inlined contracts exactly (signatures, return types, design tokens).
-4. **Build workspace libraries first** — before running any `npm test`, `tsc`, or build step, run from the repo root:
-   ```
-   npm run build -w @rad-orchestration/repo-registry -w @rad-orchestration/work-graph -w @rad-orchestration/telemetry
-   ```
-   This ensures `dist/` output is present so `tsc` and Vitest can resolve types/entries on a fresh checkout with no committed `dist/`.
-5. **Test** — run the test suite and record actual output. Do not assume results.
-6. **Self-review** (see "Pre-report self-review" below) before emitting `task_completed`.
-7. **Emit** source + tests + optional Execution Notes appendix.
+4. **Test** — run the test suite and record actual output. Do not assume results.
+5. **Self-review** (see "Pre-report self-review" below) before emitting `task_completed`.
+6. **Emit** source + tests + optional Execution Notes appendix.
 
 ## Task-type branching
 

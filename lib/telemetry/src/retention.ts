@@ -4,7 +4,8 @@ import path from 'node:path';
 export function pruneAgedPartitions(opts: { root: string; maxAgeDays: number; now: Date }): number {
   const usageDir = path.join(opts.root, 'usage');
   if (!fs.existsSync(usageDir)) return 0;
-  const cutoff = opts.now.getTime() - opts.maxAgeDays * 86_400_000;
+  const todayUtc = Date.UTC(opts.now.getUTCFullYear(), opts.now.getUTCMonth(), opts.now.getUTCDate());
+  const cutoff = todayUtc - opts.maxAgeDays * 86_400_000;
   let pruned = 0;
   const liveSessions = new Set<string>();
   for (const file of fs.readdirSync(usageDir)) {

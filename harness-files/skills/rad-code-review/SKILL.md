@@ -18,16 +18,6 @@ Each mode emits **one combined review document** per scope, regardless of how ma
 
 Every mode writes a per-requirement audit table. Verdict enum is unchanged across all three: `approved | changes_requested | rejected`. Each workflow runs the conformance pass first, then a lean quality sweep; findings merge and highest severity wins.
 
-## Build workspace libraries before running tests or tsc
-
-Before executing any `npm test`, `tsc`, or build command during a review session, run from the repo root:
-
-```
-npm run build -w @rad-orchestration/repo-registry -w @rad-orchestration/work-graph -w @rad-orchestration/telemetry
-```
-
-This ensures `dist/` output is present so test runs and type-checks succeed on a fresh checkout with no committed `dist/`. Skipping this step produces spurious failures that are not evidence of review findings.
-
 ## Evidence-Not-Intent Charter
 
 These rules apply to **every** review mode. Violations invalidate the review.

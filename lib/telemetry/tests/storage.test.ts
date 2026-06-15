@@ -82,4 +82,21 @@ describe('pruneAgedPartitions', () => {
     expect(fs.existsSync(path.join(root, 'usage', 'usage-2026-06-15-sNew.ndjson'))).toBe(true);
     expect(fs.existsSync(path.join(root, 'checkpoints', 'sOld.json'))).toBe(false);
   });
+
+  it('boundary: keeps exactly-14-day-old partition, prunes 15-day-old (FR-6, NFR-5)', () => {
+    const root = tmpRoot();
+    const sink = new NdjsonSink({ root });
+    // 2026-06-01 is exactly 14 days before 2026-06-15 — MUST be kept
+    sink.write([rec('boundary', 'sBoundary', '2026-06-01')]);
+    // 2026-05-31 is 15 days before 2026-06-15 — MUST be pruned
+    sink.write([rec('old15', 'sOld15', '2026-05-31')]);
+    // 2026-06-15 is today — MUST be kept
+    sink.write([rec('today', 'sToday', '2026-06-15')]);
+
+    pruneAgedPartitions({ root, maxAgeDays: 14, now: new Date('2026-06-15T12:00:00Z') });
+
+    expect(fs.existsSync(path.join(root, 'usage', 'usage-2026-06-01-sBoundary.ndjson'))).toBe(true);
+    expect(fs.existsSync(path.join(root, 'usage', 'usage-2026-05-31-sOld15.ndjson'))).toBe(false);
+    expect(fs.existsSync(path.join(root, 'usage', 'usage-2026-06-15-sToday.ndjson'))).toBe(true);
+  });
 });
