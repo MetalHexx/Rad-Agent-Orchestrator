@@ -1,0 +1,33 @@
+import assert from 'node:assert/strict';
+import React, { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { SourceControlPanel } from './source-control-panel';
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+(globalThis as any).React = React;
+
+const repo = { name: 'fake-api', branch: 'radorch/FAKE-NEWS', base_branch: 'main', remote_url: 'https://github.com/o/fake-api', compare_url: 'https://github.com/o/fake-api/compare/main...x', pr_url: null };
+const bindByName = { 'fake-api': { state: 'bound' as const, path: '/clones/fake-api' } };
+
+// section label + repo identity + branch + registry deep link (FR-1, FR-6, DD-1)
+{
+  const html = renderToStaticMarkup(createElement(SourceControlPanel, {
+    repos: [repo], projectName: 'FAKE-NEWS', projectType: 'standard', autoCommit: 'always', autoPr: 'never', bindByName,
+  }));
+  assert.ok(html.includes('Source Control'), 'section label present');
+  assert.ok(html.includes('fake-api'), 'repo name present');
+  assert.ok(html.includes('radorch/FAKE-NEWS'), 'branch present');
+  assert.ok(html.includes('main'), 'base branch present');
+  assert.ok(html.includes('href="/repo-registry?repo=fake-api"'), 'registry deep link present (FR-6)');
+  assert.ok(html.includes('Worktree'), 'location-kind badge present (FR-10)');
+  assert.ok(html.includes('auto-commit: always'), 'auto-commit value-text pill present (DD-5)');
+}
+
+// side-project: no registry link (FR-10)
+{
+  const html = renderToStaticMarkup(createElement(SourceControlPanel, {
+    repos: [{ ...repo, name: 'TOY' }], projectName: 'TOY', projectType: 'side-project', bindByName: {},
+  }));
+  assert.ok(!html.includes('/repo-registry?repo='), 'side-project renders no registry link');
+}
+
+console.log('SourceControlPanel rows ✓');
