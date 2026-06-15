@@ -54,6 +54,22 @@ Rules:
 - Import this library by name (`@rad-orchestration/repo-registry`) only. Deep relative imports that point into `lib/repo-registry/src/` from another module are prohibited.
 - The library's `dist/` must be compiled before any step that bundles the CLI or builds the UI. The standard-installer build (`node harness-installers/standard/build-scripts/build.js`) runs `npm run build -w @rad-orchestration/repo-registry` automatically as the `build-lib-dist` step before `emit-cli-bundle` and `emit-ui-bundle`.
 
+## Workspace versioning
+
+All `@rad-orchestration/*` scoped packages version in lockstep. When any one of them receives a version bump, every other package in the set must receive the same bump in the same commit. The governed set is:
+
+- `@rad-orchestration/repo-registry` (`lib/repo-registry/`)
+- `@rad-orchestration/work-graph` (`lib/work-graph/`)
+- `@rad-orchestration/telemetry` (`lib/telemetry/`)
+- `@rad-orchestration/cli` (`cli/`)
+
+**Deliberate in/out call on unscoped workspaces:**
+
+- `harness-adapters/engine` — **out**. This is an internal adapter seam, not a consumer-facing library, and does not participate in the lockstep version set.
+- `harness-installers/` workspaces (e.g., `harness-installers/standard/`, `harness-installers/claude-plugin/`, `harness-installers/copilot-cli-plugin/`) — **out**. These are release-channel deliverables with independent versioning driven by marketplace publish cycles.
+
+These in/out decisions are deliberate; revisit them explicitly if an unscoped workspace gains a cross-package contract.
+
 ## Build and test validation gates
 
 Four installer/plugin builds and a standalone-trace gate remain enforced manually/locally. Run them in order from the repo root after a root `npm install`:
@@ -108,6 +124,12 @@ All of these resolve to `node harness-dogfood/build.js` with the appropriate har
 **Be aware:** the system agents shipped from `harness-files/agents/` have bare names (no `rad-` prefix). If you have personal agents at `~/.claude/agents/` sharing those filenames, the build will overwrite them on deploy. The build's cleanup pass uses the prior dogfood manifest as the sole source of truth — no namespace globbing — so non-rad files outside the prior manifest are untouched.
 
 ## Tests by sub-package
+
+**Build workspace libraries before running any test or typecheck command.** The libraries ship compiled `dist/` output that `tsc` and Vitest resolve at type-check and test time; without this step a fresh checkout with no committed `dist/` will fail. Run from the repo root first:
+
+```
+npm run build -w @rad-orchestration/repo-registry -w @rad-orchestration/work-graph -w @rad-orchestration/telemetry
+```
 
 This repo is a polyglot monorepo with several test runners. Pick the right one:
 

@@ -28,7 +28,17 @@ Find the project's test configuration:
 5. Check for `go.mod` (Go projects)
 6. Read `orchestration.yml` for any custom test commands
 
-### Step 2: Run All Tests
+### Step 2: Build workspace libraries first
+
+Before running any tests, build the workspace libraries so that `dist/` output is present and up-to-date. Run from the repo root:
+
+```
+npm run build -w @rad-orchestration/repo-registry -w @rad-orchestration/work-graph -w @rad-orchestration/telemetry
+```
+
+This is required because these libraries ship compiled `dist/` output that `tsc` and Vitest resolve at type-check and test time. Without it, a fresh checkout with no committed `dist/` will fail.
+
+### Step 3: Run All Tests
 
 Execute the discovered test command. Common patterns:
 
@@ -37,7 +47,7 @@ Execute the discovered test command. Common patterns:
 - **Rust**: `cargo test`
 - **Go**: `go test ./...`
 
-### Step 3: Parse Results
+### Step 4: Parse Results
 
 Capture and structure the output:
 
@@ -47,14 +57,14 @@ Capture and structure the output:
 - Tests skipped
 - Coverage percentage (if available)
 
-### Step 4: Run Targeted Tests (if applicable)
+### Step 5: Run Targeted Tests (if applicable)
 
 If the task handoff specifies particular test files:
 
 1. Run only those specific test files first
 2. Then run the full suite to check for regressions
 
-### Step 5: Report Structured Results
+### Step 6: Report Structured Results
 
 Format results for inclusion in task output:
 
