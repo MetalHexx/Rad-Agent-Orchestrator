@@ -94,7 +94,7 @@ export async function runBuild(opts) {
         '@rad-orchestration/work-graph',
         '@rad-orchestration/telemetry',
       ]) {
-        execSync(`npm run build -w ${pkg}`, { cwd: root, stdio: 'inherit' });
+        execSync(`npm run build -w ${pkg}`, { cwd: root, stdio: 'inherit', shell: process.platform === 'win32' });
       }
     });
   }

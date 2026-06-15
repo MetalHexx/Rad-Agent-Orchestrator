@@ -112,3 +112,6 @@ cli/dist/marketplaces/
 # Next.js build output (root-level)
 /.next/
 docs/internals/_private/_done
+
+# orchestration harness commit-arg artifact (machine-local)
+.commit-repos.js

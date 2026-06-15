@@ -145,6 +145,10 @@ This repo is a polyglot monorepo with several test runners. Pick the right one:
   cd cli && npm run typecheck                     # tsc --noEmit
   cd cli && npx eslint .                          # lint
   ```
+- **Telemetry library** (`lib/telemetry/`) — Vitest:
+  ```
+  cd lib/telemetry && npm test
+  ```
 - **Adapters + dogfood build CLI** (`harness-adapters/`, `harness-dogfood/`) — Node's built-in test runner. Run from repo root:
   ```
   node --test harness-adapters/**/*.test.js
