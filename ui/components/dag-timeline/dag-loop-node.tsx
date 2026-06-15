@@ -15,6 +15,7 @@ export interface DAGLoopNodeProps {
     eventDetails: { reason: string }
   ) => void;
   repoBaseUrl: string | null;
+  compareUrlByRepo: Record<string, string | null>;
   projectName: string;
   focusedRowKey: string | null;
   isFocused: boolean;
@@ -43,6 +44,7 @@ export function DAGLoopNode({
   expandedLoopIds,
   onAccordionChange,
   repoBaseUrl,
+  compareUrlByRepo,
   projectName,
   focusedRowKey,
   onFocusChange,
@@ -60,6 +62,7 @@ export function DAGLoopNode({
           currentNodePath={currentNodePath}
           onDocClick={onDocClick}
           repoBaseUrl={repoBaseUrl}
+          compareUrlByRepo={compareUrlByRepo}
           projectName={projectName}
           expandedLoopIds={expandedLoopIds}
           onAccordionChange={onAccordionChange}

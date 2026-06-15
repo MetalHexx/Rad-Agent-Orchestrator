@@ -10,6 +10,7 @@ import { ProgressBar } from '@/components/execution/progress-bar';
 import { NodeStatusBadge } from './node-status-badge';
 import { getCommitLinkData, firstRepoCommit, isLoopNode, parsePhaseNameFromDocPath, parseTaskNameFromDocPath, buildIterationItemValue, deriveIterationTaskProgress, deriveIterationBadgeLabel, shouldRenderTimelineRow, resolveStageBadge } from './dag-timeline-helpers';
 import type { CompatibleNodeState } from './dag-timeline-helpers';
+import { CommitChips } from './commit-chips';
 import type { IterationEntry } from '@/types/state';
 
 interface DAGIterationPanelProps {
@@ -20,6 +21,7 @@ interface DAGIterationPanelProps {
   currentNodePath: string | null;
   onDocClick: (path: string) => void;
   repoBaseUrl: string | null;
+  compareUrlByRepo: Record<string, string | null>;
   projectName: string;
   expandedLoopIds: string[];
   onAccordionChange: (
@@ -52,6 +54,7 @@ export function DAGIterationPanel({
   currentNodePath,
   onDocClick,
   repoBaseUrl,
+  compareUrlByRepo,
   projectName,
   expandedLoopIds,
   onAccordionChange,
@@ -228,6 +231,7 @@ export function DAGIterationPanel({
                   expandedLoopIds={expandedLoopIds}
                   onAccordionChange={onAccordionChange}
                   repoBaseUrl={repoBaseUrl}
+                  compareUrlByRepo={compareUrlByRepo}
                   projectName={projectName}
                   focusedRowKey={focusedRowKey}
                   isFocused={focusedRowKey === childKey}
@@ -261,6 +265,7 @@ export function DAGIterationPanel({
                       expandedLoopIds={expandedLoopIds}
                       onAccordionChange={onAccordionChange}
                       repoBaseUrl={repoBaseUrl}
+                      compareUrlByRepo={compareUrlByRepo}
                       projectName={projectName}
                       focusedRowKey={focusedRowKey}
                       isFocused={focusedRowKey === childKey}
@@ -305,6 +310,7 @@ export function DAGIterationPanel({
                   expandedLoopIds={expandedLoopIds}
                   onAccordionChange={onAccordionChange}
                   repoBaseUrl={repoBaseUrl}
+                  compareUrlByRepo={compareUrlByRepo}
                   projectName={projectName}
                   focusedRowKey={focusedRowKey}
                   isFocused={focusedRowKey === childKey}
@@ -424,6 +430,7 @@ export function DAGIterationPanel({
           Corrected
         </span>
       )}
+      <CommitChips repos={iteration.repos} compareUrlByRepo={compareUrlByRepo} singleRepo={Object.keys(compareUrlByRepo).length <= 1} />
       {hasTaskHandoff && (
         <DocumentLink path={iteration.doc_path!} label="Task Handoff" onDocClick={onDocClick} />
       )}

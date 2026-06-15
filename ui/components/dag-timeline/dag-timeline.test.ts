@@ -568,6 +568,7 @@ const _loopPropsContractFixture: DAGLoopNodeProps = {
   expandedLoopIds: [],
   onAccordionChange: (value: string[], eventDetails: { reason: string }) => { void value; void eventDetails; },
   repoBaseUrl: null,
+  compareUrlByRepo: {},
   projectName: 'test-project',
   focusedRowKey: null,
   isFocused: false,

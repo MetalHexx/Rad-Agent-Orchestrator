@@ -25,6 +25,7 @@ const html = renderToStaticMarkup(
     expandedLoopIds: [],
     onAccordionChange: () => {},
     repoBaseUrl: null,
+    compareUrlByRepo: {},
     projectName: 'TEST-PROJECT',
     phaseLoopStatus: 'not_started',
     prUrl: null,
