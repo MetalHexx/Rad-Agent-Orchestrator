@@ -12,6 +12,7 @@ export interface UserDataPaths {
   readonly worktrees: string;
   readonly logs: string;
   readonly runtime: string;
+  readonly telemetry: string;
   readonly bootstrapLock: string;
   readonly actionEvents: string;
 }
@@ -31,6 +32,7 @@ export function userDataPaths(): UserDataPaths {
     worktrees: path.join(root, 'worktrees'),
     logs: path.join(root, 'logs'),
     runtime: path.join(root, 'runtime'),
+    telemetry: path.join(root, 'telemetry'),
     bootstrapLock: path.join(root, 'runtime', 'bootstrap.lock'),
     actionEvents: path.join(root, 'action-events'),
   };

@@ -83,11 +83,13 @@ export async function runBuild(opts) {
   // symlink against dist, and the by-name CLI bundle depends on dist too (AD-5).
   if (!opts.skipBootstrap) {
     await step('build-lib-dist', () => {
-      execSync('npm run build -w @rad-orchestration/repo-registry', {
-        cwd: root,
-        stdio: 'inherit',
-        shell: process.platform === 'win32',
-      });
+      for (const pkg of [
+        '@rad-orchestration/repo-registry',
+        '@rad-orchestration/work-graph',
+        '@rad-orchestration/telemetry',
+      ]) {
+        execSync(`npm run build -w ${pkg}`, { cwd: root, stdio: 'inherit', shell: process.platform === 'win32' });
+      }
     });
   }
 

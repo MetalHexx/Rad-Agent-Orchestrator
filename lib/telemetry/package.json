@@ -1,5 +1,5 @@
 {
-  "name": "@rad-orchestration/work-graph",
+  "name": "@rad-orchestration/telemetry",
   "version": "1.0.0-alpha.9",
   "private": true,
   "type": "module",
@@ -12,19 +12,14 @@
       "default": "./dist/index.js"
     }
   },
-  "description": "Node/edge type vocabulary and deterministic id helpers for the work-graph",
+  "description": "Dependency-free harness-neutral telemetry capture engine",
   "scripts": {
     "build": "tsc",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
   },
-  "dependencies": {
-    "js-yaml": "^4.1.0",
-    "@rad-orchestration/repo-registry": "1.0.0-alpha.9"
-  },
   "devDependencies": {
-    "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.19.17",
     "typescript": "^5.9.3",
     "vitest": "^3.0.0"

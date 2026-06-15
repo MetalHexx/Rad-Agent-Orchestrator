@@ -1,0 +1,2 @@
+{"type":"assistant","requestId":"req_sub_1","timestamp":"2026-06-15T12:05:00Z","message":{"model":"claude-opus-4-8","usage":{"input_tokens":9,"output_tokens":55,"cache_read_input_tokens":3}}}
+{"type":"assistant","requestId":"req_sub_2","timestamp":"2026-06-15T12:05:01Z","message":{"model":"claude-opus-4-8","usage":{"input_tokens":4,"output_tokens":12,"cache_read_input_tokens":1}}}

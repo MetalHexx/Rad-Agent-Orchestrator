@@ -18,6 +18,7 @@ import { graphShowCommand, graphLinkCommand, graphUnlinkCommand, graphPruneComma
 import { configCommand } from './commands/config/index.js';
 import { sourceControlInitCommand } from './commands/source-control/index.js';
 import { executeResolveCommand, executePrepareCommand } from './commands/execute/index.js';
+import { telemetryCaptureCommand } from './commands/telemetry/index.js';
 
 export function buildProgram(version: string): Command {
   const program = new Command('radorch');
@@ -560,6 +561,18 @@ export function buildProgram(version: string): Command {
       const { composeCommand } = await import('./commands/action-events/compose.js');
       const argv = process.argv.slice(4);
       await runCommand(composeCommand, { argv, env: process.env, isTTY: Boolean(process.stdin.isTTY), stderr: process.stderr });
+    });
+
+  const telemetry = program.command('telemetry').description('Harness telemetry capture operations');
+  telemetry
+    .command('capture')
+    .description(telemetryCaptureCommand.description)
+    .helpOption(false)
+    .allowUnknownOption()
+    .allowExcessArguments(true)
+    .action(async () => {
+      const argv = process.argv.slice(4);
+      await runCommand(telemetryCaptureCommand, { argv, env: process.env, isTTY: Boolean(process.stdin.isTTY), stderr: process.stderr });
     });
 
   return program;
