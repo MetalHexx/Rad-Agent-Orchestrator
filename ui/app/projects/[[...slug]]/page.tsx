@@ -172,7 +172,6 @@ function ProjectsPageContent({
             tier={selected.tier}
             planningStatus={selected.planningStatus}
             executionStatus={selected.executionStatus}
-            sourceControl={null}
             followMode={false}
             onToggleFollowMode={() => {}}
             projectType={selected.project_type}
@@ -203,7 +202,6 @@ function ProjectsPageContent({
             gateMode={v5Derivations.gateMode}
             currentPhaseName={v5Derivations.currentPhaseName}
             progress={v5Derivations.progress}
-            sourceControl={v5State.pipeline.source_control}
             followMode={followMode}
             onToggleFollowMode={toggleFollowMode}
             projectType={selected.project_type}
@@ -242,7 +240,7 @@ function ProjectsPageContent({
                   afterPlanningSlot={
                     hasSourceControlRepos(v5State.pipeline.source_control) && (
                       <SourceControlPanel
-                        repos={v5State.pipeline.source_control!.repos!}
+                        repos={v5State.pipeline.source_control!.repos}
                         projectName={selected.name}
                         projectType={selected.project_type}
                         autoCommit={v5State.pipeline.source_control!.auto_commit}

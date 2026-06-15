@@ -8,10 +8,10 @@ import { ExternalLink } from '@/components/documents';
 import { SECTION_LABEL_CLASSES, CARD_SHELL_CLASSES } from './dag-section-group';
 import { resolveLocationKind, resolveRepoFolderPath, LOCATION_KIND_LABEL } from './source-control-helpers';
 import type { RepoBindInfo } from './source-control-bind';
-import type { V5SourceControlRepoEntry, V5AutoCommit, V5AutoPR } from '@/types/state';
+import type { SourceControlRepo, V5AutoCommit, V5AutoPR } from '@/types/state';
 
 export interface SourceControlPanelProps {
-  repos: V5SourceControlRepoEntry[];
+  repos: SourceControlRepo[];
   projectName: string;
   projectType?: 'standard' | 'side-project';
   autoCommit?: V5AutoCommit;

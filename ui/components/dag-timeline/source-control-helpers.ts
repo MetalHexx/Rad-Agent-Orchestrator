@@ -1,4 +1,4 @@
-import type { RepoCommitEntry } from '@/types/state';
+import type { RepoCommitEntry, V5SourceControlState, SourceControlRepo } from '@/types/state';
 import { deriveRepoBaseUrl, getCommitLinkData } from './dag-timeline-helpers';
 
 export type LocationKind = 'worktree' | 'in-place' | 'side-project';
@@ -54,4 +54,8 @@ export function buildCommitChip(repo: RepoCommitEntry, compareUrl: string | null
 /** FR-3: empty repos[] is treated identically to absent source_control. */
 export function hasSourceControlRepos(sc: { repos?: { name: string }[] | undefined } | null): boolean {
   return !!sc && Array.isArray(sc.repos) && sc.repos.length > 0;
+}
+
+export function selectSourceControlRepos(sc: V5SourceControlState | null): SourceControlRepo[] {
+  return sc?.repos ?? [];
 }

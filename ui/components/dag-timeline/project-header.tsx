@@ -6,7 +6,6 @@ import { PipelineTierBadge } from "@/components/badges";
 import type {
   GraphStatus,
   GateMode,
-  V5SourceControlState,
   PipelineTier,
   PlanningStatus,
   ExecutionStatus,
@@ -44,7 +43,6 @@ export interface ProjectHeaderProps {
   gateMode?: GateMode | null;
   currentPhaseName?: string | null;
   progress?: { completed: number; total: number } | null;
-  sourceControl: V5SourceControlState | null;
   followMode: boolean;
   onToggleFollowMode: () => void;
   projectType?: 'standard' | 'side-project';
