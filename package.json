@@ -4,6 +4,7 @@
   "workspaces": [
     "lib/repo-registry",
     "lib/work-graph",
+    "lib/telemetry",
     "cli",
     "ui",
     "harness-adapters/engine",
