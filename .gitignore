@@ -23,6 +23,9 @@ package-lock.json
 # up renamed/deleted rad files on the next build). Never committed.
 /dist/
 
+# Workspace library build output — produced by the build pipeline, never committed.
+lib/*/dist/
+
 # esbuild bundle output — produced by `npm run bundle` in cli/
 dist-bundle/
 
