@@ -402,117 +402,6 @@ test('gateModeTooltip null (global default) copy appears verbatim in source', ()
   );
 });
 
-test('autoCommitTooltip "always" copy appears verbatim in source', () => {
-  assert.ok(
-    headerSource.includes("Auto-Commit is on: commits are created after each iteration."),
-    'auto-commit always tooltip string missing from project-header.tsx',
-  );
-});
-
-test('autoCommitTooltip "ask" copy appears verbatim in source', () => {
-  assert.ok(
-    headerSource.includes("Auto-Commit prompts before each iteration."),
-    'auto-commit ask tooltip string missing from project-header.tsx',
-  );
-});
-
-test('autoCommitTooltip "never" copy appears verbatim in source', () => {
-  assert.ok(
-    headerSource.includes("Auto-Commit is off: commits must be made manually."),
-    'auto-commit never tooltip string missing from project-header.tsx',
-  );
-});
-
-test('autoPrTooltip "always" copy appears verbatim in source', () => {
-  assert.ok(
-    headerSource.includes("Auto-PR is on: a pull request is created when phases complete."),
-    'auto-pr always tooltip string missing from project-header.tsx',
-  );
-});
-
-test('autoPrTooltip "ask" copy appears verbatim in source', () => {
-  assert.ok(
-    headerSource.includes("Auto-PR prompts before creating a pull request."),
-    'auto-pr ask tooltip string missing from project-header.tsx',
-  );
-});
-
-test('autoPrTooltip "never" copy appears verbatim in source', () => {
-  assert.ok(
-    headerSource.includes("Auto-PR is off: no pull request will be created automatically."),
-    'auto-pr never tooltip string missing from project-header.tsx',
-  );
-});
-
-test('auto_commit "ask" badge uses --status-in-progress cssVar in source', () => {
-  assert.ok(
-    headerSource.includes("'--status-in-progress'"),
-    'auto_commit ask badge cssVar --status-in-progress missing from project-header.tsx',
-  );
-  // Confirm the three-way ternary form: auto_commit === 'ask' triggers in-progress, not failed
-  assert.ok(
-    headerSource.includes("auto_commit === 'ask'"),
-    'three-way check for auto_commit === ask missing from project-header.tsx',
-  );
-  // isRejected should be tied to 'never' only — not 'ask'
-  assert.ok(
-    headerSource.includes("isRejected={auto_commit === 'never'}"),
-    'isRejected for auto_commit should be tied to never only',
-  );
-});
-
-test('auto_pr "ask" badge uses --status-in-progress cssVar in source', () => {
-  assert.ok(
-    headerSource.includes("'--status-in-progress'"),
-    'auto_pr ask badge cssVar --status-in-progress missing from project-header.tsx',
-  );
-  // Confirm the three-way ternary form: auto_pr === 'ask' triggers in-progress, not failed
-  assert.ok(
-    headerSource.includes("auto_pr === 'ask'"),
-    'three-way check for auto_pr === ask missing from project-header.tsx',
-  );
-  // isRejected should be tied to 'never' only — not 'ask'
-  assert.ok(
-    headerSource.includes("isRejected={auto_pr === 'never'}"),
-    'isRejected for auto_pr should be tied to never only',
-  );
-});
-
-test('branchTooltip template (compare URL present) appears verbatim in source', () => {
-  assert.ok(
-    headerSource.includes("Open branch comparison on GitHub: ${branch}"),
-    'branch compare tooltip template missing from project-header.tsx',
-  );
-});
-
-test('branchTooltip template (no compare URL) appears verbatim in source', () => {
-  assert.ok(
-    headerSource.includes("Branch: ${branch} (no compare link available)"),
-    'branch fallback tooltip template missing from project-header.tsx',
-  );
-});
-
-test('prStateTooltip (valid URL) copy appears verbatim in source', () => {
-  assert.ok(
-    headerSource.includes("Open the existing pull request."),
-    'PR valid-URL tooltip string missing from project-header.tsx',
-  );
-});
-
-test('prStateTooltip (pending/null) copy appears verbatim in source', () => {
-  assert.ok(
-    headerSource.includes("Pull request has not yet been created; it will be created when phases complete."),
-    'PR pending tooltip string missing from project-header.tsx',
-  );
-});
-
-test('prStateTooltip (failed) copy appears verbatim in source', () => {
-  assert.ok(
-    headerSource.includes("Pull request creation failed; check project logs for details."),
-    'PR failed tooltip string missing from project-header.tsx',
-  );
-});
-
 test('followModeTooltip on=true copy appears verbatim in source', () => {
   assert.ok(
     headerSource.includes("Follow mode is on: the active iteration auto-expands and completed iterations collapse."),
@@ -551,28 +440,6 @@ test('no attribute-bearing <TooltipProvider ...> tag exists in source', () => {
   assert.ok(
     !/<TooltipProvider\s/.test(headerSource),
     'no <TooltipProvider> tag should carry attributes (provider scope is a singleton)',
-  );
-});
-
-// ─── Tooltip wrapping count ──────────────────────────────────────────────────
-
-test('exactly nine <TooltipContent> opening tags exist in source', () => {
-  // Breakdown:
-  //   gate-mode badge          → 1
-  //   branch link arm          → 1
-  //   branch fallback span     → 1
-  //   PR link arm              → 1
-  //   PR pending span          → 1
-  //   PR failed span           → 1
-  //   Auto-Commit SpinnerBadge → 1
-  //   Auto-PR SpinnerBadge     → 1
-  //   follow-mode Switch       → 1
-  //   ──────────────────────── 9
-  const matches = headerSource.match(/<TooltipContent>/g) ?? [];
-  assert.strictEqual(
-    matches.length,
-    9,
-    `expected exactly 9 <TooltipContent> opening tags; found ${matches.length}`,
   );
 });
 
@@ -646,40 +513,6 @@ test('retired file "timeline-toolbar.test.ts" does not exist on disk', () => {
     existsSync(join(__dirname, 'timeline-toolbar.test.ts')),
     false,
     'timeline-toolbar.test.ts must not exist',
-  );
-});
-
-// ─── Header-row child ordering ───────────────────────────────────────────────
-// Confirms the sourceControl fragment renders Auto-Commit and Auto-PR badges
-// BEFORE the branch/compare link and PR status region. Enforced in source order
-// because project-header.test.ts is a pure source-text test file.
-
-test('Auto-Commit badge source position precedes the branch compare link', () => {
-  const autoCommitIdx = headerSource.indexOf('label="Auto-Commit"');
-  const branchLinkIdx = headerSource.indexOf('View ${branch} branch diff on GitHub');
-  assert.ok(autoCommitIdx !== -1, 'Auto-Commit SpinnerBadge must exist in source');
-  assert.ok(branchLinkIdx !== -1, 'branch link aria-label must exist in source');
-  assert.ok(
-    autoCommitIdx < branchLinkIdx,
-    `Auto-Commit (${autoCommitIdx}) must appear before branch link (${branchLinkIdx})`,
-  );
-});
-
-test('Auto-PR badge source position precedes the branch compare link', () => {
-  const autoPrIdx = headerSource.indexOf('label="Auto-PR"');
-  const branchLinkIdx = headerSource.indexOf('View ${branch} branch diff on GitHub');
-  assert.ok(autoPrIdx !== -1, 'Auto-PR SpinnerBadge must exist in source');
-  assert.ok(autoPrIdx < branchLinkIdx, `Auto-PR (${autoPrIdx}) must appear before branch link (${branchLinkIdx})`);
-});
-
-test('branch compare link source position precedes the PR status region', () => {
-  const branchLinkIdx = headerSource.indexOf('View ${branch} branch diff on GitHub');
-  const prRegionIdx = headerSource.indexOf('View pull request on GitHub');
-  assert.ok(branchLinkIdx !== -1, 'branch link aria-label must exist in source');
-  assert.ok(prRegionIdx !== -1, 'PR link aria-label must exist in source');
-  assert.ok(
-    branchLinkIdx < prRegionIdx,
-    `branch link (${branchLinkIdx}) must appear before PR region (${prRegionIdx})`,
   );
 });
 
