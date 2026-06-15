@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { NodesRecord, NodeState, NodeStatus } from '@/types/state';
 import { DAGNodeRow } from './dag-node-row';
 import { DAGLoopNode } from './dag-loop-node';
@@ -24,6 +24,10 @@ interface DAGTimelineProps {
   /** PR URL from state.pipeline.source_control.pr_url; surfaced on the
    *  `final_pr` row only (Completion section). */
   prUrl?: string | null;
+  /** Optional render slot injected immediately after the Planning section group
+   *  and before the Execution section group. Used to position the Source
+   *  Control panel in the correct on-screen order (FR-2). */
+  afterPlanningSlot?: React.ReactNode;
 }
 
 /**
@@ -100,7 +104,7 @@ function derivePrefixAccordionKeys(compoundKey: string): string[] {
   return result.reverse();
 }
 
-export function DAGTimeline({ nodes, currentNodePath, onDocClick, expandedLoopIds, onAccordionChange, repoBaseUrl, projectName, phaseLoopStatus, prUrl }: DAGTimelineProps) {
+export function DAGTimeline({ nodes, currentNodePath, onDocClick, expandedLoopIds, onAccordionChange, repoBaseUrl, projectName, phaseLoopStatus, prUrl, afterPlanningSlot }: DAGTimelineProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const groups = groupNodesBySection(nodes);
   const unmatchedEntries = Object.entries(nodes).filter(([nodeId]) => !Object.hasOwn(NODE_SECTION_MAP, nodeId));
@@ -253,11 +257,14 @@ export function DAGTimeline({ nodes, currentNodePath, onDocClick, expandedLoopId
       className="flex flex-col gap-3"
     >
       {groups.map((group) => (
-        <DAGSectionGroup key={group.label} label={group.label}>
-          {group.entries
-            .filter(([nodeId, node]) => shouldRenderTimelineRow(nodeId, node as CompatibleNodeState, { commitHash: null, prUrl: prUrl ?? null }))
-            .map(renderNodeEntry)}
-        </DAGSectionGroup>
+        <Fragment key={group.label}>
+          <DAGSectionGroup label={group.label}>
+            {group.entries
+              .filter(([nodeId, node]) => shouldRenderTimelineRow(nodeId, node as CompatibleNodeState, { commitHash: null, prUrl: prUrl ?? null }))
+              .map(renderNodeEntry)}
+          </DAGSectionGroup>
+          {group.label === 'Planning' && afterPlanningSlot}
+        </Fragment>
       ))}
       {unmatchedEntries
         .filter(([nodeId, node]) => shouldRenderTimelineRow(nodeId, node as CompatibleNodeState, { commitHash: null, prUrl: prUrl ?? null }))
