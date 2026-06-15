@@ -1,6 +1,6 @@
 "use client";
 
-import { ExternalLink as ExternalLinkIcon, Github } from "lucide-react";
+import { ExternalLink as ExternalLinkIcon, Github, GitPullRequest } from "lucide-react";
 
 import {
   Tooltip,
@@ -16,7 +16,7 @@ interface ExternalLinkProps {
   /** Visible and/or accessible label text */
   label: string;
   /** Icon variant; defaults to "external-link" */
-  icon?: 'github' | 'external-link';
+  icon?: 'github' | 'external-link' | 'git-pull-request';
   /** Optional tabIndex override. When set, overrides the default browser tab
    *  order for the underlying <a>. DAG-timeline call sites pass -1 to keep the
    *  listbox's roving-tabindex scheme intact; other call sites omit it so the
@@ -37,7 +37,7 @@ export function ExternalLink({
   tabIndex,
   title,
 }: ExternalLinkProps): JSX.Element {
-  const Icon = icon === 'github' ? Github : ExternalLinkIcon;
+  const Icon = icon === 'github' ? Github : icon === 'git-pull-request' ? GitPullRequest : ExternalLinkIcon;
 
   if (href === null) {
     return (
