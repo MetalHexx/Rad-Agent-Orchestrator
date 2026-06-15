@@ -90,7 +90,11 @@ export default function RepoRegistryPage() {
                   groups={store.repoGroups}
                   upsertRepo={upsertRepo}
                   removeRepo={removeRepo}
-                  onDeselect={() => { setSelected(null); setPaneDirty(false); }}
+                  onDeselect={() => {
+                    setSelected(null);
+                    setPaneDirty(false);
+                    router.replace(selectionToQuery(null), { scroll: false });
+                  }}
                   onDirtyChange={setPaneDirty}
                 />
               ) : <NothingSelectedState />;
@@ -103,7 +107,11 @@ export default function RepoRegistryPage() {
                   repos={store.repos}
                   upsertGroup={upsertGroup}
                   removeGroup={removeGroup}
-                  onDeselect={() => { setSelected(null); setPaneDirty(false); }}
+                  onDeselect={() => {
+                    setSelected(null);
+                    setPaneDirty(false);
+                    router.replace(selectionToQuery(null), { scroll: false });
+                  }}
                   onDirtyChange={setPaneDirty}
                 />
               ) : <NothingSelectedState />;
