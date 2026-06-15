@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { useRegistryStore } from '@/components/repo-registry/use-registry-store';
 import { buildRailSections } from '@/components/repo-registry/rail-grouping';
 import { RegistryRail, type RailSelection } from '@/components/repo-registry/registry-rail';
@@ -15,21 +16,43 @@ import { AddRepoDrawer } from '@/components/repo-registry/add-repo-drawer';
 import { AddGroupDrawer } from '@/components/repo-registry/add-group-drawer';
 import { useRegistryLive } from '@/components/repo-registry/use-registry-live';
 import { useNavGuard, UnsavedChangesDialog } from '@/components/repo-registry/use-nav-guard';
+import { parseRegistrySelection, selectionToQuery } from '@/components/repo-registry/url-selection';
 
 export default function RepoRegistryPage() {
   const { store, isLoading, error, refetch, upsertRepo, removeRepo, upsertGroup, removeGroup } = useRegistryStore();
-  const [selected, setSelected] = useState<RailSelection | null>(null);
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const [selected, setSelected] = useState<RailSelection | null>(
+    () => parseRegistrySelection({ repo: searchParams.get('repo'), group: searchParams.get('group') }),
+  );
   const [drawer, setDrawer] = useState<'add-repo' | 'add-group' | null>(null);
   const [paneDirty, setPaneDirty] = useState(false);
   const { open, guard, onConfirm, onCancel } = useNavGuard();
 
   useRegistryLive({ dirty: paneDirty, onRefetch: refetch });
 
+  // Reflect back/forward + direct URL edits into selection (AD-4).
+  useEffect(() => {
+    setSelected(parseRegistrySelection({ repo: searchParams.get('repo'), group: searchParams.get('group') }));
+  }, [searchParams]);
+
+  // Scroll the selected rail entry into view on selection (FR-13).
+  useEffect(() => {
+    if (!selected) return;
+    document
+      .querySelector(`[data-rail-key="${selected.kind}:${selected.slug}"]`)
+      ?.scrollIntoView({ block: 'nearest' });
+  }, [selected]);
+
   const sections = buildRailSections(store.repos, store.repoGroups);
   const isEmpty = store.repos.length === 0 && store.repoGroups.length === 0;
 
   function handleSelect(kind: 'repo' | 'group', slug: string) {
-    guard(paneDirty, () => { setSelected({ kind, slug }); setPaneDirty(false); });
+    guard(paneDirty, () => {
+      setSelected({ kind, slug });
+      setPaneDirty(false);
+      router.replace(selectionToQuery({ kind, slug }), { scroll: false });
+    });
   }
 
   function handleAddRepo() {
