@@ -15,7 +15,7 @@ import { deleteArtifact } from "@/hooks/use-project-artifacts";
 import { DocumentDrawer } from "@/components/documents";
 import { ConfirmApprovalDialog } from "@/components/dashboard";
 import { ConfigEditorPanel } from "@/components/config";
-import { DAGTimeline, DAGTimelineSkeleton, ProjectHeader, HaltReasonBanner, BrainstormingSection, SourceControlPanel, deriveCurrentPhase, derivePhaseProgress, deriveRepoBaseUrl } from "@/components/dag-timeline";
+import { DAGTimeline, DAGTimelineSkeleton, ProjectHeader, HaltReasonBanner, BrainstormingSection, SourceControlPanel, deriveCurrentPhase, derivePhaseProgress } from "@/components/dag-timeline";
 import { hasSourceControlRepos, selectSourceControlRepos } from "@/components/dag-timeline/source-control-helpers";
 import { buildBindLookup } from "@/components/dag-timeline/source-control-bind";
 import { useRegistryStore } from "@/components/repo-registry/use-registry-store";
@@ -40,7 +40,6 @@ interface ProjectsPageContentProps {
     gateMode: GateMode | null | undefined;
     currentPhaseName: string | null;
     progress: { completed: number; total: number } | null;
-    repoBaseUrl: string | null;
     compareUrlByRepo: Record<string, string | null>;
     phaseLoopStatus: NodeStatus | undefined;
   };
@@ -234,7 +233,6 @@ function ProjectsPageContent({
                   onDocClick={openDocument}
                   expandedLoopIds={expandedLoopIds}
                   onAccordionChange={onAccordionChange}
-                  repoBaseUrl={v5Derivations.repoBaseUrl}
                   compareUrlByRepo={v5Derivations.compareUrlByRepo}
                   projectName={selected.name}
                   phaseLoopStatus={v5Derivations.phaseLoopStatus}
@@ -400,7 +398,7 @@ export default function ProjectsPage() {
 
   const v5Derivations = useMemo(() => {
     if (!v5State) {
-      return { graphStatus: undefined, gateMode: undefined, currentPhaseName: null, progress: null, repoBaseUrl: null, compareUrlByRepo: {}, phaseLoopStatus: undefined };
+      return { graphStatus: undefined, gateMode: undefined, currentPhaseName: null, progress: null, compareUrlByRepo: {}, phaseLoopStatus: undefined };
     }
     const phaseLoopNode = v5State.graph.nodes.phase_loop;
     const typedPhaseLoop = phaseLoopNode?.kind === 'for_each_phase' ? phaseLoopNode : undefined;
@@ -410,7 +408,6 @@ export default function ProjectsPage() {
       gateMode: v5State.pipeline.gate_mode,
       currentPhaseName: deriveCurrentPhase(typedPhaseLoop),
       progress: derivePhaseProgress(typedPhaseLoop),
-      repoBaseUrl: deriveRepoBaseUrl(v5State.pipeline.source_control?.repos?.[0]?.compare_url ?? null),
       compareUrlByRepo: sourceControlRepos.reduce<Record<string, string | null>>(
         (m, r) => ({ ...m, [r.name]: r.compare_url }),
         {}

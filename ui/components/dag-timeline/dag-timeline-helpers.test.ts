@@ -1310,25 +1310,5 @@ test("FR-12/FR-17 phase_planning leaf no longer resolves to --tier-planning (fal
   );
 });
 
-import { firstRepoCommit } from './dag-timeline-helpers';
-
-console.log("\nfirstRepoCommit tests (DD-3, DD-4, DD-5)\n");
-
-test('firstRepoCommit returns repos[0].commit_hash for single-repo (DD-3)', () => {
-  const r = firstRepoCommit([{ name: 'backend', commit_hash: 'abc1234def' }]);
-  assert.strictEqual(r.commitHash, 'abc1234def');
-  assert.strictEqual(r.isMultiRepo, false);
-  assert.strictEqual(r.repoName, 'backend');
-});
-test('firstRepoCommit omits label for a blank repo name (DD-5)', () => {
-  const r = firstRepoCommit([{ name: '', commit_hash: 'abc1234def' }]);
-  assert.strictEqual(r.commitHash, 'abc1234def');
-  assert.strictEqual(r.repoName, null);
-});
-test('firstRepoCommit flags multi-repo arrays as lossy (DD-4)', () => {
-  const r = firstRepoCommit([{ name: 'a', commit_hash: 'h1' }, { name: 'b', commit_hash: 'h2' }]);
-  assert.strictEqual(r.isMultiRepo, true);
-});
-
 console.log(`\n${passed} passed, ${failed} failed\n`);
 if (failed > 0) process.exit(1);

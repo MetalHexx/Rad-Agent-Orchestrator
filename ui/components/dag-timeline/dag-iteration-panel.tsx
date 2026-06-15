@@ -20,7 +20,6 @@ interface DAGIterationPanelProps {
   parentKind: 'for_each_phase' | 'for_each_task';
   currentNodePath: string | null;
   onDocClick: (path: string) => void;
-  repoBaseUrl: string | null;
   compareUrlByRepo: Record<string, string | null>;
   projectName: string;
   expandedLoopIds: string[];
@@ -53,7 +52,6 @@ export function DAGIterationPanel({
   parentKind,
   currentNodePath,
   onDocClick,
-  repoBaseUrl,
   compareUrlByRepo,
   projectName,
   expandedLoopIds,
@@ -227,7 +225,6 @@ export function DAGIterationPanel({
                   onDocClick={onDocClick}
                   expandedLoopIds={expandedLoopIds}
                   onAccordionChange={onAccordionChange}
-                  repoBaseUrl={repoBaseUrl}
                   compareUrlByRepo={compareUrlByRepo}
                   projectName={projectName}
                   focusedRowKey={focusedRowKey}
@@ -261,7 +258,6 @@ export function DAGIterationPanel({
                       onDocClick={onDocClick}
                       expandedLoopIds={expandedLoopIds}
                       onAccordionChange={onAccordionChange}
-                      repoBaseUrl={repoBaseUrl}
                       compareUrlByRepo={compareUrlByRepo}
                       projectName={projectName}
                       focusedRowKey={focusedRowKey}
@@ -289,7 +285,6 @@ export function DAGIterationPanel({
               parentNodeId={correctiveGroupParentId}
               currentNodePath={currentNodePath}
               onDocClick={onDocClick}
-              repoBaseUrl={repoBaseUrl}
               compareUrlByRepo={compareUrlByRepo}
               focusedRowKey={focusedRowKey}
               onFocusChange={onFocusChange}
@@ -307,7 +302,6 @@ export function DAGIterationPanel({
                   onDocClick={onDocClick}
                   expandedLoopIds={expandedLoopIds}
                   onAccordionChange={onAccordionChange}
-                  repoBaseUrl={repoBaseUrl}
                   compareUrlByRepo={compareUrlByRepo}
                   projectName={projectName}
                   focusedRowKey={focusedRowKey}
@@ -453,7 +447,6 @@ export function DAGIterationPanel({
               parentNodeId={correctiveGroupParentId}
               currentNodePath={currentNodePath}
               onDocClick={onDocClick}
-              repoBaseUrl={repoBaseUrl}
               compareUrlByRepo={compareUrlByRepo}
               focusedRowKey={focusedRowKey}
               onFocusChange={onFocusChange}

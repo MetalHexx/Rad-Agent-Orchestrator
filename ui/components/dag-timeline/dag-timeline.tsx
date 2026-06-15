@@ -17,7 +17,6 @@ interface DAGTimelineProps {
     value: string[],
     eventDetails: { reason: string }
   ) => void;
-  repoBaseUrl: string | null;
   compareUrlByRepo: Record<string, string | null>;
   projectName: string;
   /** Top-level phase_loop.status for FR-2 Execute Plan visibility (AD-2). */
@@ -105,7 +104,7 @@ function derivePrefixAccordionKeys(compoundKey: string): string[] {
   return result.reverse();
 }
 
-export function DAGTimeline({ nodes, currentNodePath, onDocClick, expandedLoopIds, onAccordionChange, repoBaseUrl, compareUrlByRepo, projectName, phaseLoopStatus, prUrl, afterPlanningSlot }: DAGTimelineProps) {
+export function DAGTimeline({ nodes, currentNodePath, onDocClick, expandedLoopIds, onAccordionChange, compareUrlByRepo, projectName, phaseLoopStatus, prUrl, afterPlanningSlot }: DAGTimelineProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const groups = groupNodesBySection(nodes);
   const unmatchedEntries = Object.entries(nodes).filter(([nodeId]) => !Object.hasOwn(NODE_SECTION_MAP, nodeId));
@@ -227,7 +226,6 @@ export function DAGTimeline({ nodes, currentNodePath, onDocClick, expandedLoopId
           onDocClick={onDocClick}
           expandedLoopIds={expandedLoopIds}
           onAccordionChange={onAccordionChange}
-          repoBaseUrl={repoBaseUrl}
           compareUrlByRepo={compareUrlByRepo}
           projectName={projectName}
           focusedRowKey={focusedRowKey}

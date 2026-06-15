@@ -1,4 +1,4 @@
-import type { StepNodeState, GateNodeState, ConditionalNodeState, ParallelNodeState, NodesRecord, NodeState, ForEachPhaseNodeState, GateEvent, NodeStatus, IterationEntry, RepoCommitEntry } from '@/types/state';
+import type { StepNodeState, GateNodeState, ConditionalNodeState, ParallelNodeState, NodesRecord, NodeState, ForEachPhaseNodeState, GateEvent, NodeStatus, IterationEntry } from '@/types/state';
 import { STATUS_MAP } from './node-status-map';
 
 export type CompatibleNodeState = StepNodeState | GateNodeState | ConditionalNodeState | ParallelNodeState;
@@ -37,16 +37,6 @@ export function deriveRepoBaseUrl(compareUrl: string | null): string | null {
   const idx = compareUrl.indexOf('/compare/');
   if (idx === -1) return null;
   return compareUrl.slice(0, idx);
-}
-
-export function firstRepoCommit(repos: RepoCommitEntry[] | null | undefined): { commitHash: string | null; repoName: string | null; isMultiRepo: boolean } {
-  const arr = repos ?? [];
-  const first = arr[0];
-  return {
-    commitHash: first?.commit_hash ?? null,
-    repoName: first && first.name.length > 0 ? first.name : null,
-    isMultiRepo: arr.length > 1,
-  };
 }
 
 export function getCommitLinkData(

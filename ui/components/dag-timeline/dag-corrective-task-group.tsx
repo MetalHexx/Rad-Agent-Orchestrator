@@ -15,7 +15,6 @@ interface DAGCorrectiveTaskGroupProps {
   parentNodeId: string;
   currentNodePath: string | null;
   onDocClick: (path: string) => void;
-  repoBaseUrl: string | null;
   compareUrlByRepo: Record<string, string | null>;
   focusedRowKey: string | null;
   onFocusChange: (nodeId: string) => void;
@@ -42,7 +41,6 @@ function CorrectiveRow({
   parentNodeId,
   currentNodePath,
   onDocClick,
-  repoBaseUrl,
   compareUrlByRepo,
   focusedRowKey,
   expandedLoopIds,
@@ -55,7 +53,6 @@ function CorrectiveRow({
   parentNodeId: string;
   currentNodePath: string | null;
   onDocClick: (path: string) => void;
-  repoBaseUrl: string | null;
   compareUrlByRepo: Record<string, string | null>;
   focusedRowKey: string | null;
   expandedLoopIds: string[];
@@ -187,7 +184,6 @@ function CorrectiveRow({
             parentNodeId={`${parentNodeId}.ct${entry.index}`}
             currentNodePath={currentNodePath}
             onDocClick={onDocClick}
-            repoBaseUrl={repoBaseUrl}
             compareUrlByRepo={compareUrlByRepo}
             focusedRowKey={focusedRowKey}
             onFocusChange={onFocusChange}
@@ -223,7 +219,6 @@ export function DAGCorrectiveTaskGroup({
   parentNodeId,
   currentNodePath,
   onDocClick,
-  repoBaseUrl,
   compareUrlByRepo,
   focusedRowKey,
   onFocusChange,
@@ -249,7 +244,6 @@ export function DAGCorrectiveTaskGroup({
             parentNodeId={parentNodeId}
             currentNodePath={currentNodePath}
             onDocClick={onDocClick}
-            repoBaseUrl={repoBaseUrl}
             compareUrlByRepo={compareUrlByRepo}
             focusedRowKey={focusedRowKey}
             expandedLoopIds={expandedLoopIds}

@@ -11,6 +11,3 @@ export function buildBindLookup(
   return out;
 }
 
-export function bindFor(lookup: Record<string, RepoBindInfo>, repoName: string): RepoBindInfo | undefined {
-  return lookup[repoName];
-}

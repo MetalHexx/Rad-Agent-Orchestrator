@@ -567,7 +567,6 @@ const _loopPropsContractFixture: DAGLoopNodeProps = {
   onDocClick: (path: string) => { void path; },
   expandedLoopIds: [],
   onAccordionChange: (value: string[], eventDetails: { reason: string }) => { void value; void eventDetails; },
-  repoBaseUrl: null,
   compareUrlByRepo: {},
   projectName: 'test-project',
   focusedRowKey: null,
@@ -599,7 +598,6 @@ interface _DAGIterationPanelPropsContract {
   parentKind: 'for_each_phase' | 'for_each_task';
   currentNodePath: string | null;
   onDocClick: (path: string) => void;
-  repoBaseUrl: string | null;
   projectName: string;
   expandedLoopIds: string[];
   onAccordionChange: (value: string[], eventDetails: { reason: string }) => void;
@@ -620,7 +618,6 @@ const _iterationPanelPropsContractFixture: _DAGIterationPanelPropsContract = {
   parentKind: 'for_each_phase',
   currentNodePath: null,
   onDocClick: (path: string) => { void path; },
-  repoBaseUrl: null,
   projectName: 'test-project',
   expandedLoopIds: [],
   onAccordionChange: (value: string[], eventDetails: { reason: string }) => { void value; void eventDetails; },
@@ -638,7 +635,6 @@ interface _DAGCorrectiveTaskGroupPropsContract {
   parentNodeId: string;
   currentNodePath: string | null;
   onDocClick: (path: string) => void;
-  repoBaseUrl: string | null;
   focusedRowKey: string | null;
   onFocusChange: (nodeId: string) => void;
 }
@@ -648,7 +644,6 @@ const _correctiveTaskGroupPropsContractFixture: _DAGCorrectiveTaskGroupPropsCont
   parentNodeId: 'phase_loop.iter0',
   currentNodePath: null,
   onDocClick: (path: string) => { void path; },
-  repoBaseUrl: null,
   focusedRowKey: null,
   onFocusChange: (nodeId: string) => { void nodeId; },
 };
