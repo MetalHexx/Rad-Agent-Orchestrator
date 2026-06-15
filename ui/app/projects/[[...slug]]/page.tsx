@@ -15,7 +15,10 @@ import { deleteArtifact } from "@/hooks/use-project-artifacts";
 import { DocumentDrawer } from "@/components/documents";
 import { ConfirmApprovalDialog } from "@/components/dashboard";
 import { ConfigEditorPanel } from "@/components/config";
-import { DAGTimeline, DAGTimelineSkeleton, ProjectHeader, HaltReasonBanner, BrainstormingSection, deriveCurrentPhase, derivePhaseProgress, deriveRepoBaseUrl } from "@/components/dag-timeline";
+import { DAGTimeline, DAGTimelineSkeleton, ProjectHeader, HaltReasonBanner, BrainstormingSection, SourceControlPanel, deriveCurrentPhase, derivePhaseProgress, deriveRepoBaseUrl } from "@/components/dag-timeline";
+import { hasSourceControlRepos } from "@/components/dag-timeline/source-control-helpers";
+import { buildBindLookup } from "@/components/dag-timeline/source-control-bind";
+import { useRegistryStore } from "@/components/repo-registry/use-registry-store";
 import { SSEStatusBanner } from "@/components/badges";
 import { getOrderedDocsV5 } from "@/lib/document-ordering";
 import { isV5State, isV6State } from "@/types/state";
@@ -74,6 +77,9 @@ function ProjectsPageContent({
 }: ProjectsPageContentProps) {
   const live = useArtifactLive();
   const artifacts = live.artifacts;
+
+  const { store: registryStore } = useRegistryStore();
+  const bindByName = React.useMemo(() => buildBindLookup(registryStore.repos), [registryStore.repos]);
 
   const getArtifacts = useCallback(() => artifacts, [artifacts]);
   // In-modal doc switching mutates the URL with the History API, NOT the Next router.
@@ -223,6 +229,16 @@ function ProjectsPageContent({
                   unseen={live.unseen}
                   activePulse={live.activePulse}
                 />
+                {hasSourceControlRepos(v5State.pipeline.source_control) && (
+                  <SourceControlPanel
+                    repos={v5State.pipeline.source_control!.repos!}
+                    projectName={selected.name}
+                    projectType={selected.project_type}
+                    autoCommit={v5State.pipeline.source_control!.auto_commit}
+                    autoPr={v5State.pipeline.source_control!.auto_pr}
+                    bindByName={bindByName}
+                  />
+                )}
                 <DAGTimeline
                   nodes={v5State.graph.nodes}
                   currentNodePath={v5State.graph.current_node_path}

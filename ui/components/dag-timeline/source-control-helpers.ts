@@ -50,3 +50,8 @@ export function buildCommitChip(repo: RepoCommitEntry, compareUrl: string | null
     linkable: link?.href != null,
   };
 }
+
+/** FR-3: empty repos[] is treated identically to absent source_control. */
+export function hasSourceControlRepos(sc: { repos?: { name: string }[] | undefined } | null): boolean {
+  return !!sc && Array.isArray(sc.repos) && sc.repos.length > 0;
+}

@@ -25,3 +25,4 @@ export {
 export type { SectionLabel, SectionGroup } from './dag-timeline-helpers';
 export { BrainstormingSection } from './brainstorming-section';
 export type { BrainstormingSectionProps } from './brainstorming-section';
+export { SourceControlPanel } from './source-control-panel';
