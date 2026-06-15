@@ -233,6 +233,18 @@ function ProjectsPageContent({
                   projectName={selected.name}
                   phaseLoopStatus={v5Derivations.phaseLoopStatus}
                   prUrl={v5State.pipeline.source_control?.repos?.[0]?.pr_url ?? null}
+                  afterPlanningSlot={
+                    hasSourceControlRepos(v5State.pipeline.source_control) && (
+                      <SourceControlPanel
+                        repos={v5State.pipeline.source_control!.repos!}
+                        projectName={selected.name}
+                        projectType={selected.project_type}
+                        autoCommit={v5State.pipeline.source_control!.auto_commit}
+                        autoPr={v5State.pipeline.source_control!.auto_pr}
+                        bindByName={bindByName}
+                      />
+                    )
+                  }
                 />
               </>
             ) : (
