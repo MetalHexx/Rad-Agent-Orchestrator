@@ -519,20 +519,17 @@ test('dag-iteration-panel.tsx <DocumentLink> does NOT pass tabIndex (keyboard ac
   );
 });
 
-test('dag-iteration-panel.tsx <ExternalLink> does NOT pass tabIndex (keyboard accessibility — same rationale as DocumentLink)', () => {
-  // Same rationale as the DocumentLink case above: the iteration header <div> has NO
-  // row-level focus wiring (no tabIndex, no keydown handler), so keyboard users must
-  // reach the commit link via natural tab order. The original tabIndex={-1} was
-  // carried over from an earlier shape where ExternalLink was nested inside
-  // AccordionTrigger (a <button>); post-restructure it is a sibling of the header
-  // text and tabIndex={-1} now makes the link keyboard-unreachable. DAGNodeRow's
-  // own ExternalLink/DocumentLink still use tabIndex={-1} because the row owns the
-  // roving tabindex + keydown handler — the header does not.
-  const extLinkMatch = iterationPanelSource.match(/<ExternalLink\b[\s\S]*?\/>/);
-  assert.ok(extLinkMatch, 'iteration panel must contain a self-closing <ExternalLink ... /> element');
+test('dag-iteration-panel.tsx uses CommitChips for per-repo commit rendering, not ExternalLink (FR-15)', () => {
+  // FR-15: single-commit ExternalLink has been retired in favour of CommitChips so task
+  // iterations get per-repo attribution. ExternalLink must no longer appear in the source;
+  // CommitChips must be imported and used.
   assert.ok(
-    !/tabIndex\s*=/.test(extLinkMatch[0]),
-    '<ExternalLink> in the iteration header must NOT pass tabIndex — relying on the default lets keyboard users tab to the commit link (the header has no row-level keydown handler like DAGNodeRow does)'
+    !/<ExternalLink\b/.test(iterationPanelSource),
+    'iteration panel must NOT contain <ExternalLink> — commit rendering is now solely CommitChips (FR-15)'
+  );
+  assert.ok(
+    /CommitChips/.test(iterationPanelSource),
+    'iteration panel must import and render CommitChips for per-repo commit attribution (FR-15)'
   );
 });
 
@@ -856,18 +853,21 @@ test("FR-11 task-iteration DocumentLink label is 'Task Handoff', not 'Doc'", () 
     "literal 'Doc' label is forbidden in dag-iteration-panel.tsx (FR-11)");
 });
 
-test("FR-12 task-iteration ExternalLink renders icon='github' with label='Commit'", () => {
-  assert.ok(/icon="github"/.test(PANEL_SOURCE),
-    "panel must pass icon='github' on commit ExternalLink (FR-12)");
-  assert.ok(/label="Commit"/.test(PANEL_SOURCE),
-    "panel must pass label='Commit' on commit ExternalLink (FR-12)");
+test("FR-15 task-iteration uses CommitChips with repos and compareUrlByRepo props for per-repo rendering", () => {
+  // FR-15: single-commit ExternalLink retired in favour of CommitChips.
+  // CommitChips receives iteration.repos and compareUrlByRepo to render per-repo chips.
+  assert.ok(/<CommitChips/.test(PANEL_SOURCE),
+    "panel must render <CommitChips> for per-repo commit attribution (FR-15)");
+  assert.ok(/compareUrlByRepo=\{compareUrlByRepo\}/.test(PANEL_SOURCE),
+    "panel must forward compareUrlByRepo prop to <CommitChips> (FR-15)");
+  assert.ok(/repos=\{iteration\.repos\}/.test(PANEL_SOURCE),
+    "panel must forward iteration.repos to <CommitChips> (FR-15)");
 });
 
-test("DD-8 task-iteration ExternalLink forwards full commit hash as title", () => {
-  assert.ok(/title=\{iteration\.commit_hash[^}]*\}/.test(PANEL_SOURCE) ||
-            /title=\{commitData\.full[^}]*\}/.test(PANEL_SOURCE) ||
-            /title=\{[^}]*commit[_.]hash[^}]*\}/.test(PANEL_SOURCE),
-    "panel must forward the full commit hash as ExternalLink title (DD-8)");
+test("FR-15 task-iteration no longer uses ExternalLink for single-commit rendering", () => {
+  // FR-15: per-repo CommitChips replaces the single-commit ExternalLink block.
+  assert.ok(!/<ExternalLink\b/.test(PANEL_SOURCE),
+    "panel must NOT contain <ExternalLink> — single-commit rendering retired (FR-15)");
 });
 
 // ─── P04-T04: Phase iteration body indent + chevron column reservation ────────
@@ -963,20 +963,17 @@ test("FR-7/AD-5 task iteration header references iteration.nodes['code_review'].
     "task iteration header must render a 'Code Review' link label beside Task Handoff (FR-7)");
 });
 
-test("FR-8 trailing-link slot order on the task header: Task Handoff, then Code Review, then Commit", () => {
-  // Source-shape proxy — the absolute trailing slot must contain the
-  // three links in DD-7 order. Match by the labels in their first
-  // appearance position. Labels appear as JSX attribute string literals
-  // (label="Task Handoff" / label="Code Review" / label="Commit") in the
-  // emitted source, so search by the same double-quoted form used by the
-  // pre-existing FR-11 / FR-12 tests above.
-  const handoffIdx = PANEL_SOURCE_P02.indexOf('label="Task Handoff"');
-  const reviewIdx  = PANEL_SOURCE_P02.indexOf('label="Code Review"');
-  const commitIdx  = PANEL_SOURCE_P02.indexOf('label="Commit"');
-  assert.ok(handoffIdx !== -1 && reviewIdx !== -1 && commitIdx !== -1,
-    "all three trailing labels must be present");
-  assert.ok(handoffIdx < reviewIdx && reviewIdx < commitIdx,
-    "trailing-link order must be Task Handoff → Code Review → Commit (FR-8, DD-7)");
+test("FR-8/FR-15 trailing-link slot order on the task header: CommitChips, then Task Handoff, then Code Review", () => {
+  // FR-15: single-commit ExternalLink (label="Commit") retired in favour of CommitChips.
+  // Trailing slot order is now: CommitChips (per-repo chips) → Task Handoff → Code Review.
+  // Verify CommitChips appears in source and the two DocumentLink labels appear in order.
+  const commitChipsIdx = PANEL_SOURCE_P02.indexOf('<CommitChips');
+  const handoffIdx     = PANEL_SOURCE_P02.indexOf('label="Task Handoff"');
+  const reviewIdx      = PANEL_SOURCE_P02.indexOf('label="Code Review"');
+  assert.ok(commitChipsIdx !== -1 && handoffIdx !== -1 && reviewIdx !== -1,
+    "CommitChips and both trailing DocumentLink labels must be present (FR-15, FR-8, DD-7)");
+  assert.ok(commitChipsIdx < handoffIdx && handoffIdx < reviewIdx,
+    "trailing-link order must be CommitChips → Task Handoff → Code Review (FR-15, FR-8, DD-7)");
 });
 
 test("FR-5/DD-6 task iteration renders 'Corrected' trailing pill when iteration completed AND any corrective resolved", () => {

@@ -3,8 +3,9 @@
 import { useCallback } from 'react';
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from '@/components/ui/accordion';
 import { NodeStatusBadge } from './node-status-badge';
-import { DocumentLink, ExternalLink } from '@/components/documents';
-import { deriveIterationBadgeLabel, getCommitLinkData, firstRepoCommit, buildCorrectiveItemValue, resolveStageBadge } from './dag-timeline-helpers';
+import { DocumentLink } from '@/components/documents';
+import { deriveIterationBadgeLabel, buildCorrectiveItemValue, resolveStageBadge } from './dag-timeline-helpers';
+import { CommitChips } from './commit-chips';
 import type { CorrectiveTaskEntry } from '@/types/state';
 
 interface DAGCorrectiveTaskGroupProps {
@@ -15,6 +16,7 @@ interface DAGCorrectiveTaskGroupProps {
   currentNodePath: string | null;
   onDocClick: (path: string) => void;
   repoBaseUrl: string | null;
+  compareUrlByRepo: Record<string, string | null>;
   focusedRowKey: string | null;
   onFocusChange: (nodeId: string) => void;
   expandedLoopIds: string[];
@@ -41,6 +43,7 @@ function CorrectiveRow({
   currentNodePath,
   onDocClick,
   repoBaseUrl,
+  compareUrlByRepo,
   focusedRowKey,
   expandedLoopIds,
   onAccordionChange,
@@ -53,15 +56,13 @@ function CorrectiveRow({
   currentNodePath: string | null;
   onDocClick: (path: string) => void;
   repoBaseUrl: string | null;
+  compareUrlByRepo: Record<string, string | null>;
   focusedRowKey: string | null;
   expandedLoopIds: string[];
   onAccordionChange: (value: string[], eventDetails: { reason: string }) => void;
 }) {
   const itemValue = buildCorrectiveItemValue(parentIterationKey, entry.index);
   const handleFocus = useCallback(() => onFocusChange(itemValue), [itemValue, onFocusChange]);
-  const { commitHash: entry_commit_hash, isMultiRepo } = firstRepoCommit(entry.repos);
-  const repoCount = entry.repos?.length ?? 0;
-  const commitData = getCommitLinkData(entry_commit_hash, repoBaseUrl);
 
   // The runtime CorrectiveTaskEntry may carry a `corrective_tasks` field for
   // nested correctives (recursive case, FR-9 / FR-10 / DD-8) even though the
@@ -100,10 +101,8 @@ function CorrectiveRow({
   const codeReviewNode = entry.nodes['code_review'];
   const codeReviewDocPath = (codeReviewNode && 'doc_path' in codeReviewNode) ? codeReviewNode.doc_path : null;
   const hasCodeReview = codeReviewDocPath != null && codeReviewDocPath !== '';
-  const hasCommitLink = commitData !== null && entry_commit_hash != null;
-  // DD-4: the multi-repo shim must surface even when no other trailing link is
-  // present, so it participates in the trailing-links visibility gate.
-  const hasAnyTrailing = hasHandoff || hasCodeReview || hasCommitLink || isMultiRepo;
+  // FR-15: commit rendering is now solely CommitChips; hasAnyTrailing includes repos presence.
+  const hasAnyTrailing = hasHandoff || hasCodeReview || (entry.repos != null && entry.repos.length > 0);
   // FR-9 / FR-10 / DD-8 — chevron is gated on entry.corrective_tasks.length > 0.
   const hasNested = nestedCorrectives.length > 0;
   const isCorrected = entry.status === 'completed' &&
@@ -132,12 +131,6 @@ function CorrectiveRow({
               <span>Code Review</span>
             </span>
           )}
-          {hasCommitLink && (
-            <span className="inline-flex items-center gap-1.5">
-              <span className="inline-block h-3.5 w-3.5" />
-              <span>{commitData!.label}</span>
-            </span>
-          )}
         </span>
       )}
     </>
@@ -145,15 +138,6 @@ function CorrectiveRow({
 
   const trailingLinks = (
     <div className="absolute right-12 top-1/2 -translate-y-1/2 z-10 flex items-center gap-2">
-      {/* DD-4: temporary lossy multi-repo shim — full per-repo display is iteration 7 */}
-      {isMultiRepo && (
-        <span
-          className="text-xs font-medium text-muted-foreground whitespace-nowrap"
-          aria-label={`Multi-repo task spanning ${repoCount} repos`}
-        >
-          Multi-repo ({repoCount} repos)
-        </span>
-      )}
       {isCorrected && (
         <span
           aria-label="Corrected"
@@ -166,28 +150,12 @@ function CorrectiveRow({
           Corrected
         </span>
       )}
+      <CommitChips repos={entry.repos} compareUrlByRepo={compareUrlByRepo} singleRepo={Object.keys(compareUrlByRepo).length <= 1} />
       {hasHandoff && (
         <DocumentLink path={entry.doc_path!} label="Task Handoff" onDocClick={onDocClick} />
       )}
       {hasCodeReview && (
         <DocumentLink path={codeReviewDocPath!} label="Code Review" onDocClick={onDocClick} />
-      )}
-      {hasCommitLink && (
-        commitData!.href !== null ? (
-          <ExternalLink
-            href={commitData!.href}
-            label="Commit"
-            icon="github"
-            title={entry_commit_hash!}
-          />
-        ) : (
-          <span
-            className="text-xs font-mono text-muted-foreground"
-            title={entry_commit_hash!}
-          >
-            {commitData!.label}
-          </span>
-        )
       )}
     </div>
   );
@@ -220,6 +188,7 @@ function CorrectiveRow({
             currentNodePath={currentNodePath}
             onDocClick={onDocClick}
             repoBaseUrl={repoBaseUrl}
+            compareUrlByRepo={compareUrlByRepo}
             focusedRowKey={focusedRowKey}
             onFocusChange={onFocusChange}
             expandedLoopIds={expandedLoopIds}
@@ -255,6 +224,7 @@ export function DAGCorrectiveTaskGroup({
   currentNodePath,
   onDocClick,
   repoBaseUrl,
+  compareUrlByRepo,
   focusedRowKey,
   onFocusChange,
   expandedLoopIds,
@@ -280,6 +250,7 @@ export function DAGCorrectiveTaskGroup({
             currentNodePath={currentNodePath}
             onDocClick={onDocClick}
             repoBaseUrl={repoBaseUrl}
+            compareUrlByRepo={compareUrlByRepo}
             focusedRowKey={focusedRowKey}
             expandedLoopIds={expandedLoopIds}
             onAccordionChange={onAccordionChange}

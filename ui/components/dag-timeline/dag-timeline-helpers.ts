@@ -26,7 +26,7 @@ export function shouldRenderTimelineRow(
   }
 
   if (nodeId === 'commit' && (ctx.commitHash == null || ctx.commitHash === '')) return false;
-  if (nodeId === 'final_pr' && (ctx.prUrl == null || ctx.prUrl === '')) return false;
+  if (nodeId === 'final_pr') return false; // FR-14: PRs surface only in the Source Control panel
 
   return true;
 }

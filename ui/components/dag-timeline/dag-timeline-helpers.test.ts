@@ -907,9 +907,10 @@ test("final_pr with prUrl: '' returns false", () => {
   assert.strictEqual(shouldRenderTimelineRow('final_pr', node, { commitHash: null, prUrl: '' }), false);
 });
 
-test("final_pr with prUrl: 'https://github.com/user/repo/pull/1' returns true", () => {
+test("final_pr with prUrl: 'https://github.com/user/repo/pull/1' returns false (FR-14: always removed)", () => {
+  // FR-14: final_pr row is unconditionally removed — PRs surface only in the Source Control panel.
   const node: import('@/types/state').StepNodeState = { kind: 'step', status: 'completed', doc_path: null, retries: 0 };
-  assert.strictEqual(shouldRenderTimelineRow('final_pr', node, { commitHash: null, prUrl: 'https://github.com/user/repo/pull/1' }), true);
+  assert.strictEqual(shouldRenderTimelineRow('final_pr', node, { commitHash: null, prUrl: 'https://github.com/user/repo/pull/1' }), false);
 });
 
 test("unrelated node 'requirements' (kind: 'step') always returns true", () => {
