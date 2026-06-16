@@ -1,10 +1,11 @@
 "use client";
 import { useState, useCallback } from 'react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Hexagon, Box, HardDrive, Folder, FolderX, Check } from 'lucide-react';
+import { Hexagon, Box, HardDrive, Folder, FolderX } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { BindStateDot } from '@/components/repo-registry/bind-state-dot';
 import { ExternalLink } from '@/components/documents';
+import { postOpenFolder } from '@/hooks/use-open-folder';
 import { SECTION_LABEL_CLASSES, CARD_SHELL_CLASSES } from './dag-section-group';
 import { resolveLocationKind, resolveRepoFolderPath, LOCATION_KIND_LABEL } from './source-control-helpers';
 import type { RepoBindInfo } from './source-control-bind';
@@ -23,6 +24,12 @@ function pillCssVar(v: V5AutoCommit | V5AutoPR | undefined): string {
   return v === 'always' ? '--status-complete' : v === 'ask' ? '--status-in-progress' : '--status-failed';
 }
 
+// SC-PANEL-POLISH: display-only verdict — show a locked Yes/No, and hide the
+// badge entirely while the policy is still `ask`/unset. State is untouched.
+function policyVerdict(v: V5AutoCommit | V5AutoPR | undefined): 'Yes' | 'No' | null {
+  return v === 'always' ? 'Yes' : v === 'never' ? 'No' : null;
+}
+
 // DD-5: location-kind pill icon (lucide) — hexagon / box / hard-drive.
 const LOCATION_KIND_ICON = { worktree: Hexagon, 'in-place': Box, 'side-project': HardDrive } as const;
 
@@ -31,24 +38,45 @@ function parsePrNumber(url: string): string {
   return m ? `PR #${m[1]}` : 'PR';
 }
 
-/** DD-6 / NFR-4: copy the convention-derived path; read-only, no FS/process access. */
-function FolderCopyChip({ path, label, missing }: { path: string; label: string; missing: boolean }) {
-  const [copied, setCopied] = useState(false);
-  const onCopy = useCallback(async () => {
-    try { await navigator.clipboard.writeText(path); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { /* clipboard unavailable */ }
-  }, [path]);
-  const Icon = copied ? Check : missing ? FolderX : Folder;
+/**
+ * SC-PANEL-POLISH: a simple link that opens the repo folder in the OS file
+ * explorer (Explorer / Finder / file-manager) via the guarded local endpoint.
+ * No clipboard copy, no checkmark. A missing folder renders disabled.
+ */
+function FolderOpenButton({ path, label, missing, projectName }: { path: string; label: string; missing: boolean; projectName: string }) {
+  const [failed, setFailed] = useState(false);
+  const onOpen = useCallback(async () => {
+    setFailed(false);
+    const res = await postOpenFolder(projectName, path);
+    if (!res.success) { setFailed(true); setTimeout(() => setFailed(false), 3000); }
+  }, [projectName, path]);
+
+  if (missing) {
+    return (
+      <Tooltip>
+        <TooltipTrigger render={
+          <span aria-label={`Folder is missing: ${path}`}
+            className="inline-flex items-center gap-1.5 rounded-sm text-sm text-[var(--color-warning)]" />
+        }>
+          <FolderX className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          <span className="max-w-[200px] truncate">{label}</span>
+        </TooltipTrigger>
+        <TooltipContent>Folder is missing at {path}</TooltipContent>
+      </Tooltip>
+    );
+  }
+
   return (
     <Tooltip>
       <TooltipTrigger render={
-        <button type="button" onClick={onCopy} aria-label={`Copy folder path${missing ? ' (folder missing)' : ''}: ${path}`}
-          className={`inline-flex items-center gap-1.5 rounded-sm text-sm hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${missing ? 'text-[var(--color-warning)]' : 'text-primary'}`} />
+        <button type="button" onClick={onOpen} aria-label={`Open folder in file explorer: ${path}`}
+          className="inline-flex items-center gap-1.5 rounded-sm text-sm text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
       }>
-        <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-        {/* DD-6: visible label is the (truncated) folder path, not the word "Folder" */}
+        <Folder className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+        {/* visible label is the (truncated) folder path, not the word "Folder" */}
         <span className="max-w-[200px] truncate">{label}</span>
       </TooltipTrigger>
-      <TooltipContent>{missing ? `Folder is missing at ${path}` : path}</TooltipContent>
+      <TooltipContent>{failed ? `Couldn't open ${path}` : `Open ${path} in file explorer`}</TooltipContent>
     </Tooltip>
   );
 }
@@ -57,6 +85,9 @@ export function SourceControlPanel({ repos, projectName, projectType, autoCommit
   if (!repos || repos.length === 0) return null; // FR-3 safety net (page also gates)
   const panelKind = resolveLocationKind(projectType, repos.length > 0 && repos.every((r) => r.in_place === true));
   const LocIcon = LOCATION_KIND_ICON[panelKind];
+  // SC-PANEL-POLISH: locked Yes/No verdicts; null → badge hidden (ask/unset).
+  const commitVerdict = policyVerdict(autoCommit);
+  const prVerdict = policyVerdict(autoPr);
 
   return (
     <div role="group" aria-label="Source Control section">
@@ -74,16 +105,16 @@ export function SourceControlPanel({ repos, projectName, projectType, autoCommit
               </TooltipTrigger>
               <TooltipContent>Where this project&apos;s work physically lives: {LOCATION_KIND_LABEL[panelKind]}</TooltipContent>
             </Tooltip>
-            {autoCommit && (
+            {commitVerdict && (
               <Tooltip>
-                <TooltipTrigger render={<Badge variant="outline" style={{ color: `var(${pillCssVar(autoCommit)})`, borderColor: `var(${pillCssVar(autoCommit)})` }} aria-label={`auto-commit ${autoCommit}`} />}>auto-commit: {autoCommit}</TooltipTrigger>
-                <TooltipContent>Auto-Commit: {autoCommit}</TooltipContent>
+                <TooltipTrigger render={<Badge variant="outline" style={{ color: `var(${pillCssVar(autoCommit)})`, borderColor: `var(${pillCssVar(autoCommit)})` }} aria-label={`auto-commit ${commitVerdict}`} />}>auto-commit: {commitVerdict}</TooltipTrigger>
+                <TooltipContent>Auto-Commit: {commitVerdict}</TooltipContent>
               </Tooltip>
             )}
-            {autoPr && (
+            {prVerdict && (
               <Tooltip>
-                <TooltipTrigger render={<Badge variant="outline" style={{ color: `var(${pillCssVar(autoPr)})`, borderColor: `var(${pillCssVar(autoPr)})` }} aria-label={`auto-pr ${autoPr}`} />}>auto-pr: {autoPr}</TooltipTrigger>
-                <TooltipContent>Auto-PR: {autoPr}</TooltipContent>
+                <TooltipTrigger render={<Badge variant="outline" style={{ color: `var(${pillCssVar(autoPr)})`, borderColor: `var(${pillCssVar(autoPr)})` }} aria-label={`auto-pr ${prVerdict}`} />}>auto-pr: {prVerdict}</TooltipTrigger>
+                <TooltipContent>Auto-PR: {prVerdict}</TooltipContent>
               </Tooltip>
             )}
           </div>
@@ -122,7 +153,7 @@ export function SourceControlPanel({ repos, projectName, projectType, autoCommit
                     return (
                       <div className="ml-auto flex items-center gap-3">
                         {/* DD-4 trailing order: Folder → Compare → PR */}
-                        <FolderCopyChip path={folderPath} label={folderLabel} missing={missing} />
+                        <FolderOpenButton path={folderPath} label={folderLabel} missing={missing} projectName={projectName} />
                         {!isSide && repo.compare_url && (
                           <Tooltip>
                             <TooltipTrigger render={<span className="inline-flex" />}>

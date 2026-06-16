@@ -19,7 +19,18 @@ const bindByName = { 'fake-api': { state: 'bound' as const, path: '/clones/fake-
   assert.ok(html.includes('main'), 'base branch present');
   assert.ok(html.includes('href="/repo-registry?repo=fake-api"'), 'registry deep link present (FR-6)');
   assert.ok(html.includes('Worktree'), 'location-kind badge present (FR-10)');
-  assert.ok(html.includes('auto-commit: always'), 'auto-commit value-text pill present (DD-5)');
+  // SC-PANEL-POLISH: badges show a locked Yes/No, not the raw policy word
+  assert.ok(html.includes('auto-commit: Yes'), 'auto-commit shows locked Yes (always)');
+  assert.ok(html.includes('auto-pr: No'), 'auto-pr shows locked No (never)');
+}
+
+// SC-PANEL-POLISH: `ask`/unset policies render no badge at all
+{
+  const html = renderToStaticMarkup(createElement(SourceControlPanel, {
+    repos: [repo], projectName: 'FAKE-NEWS', projectType: 'standard', autoCommit: 'ask', bindByName,
+  }));
+  assert.ok(!html.includes('auto-commit:'), 'ask auto-commit renders no badge');
+  assert.ok(!html.includes('auto-pr:'), 'undefined auto-pr renders no badge');
 }
 
 // side-project: no registry link (FR-10)
