@@ -14,13 +14,13 @@ describe('radorch config', () => {
       path.join(root, 'orchestration.yml'),
       'source_control:\n  auto_commit: always\n  auto_pr: never\n',
     );
-    expect(readConfig({ root })).toEqual({ autoCommit: 'always', autoPr: 'never' });
+    expect(readConfig({ root })).toEqual({ autoCommit: 'always', autoPr: 'never', telemetryEnabled: false });
   });
   it('defaults both values to ask when the file is missing', () => {
-    expect(readConfig({ root })).toEqual({ autoCommit: 'ask', autoPr: 'ask' });
+    expect(readConfig({ root })).toEqual({ autoCommit: 'ask', autoPr: 'ask', telemetryEnabled: false });
   });
   it('defaults a missing key to ask while keeping the present one', () => {
     fs.writeFileSync(path.join(root, 'orchestration.yml'), 'source_control:\n  auto_commit: always\n');
-    expect(readConfig({ root })).toEqual({ autoCommit: 'always', autoPr: 'ask' });
+    expect(readConfig({ root })).toEqual({ autoCommit: 'always', autoPr: 'ask', telemetryEnabled: false });
   });
 });

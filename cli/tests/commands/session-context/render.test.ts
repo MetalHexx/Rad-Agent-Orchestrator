@@ -36,15 +36,28 @@ describe('session-context preamble', () => {
     expect(text).toMatch(/\*\*Rad Orc — environment loaded\*\*/);
     expect(text).toMatch(/\*\*Repos\*\* \(2\) · `repo-one` `repo-two`/);
     expect(text).toMatch(/\*\*Repo Groups\*\* \(1\) · `core-set`/);
-    expect(text).toMatch(/\*\*Active\*\* \(2\) · `MULTI-REPO-3` \(execution\) · `PROJECT-GRAPH-1` \(planning\)/);
+    expect(text).toMatch(/\*\*Active Projects\*\* \(2\) · `MULTI-REPO-3` \(execution\) · `PROJECT-GRAPH-1` \(planning\)/);
     expect(text).toMatch(/\*\*Config\*\* · auto-commit `always` · auto-pr `never`/);
   });
   it('no active work: drops the Active row but keeps Repos and Config', () => {
     addRepo({ root, name: 'repo-one', identity: { remote: 'g', default_branch: 'main', description: '' }, localPath: '/c/one' });
     const text = renderPreamble({ root, active: [], config: { autoCommit: 'ask', autoPr: 'ask' } });
     expect(text).toMatch(/\*\*Repos\*\* \(1\)/);
-    expect(text).not.toMatch(/\*\*Active\*\*/);
+    expect(text).not.toMatch(/\*\*Active Projects\*\*/);
     expect(text).toMatch(/\*\*Config\*\*/);
+  });
+  it('renames the Active row to Active Projects (DD-2)', () => {
+    addRepo({ root, name: 'repo-one', identity: { remote: 'g', default_branch: 'main', description: '' }, localPath: '/c/one' });
+    const out = renderPreamble({ root, active: [{ name: 'X', tier: 'medium' }], config: { autoCommit: 'ask', autoPr: 'ask' } });
+    expect(out).toContain('**Active Projects** (1)');
+    expect(out).not.toContain('**Active** (');
+  });
+  it('shows observability in the Config row only when enabled (FR-7, DD-1)', () => {
+    addRepo({ root, name: 'repo-one', identity: { remote: 'g', default_branch: 'main', description: '' }, localPath: '/c/one' });
+    const on = renderPreamble({ root, config: { autoCommit: 'ask', autoPr: 'ask', telemetryEnabled: true } });
+    expect(on).toContain('observability `on`');
+    const off = renderPreamble({ root, config: { autoCommit: 'ask', autoPr: 'ask', telemetryEnabled: false } });
+    expect(off).not.toContain('observability');
   });
   it('unbound repo: rides along as a single line, no full paths, no skill menu', () => {
     addRepo({ root, name: 'bound-one', identity: { remote: 'g', default_branch: 'main', description: '' }, localPath: '/c/b' });

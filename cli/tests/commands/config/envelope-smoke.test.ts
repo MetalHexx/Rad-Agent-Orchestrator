@@ -13,6 +13,6 @@ describe('config envelope smoke', () => {
     fs.writeFileSync(path.join(root, 'orchestration.yml'), 'source_control:\n  auto_commit: never\n  auto_pr: always\n');
     const data = readConfig({ root });
     const envelope = configCommand.mapResult ? configCommand.mapResult(data) : { ok: true, data };
-    expect(envelope).toEqual({ ok: true, data: { autoCommit: 'never', autoPr: 'always' } });
+    expect(envelope).toEqual({ ok: true, data: { autoCommit: 'never', autoPr: 'always', telemetryEnabled: false } });
   });
 });

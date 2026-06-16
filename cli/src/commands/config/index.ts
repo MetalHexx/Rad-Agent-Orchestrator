@@ -5,11 +5,12 @@ import { userDataPaths } from '../../lib/paths.js';
 import { parseYaml } from '../../lib/yaml.js';
 import type { CommandContext } from '../../framework/context.js';
 
-export interface ConfigResult { autoCommit: string; autoPr: string; }
+export interface ConfigResult { autoCommit: string; autoPr: string; telemetryEnabled: boolean; }
 export interface ReadConfigOpts { root: string; }
 
 interface OrchestrationConfig {
   source_control?: { auto_commit?: unknown; auto_pr?: unknown };
+  telemetry?: { enabled?: unknown };
 }
 
 function scalar(value: unknown, fallback: string): string {
@@ -17,7 +18,7 @@ function scalar(value: unknown, fallback: string): string {
 }
 
 export function readConfig({ root }: ReadConfigOpts): ConfigResult {
-  const defaults: ConfigResult = { autoCommit: 'ask', autoPr: 'ask' };
+  const defaults: ConfigResult = { autoCommit: 'ask', autoPr: 'ask', telemetryEnabled: false };
   const configPath = path.join(root, 'orchestration.yml');
   if (!fs.existsSync(configPath)) return defaults;
   let parsed: OrchestrationConfig | undefined;
@@ -33,6 +34,7 @@ export function readConfig({ root }: ReadConfigOpts): ConfigResult {
   return {
     autoCommit: scalar(sc.auto_commit, defaults.autoCommit),
     autoPr: scalar(sc.auto_pr, defaults.autoPr),
+    telemetryEnabled: parsed?.telemetry?.enabled === true,   // default-off
   };
 }
 
