@@ -907,9 +907,10 @@ test("final_pr with prUrl: '' returns false", () => {
   assert.strictEqual(shouldRenderTimelineRow('final_pr', node, { commitHash: null, prUrl: '' }), false);
 });
 
-test("final_pr with prUrl: 'https://github.com/user/repo/pull/1' returns true", () => {
+test("final_pr with prUrl: 'https://github.com/user/repo/pull/1' returns false (FR-14: always removed)", () => {
+  // FR-14: final_pr row is unconditionally removed — PRs surface only in the Source Control panel.
   const node: import('@/types/state').StepNodeState = { kind: 'step', status: 'completed', doc_path: null, retries: 0 };
-  assert.strictEqual(shouldRenderTimelineRow('final_pr', node, { commitHash: null, prUrl: 'https://github.com/user/repo/pull/1' }), true);
+  assert.strictEqual(shouldRenderTimelineRow('final_pr', node, { commitHash: null, prUrl: 'https://github.com/user/repo/pull/1' }), false);
 });
 
 test("unrelated node 'requirements' (kind: 'step') always returns true", () => {
@@ -1307,26 +1308,6 @@ test("FR-12/FR-17 phase_planning leaf no longer resolves to --tier-planning (fal
     resolveStageBadge('phase_planning', 'in_progress'),
     { cssVar: '--status-in-progress', label: 'In Progress' },
   );
-});
-
-import { firstRepoCommit } from './dag-timeline-helpers';
-
-console.log("\nfirstRepoCommit tests (DD-3, DD-4, DD-5)\n");
-
-test('firstRepoCommit returns repos[0].commit_hash for single-repo (DD-3)', () => {
-  const r = firstRepoCommit([{ name: 'backend', commit_hash: 'abc1234def' }]);
-  assert.strictEqual(r.commitHash, 'abc1234def');
-  assert.strictEqual(r.isMultiRepo, false);
-  assert.strictEqual(r.repoName, 'backend');
-});
-test('firstRepoCommit omits label for a blank repo name (DD-5)', () => {
-  const r = firstRepoCommit([{ name: '', commit_hash: 'abc1234def' }]);
-  assert.strictEqual(r.commitHash, 'abc1234def');
-  assert.strictEqual(r.repoName, null);
-});
-test('firstRepoCommit flags multi-repo arrays as lossy (DD-4)', () => {
-  const r = firstRepoCommit([{ name: 'a', commit_hash: 'h1' }, { name: 'b', commit_hash: 'h2' }]);
-  assert.strictEqual(r.isMultiRepo, true);
 });
 
 console.log(`\n${passed} passed, ${failed} failed\n`);

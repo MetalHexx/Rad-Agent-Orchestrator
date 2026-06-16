@@ -253,20 +253,17 @@ test('dag-corrective-task-group.tsx <DocumentLink> does NOT pass tabIndex (keybo
   );
 });
 
-test('dag-corrective-task-group.tsx <ExternalLink> does NOT pass tabIndex (keyboard accessibility — same rationale as DocumentLink)', () => {
-  // Same rationale as the DocumentLink case above. ExternalLink is a sibling of
-  // AccordionTrigger (not nested inside it — enforced by the segment-scan test), so
-  // the trigger does not own its focus. The surrounding <div> has no row-level focus
-  // wiring (no tabIndex, no keydown handler). If ExternalLink were tabIndex={-1}, a
-  // keyboard-only user would have NO path to open the commit link. The original
-  // tabIndex={-1} was carried over from an earlier shape where ExternalLink was
-  // nested inside AccordionTrigger; post-restructure it is a sibling and the
-  // override now breaks keyboard reachability.
-  const extLinkMatch = correctiveTaskGroupSource.match(/<ExternalLink\b[\s\S]*?\/>/);
-  assert.ok(extLinkMatch, 'corrective task group must contain a self-closing <ExternalLink ... /> element');
+test('dag-corrective-task-group.tsx uses CommitChips for per-repo commit rendering, not ExternalLink (FR-15)', () => {
+  // FR-15: single-commit ExternalLink has been retired in favour of CommitChips so corrective
+  // tasks get the same per-repo attribution as regular task iterations. ExternalLink must no
+  // longer appear in the source; CommitChips must be imported and used.
   assert.ok(
-    !/tabIndex\s*=/.test(extLinkMatch[0]),
-    '<ExternalLink> in the corrective header must NOT pass tabIndex — the AccordionTrigger consumes Enter/Space so a keyboard user must reach the commit link via natural tab order'
+    !/<ExternalLink\b/.test(correctiveTaskGroupSource),
+    'corrective task group must NOT contain <ExternalLink> — commit rendering is now solely CommitChips (FR-15)'
+  );
+  assert.ok(
+    /CommitChips/.test(correctiveTaskGroupSource),
+    'corrective task group must import and render CommitChips for per-repo commit attribution (FR-15)'
   );
 });
 
@@ -413,17 +410,21 @@ test4("FR-11 corrective DocumentLink label is 'Task Handoff', not 'Doc'", () => 
     "literal 'Doc' label is forbidden on corrective DocumentLink (FR-11)");
 });
 
-test("FR-12 corrective ExternalLink renders icon='github' with label='Commit'", () => {
-  assert.ok(/icon="github"/.test(CG_SOURCE),
-    "corrective row must pass icon='github' on commit ExternalLink (FR-12)");
-  assert.ok(/label="Commit"/.test(CG_SOURCE),
-    "corrective row must pass label='Commit' on commit ExternalLink (FR-12)");
+test("FR-15 corrective row uses CommitChips with compareUrlByRepo for per-repo commit rendering", () => {
+  // FR-15: single-commit ExternalLink retired in favour of CommitChips.
+  // CommitChips receives entry.repos and compareUrlByRepo to render per-repo chips.
+  assert.ok(/<CommitChips/.test(CG_SOURCE),
+    "corrective row must render <CommitChips> for per-repo commit attribution (FR-15)");
+  assert.ok(/compareUrlByRepo=\{compareUrlByRepo\}/.test(CG_SOURCE),
+    "corrective row must forward compareUrlByRepo prop to <CommitChips> (FR-15)");
+  assert.ok(/repos=\{entry\.repos\}/.test(CG_SOURCE),
+    "corrective row must forward entry.repos to <CommitChips> (FR-15)");
 });
 
-test("DD-8 corrective ExternalLink forwards full commit hash as title", () => {
-  assert.ok(/title=\{[^}]*commit[_.]hash[^}]*\}/.test(CG_SOURCE) ||
-            /title=\{entry\.commit_hash[^}]*\}/.test(CG_SOURCE),
-    "corrective row must forward full commit hash as ExternalLink title (DD-8)");
+test("FR-15 corrective row no longer uses ExternalLink for single-commit rendering", () => {
+  // FR-15: per-repo CommitChips replaces the single-commit ExternalLink block.
+  assert.ok(!/<ExternalLink\b/.test(CG_SOURCE),
+    "corrective row must NOT contain <ExternalLink> — single-commit rendering retired (FR-15)");
 });
 
 test("FR-17/DD-13 corrective trigger wrapper carries pr-3 gutter", () => {
@@ -460,17 +461,17 @@ test4("FR-7/FR-10/AD-5 corrective row references entry.nodes['code_review'].doc_
     "CorrectiveRow must render a 'Code Review' link label (FR-7, FR-10)");
 });
 
-test4("FR-8/FR-10/DD-7 corrective row trailing-link slot order: Task Handoff → Code Review → Commit", () => {
-  // Match the actual JSX label="..." form (mirrors the dag-iteration-panel
-  // P02-T01 test pattern). The handoff body's single-quoted regex was a typo;
-  // double-quoted is the only form present in the source.
-  const handoffIdx = CT_SOURCE.indexOf('label="Task Handoff"');
-  const reviewIdx  = CT_SOURCE.indexOf('label="Code Review"');
-  const commitIdx  = CT_SOURCE.indexOf('label="Commit"');
-  assert.ok(handoffIdx !== -1 && reviewIdx !== -1 && commitIdx !== -1,
-    "all three trailing labels must be present");
-  assert.ok(handoffIdx < reviewIdx && reviewIdx < commitIdx,
-    "trailing-link order must be Task Handoff → Code Review → Commit (FR-8, DD-7)");
+test4("FR-8/FR-10/DD-7/FR-15 corrective row trailing-link slot order: CommitChips → Task Handoff → Code Review", () => {
+  // FR-15: single-commit ExternalLink (label="Commit") retired in favour of CommitChips.
+  // Trailing slot order is now: CommitChips (per-repo chips) → Task Handoff → Code Review.
+  // Verify CommitChips is present and the two DocumentLink labels appear in order.
+  const commitChipsIdx = CT_SOURCE.indexOf('<CommitChips');
+  const handoffIdx     = CT_SOURCE.indexOf('label="Task Handoff"');
+  const reviewIdx      = CT_SOURCE.indexOf('label="Code Review"');
+  assert.ok(commitChipsIdx !== -1 && handoffIdx !== -1 && reviewIdx !== -1,
+    "CommitChips and both trailing DocumentLink labels must be present (FR-15, FR-8, DD-7)");
+  assert.ok(commitChipsIdx < handoffIdx && handoffIdx < reviewIdx,
+    "trailing-link order must be CommitChips → Task Handoff → Code Review (FR-15, FR-8, DD-7)");
 });
 
 test4("FR-5/FR-10/DD-6 corrective row renders 'Corrected' trailing pill when entry recovered from nested correctives", () => {
@@ -502,7 +503,7 @@ test4("NFR-3 P02-T02 source-shape tests run under the test4 helper so failed4 > 
     'FR-1/FR-10 corrective row AccordionContent no longer maps entry.nodes onto <DAGNodeRow>',
     "FR-9/FR-10/DD-8 corrective row renders flat (no AccordionItem) when entry.corrective_tasks.length === 0",
     "FR-7/FR-10/AD-5 corrective row references entry.nodes['code_review'].doc_path for the Code Review link",
-    'FR-8/FR-10/DD-7 corrective row trailing-link slot order: Task Handoff → Code Review → Commit',
+    'FR-8/FR-10/DD-7/FR-15 corrective row trailing-link slot order: CommitChips → Task Handoff → Code Review',
     "FR-5/FR-10/DD-6 corrective row renders 'Corrected' trailing pill when entry recovered from nested correctives",
     'FR-2/FR-4/FR-6/FR-10 corrective row badge resolves Coding/Correcting/Failed labels at the same vocabulary as task iterations',
   ];

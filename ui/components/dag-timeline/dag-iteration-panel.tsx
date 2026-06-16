@@ -5,11 +5,13 @@ import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from '@/
 import { DAGNodeRow } from './dag-node-row';
 import { DAGCorrectiveTaskGroup } from './dag-corrective-task-group';
 import { DAGLoopNode } from './dag-loop-node';
-import { DocumentLink, ExternalLink } from '@/components/documents';
+import { DocumentLink } from '@/components/documents';
 import { ProgressBar } from '@/components/execution/progress-bar';
 import { NodeStatusBadge } from './node-status-badge';
-import { getCommitLinkData, firstRepoCommit, isLoopNode, parsePhaseNameFromDocPath, parseTaskNameFromDocPath, buildIterationItemValue, deriveIterationTaskProgress, deriveIterationBadgeLabel, shouldRenderTimelineRow, resolveStageBadge } from './dag-timeline-helpers';
+import { isLoopNode, parsePhaseNameFromDocPath, parseTaskNameFromDocPath, buildIterationItemValue, deriveIterationTaskProgress, deriveIterationBadgeLabel, shouldRenderTimelineRow, resolveStageBadge } from './dag-timeline-helpers';
 import type { CompatibleNodeState } from './dag-timeline-helpers';
+import { firstCommitHash } from './source-control-helpers';
+import { CommitChips } from './commit-chips';
 import type { IterationEntry } from '@/types/state';
 
 interface DAGIterationPanelProps {
@@ -19,7 +21,7 @@ interface DAGIterationPanelProps {
   parentKind: 'for_each_phase' | 'for_each_task';
   currentNodePath: string | null;
   onDocClick: (path: string) => void;
-  repoBaseUrl: string | null;
+  compareUrlByRepo: Record<string, string | null>;
   projectName: string;
   expandedLoopIds: string[];
   onAccordionChange: (
@@ -51,16 +53,13 @@ export function DAGIterationPanel({
   parentKind,
   currentNodePath,
   onDocClick,
-  repoBaseUrl,
+  compareUrlByRepo,
   projectName,
   expandedLoopIds,
   onAccordionChange,
   focusedRowKey,
   onFocusChange,
 }: DAGIterationPanelProps) {
-  const { commitHash: commit_hash, isMultiRepo } = firstRepoCommit(iteration.repos);
-  const repoCount = iteration.repos?.length ?? 0;
-  const commitData = getCommitLinkData(commit_hash, repoBaseUrl);
   const correctiveGroupParentId = buildCorrectiveGroupParentId(parentNodeId, iterationIndex);
 
   // Derive iteration name from iteration.doc_path (post-unify) with a
@@ -152,8 +151,11 @@ export function DAGIterationPanel({
     // step nodes (e.g. phase_review) render at phase-level depth OUTSIDE the
     // task spine — aligning them with the phase header and bounding the spine
     // line to task-like content.
+    // Multi-repo: gate the `commit` row on the FIRST non-empty hash across all
+    // repos (not just repos[0]) — otherwise a later repo's commit is hidden.
+    const anyCommitHash = firstCommitHash(iteration.repos);
     const renderableEntries = Object.entries(iteration.nodes).filter(([childNodeId, childNode]) =>
-      shouldRenderTimelineRow(childNodeId, childNode as CompatibleNodeState, { commitHash: commit_hash, prUrl: null })
+      shouldRenderTimelineRow(childNodeId, childNode as CompatibleNodeState, { commitHash: anyCommitHash, prUrl: null })
     );
     const loopIndex = renderableEntries.findIndex(([, n]) => isLoopNode(n));
     const preLoopEntries  = loopIndex === -1 ? renderableEntries : renderableEntries.slice(0, loopIndex);
@@ -227,7 +229,7 @@ export function DAGIterationPanel({
                   onDocClick={onDocClick}
                   expandedLoopIds={expandedLoopIds}
                   onAccordionChange={onAccordionChange}
-                  repoBaseUrl={repoBaseUrl}
+                  compareUrlByRepo={compareUrlByRepo}
                   projectName={projectName}
                   focusedRowKey={focusedRowKey}
                   isFocused={focusedRowKey === childKey}
@@ -260,7 +262,7 @@ export function DAGIterationPanel({
                       onDocClick={onDocClick}
                       expandedLoopIds={expandedLoopIds}
                       onAccordionChange={onAccordionChange}
-                      repoBaseUrl={repoBaseUrl}
+                      compareUrlByRepo={compareUrlByRepo}
                       projectName={projectName}
                       focusedRowKey={focusedRowKey}
                       isFocused={focusedRowKey === childKey}
@@ -287,7 +289,7 @@ export function DAGIterationPanel({
               parentNodeId={correctiveGroupParentId}
               currentNodePath={currentNodePath}
               onDocClick={onDocClick}
-              repoBaseUrl={repoBaseUrl}
+              compareUrlByRepo={compareUrlByRepo}
               focusedRowKey={focusedRowKey}
               onFocusChange={onFocusChange}
               expandedLoopIds={expandedLoopIds}
@@ -304,7 +306,7 @@ export function DAGIterationPanel({
                   onDocClick={onDocClick}
                   expandedLoopIds={expandedLoopIds}
                   onAccordionChange={onAccordionChange}
-                  repoBaseUrl={repoBaseUrl}
+                  compareUrlByRepo={compareUrlByRepo}
                   projectName={projectName}
                   focusedRowKey={focusedRowKey}
                   isFocused={focusedRowKey === childKey}
@@ -355,10 +357,9 @@ export function DAGIterationPanel({
   const codeReviewNode = iteration.nodes['code_review'];
   const codeReviewDocPath = (codeReviewNode && 'doc_path' in codeReviewNode) ? codeReviewNode.doc_path : null;
   const hasCodeReview = codeReviewDocPath != null && codeReviewDocPath !== '';
-  const hasCommitLink = commitData !== null && commit_hash != null;
-  // DD-4: the multi-repo shim must surface even when no other trailing link is
-  // present, so it participates in the trailing-links visibility gate.
-  const hasAnyTaskTrailing = hasTaskHandoff || hasCodeReview || hasCommitLink || isMultiRepo;
+  // FR-15: commit rendering is now solely CommitChips; hasAnyTaskTrailing is true
+  // whenever there are repos to render chips for.
+  const hasAnyTaskTrailing = hasTaskHandoff || hasCodeReview || (iteration.repos != null && iteration.repos.length > 0);
   const hasCorrectives = iteration.corrective_tasks.length > 0;
   const isCorrected = iteration.status === 'completed' &&
     iteration.corrective_tasks.some((ct) => ct.status === 'completed');
@@ -390,12 +391,6 @@ export function DAGIterationPanel({
               <span>Code Review</span>
             </span>
           )}
-          {hasCommitLink && (
-            <span className="inline-flex items-center gap-1.5">
-              <span className="inline-block h-3.5 w-3.5" />
-              <span>{commitData!.label}</span>
-            </span>
-          )}
         </span>
       )}
     </>
@@ -403,15 +398,6 @@ export function DAGIterationPanel({
 
   const trailingLinks = (
     <div className="absolute right-12 top-1/2 -translate-y-1/2 z-10 flex items-center gap-2">
-      {/* DD-4: temporary lossy multi-repo shim — full per-repo display is iteration 7 */}
-      {isMultiRepo && (
-        <span
-          className="text-xs font-medium text-muted-foreground whitespace-nowrap"
-          aria-label={`Multi-repo task spanning ${repoCount} repos`}
-        >
-          Multi-repo ({repoCount} repos)
-        </span>
-      )}
       {isCorrected && (
         <span
           aria-label="Corrected"
@@ -424,28 +410,12 @@ export function DAGIterationPanel({
           Corrected
         </span>
       )}
+      <CommitChips repos={iteration.repos} compareUrlByRepo={compareUrlByRepo} singleRepo={Object.keys(compareUrlByRepo).length <= 1} />
       {hasTaskHandoff && (
         <DocumentLink path={iteration.doc_path!} label="Task Handoff" onDocClick={onDocClick} />
       )}
       {hasCodeReview && (
         <DocumentLink path={codeReviewDocPath!} label="Code Review" onDocClick={onDocClick} />
-      )}
-      {hasCommitLink && (
-        commitData!.href !== null ? (
-          <ExternalLink
-            href={commitData!.href}
-            label="Commit"
-            icon="github"
-            title={commit_hash!}
-          />
-        ) : (
-          <span
-            className="text-xs font-mono text-muted-foreground"
-            title={commit_hash!}
-          >
-            {commitData!.label}
-          </span>
-        )
       )}
     </div>
   );
@@ -481,7 +451,7 @@ export function DAGIterationPanel({
               parentNodeId={correctiveGroupParentId}
               currentNodePath={currentNodePath}
               onDocClick={onDocClick}
-              repoBaseUrl={repoBaseUrl}
+              compareUrlByRepo={compareUrlByRepo}
               focusedRowKey={focusedRowKey}
               onFocusChange={onFocusChange}
               expandedLoopIds={expandedLoopIds}

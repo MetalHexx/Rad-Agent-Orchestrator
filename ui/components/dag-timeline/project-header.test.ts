@@ -6,7 +6,6 @@ import assert from "node:assert";
 import { readFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import type { V5SourceControlState } from '../../types/state';
 import type { ProjectHeaderProps } from './project-header';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -41,20 +40,6 @@ interface FollowModeSwitchSim {
   checked: boolean;
   className: "cursor-pointer";
   onCheckedChange: (...args: unknown[]) => void;
-}
-
-function makeSourceControl(overrides: Partial<V5SourceControlState> = {}): V5SourceControlState {
-  return {
-    branch: 'feat/test-branch',
-    base_branch: 'main',
-    worktree_path: '/path/to/worktree',
-    auto_commit: 'always',
-    auto_pr: 'never',
-    remote_url: 'https://github.com/org/repo',
-    compare_url: 'https://github.com/org/repo/compare/main...feat/test-branch',
-    pr_url: null,
-    ...overrides,
-  };
 }
 
 function simulateProjectHeader(props: SimulateProjectHeaderProps) {
@@ -93,7 +78,6 @@ function simulateProjectHeader(props: SimulateProjectHeaderProps) {
     currentPhaseName: showRow2 ? props.currentPhaseName : null,
     showProgress: showRow2 && !!props.progress,
     progress: showRow2 ? props.progress : null,
-    showInlinedSourceControl: props.sourceControl !== null,
     followModeContainerClass: "ml-auto inline-flex items-center gap-2",
     followModeLabelText: "Follow Mode",
     followModeLabelHtmlFor: "follow-mode-switch",
@@ -106,29 +90,29 @@ function simulateProjectHeader(props: SimulateProjectHeaderProps) {
 console.log("\nProjectHeader logic tests\n");
 
 test("renders the project name", () => {
-  const result = simulateProjectHeader({ projectName: "MY-PROJECT", sourceControl: null });
+  const result = simulateProjectHeader({ projectName: "MY-PROJECT" });
   assert.strictEqual(result.projectName, "MY-PROJECT");
 });
 
 test('renders project name with "text-lg font-semibold" class', () => {
-  const result = simulateProjectHeader({ projectName: "Test", sourceControl: null });
+  const result = simulateProjectHeader({ projectName: "Test" });
   assert.ok(result.nameClass.includes("text-lg"), 'should include "text-lg"');
   assert.ok(result.nameClass.includes("font-semibold"), 'should include "font-semibold"');
 });
 
 test('outer element is <header> with aria-label', () => {
-  const result = simulateProjectHeader({ projectName: "MyProj", sourceControl: null });
+  const result = simulateProjectHeader({ projectName: "MyProj" });
   assert.strictEqual(result.outerElement, "header");
   assert.strictEqual(result.ariaLabel, "Project MyProj");
 });
 
 test('outer class includes border-b', () => {
-  const result = simulateProjectHeader({ projectName: "Test", sourceControl: null });
+  const result = simulateProjectHeader({ projectName: "Test" });
   assert.ok(result.outerClass.includes("border-b"), 'should include "border-b"');
 });
 
 test('row 1 has flex flex-wrap items-center gap-3 (unified wrapping row)', () => {
-  const result = simulateProjectHeader({ projectName: "Test", sourceControl: null });
+  const result = simulateProjectHeader({ projectName: "Test" });
   assert.ok(result.row1Class.includes("flex"), 'row1 should include "flex"');
   assert.ok(result.row1Class.includes("flex-wrap"), 'row1 should include "flex-wrap"');
   assert.ok(result.row1Class.includes("items-center"), 'row1 should include "items-center"');
@@ -140,7 +124,6 @@ test('PipelineTierBadge renders when tier is provided (planning, in_progress)', 
     projectName: "Test",
     tier: "planning",
     planningStatus: "in_progress",
-    sourceControl: null,
   });
   assert.strictEqual(result.showTierBadge, true);
   assert.strictEqual(result.tier, "planning");
@@ -152,7 +135,6 @@ test('PipelineTierBadge renders when tier is provided (execution, in_progress)',
     projectName: "Test",
     tier: "execution",
     executionStatus: "in_progress",
-    sourceControl: null,
   });
   assert.strictEqual(result.showTierBadge, true);
   assert.strictEqual(result.tier, "execution");
@@ -160,24 +142,24 @@ test('PipelineTierBadge renders when tier is provided (execution, in_progress)',
 });
 
 test('PipelineTierBadge does not render when tier is omitted', () => {
-  const result = simulateProjectHeader({ projectName: "Test", sourceControl: null });
+  const result = simulateProjectHeader({ projectName: "Test" });
   assert.strictEqual(result.showTierBadge, false);
 });
 
 test('GateModeBadge renders when gateMode is provided (string)', () => {
-  const result = simulateProjectHeader({ projectName: "Test", gateMode: "task", sourceControl: null });
+  const result = simulateProjectHeader({ projectName: "Test", gateMode: "task" });
   assert.strictEqual(result.showGateModeBadge, true);
   assert.strictEqual(result.gateMode, "task");
 });
 
 test('GateModeBadge renders when gateMode is null (explicit null)', () => {
-  const result = simulateProjectHeader({ projectName: "Test", gateMode: null, sourceControl: null });
+  const result = simulateProjectHeader({ projectName: "Test", gateMode: null });
   assert.strictEqual(result.showGateModeBadge, true);
   assert.strictEqual(result.gateMode, null);
 });
 
 test('GateModeBadge does not render when gateMode is undefined (v4 path)', () => {
-  const result = simulateProjectHeader({ projectName: "Test", sourceControl: null });
+  const result = simulateProjectHeader({ projectName: "Test" });
   assert.strictEqual(result.showGateModeBadge, false);
 });
 
@@ -185,7 +167,6 @@ test('Row 2 renders when graphStatus === "in_progress" AND currentPhaseName is t
   const result = simulateProjectHeader({
     projectName: "Test",
     graphStatus: "in_progress", currentPhaseName: "Phase 1",
-    sourceControl: null,
   });
   assert.strictEqual(result.showRow2, true);
   assert.strictEqual(result.currentPhaseName, "Phase 1");
@@ -195,7 +176,6 @@ test('Row 2 is hidden when graphStatus !== "in_progress"', () => {
   const result = simulateProjectHeader({
     projectName: "Test",
     graphStatus: "completed", currentPhaseName: "Phase 1",
-    sourceControl: null,
   });
   assert.strictEqual(result.showRow2, false);
 });
@@ -204,7 +184,6 @@ test('Row 2 is hidden when graphStatus is "not_started"', () => {
   const result = simulateProjectHeader({
     projectName: "Test",
     graphStatus: "not_started", currentPhaseName: "Phase 1",
-    sourceControl: null,
   });
   assert.strictEqual(result.showRow2, false);
 });
@@ -213,7 +192,6 @@ test('Row 2 is hidden when currentPhaseName is null', () => {
   const result = simulateProjectHeader({
     projectName: "Test",
     graphStatus: "in_progress", currentPhaseName: null,
-    sourceControl: null,
   });
   assert.strictEqual(result.showRow2, false);
 });
@@ -222,7 +200,6 @@ test('Row 2 is hidden when currentPhaseName is undefined', () => {
   const result = simulateProjectHeader({
     projectName: "Test",
     graphStatus: "in_progress",
-    sourceControl: null,
   });
   assert.strictEqual(result.showRow2, false);
 });
@@ -232,7 +209,6 @@ test('Progress text renders as "{completed} of {total} phases" when progress is 
     projectName: "Test",
     graphStatus: "in_progress", currentPhaseName: "Phase 2",
     progress: { completed: 3, total: 5 },
-    sourceControl: null,
   });
   assert.strictEqual(result.showRow2, true);
   assert.strictEqual(result.showProgress, true);
@@ -244,7 +220,6 @@ test('Progress text is hidden when progress is null even if row 2 is visible', (
     projectName: "Test",
     graphStatus: "in_progress", currentPhaseName: "Phase 1",
     progress: null,
-    sourceControl: null,
   });
   assert.strictEqual(result.showRow2, true);
   assert.strictEqual(result.showProgress, false);
@@ -254,39 +229,23 @@ test('Progress text is hidden when progress is undefined', () => {
   const result = simulateProjectHeader({
     projectName: "Test",
     graphStatus: "in_progress", currentPhaseName: "Phase 1",
-    sourceControl: null,
   });
   assert.strictEqual(result.showRow2, true);
   assert.strictEqual(result.showProgress, false);
 });
 
 test('header without tier or gateMode renders only projectName — no tier badge, no gate badge, no row 2', () => {
-  const result = simulateProjectHeader({ projectName: "LEGACY", sourceControl: null });
+  const result = simulateProjectHeader({ projectName: "LEGACY" });
   assert.strictEqual(result.showTierBadge, false);
   assert.strictEqual(result.showGateModeBadge, false);
   assert.strictEqual(result.showRow2, false);
   assert.strictEqual(result.projectName, "LEGACY");
 });
 
-// ─── Inlined source-control fragment visibility ──────────────────────────────
-
-test('inlined source-control fragments are hidden when sourceControl is null', () => {
-  const result = simulateProjectHeader({ projectName: "Test", sourceControl: null });
-  assert.strictEqual(result.showInlinedSourceControl, false);
-});
-
-test('inlined source-control fragments render when a non-null V5SourceControlState fixture is passed', () => {
-  const result = simulateProjectHeader({
-    projectName: "Test",
-    sourceControl: makeSourceControl(),
-  });
-  assert.strictEqual(result.showInlinedSourceControl, true);
-});
-
 // ─── Follow Mode populated container ─────────────────────────────────────────
 
 test('Follow Mode container uses ml-auto and inline-flex gap-2 classes', () => {
-  const result = simulateProjectHeader({ projectName: "Test", sourceControl: null });
+  const result = simulateProjectHeader({ projectName: "Test" });
   assert.ok(result.followModeContainerClass.includes("ml-auto"), 'container should include "ml-auto"');
   assert.ok(result.followModeContainerClass.includes("inline-flex"), 'container should include "inline-flex"');
   assert.ok(result.followModeContainerClass.includes("gap-2"), 'container should include "gap-2"');
@@ -297,7 +256,6 @@ test('Follow Mode container uses ml-auto and inline-flex gap-2 classes', () => {
 test('Follow Mode label text is exactly "Follow Mode" when followMode is true', () => {
   const result = simulateProjectHeader({
     projectName: "Test",
-    sourceControl: null,
     followMode: true,
     onToggleFollowMode: () => {},
   });
@@ -307,7 +265,6 @@ test('Follow Mode label text is exactly "Follow Mode" when followMode is true', 
 test('Follow Mode label text is exactly "Follow Mode" when followMode is false', () => {
   const result = simulateProjectHeader({
     projectName: "Test",
-    sourceControl: null,
     followMode: false,
     onToggleFollowMode: () => {},
   });
@@ -317,7 +274,6 @@ test('Follow Mode label text is exactly "Follow Mode" when followMode is false',
 test("Follow Mode label htmlFor matches the Switch id (\"follow-mode-switch\")", () => {
   const result = simulateProjectHeader({
     projectName: "Test",
-    sourceControl: null,
     followMode: false,
     onToggleFollowMode: () => {},
   });
@@ -329,7 +285,6 @@ test("Follow Mode label htmlFor matches the Switch id (\"follow-mode-switch\")",
 test("Follow Mode Switch carries className \"cursor-pointer\"", () => {
   const result = simulateProjectHeader({
     projectName: "Test",
-    sourceControl: null,
     followMode: false,
     onToggleFollowMode: () => {},
   });
@@ -339,7 +294,6 @@ test("Follow Mode Switch carries className \"cursor-pointer\"", () => {
 test("Follow Mode Switch checked === true when followMode is true", () => {
   const result = simulateProjectHeader({
     projectName: "Test",
-    sourceControl: null,
     followMode: true,
     onToggleFollowMode: () => {},
   });
@@ -349,7 +303,6 @@ test("Follow Mode Switch checked === true when followMode is true", () => {
 test("Follow Mode Switch checked === false when followMode is false", () => {
   const result = simulateProjectHeader({
     projectName: "Test",
-    sourceControl: null,
     followMode: false,
     onToggleFollowMode: () => {},
   });
@@ -365,7 +318,6 @@ test("Invoking onCheckedChange(true) calls onToggleFollowMode exactly once and d
   };
   const result = simulateProjectHeader({
     projectName: "Test",
-    sourceControl: null,
     followMode: false,
     onToggleFollowMode: handler as () => void,
   });
@@ -387,7 +339,6 @@ test("Invoking onCheckedChange(false) calls onToggleFollowMode exactly once and 
   };
   const result = simulateProjectHeader({
     projectName: "Test",
-    sourceControl: null,
     followMode: true,
     onToggleFollowMode: handler as () => void,
   });
@@ -451,117 +402,6 @@ test('gateModeTooltip null (global default) copy appears verbatim in source', ()
   );
 });
 
-test('autoCommitTooltip "always" copy appears verbatim in source', () => {
-  assert.ok(
-    headerSource.includes("Auto-Commit is on: commits are created after each iteration."),
-    'auto-commit always tooltip string missing from project-header.tsx',
-  );
-});
-
-test('autoCommitTooltip "ask" copy appears verbatim in source', () => {
-  assert.ok(
-    headerSource.includes("Auto-Commit prompts before each iteration."),
-    'auto-commit ask tooltip string missing from project-header.tsx',
-  );
-});
-
-test('autoCommitTooltip "never" copy appears verbatim in source', () => {
-  assert.ok(
-    headerSource.includes("Auto-Commit is off: commits must be made manually."),
-    'auto-commit never tooltip string missing from project-header.tsx',
-  );
-});
-
-test('autoPrTooltip "always" copy appears verbatim in source', () => {
-  assert.ok(
-    headerSource.includes("Auto-PR is on: a pull request is created when phases complete."),
-    'auto-pr always tooltip string missing from project-header.tsx',
-  );
-});
-
-test('autoPrTooltip "ask" copy appears verbatim in source', () => {
-  assert.ok(
-    headerSource.includes("Auto-PR prompts before creating a pull request."),
-    'auto-pr ask tooltip string missing from project-header.tsx',
-  );
-});
-
-test('autoPrTooltip "never" copy appears verbatim in source', () => {
-  assert.ok(
-    headerSource.includes("Auto-PR is off: no pull request will be created automatically."),
-    'auto-pr never tooltip string missing from project-header.tsx',
-  );
-});
-
-test('auto_commit "ask" badge uses --status-in-progress cssVar in source', () => {
-  assert.ok(
-    headerSource.includes("'--status-in-progress'"),
-    'auto_commit ask badge cssVar --status-in-progress missing from project-header.tsx',
-  );
-  // Confirm the three-way ternary form: auto_commit === 'ask' triggers in-progress, not failed
-  assert.ok(
-    headerSource.includes("auto_commit === 'ask'"),
-    'three-way check for auto_commit === ask missing from project-header.tsx',
-  );
-  // isRejected should be tied to 'never' only — not 'ask'
-  assert.ok(
-    headerSource.includes("isRejected={auto_commit === 'never'}"),
-    'isRejected for auto_commit should be tied to never only',
-  );
-});
-
-test('auto_pr "ask" badge uses --status-in-progress cssVar in source', () => {
-  assert.ok(
-    headerSource.includes("'--status-in-progress'"),
-    'auto_pr ask badge cssVar --status-in-progress missing from project-header.tsx',
-  );
-  // Confirm the three-way ternary form: auto_pr === 'ask' triggers in-progress, not failed
-  assert.ok(
-    headerSource.includes("auto_pr === 'ask'"),
-    'three-way check for auto_pr === ask missing from project-header.tsx',
-  );
-  // isRejected should be tied to 'never' only — not 'ask'
-  assert.ok(
-    headerSource.includes("isRejected={auto_pr === 'never'}"),
-    'isRejected for auto_pr should be tied to never only',
-  );
-});
-
-test('branchTooltip template (compare URL present) appears verbatim in source', () => {
-  assert.ok(
-    headerSource.includes("Open branch comparison on GitHub: ${branch}"),
-    'branch compare tooltip template missing from project-header.tsx',
-  );
-});
-
-test('branchTooltip template (no compare URL) appears verbatim in source', () => {
-  assert.ok(
-    headerSource.includes("Branch: ${branch} (no compare link available)"),
-    'branch fallback tooltip template missing from project-header.tsx',
-  );
-});
-
-test('prStateTooltip (valid URL) copy appears verbatim in source', () => {
-  assert.ok(
-    headerSource.includes("Open the existing pull request."),
-    'PR valid-URL tooltip string missing from project-header.tsx',
-  );
-});
-
-test('prStateTooltip (pending/null) copy appears verbatim in source', () => {
-  assert.ok(
-    headerSource.includes("Pull request has not yet been created; it will be created when phases complete."),
-    'PR pending tooltip string missing from project-header.tsx',
-  );
-});
-
-test('prStateTooltip (failed) copy appears verbatim in source', () => {
-  assert.ok(
-    headerSource.includes("Pull request creation failed; check project logs for details."),
-    'PR failed tooltip string missing from project-header.tsx',
-  );
-});
-
 test('followModeTooltip on=true copy appears verbatim in source', () => {
   assert.ok(
     headerSource.includes("Follow mode is on: the active iteration auto-expands and completed iterations collapse."),
@@ -600,28 +440,6 @@ test('no attribute-bearing <TooltipProvider ...> tag exists in source', () => {
   assert.ok(
     !/<TooltipProvider\s/.test(headerSource),
     'no <TooltipProvider> tag should carry attributes (provider scope is a singleton)',
-  );
-});
-
-// ─── Tooltip wrapping count ──────────────────────────────────────────────────
-
-test('exactly nine <TooltipContent> opening tags exist in source', () => {
-  // Breakdown:
-  //   gate-mode badge          → 1
-  //   branch link arm          → 1
-  //   branch fallback span     → 1
-  //   PR link arm              → 1
-  //   PR pending span          → 1
-  //   PR failed span           → 1
-  //   Auto-Commit SpinnerBadge → 1
-  //   Auto-PR SpinnerBadge     → 1
-  //   follow-mode Switch       → 1
-  //   ──────────────────────── 9
-  const matches = headerSource.match(/<TooltipContent>/g) ?? [];
-  assert.strictEqual(
-    matches.length,
-    9,
-    `expected exactly 9 <TooltipContent> opening tags; found ${matches.length}`,
   );
 });
 
@@ -695,40 +513,6 @@ test('retired file "timeline-toolbar.test.ts" does not exist on disk', () => {
     existsSync(join(__dirname, 'timeline-toolbar.test.ts')),
     false,
     'timeline-toolbar.test.ts must not exist',
-  );
-});
-
-// ─── Header-row child ordering ───────────────────────────────────────────────
-// Confirms the sourceControl fragment renders Auto-Commit and Auto-PR badges
-// BEFORE the branch/compare link and PR status region. Enforced in source order
-// because project-header.test.ts is a pure source-text test file.
-
-test('Auto-Commit badge source position precedes the branch compare link', () => {
-  const autoCommitIdx = headerSource.indexOf('label="Auto-Commit"');
-  const branchLinkIdx = headerSource.indexOf('View ${branch} branch diff on GitHub');
-  assert.ok(autoCommitIdx !== -1, 'Auto-Commit SpinnerBadge must exist in source');
-  assert.ok(branchLinkIdx !== -1, 'branch link aria-label must exist in source');
-  assert.ok(
-    autoCommitIdx < branchLinkIdx,
-    `Auto-Commit (${autoCommitIdx}) must appear before branch link (${branchLinkIdx})`,
-  );
-});
-
-test('Auto-PR badge source position precedes the branch compare link', () => {
-  const autoPrIdx = headerSource.indexOf('label="Auto-PR"');
-  const branchLinkIdx = headerSource.indexOf('View ${branch} branch diff on GitHub');
-  assert.ok(autoPrIdx !== -1, 'Auto-PR SpinnerBadge must exist in source');
-  assert.ok(autoPrIdx < branchLinkIdx, `Auto-PR (${autoPrIdx}) must appear before branch link (${branchLinkIdx})`);
-});
-
-test('branch compare link source position precedes the PR status region', () => {
-  const branchLinkIdx = headerSource.indexOf('View ${branch} branch diff on GitHub');
-  const prRegionIdx = headerSource.indexOf('View pull request on GitHub');
-  assert.ok(branchLinkIdx !== -1, 'branch link aria-label must exist in source');
-  assert.ok(prRegionIdx !== -1, 'PR link aria-label must exist in source');
-  assert.ok(
-    branchLinkIdx < prRegionIdx,
-    `branch link (${branchLinkIdx}) must appear before PR region (${prRegionIdx})`,
   );
 });
 

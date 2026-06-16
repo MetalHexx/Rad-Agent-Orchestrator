@@ -15,7 +15,10 @@ import { deleteArtifact } from "@/hooks/use-project-artifacts";
 import { DocumentDrawer } from "@/components/documents";
 import { ConfirmApprovalDialog } from "@/components/dashboard";
 import { ConfigEditorPanel } from "@/components/config";
-import { DAGTimeline, DAGTimelineSkeleton, ProjectHeader, HaltReasonBanner, BrainstormingSection, deriveCurrentPhase, derivePhaseProgress, deriveRepoBaseUrl } from "@/components/dag-timeline";
+import { DAGTimeline, DAGTimelineSkeleton, ProjectHeader, HaltReasonBanner, BrainstormingSection, SourceControlPanel, deriveCurrentPhase, derivePhaseProgress } from "@/components/dag-timeline";
+import { hasSourceControlRepos, selectSourceControlRepos } from "@/components/dag-timeline/source-control-helpers";
+import { buildBindLookup } from "@/components/dag-timeline/source-control-bind";
+import { useRegistryStore } from "@/components/repo-registry/use-registry-store";
 import { SSEStatusBanner } from "@/components/badges";
 import { getOrderedDocsV5 } from "@/lib/document-ordering";
 import { isV5State, isV6State } from "@/types/state";
@@ -37,7 +40,7 @@ interface ProjectsPageContentProps {
     gateMode: GateMode | null | undefined;
     currentPhaseName: string | null;
     progress: { completed: number; total: number } | null;
-    repoBaseUrl: string | null;
+    compareUrlByRepo: Record<string, string | null>;
     phaseLoopStatus: NodeStatus | undefined;
   };
   followMode: boolean;
@@ -74,6 +77,9 @@ function ProjectsPageContent({
 }: ProjectsPageContentProps) {
   const live = useArtifactLive();
   const artifacts = live.artifacts;
+
+  const { store: registryStore } = useRegistryStore();
+  const bindByName = React.useMemo(() => buildBindLookup(registryStore.repos), [registryStore.repos]);
 
   const getArtifacts = useCallback(() => artifacts, [artifacts]);
   // In-modal doc switching mutates the URL with the History API, NOT the Next router.
@@ -166,7 +172,6 @@ function ProjectsPageContent({
             tier={selected.tier}
             planningStatus={selected.planningStatus}
             executionStatus={selected.executionStatus}
-            sourceControl={null}
             followMode={false}
             onToggleFollowMode={() => {}}
             projectType={selected.project_type}
@@ -197,7 +202,6 @@ function ProjectsPageContent({
             gateMode={v5Derivations.gateMode}
             currentPhaseName={v5Derivations.currentPhaseName}
             progress={v5Derivations.progress}
-            sourceControl={v5State.pipeline.source_control}
             followMode={followMode}
             onToggleFollowMode={toggleFollowMode}
             projectType={selected.project_type}
@@ -229,10 +233,22 @@ function ProjectsPageContent({
                   onDocClick={openDocument}
                   expandedLoopIds={expandedLoopIds}
                   onAccordionChange={onAccordionChange}
-                  repoBaseUrl={v5Derivations.repoBaseUrl}
+                  compareUrlByRepo={v5Derivations.compareUrlByRepo}
                   projectName={selected.name}
                   phaseLoopStatus={v5Derivations.phaseLoopStatus}
                   prUrl={v5State.pipeline.source_control?.repos?.[0]?.pr_url ?? null}
+                  afterPlanningSlot={
+                    hasSourceControlRepos(v5State.pipeline.source_control) && (
+                      <SourceControlPanel
+                        repos={v5State.pipeline.source_control!.repos}
+                        projectName={selected.name}
+                        projectType={selected.project_type}
+                        autoCommit={v5State.pipeline.source_control!.auto_commit}
+                        autoPr={v5State.pipeline.source_control!.auto_pr}
+                        bindByName={bindByName}
+                      />
+                    )
+                  }
                 />
               </>
             ) : (
@@ -382,16 +398,19 @@ export default function ProjectsPage() {
 
   const v5Derivations = useMemo(() => {
     if (!v5State) {
-      return { graphStatus: undefined, gateMode: undefined, currentPhaseName: null, progress: null, repoBaseUrl: null, phaseLoopStatus: undefined };
+      return { graphStatus: undefined, gateMode: undefined, currentPhaseName: null, progress: null, compareUrlByRepo: {}, phaseLoopStatus: undefined };
     }
     const phaseLoopNode = v5State.graph.nodes.phase_loop;
     const typedPhaseLoop = phaseLoopNode?.kind === 'for_each_phase' ? phaseLoopNode : undefined;
+    const sourceControlRepos = selectSourceControlRepos(v5State.pipeline.source_control ?? null);
     return {
       graphStatus: v5State.graph.status,
       gateMode: v5State.pipeline.gate_mode,
       currentPhaseName: deriveCurrentPhase(typedPhaseLoop),
       progress: derivePhaseProgress(typedPhaseLoop),
-      repoBaseUrl: deriveRepoBaseUrl(v5State.pipeline.source_control?.repos?.[0]?.compare_url ?? null),
+      compareUrlByRepo: Object.fromEntries(
+        sourceControlRepos.map((r): [string, string | null] => [r.name, r.compare_url])
+      ),
       phaseLoopStatus: typedPhaseLoop?.status,
     };
   }, [v5State]);

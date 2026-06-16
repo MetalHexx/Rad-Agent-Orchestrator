@@ -52,6 +52,7 @@ export function RegistryRail({ sections, selected, onSelect, onAddRepo, onAddGro
             <button
               key={repo.slug}
               type="button"
+              data-rail-key={`repo:${repo.slug}`}
               onClick={() => onSelect('repo', repo.slug)}
               className={[
                 'flex w-full items-center gap-2 px-4 py-1.5 text-left text-sm font-mono',
@@ -77,6 +78,7 @@ export function RegistryRail({ sections, selected, onSelect, onAddRepo, onAddGro
             <button
               key={repo.slug}
               type="button"
+              data-rail-key={`repo:${repo.slug}`}
               onClick={() => onSelect('repo', repo.slug)}
               className={[
                 'flex w-full items-center gap-2 px-4 py-1.5 text-left text-sm font-mono',
@@ -116,6 +118,7 @@ export function RegistryRail({ sections, selected, onSelect, onAddRepo, onAddGro
         <button
           key={group.slug}
           type="button"
+          data-rail-key={`group:${group.slug}`}
           onClick={() => onSelect('group', group.slug)}
           className={[
             'flex w-full items-center gap-2 px-4 py-1.5 text-left text-sm font-mono',
