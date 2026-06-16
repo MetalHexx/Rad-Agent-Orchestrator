@@ -38,10 +38,13 @@ export function parseHookEvent(stdin) {
     cwd: p.cwd || '',
     transcriptPath: p.transcript_path || '',
     toolName: p.tool_name || '',
-    agentTranscriptPath: p.agent_transcript_path || tr.agent_transcript_path || '',
-    agentId: p.agent_id || tr.agent_id || '',
-    agentType: p.agent_type || tr.agent_type || '',
-    toolUseId: p.tool_use_id || tr.tool_use_id || '',
+    // Claude Code 2.1.178 delivers subagent identity on PostToolUse as camelCase
+    // under tool_response (agentId/agentType), with tool_use_id top-level and no
+    // agent_transcript_path. Accept both shapes; snake_case kept for back-compat.
+    agentTranscriptPath: p.agent_transcript_path || tr.agent_transcript_path || tr.agentTranscriptPath || '',
+    agentId: p.agent_id || tr.agent_id || p.agentId || tr.agentId || '',
+    agentType: p.agent_type || tr.agent_type || p.agentType || tr.agentType || '',
+    toolUseId: p.tool_use_id || tr.tool_use_id || p.toolUseId || '',
   };
 }
 

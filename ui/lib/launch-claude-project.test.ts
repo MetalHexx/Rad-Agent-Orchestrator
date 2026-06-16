@@ -57,6 +57,23 @@ function runLauncher(args: string[], env: NodeJS.ProcessEnv = {}): { stdout: str
   console.log('✓ dry-run happy path → success JSON (platform + permissionMode=auto)');
 }
 
+// Top-level-session contract: launcher strips inherited CLAUDECODE / CLAUDE_CODE_*
+// (reported via removedEnvKeys under dry-run) but preserves CLAUDE_EFFORT.
+{
+  const { stdout, status } = runLauncher(
+    ['--workspace-root', process.cwd(), '--prompt', '/rad-brainstorm FOO'],
+    { CLAUDECODE: '1', CLAUDE_CODE_ENTRYPOINT: 'cli', CLAUDE_EFFORT: 'high' },
+  );
+  const parsed = JSON.parse(stdout.trim());
+  assert.equal(parsed.success, true);
+  assert.ok(Array.isArray(parsed.removedEnvKeys), 'removedEnvKeys present under dry-run');
+  assert.ok(parsed.removedEnvKeys.includes('CLAUDECODE'));
+  assert.ok(parsed.removedEnvKeys.includes('CLAUDE_CODE_ENTRYPOINT'));
+  assert.ok(!parsed.removedEnvKeys.includes('CLAUDE_EFFORT'));
+  assert.equal(status, 0);
+  console.log('✓ dry-run strips CLAUDECODE/CLAUDE_CODE_* and preserves CLAUDE_EFFORT');
+}
+
 // Non-Error throw at top level → catch fallback uses String(err)
 {
   const { stdout, status } = runLauncher(

@@ -7,15 +7,37 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseHookEvent, toCaptureArgs, readTelemetryEnabled } from '../telemetry-capture.mjs';
 
-test('maps a PostToolUse payload incl. nested tool_response fields (FR-3)', () => {
+// The real Claude Code 2.1.178 PostToolUse[Agent] payload: subagent identity is
+// camelCase under tool_response (agentId/agentType), tool_use_id is top-level, and
+// there is NO agent_transcript_path. Checked-in fixture captured from this machine.
+const REAL_FIXTURE = fileURLToPath(new URL('./fixtures/posttooluse-agent-2178.json', import.meta.url));
+
+test('maps the real 2.1.178 PostToolUse[Agent] camelCase payload (FR-3)', () => {
+  const evt = parseHookEvent(fs.readFileSync(REAL_FIXTURE, 'utf8'));
+  const args = toCaptureArgs(evt);
+  const valOf = (flag) => args[args.indexOf(flag) + 1];
+  assert.deepEqual(args.slice(0, 4), ['telemetry', 'capture', '--event', 'PostToolUse']);
+  // Identity flows from camelCase tool_response.agentId/agentType + top-level tool_use_id.
+  assert.equal(evt.agentId, 'ac4cd06a147c18ae4');
+  assert.equal(valOf('--agent-id'), 'ac4cd06a147c18ae4');
+  assert.equal(valOf('--agent-type'), 'general-purpose');
+  assert.equal(valOf('--tool-use-id'), 'toolu_01LViKmtJMUJxM98reeBfhCw');
+  // No agent_transcript_path in the real payload → flag must be absent; the adapter
+  // derives the subagent transcript path from transcript_path + agent_id instead.
+  assert.equal(evt.agentTranscriptPath, '');
+  assert.ok(!args.includes('--agent-transcript-path'));
+  assert.ok(args.includes('--session') && args.includes('--transcript-path'));
+});
+
+test('still maps the legacy snake_case PostToolUse shape (back-compat, FR-3)', () => {
   const evt = parseHookEvent(JSON.stringify({
     hook_event_name: 'PostToolUse', session_id: 's1', cwd: 'c', transcript_path: 't',
     tool_name: 'Agent', tool_response: { agent_id: 'a0', agent_transcript_path: 'sub.jsonl' },
     agent_type: 'rad-orc:reviewer', tool_use_id: 'toolu_1',
   }));
   const args = toCaptureArgs(evt);
-  assert.deepEqual(args.slice(0, 4), ['telemetry', 'capture', '--event', 'PostToolUse']);
-  assert.ok(args.includes('--agent-id') && args[args.indexOf('--agent-id') + 1] === 'a0');
+  assert.equal(args[args.indexOf('--agent-id') + 1], 'a0');
+  assert.equal(args[args.indexOf('--agent-type') + 1], 'rad-orc:reviewer');
   assert.ok(args.includes('--agent-transcript-path'));
   assert.ok(args.includes('--session') && args.includes('--tool-use-id'));
 });

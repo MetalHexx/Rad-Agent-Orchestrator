@@ -7,6 +7,7 @@ import {
   worktreeLaunchCommand,
   repairMsysPrompt,
   quoteSinglePwsh,
+  sanitizeLaunchEnv,
   VALID_PERMISSION_MODES,
 } from '../../../src/commands/worktree/launch.js';
 import { runCommand } from '../../../src/framework/command.js';
@@ -167,6 +168,77 @@ describe('worktreeLaunch dispatch matrix', () => {
     // PowerShell-quoted with '' for the embedded single quote.
     expect(payload).toContain("'/x''s command'");
     expect(payload).not.toContain("'\\''");
+  });
+});
+
+describe('sanitizeLaunchEnv', () => {
+  it('drops CLAUDECODE and every CLAUDE_CODE_* key, preserves the rest, never mutates input', () => {
+    const input = {
+      CLAUDECODE: '1',
+      CLAUDE_CODE_ENTRYPOINT: 'cli',
+      CLAUDE_CODE_SSE_PORT: '4567',
+      CLAUDE_EFFORT: 'high',     // NOT a CLAUDE_CODE_ var — must survive
+      PATH: '/usr/bin',
+      HOME: '/home/x',
+    };
+    const out = sanitizeLaunchEnv(input);
+    expect(out.CLAUDECODE).toBeUndefined();
+    expect(out.CLAUDE_CODE_ENTRYPOINT).toBeUndefined();
+    expect(out.CLAUDE_CODE_SSE_PORT).toBeUndefined();
+    expect(out.CLAUDE_EFFORT).toBe('high');
+    expect(out.PATH).toBe('/usr/bin');
+    expect(out.HOME).toBe('/home/x');
+    // input untouched (no process.env mutation in production either)
+    expect(input.CLAUDECODE).toBe('1');
+    expect(input.CLAUDE_CODE_ENTRYPOINT).toBe('cli');
+  });
+});
+
+describe('worktreeLaunch sanitizes the spawn env (top-level session)', () => {
+  function spawnEnvFor(platform: NodeJS.Platform): NodeJS.ProcessEnv {
+    const spawn = vi.fn(() => ({ unref: () => undefined }) as never);
+    const prev = {
+      CLAUDECODE: process.env.CLAUDECODE,
+      CLAUDE_CODE_ENTRYPOINT: process.env.CLAUDE_CODE_ENTRYPOINT,
+      CLAUDE_EFFORT: process.env.CLAUDE_EFFORT,
+      RAD_TEST_SENTINEL: process.env.RAD_TEST_SENTINEL,
+    };
+    try {
+      process.env.CLAUDECODE = '1';
+      process.env.CLAUDE_CODE_ENTRYPOINT = 'cli';
+      process.env.CLAUDE_EFFORT = 'high';
+      process.env.RAD_TEST_SENTINEL = 'keep';
+      worktreeLaunch({
+        agent: 'claude', worktreePath: '/wt/x', prompt: '/rad-execute X',
+        permissionMode: 'auto', platform, spawn,
+      });
+      return spawn.mock.calls[0]![2].env as NodeJS.ProcessEnv;
+    } finally {
+      for (const [k, v] of Object.entries(prev)) {
+        if (v === undefined) delete process.env[k]; else process.env[k] = v;
+      }
+    }
+  }
+
+  it.each(['win32', 'darwin', 'linux'] as const)('strips CLAUDECODE/CLAUDE_CODE_* but keeps CLAUDE_EFFORT on %s', (platform) => {
+    const env = spawnEnvFor(platform);
+    expect(env.CLAUDECODE).toBeUndefined();
+    expect(env.CLAUDE_CODE_ENTRYPOINT).toBeUndefined();
+    expect(env.CLAUDE_EFFORT).toBe('high');
+    expect(env.RAD_TEST_SENTINEL).toBe('keep');
+  });
+
+  it('on win32 also clears the markers inside the encoded PowerShell payload (wt broker belt-and-suspenders)', () => {
+    const spawn = vi.fn(() => ({ unref: () => undefined }) as never);
+    worktreeLaunch({
+      agent: 'claude', worktreePath: '/wt/x', prompt: '/rad-execute X',
+      permissionMode: 'auto', platform: 'win32', spawn,
+    });
+    const args = spawn.mock.calls[0]![1] as string[];
+    const encoded = args[args.indexOf('-EncodedCommand') + 1]!;
+    const payload = Buffer.from(encoded, 'base64').toString('utf16le');
+    expect(payload).toContain('Remove-Item Env:CLAUDECODE');
+    expect(payload).toContain('Env:CLAUDE_CODE_*');
   });
 });
 

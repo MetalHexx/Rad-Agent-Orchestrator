@@ -86,6 +86,30 @@ describe('ClaudeCodeAdapter', () => {
     // Subagent rows are read from the path the transcript helpers derive.
     const subRecord = byId.get('req_sub_1')!;
     expect(subRecord.pointers.sourceFile).toBe(SUBAGENT_FIXTURE);
+    // SessionEnd carries no inline identity — rows are de-anonymized from the
+    // filename (agentId) and the agent-<id>.meta.json sidecar (agentType, toolUseId).
+    expect(subRecord.agentType).toBe('coder');
+    expect(subRecord.pointers.agentId).toBe(SUBAGENT_ID);
+    expect(subRecord.pointers.toolUseId).toBe('toolu_sub_a0d327');
+    expect(byId.get('req_sub_2')!.pointers.agentId).toBe(SUBAGENT_ID);
+  });
+
+  it('SessionEnd still attributes subagent rows by filename when the .meta.json sidecar is missing (FR-3)', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tx-nometa-'));
+    const main = path.join(dir, 'session-z.jsonl');
+    fs.writeFileSync(main, JSON.stringify(asst('req_main_z', 7)) + '\n', 'utf8');
+    const subDir = path.join(dir, 'session-z', 'subagents');
+    fs.mkdirSync(subDir, { recursive: true });
+    // Subagent transcript present, but NO agent-deadbeef.meta.json next to it.
+    fs.writeFileSync(path.join(subDir, 'agent-deadbeef.jsonl'), JSON.stringify(asst('req_sub_z', 9)) + '\n', 'utf8');
+
+    const signal: HookEvent = { sessionId: 's1', cwd: '.', kind: 'SessionEnd', event: 'SessionEnd', transcriptPath: main };
+    const records = new ClaudeCodeAdapter().capture(signal, new Set()); // must not throw
+    const sub = records.find((r) => r.radOrcId === 'req_sub_z')!;
+    expect(sub.source).toBe('subagent');
+    expect(sub.pointers.agentId).toBe('deadbeef');       // recovered from filename
+    expect(sub.agentType).toBeUndefined();               // no sidecar ⇒ no type
+    expect(sub.pointers.toolUseId).toBeUndefined();       // no sidecar ⇒ no toolUseId
   });
 
   it('PostToolUse with an agentId captures only the subagent transcript — fixture-backed (FR-3, NFR-5)', () => {
