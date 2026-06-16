@@ -24,9 +24,9 @@ console.log('\nconfig-field-meta tests\n');
 
 // --- CONFIG_FIELDS array ---
 
-test('CONFIG_FIELDS is an array of exactly 11 entries', () => {
+test('CONFIG_FIELDS is an array of exactly 12 entries', () => {
   assert.ok(Array.isArray(CONFIG_FIELDS));
-  assert.strictEqual(CONFIG_FIELDS.length, 11);
+  assert.strictEqual(CONFIG_FIELDS.length, 12);
 });
 
 test('every entry conforms to FieldMeta interface', () => {
@@ -44,9 +44,9 @@ test('every entry conforms to FieldMeta interface', () => {
 
 // --- CONFIG_FIELD_MAP ---
 
-test('CONFIG_FIELD_MAP contains exactly 11 keys matching CONFIG_FIELDS', () => {
+test('CONFIG_FIELD_MAP contains exactly 12 keys matching CONFIG_FIELDS', () => {
   const keys = Object.keys(CONFIG_FIELD_MAP);
-  assert.strictEqual(keys.length, 11);
+  assert.strictEqual(keys.length, 12);
   for (const field of CONFIG_FIELDS) {
     assert.ok(keys.includes(field.key), `missing key in map: ${field.key}`);
   }

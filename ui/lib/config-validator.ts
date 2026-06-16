@@ -61,5 +61,12 @@ export function validateConfig(config: OrchestrationConfig): ConfigValidationErr
     }
   }
 
+  // 10. telemetry (optional section)
+  if (config.telemetry !== undefined) {
+    if (!isSection(config.telemetry) || typeof config.telemetry.enabled !== 'boolean') {
+      errors['telemetry.enabled'] = 'Invalid telemetry enabled setting';
+    }
+  }
+
   return errors;
 }

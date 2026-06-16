@@ -243,6 +243,25 @@ test('validator no longer requires retired fields', () => {
   assert.strictEqual(Object.keys(errors).length, 0);
 });
 
+// --- telemetry.enabled (FR-6, DD-3) ---
+
+test('an Observability switch field exists for telemetry.enabled (FR-6, DD-3)', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { CONFIG_FIELDS } = require('./config-field-meta');
+  const f = (CONFIG_FIELDS as Array<{ key: string; controlType: string; section: string }>).find((x) => x.key === 'telemetry.enabled');
+  assert.ok(f, 'field present');
+  assert.strictEqual(f!.controlType, 'switch');
+  assert.strictEqual(f!.section, 'telemetry');
+});
+
+test('validator accepts a boolean and rejects a non-boolean (FR-6)', () => {
+  const base = { limits: {}, human_gates: {}, source_control: { auto_commit: 'ask', auto_pr: 'ask' } };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  assert.ok(!validateConfig({ ...base, telemetry: { enabled: true } } as any)['telemetry.enabled']);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  assert.ok(validateConfig({ ...base, telemetry: { enabled: 'yes' } } as any)['telemetry.enabled']);
+});
+
 // --- Summary ---
 
 console.log(`\n  ${passed} passed, ${failed} failed\n`);

@@ -39,9 +39,10 @@ const SECTION_TITLES: Record<string, string> = {
   "human-gates": "Human Gates",
   "source-control": "Source Control",
   template: "Template",
+  telemetry: "Observability",
 };
 
-const SECTION_ORDER = ["limits", "human-gates", "source-control", "template"];
+const SECTION_ORDER = ["limits", "human-gates", "source-control", "template", "telemetry"];
 
 function getNestedValue(obj: Record<string, unknown>, path: string): unknown {
   return path.split(".").reduce<unknown>((acc, key) => {
@@ -135,12 +136,12 @@ test("groupFieldsBySection excludes version field", () => {
   assert.strictEqual(grouped.has("version"), false);
 });
 
-test("groupFieldsBySection produces exactly 4 sections", () => {
+test("groupFieldsBySection produces exactly 5 sections", () => {
   const grouped = groupFieldsBySection(CONFIG_FIELDS);
-  assert.strictEqual(grouped.size, 4);
+  assert.strictEqual(grouped.size, 5);
 });
 
-test("All 4 section keys are present in grouped fields", () => {
+test("All 5 section keys are present in grouped fields", () => {
   const grouped = groupFieldsBySection(CONFIG_FIELDS);
   for (const key of SECTION_ORDER) {
     assert.ok(grouped.has(key), `Missing section: ${key}`);
@@ -153,15 +154,17 @@ test("Section field counts are correct", () => {
   assert.strictEqual(grouped.get("human-gates")!.length, 3);
   assert.strictEqual(grouped.get("source-control")!.length, 2);
   assert.strictEqual(grouped.get("template")!.length, 1);
+  assert.strictEqual(grouped.get("telemetry")!.length, 1);
 });
 
 // --- Section titles ---
 
-test("All 4 accordion sections have correct display titles", () => {
+test("All 5 accordion sections have correct display titles", () => {
   assert.strictEqual(SECTION_TITLES["limits"], "Pipeline Limits");
   assert.strictEqual(SECTION_TITLES["human-gates"], "Human Gates");
   assert.strictEqual(SECTION_TITLES["source-control"], "Source Control");
   assert.strictEqual(SECTION_TITLES["template"], "Template");
+  assert.strictEqual(SECTION_TITLES["telemetry"], "Observability");
 });
 
 // --- Version field rendering ---
@@ -200,12 +203,13 @@ test("Number field min attributes are correct", () => {
   assert.strictEqual(fieldMap.get("limits.max_consecutive_review_rejections")!.min, 1);
 });
 
-test("Boolean fields (after_planning, after_final_review) have controlType 'switch'", () => {
+test("Boolean fields (after_planning, after_final_review, telemetry.enabled) have controlType 'switch'", () => {
   const switchFields = CONFIG_FIELDS.filter((f) => f.controlType === "switch");
   const switchKeys = switchFields.map((f) => f.key);
   assert.ok(switchKeys.includes("human_gates.after_planning"));
   assert.ok(switchKeys.includes("human_gates.after_final_review"));
-  assert.strictEqual(switchFields.length, 2);
+  assert.ok(switchKeys.includes("telemetry.enabled"));
+  assert.strictEqual(switchFields.length, 3);
 });
 
 test("Enum fields (execution_mode, auto_commit, auto_pr) have controlType 'toggle-group'", () => {
@@ -347,20 +351,21 @@ test("Every non-version CONFIG_FIELD has a non-empty tooltip", () => {
 
 // --- Section order ---
 
-test("SECTION_ORDER contains exactly 4 sections in correct order", () => {
+test("SECTION_ORDER contains exactly 5 sections in correct order", () => {
   assert.deepStrictEqual(SECTION_ORDER, [
     "limits",
     "human-gates",
     "source-control",
     "template",
+    "telemetry",
   ]);
 });
 
 // --- Default accordion expansion ---
 
-test("defaultValue for accordion matches all 4 section keys", () => {
+test("defaultValue for accordion matches all 5 section keys", () => {
   const defaultValue = [...SECTION_ORDER];
-  assert.strictEqual(defaultValue.length, 4);
+  assert.strictEqual(defaultValue.length, 5);
   assert.deepStrictEqual(defaultValue, SECTION_ORDER);
 });
 
