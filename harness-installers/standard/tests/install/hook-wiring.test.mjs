@@ -206,6 +206,10 @@ function makeFixture() {
     path.join(sharedHooksDir, 'session-preamble.mjs'),
     '// session-preamble.mjs shim (fixture)\n',
   );
+  fs.writeFileSync(
+    path.join(sharedHooksDir, 'telemetry-capture.mjs'),
+    '// telemetry-capture.mjs shim (fixture)\n',
+  );
 
   return root;
 }
@@ -346,6 +350,11 @@ test('build stages session-preamble.mjs into output/<harness>/hooks/ for all har
       assert.ok(
         fs.existsSync(shimPath),
         `output/${h}/hooks/session-preamble.mjs must exist after build`,
+      );
+      const telemetryShimPath = path.join(out, h, 'hooks', 'telemetry-capture.mjs');
+      assert.ok(
+        fs.existsSync(telemetryShimPath),
+        `output/${h}/hooks/telemetry-capture.mjs must exist after build`,
       );
     }
   } finally {
