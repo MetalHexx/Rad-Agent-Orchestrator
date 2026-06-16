@@ -46,11 +46,10 @@ export async function emitHookBundle(opts) {
       fs.copyFileSync(src, path.join(target, verbatim));
     }
   }
-  // session-preamble.mjs is single-source (AD-8): stage from sharedHooksDir
-  // when supplied, else fall back to `source` for backward compatibility.
+  // session-preamble.mjs + telemetry-capture.mjs are single-source (AD-8).
   const preambleSource = sharedHooksDir ?? source;
-  const preambleSrc = path.join(preambleSource, 'session-preamble.mjs');
-  if (fs.existsSync(preambleSrc)) {
-    fs.copyFileSync(preambleSrc, path.join(target, 'session-preamble.mjs'));
+  for (const shim of ['session-preamble.mjs', 'telemetry-capture.mjs']) {
+    const src = path.join(preambleSource, shim);
+    if (fs.existsSync(src)) fs.copyFileSync(src, path.join(target, shim));
   }
 }

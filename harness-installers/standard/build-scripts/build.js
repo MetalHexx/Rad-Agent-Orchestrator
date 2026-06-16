@@ -149,11 +149,13 @@ export async function runBuild(opts) {
   // For the Claude harness the shim lands at ~/.claude/hooks/session-preamble.mjs,
   // which is the absolute path that install-harness.js points the settings entry at.
   await step('copy-hook-shim', () => {
-    const shimSrc = path.join(greenfield, 'harness-installers/shared/hooks/session-preamble.mjs');
+    const sharedHooks = path.join(greenfield, 'harness-installers/shared/hooks');
     for (const h of HARNESSES) {
       const hooksDir = path.join(out, h, 'hooks');
       fs.mkdirSync(hooksDir, { recursive: true });
-      fs.copyFileSync(shimSrc, path.join(hooksDir, 'session-preamble.mjs'));
+      for (const shim of ['session-preamble.mjs', 'telemetry-capture.mjs']) {
+        fs.copyFileSync(path.join(sharedHooks, shim), path.join(hooksDir, shim));
+      }
     }
   });
 
