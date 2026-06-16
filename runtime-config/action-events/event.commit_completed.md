@@ -18,4 +18,4 @@ signal_payload:
 
 Confirm the agent's `## Commit Result` array — each row carries `committed: true`, a non-empty `commitHash`, and a boolean `pushed`. Relay it unchanged: the mutation records a hash only when `committed` is true and silently skips any row missing it. Hashes match to task-iteration repos by name.
 
-An off-branch / detached-HEAD escalation row is **not** a recordable result — it carries no `commitHash` and must not be signaled as a completed commit. Halt and surface it instead of recording-and-continuing. (FR-4, DD-2)
+An off-branch / detached-HEAD escalation row is **not** a recordable result — it carries no `commitHash` and must not be signaled as a completed commit. Halt and surface it instead of recording-and-continuing.

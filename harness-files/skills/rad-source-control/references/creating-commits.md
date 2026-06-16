@@ -21,7 +21,7 @@ Optional body: blank line then 2–4 prose lines from the task description.
     git -C "<path>" symbolic-ref --short -q HEAD
 
 - Output equals the intended `branch` → include the repo in the commit.
-- Command fails (HEAD detached) or prints a different branch → do **not** commit that repo; emit the off-branch escalation (below) for it instead. (FR-2, FR-3)
+- Command fails (HEAD detached) or prints a different branch → do **not** commit that repo; emit the off-branch escalation (below) for it instead.
 
 **3. Run (fan-out across all repos in one command):**
 ```
@@ -54,7 +54,7 @@ A `committed: false` entry means the repo was skipped (e.g., no changes). This i
     git -C "<path>" symbolic-ref --short -q HEAD   # still equals the intended branch
     git -C "<path>" rev-parse --short HEAD          # equals the commitHash just returned
 
-If HEAD is detached after the commit, or the branch ref did not advance to the new commit, replace that repo's normal commit row with the off-branch escalation (below). A remote-less `pushed:false` or a no-change `committed:false` skip is **not** an off-branch condition — leave those relayed as-is. (FR-2, FR-3, NFR-3)
+If HEAD is detached after the commit, or the branch ref did not advance to the new commit, replace that repo's normal commit row with the off-branch escalation (below). A remote-less `pushed:false` or a no-change `committed:false` skip is **not** an off-branch condition — leave those relayed as-is.
 
 **Off-branch escalation (per repo).** When the pre- or post-commit HEAD check fails for a repo, do not relay a normal commit row for it — relay a distinct, loud escalation so the orchestrator halts:
 
@@ -63,6 +63,6 @@ If HEAD is detached after the commit, or the branch ref did not advance to the n
       "observed_head": "detached at <sha>" | "on <other-branch>",
       "commit_created_off_branch": <bool> }
 
-This is not a `commit_completed` success row and carries no recordable hash. Halt the fan-out and surface every off-branch repo by name. (FR-3, DD-1)
+This is not a `commit_completed` success row and carries no recordable hash. Halt the fan-out and surface every off-branch repo by name.
 
 PR Mode is never invoked for a side-project (`auto_pr: never`). A side-project has no remote and therefore no pull-request surface; skip the PR step entirely when the project kind is `side-project`.
