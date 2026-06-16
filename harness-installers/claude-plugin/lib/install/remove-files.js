@@ -15,6 +15,7 @@ export function removeManifestFiles(manifest, opts = {}) {
   // sibling-prefix bypass that plain startsWith allows.
   const rootResolved = path.resolve(paths.root);
   const projectsResolved = path.resolve(paths.projects);
+  const telemetryResolved = path.resolve(paths.telemetry);
   const isUnder = (parent, child) => {
     const rel = path.relative(parent, child);
     return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel);
@@ -39,9 +40,10 @@ export function removeManifestFiles(manifest, opts = {}) {
     // Hard guards: never delete outside paths.root; never touch the projects tree.
     if (!isUnder(rootResolved, dest)) continue;
     if (dest === projectsResolved || isUnder(projectsResolved, dest)) continue;
+    if (dest === telemetryResolved || isUnder(telemetryResolved, dest)) continue;
     if (fs.existsSync(dest)) fs.rmSync(dest, { force: true });
     let parent = path.dirname(dest);
-    while (isUnder(rootResolved, parent) && parent !== projectsResolved) {
+    while (isUnder(rootResolved, parent) && parent !== projectsResolved && parent !== telemetryResolved) {
       touched.add(parent);
       parent = path.dirname(parent);
     }

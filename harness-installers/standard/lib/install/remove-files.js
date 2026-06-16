@@ -26,6 +26,7 @@ import { userDataPaths } from './user-data-paths.js';
  */
 export function removeManifestFiles(manifest, harness) {
   const projectsRoot = userDataPaths().projects;
+  const telemetryRoot = userDataPaths().telemetry;
   const root = harnessRoot(harness);
   let removedCount = 0;
   const dirsTouched = new Set();
@@ -57,6 +58,11 @@ export function removeManifestFiles(manifest, harness) {
 
     if (abs.startsWith(projectsRoot)) {
       console.warn(`[remove] skipping projects/ entry '${entry.bundlePath}'`);
+      continue;
+    }
+
+    if (abs.startsWith(telemetryRoot)) {
+      console.warn(`[remove] skipping telemetry/ entry '${entry.bundlePath}'`);
       continue;
     }
 
