@@ -21,15 +21,39 @@ export class FileCheckpointStore implements CheckpointStore {
     fs.writeFileSync(tmp, JSON.stringify(payload), 'utf8');
     fs.renameSync(tmp, file); // MoveFileEx replace-existing on a same-volume Windows path — atomic (NFR-3)
   }
-  tryLock(sessionId: string): boolean {
+  private readonly lockTtlMs = 15 * 60 * 1000;
+
+  private isStaleLock(raw: string): boolean {
     try {
-      const fd = fs.openSync(this.lockPath(sessionId), 'wx'); // O_CREAT|O_EXCL — fails if held
+      const { pid, acquiredAt } = JSON.parse(raw) as { pid?: number; acquiredAt?: string };
+      const ageMs = acquiredAt ? Date.now() - Date.parse(acquiredAt) : Infinity;
+      if (Number.isFinite(ageMs) && ageMs > this.lockTtlMs) return true;   // aged out
+      if (typeof pid === 'number') {
+        try { process.kill(pid, 0); return false; }                        // signalable ⇒ alive
+        catch (e) { return (e as NodeJS.ErrnoException).code === 'ESRCH'; } // ESRCH ⇒ dead ⇒ stale
+      }
+      return true;                                                         // no pid ⇒ unusable
+    } catch { return true; }                                               // unparseable ⇒ stale
+  }
+
+  tryLock(sessionId: string): boolean {
+    const p = this.lockPath(sessionId);
+    const acquire = (): boolean => {
+      const fd = fs.openSync(p, 'wx');
       fs.writeSync(fd, JSON.stringify({ pid: process.pid, acquiredAt: new Date().toISOString() }));
       fs.closeSync(fd);
       return true;
-    } catch (e) {
-      if ((e as NodeJS.ErrnoException).code === 'EEXIST') return false;
-      throw e;
+    };
+    try { return acquire(); }
+    catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+      let raw = '';
+      try { raw = fs.readFileSync(p, 'utf8'); } catch { /* vanished mid-check */ }
+      if (raw === '' || this.isStaleLock(raw)) {
+        try { fs.unlinkSync(p); } catch { /* already released */ }
+        try { return acquire(); } catch { return false; }                  // lost a race ⇒ locked
+      }
+      return false;
     }
   }
   unlock(sessionId: string): void {
