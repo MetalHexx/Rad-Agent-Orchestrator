@@ -74,7 +74,7 @@ Each entry's command is the standard plugin dynamic-import launcher (`node -e "c
 
 ### source ↔ output parity
 
-`hooks/hooks.json` (source) and `output/hooks/hooks.json` (build artifact) must be identical. The `emit-hook-bundle` step copies `hooks.json` verbatim to `output/hooks/`. If you edit `hooks/hooks.json` you must rebuild (`node build-scripts/build.js`) to update `output/hooks/hooks.json`. The parity test (`tests/parity-validation.test.mjs`) can be used to verify file-set equality against a legacy payload, but day-to-day the simplest check is `diff hooks/hooks.json output/hooks/hooks.json`.
+`hooks/hooks.json` (source) and `output/hooks/hooks.json` (build artifact) must be identical. The `emit-hook-bundle` step copies `hooks.json` verbatim to `output/hooks/`. If you edit `hooks/hooks.json` you must rebuild (`node build-scripts/build.js`) to update `output/hooks/hooks.json`. The parity test (`tests/hooks-output-parity.test.mjs`) builds the hook bundle into a throwaway target and asserts the emitted `hooks.json` equals the committed source. Day-to-day the simplest check is `diff hooks/hooks.json output/hooks/hooks.json`.
 
 ### telemetry-capture.mjs shim
 
@@ -82,7 +82,7 @@ Each entry's command is the standard plugin dynamic-import launcher (`node -e "c
 
 ### `telemetry/` sacred-folder skip
 
-The plugin installer does not write to `~/.radorc/telemetry/`. The sacred-folder skip is enforced by the standard installer's `remove-files.js` (see `harness-installers/standard/AGENTS.md`) and applies equally to any plugin-delivered manifest entry targeting that path. Plugin hooks never write directly to `~/.radorc/telemetry/`; writing is performed by the CLI's `telemetry capture` subcommand invoked inside the shim.
+The plugin installer does not write to `~/.radorc/telemetry/`. The sacred-folder skip is enforced by the plugin's own `lib/install/remove-files.js` (it resolves `paths.telemetry` and `continue`s on `dest === telemetryResolved || isUnder(telemetryResolved, dest)`). Per AD-10 each installer carries its own independent copy of this protection. Plugin hooks never write directly to `~/.radorc/telemetry/`; writing is performed by the CLI's `telemetry capture` subcommand invoked inside the shim.
 
 ## Rules for making updates
 
