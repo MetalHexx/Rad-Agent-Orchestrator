@@ -37,7 +37,7 @@ import {
   detectPluginCoexistence,
   isEntryCurrent,
 } from './install-json.js';
-import { mergePreambleHook } from './claude-hook-settings.js';
+import { mergePreambleHook, reconcileTelemetryHooks } from './claude-hook-settings.js';
 
 const STANDARD_CHANNEL = 'standard';
 
@@ -180,6 +180,8 @@ function doFreshInstall({
   if (opts.harness === 'claude') {
     const shimPath = path.join(harnessRoot('claude'), 'hooks', 'session-preamble.mjs');
     mergePreambleHook({ settingsPath, hookCommand: `node "${shimPath}"` });
+    const telemetryShimPath = path.join(harnessRoot('claude'), 'hooks', 'telemetry-capture.mjs');
+    reconcileTelemetryHooks({ settingsPath, hookCommand: `node "${telemetryShimPath}"` });
   }
 
   // Folder mutex + cross-channel emission, best-effort (NFR-4).
@@ -224,6 +226,8 @@ function doUpgrade({
   if (opts.harness === 'claude') {
     const shimPath = path.join(harnessRoot('claude'), 'hooks', 'session-preamble.mjs');
     mergePreambleHook({ settingsPath, hookCommand: `node "${shimPath}"` });
+    const telemetryShimPath = path.join(harnessRoot('claude'), 'hooks', 'telemetry-capture.mjs');
+    reconcileTelemetryHooks({ settingsPath, hookCommand: `node "${telemetryShimPath}"` });
   }
 
   emitPostInstallNotices({ registry, installKey, stderr });
