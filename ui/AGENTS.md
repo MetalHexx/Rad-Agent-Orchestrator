@@ -110,6 +110,47 @@ return NextResponse.json({ prompt: result.envelope.data.prompt }, { status: 200 
 
 The vast majority of new dashboard features are case (3). When in doubt, choose in-process — you can always escalate to shell-out later if a parity or state-mutation requirement emerges.
 
+## Feature: Observability toggle
+
+The dashboard's configuration editor includes an **Observability** section that controls whether the telemetry library captures usage events for harness sessions.
+
+### How the field is registered
+
+`ui/lib/config-field-meta.ts` is the single source of truth for every editable config field. The telemetry entry is:
+
+```
+{
+  key: 'telemetry.enabled',
+  label: 'Observability',
+  tooltip: 'Capture neutral, non-attributed usage telemetry for harness sessions. Off by default; turning it on is opt-in.',
+  section: 'telemetry',
+  controlType: 'switch',
+}
+```
+
+- **`key`** — the dot-path that `config-form.tsx` reads/writes against the live `OrchestrationConfig` object via `getNestedValue` / `onChange`.
+- **`section: 'telemetry'`** — `config-form.tsx` renders this inside an accordion section titled **Observability** (mapped in `SECTION_TITLES`).
+- **`controlType: 'switch'`** — renders a shadcn `Switch` component. The switch's `checked` state is `!!value`; toggling calls `onChange('telemetry.enabled', checked)`.
+
+### Validation
+
+`ui/lib/config-validator.ts` validates `telemetry.enabled` in the optional-section block:
+
+```
+// 10. telemetry (optional section)
+if (config.telemetry !== undefined) {
+  if (!isSection(config.telemetry) || typeof config.telemetry.enabled !== 'boolean') {
+    errors['telemetry.enabled'] = 'Invalid telemetry enabled setting';
+  }
+}
+```
+
+The section is entirely optional — if `telemetry` is absent from `orchestration.yml` the validator produces no error. When the section is present, `telemetry.enabled` must be a boolean; any other type emits a field-level error keyed `'telemetry.enabled'` that the `ConfigFieldRow` for that field will surface.
+
+### Session-start preamble indicator
+
+When telemetry is enabled (`telemetry.enabled: true` in `orchestration.yml`), the CLI's `session-context` subcommand (`cli/src/commands/session-context/render.ts`) appends a `· observability \`on\`` segment to the **Config** row of the preamble block. This indicator is surfaced to the assistant on every session start via the `session-preamble.mjs` hook (`harness-installers/shared/hooks/session-preamble.mjs`). When telemetry is disabled or the `telemetry` section is absent, the indicator is omitted entirely.
+
 ## Seams to other modules
 
 - **`cli/` (via shell-out for state-mutating ops only; in-process duplicates for parsers/types)** — Routes that mutate pipeline state or need parity with orchestrator output invoke `radorch <noun> <subcommand>` via `RADORCH_CLI_PATH` + `runCli`. The CLI emits the JSON envelope `{ ok, data, error }` on stdout; the UI parses it and maps to HTTP. Pure parsers / type shapes (e.g., `parseActionEventFile`, `CatalogEntry`) are transplanted as verbatim copies into `ui/lib/` (canonical implementation stays in CLI). Never import from `cli/src/`.

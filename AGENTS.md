@@ -235,3 +235,12 @@ The canonical sources at `harness-files/agents/` and `harness-files/skills/` are
 - `dist/staging/<harness>/`, `dist/dogfood-prior-<harness>.json`, `dist/` — **gitignored** generated artifacts (build outputs, staging hopper, prior-manifest snapshots)
 - `harness-installers/<plugin>/output/`, `harness-installers/<plugin>/dogfood-marketplace/` — **gitignored** build artifacts owned by each marketplace plugin builder
 - `~/.claude/`, `~/.copilot/`, `~/.radorc/` — **user-level destinations** that the build/installer write to (NOT in the repo)
+
+## Telemetry surface
+
+The `@rad-orchestration/telemetry` library provides opt-in, neutral usage capture. The feature spans four modules — consult each module's own `AGENTS.md` for full detail:
+
+- [`harness-installers/shared/hooks/`](./harness-installers/shared/hooks/) — single-source telemetry capture shim (`telemetry-capture.mjs`) and preamble shim (`session-preamble.mjs`), shared across all installer variants
+- [`harness-installers/standard/`](./harness-installers/standard/) — standard installer wiring: copies the hooks and registers the `PostToolUse`/`Stop`/`SessionEnd` hook entries
+- [`harness-installers/claude-plugin/`](./harness-installers/claude-plugin/) — Claude marketplace plugin wiring for the same hook set
+- [`ui/`](./ui/) — dashboard Observability toggle (`telemetry.enabled` Switch in the config editor) and the `· observability \`on\`` preamble indicator

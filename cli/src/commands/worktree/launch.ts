@@ -63,7 +63,34 @@ export function repairMsysPrompt(prompt: string | undefined): string | undefined
   return prompt;
 }
 
-type SpawnFn = (file: string, args: readonly string[], opts: { detached: boolean; stdio: 'ignore' }) => { unref: () => void };
+type SpawnFn = (file: string, args: readonly string[], opts: { detached: boolean; stdio: 'ignore'; env?: NodeJS.ProcessEnv }) => { unref: () => void };
+
+/**
+ * Build the env for a launched agent so the new Claude session comes up TOP-LEVEL,
+ * not as a nested child of the session that spawned it.
+ *
+ * Claude Code marks a spawned process a *child session* when it inherits the
+ * parent's `CLAUDECODE` / `CLAUDE_CODE_*` markers, and child sessions do not write
+ * the flat `<session>.jsonl` transcript that telemetry reads — so worktree/pipeline
+ * sessions captured nothing. Stripping exactly those markers makes every launch a
+ * fresh top-level session. Everything else is preserved (PATH, HOME, and notably
+ * `CLAUDE_EFFORT`, which is not a `CLAUDE_CODE_` var). Never mutates `process.env`.
+ */
+export function sanitizeLaunchEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const out: NodeJS.ProcessEnv = { ...env };
+  for (const key of Object.keys(out)) {
+    if (key === 'CLAUDECODE' || /^CLAUDE_CODE_/.test(key)) delete out[key];
+  }
+  return out;
+}
+
+// On Windows, `wt` may route the new tab through an existing Windows Terminal broker
+// process, so the spawned shell can inherit the *broker's* env rather than the one we
+// pass to spawn(). Belt-and-suspenders: also clear the markers inside the encoded
+// PowerShell payload before launching the agent.
+const CLEAR_ENV_PWSH =
+  'Remove-Item Env:CLAUDECODE -ErrorAction SilentlyContinue; '
+  + 'Get-ChildItem Env:CLAUDE_CODE_* | Remove-Item -ErrorAction SilentlyContinue;';
 
 export interface WorktreeLaunchOptions {
   agent: LaunchAgent;
@@ -110,6 +137,7 @@ export function worktreeLaunch(opts: WorktreeLaunchOptions): WorktreeLaunchResul
   const spawn = opts.spawn ?? (defaultSpawn as unknown as SpawnFn);
   const repaired = repairMsysPrompt(opts.prompt);
   const addDir = path.join(os.homedir(), '.radorc', 'projects');
+  const launchEnv = sanitizeLaunchEnv();   // top-level session: drop inherited CLAUDECODE/CLAUDE_CODE_*
 
   let agentArgs: string[] = [];
   if (opts.agent === 'claude') {
@@ -136,13 +164,13 @@ export function worktreeLaunch(opts: WorktreeLaunchOptions): WorktreeLaunchResul
         ? `${agentArgs[0]} ${agentArgs.slice(1).map(quoteSinglePwsh).join(' ')}`
         : '';
       const psCmd = shellQuotedAgentPwsh
-        ? `${cdPartPwsh}; ${shellQuotedAgentPwsh}`
-        : cdPartPwsh;
+        ? `${CLEAR_ENV_PWSH} ${cdPartPwsh}; ${shellQuotedAgentPwsh}`
+        : `${CLEAR_ENV_PWSH} ${cdPartPwsh}`;
       const encoded = Buffer.from(psCmd, 'utf16le').toString('base64');
       const child = spawn(
         'wt',
         ['--startingDirectory', opts.worktreePath, 'powershell', '-NoExit', '-EncodedCommand', encoded],
-        { detached: true, stdio: 'ignore' },
+        { detached: true, stdio: 'ignore', env: launchEnv },
       );
       child.unref();
     } else if (platform === 'darwin') {
@@ -154,7 +182,7 @@ export function worktreeLaunch(opts: WorktreeLaunchOptions): WorktreeLaunchResul
       const child = spawn(
         'osascript',
         ['-e', `tell application "Terminal" to do script "${escaped}"`],
-        { detached: true, stdio: 'ignore' },
+        { detached: true, stdio: 'ignore', env: launchEnv },
       );
       child.unref();
     } else {
@@ -165,7 +193,7 @@ export function worktreeLaunch(opts: WorktreeLaunchOptions): WorktreeLaunchResul
       const child = spawn(
         'gnome-terminal',
         ['--', 'bash', '-c', shell],
-        { detached: true, stdio: 'ignore' },
+        { detached: true, stdio: 'ignore', env: launchEnv },
       );
       child.unref();
     }

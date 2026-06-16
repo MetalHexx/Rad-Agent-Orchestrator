@@ -25,10 +25,21 @@ import { userDataPaths } from './user-data-paths.js';
  * @returns {{ removedCount: number, prunedDirs: string[] }}
  */
 export function removeManifestFiles(manifest, harness) {
-  const projectsRoot = userDataPaths().projects;
+  const projectsRoot = path.resolve(userDataPaths().projects);
+  const telemetryRoot = path.resolve(userDataPaths().telemetry);
   const root = harnessRoot(harness);
+  const rootResolved = path.resolve(root);
   let removedCount = 0;
   const dirsTouched = new Set();
+
+  // Proper containment check — avoids the sibling-prefix bypass that a plain
+  // `startsWith` allows (e.g. a sibling `telemetry-archive/` matching the
+  // `telemetry` prefix, or `<root>-backup/` matching `<root>`). Mirrors the
+  // claude-plugin remove-files.js guard.
+  const isUnder = (parent, child) => {
+    const rel = path.relative(parent, child);
+    return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel);
+  };
 
   // FR-20 / AD-11 defensive guard: refuse any manifest entry that targets a
   // payload under action-events/custom/ or a repo-registry*.yml file. The
@@ -54,9 +65,15 @@ export function removeManifestFiles(manifest, harness) {
 
   for (const entry of manifest.files) {
     const abs = expandDestinationTokens(entry.destinationPath, harness);
+    const absResolved = path.resolve(abs);
 
-    if (abs.startsWith(projectsRoot)) {
+    if (absResolved === projectsRoot || isUnder(projectsRoot, absResolved)) {
       console.warn(`[remove] skipping projects/ entry '${entry.bundlePath}'`);
+      continue;
+    }
+
+    if (absResolved === telemetryRoot || isUnder(telemetryRoot, absResolved)) {
+      console.warn(`[remove] skipping telemetry/ entry '${entry.bundlePath}'`);
       continue;
     }
 
@@ -67,7 +84,7 @@ export function removeManifestFiles(manifest, harness) {
 
     // Walk every ancestor up to (but not including) the harness root.
     let parent = path.dirname(abs);
-    while (parent.startsWith(root) && parent !== root) {
+    while (isUnder(rootResolved, path.resolve(parent))) {
       dirsTouched.add(parent);
       const next = path.dirname(parent);
       if (next === parent) break;

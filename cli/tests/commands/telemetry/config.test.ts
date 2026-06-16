@@ -1,30 +1,29 @@
 import { describe, it, expect } from 'vitest';
-import os from 'node:os';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
-import { userDataPaths } from '../../../src/lib/paths.js';
 import { readTelemetryEnabled } from '../../../src/commands/telemetry/config.js';
 
-function tmpRootWith(yml: string | null): string {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'radorc-'));
-  if (yml !== null) fs.writeFileSync(path.join(root, 'orchestration.yml'), yml, 'utf8');
+function tmpRoot(yml?: string): string {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tel-gate-'));
+  if (yml !== undefined) fs.writeFileSync(path.join(root, 'orchestration.yml'), yml, 'utf8');
   return root;
 }
 
-describe('telemetry path + gate', () => {
-  it('exposes the telemetry store root under ~/.radorc (AD-4)', () => {
-    expect(userDataPaths().telemetry).toBe(path.join(os.homedir(), '.radorc', 'telemetry'));
+describe('readTelemetryEnabled — opt-in default-off (FR-5, AD-5)', () => {
+  it('returns false when orchestration.yml is missing', () => {
+    expect(readTelemetryEnabled({ root: tmpRoot() })).toBe(false);
   });
-  it('defaults ON when the key is absent (FR-7)', () => {
-    expect(readTelemetryEnabled({ root: tmpRootWith('source_control:\n  auto_commit: ask\n') })).toBe(true);
+  it('returns false when the telemetry key is absent', () => {
+    expect(readTelemetryEnabled({ root: tmpRoot('source_control:\n  auto_commit: ask\n') })).toBe(false);
   });
-  it('defaults ON when orchestration.yml is missing entirely (FR-7)', () => {
-    expect(readTelemetryEnabled({ root: tmpRootWith(null) })).toBe(true);
+  it('returns false when YAML is malformed', () => {
+    expect(readTelemetryEnabled({ root: tmpRoot('telemetry: : :\n  enabled\n') })).toBe(false);
   });
-  it('honors an explicit false (FR-7)', () => {
-    expect(readTelemetryEnabled({ root: tmpRootWith('telemetry:\n  enabled: false\n') })).toBe(false);
+  it('returns true only when explicitly enabled', () => {
+    expect(readTelemetryEnabled({ root: tmpRoot('telemetry:\n  enabled: true\n') })).toBe(true);
   });
-  it('degrades to ON (default) on malformed yaml, never throws (FR-7)', () => {
-    expect(readTelemetryEnabled({ root: tmpRootWith('telemetry: : :\n  ]][[') })).toBe(true);
+  it('returns false when explicitly disabled', () => {
+    expect(readTelemetryEnabled({ root: tmpRoot('telemetry:\n  enabled: false\n') })).toBe(false);
   });
 });

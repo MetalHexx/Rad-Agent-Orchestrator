@@ -36,3 +36,32 @@ export function listSubagentTranscripts(transcriptPath: string): string[] {
   try { return fs.readdirSync(dir).filter((f) => f.endsWith('.jsonl')).map((f) => path.join(dir, f)); }
   catch { return []; }
 }
+
+// A subagent transcript (agent-<id>.jsonl) has a sibling identity sidecar
+// agent-<id>.meta.json — { agentType, description, toolUseId } — written by Claude
+// Code. It lets the SessionEnd backstop attribute subagent rows that arrive with no
+// hook-supplied identity (PostToolUse already carries identity inline).
+export function metaPathFor(subagentTranscript: string): string {
+  const dir = path.dirname(subagentTranscript);
+  const base = path.basename(subagentTranscript, '.jsonl');
+  return path.join(dir, `${base}.meta.json`);
+}
+
+export interface SubagentMeta { agentType?: string; description?: string; toolUseId?: string }
+
+export function readSubagentMeta(subagentTranscript: string): SubagentMeta {
+  try {
+    const raw = JSON.parse(fs.readFileSync(metaPathFor(subagentTranscript), 'utf8')) as Record<string, unknown>;
+    return {
+      agentType: typeof raw.agentType === 'string' ? raw.agentType : undefined,
+      description: typeof raw.description === 'string' ? raw.description : undefined,
+      toolUseId: typeof raw.toolUseId === 'string' ? raw.toolUseId : undefined,
+    };
+  } catch { return {}; }                                   // missing / malformed ⇒ no identity, never throw
+}
+
+// Recover <id> from a `.../subagents/agent-<id>.jsonl` path (guards the prefix).
+export function agentIdFromTranscript(subagentTranscript: string): string {
+  const base = path.basename(subagentTranscript, '.jsonl');
+  return base.startsWith('agent-') ? base.slice('agent-'.length) : '';
+}

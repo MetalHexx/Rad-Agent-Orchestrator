@@ -109,6 +109,15 @@ export const CONFIG_FIELDS: FieldMeta[] = [
     section: 'template',
     controlType: 'text',
   },
+
+  // 12. Telemetry Section
+  {
+    key: 'telemetry.enabled',
+    label: 'Observability',
+    tooltip: 'Capture neutral, non-attributed usage telemetry for harness sessions. Off by default; turning it on is opt-in.',
+    section: 'telemetry',
+    controlType: 'switch',
+  },
 ];
 
 export const CONFIG_FIELD_MAP: Record<string, FieldMeta> =

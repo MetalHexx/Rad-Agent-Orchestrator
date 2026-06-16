@@ -31,6 +31,7 @@ export interface OrchestrationConfig {
     auto_pr: SourceControlAction;
   };
   default_template?: string;
+  telemetry?: { enabled: boolean };
 }
 
 /** Editor mode */

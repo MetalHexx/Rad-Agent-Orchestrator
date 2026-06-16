@@ -3,7 +3,7 @@ import { readRegistry, resolveRepoPath } from '@rad-orchestration/repo-registry'
 export interface RenderPreambleOpts {
   root: string;
   active?: { name: string; tier: string | null }[];
-  config?: { autoCommit: string; autoPr: string };
+  config?: { autoCommit: string; autoPr: string; telemetryEnabled?: boolean };
   youAreIn?: string;
 }
 
@@ -52,9 +52,13 @@ export function renderPreamble({ root, active = [], config, youAreIn }: RenderPr
   if (groupNames.length > 0) rows.push(`**Repo Groups** (${groupNames.length}) · ${groupNames.map(code).join(' ')}`);
   if (active.length > 0) {
     const items = active.map((p) => `${code(p.name)} (${p.tier ?? 'unknown'})`).join(' · ');
-    rows.push(`**Active** (${active.length}) · ${items}`);
+    rows.push(`**Active Projects** (${active.length}) · ${items}`);
   }
-  if (config) rows.push(`**Config** · auto-commit ${code(config.autoCommit)} · auto-pr ${code(config.autoPr)}`);
+  if (config) {
+    let row = `**Config** · auto-commit ${code(config.autoCommit)} · auto-pr ${code(config.autoPr)}`;
+    if (config.telemetryEnabled) row += ` · observability ${code('on')}`;
+    rows.push(row);
+  }
   let block = `${header}\n\n${rows.join('\n')}`;
   if (unbound.length > 0) {
     const names = unbound.map((r) => code(r.name)).join(', ');

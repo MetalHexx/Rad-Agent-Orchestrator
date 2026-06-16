@@ -15,6 +15,7 @@ import path from 'node:path';
  *   ui: string,
  *   templates: string,
  *   projects: string,
+ *   telemetry: string,
  *   logs: string,
  *   actionEvents: string,
  * }}
@@ -29,6 +30,7 @@ export function userDataPaths(opts = {}) {
     ui: path.join(root, 'ui'),
     templates: path.join(root, 'templates'),
     projects: path.join(root, 'projects'),
+    telemetry: path.join(root, 'telemetry'),
     logs: path.join(root, 'logs'),
     actionEvents: path.join(root, 'action-events'),
     uiPidFile: path.join(root, 'runtime', 'ui.pid'),

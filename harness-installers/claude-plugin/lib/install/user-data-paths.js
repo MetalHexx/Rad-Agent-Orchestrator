@@ -11,6 +11,7 @@ export function userDataPaths(opts = {}) {
     templates: path.join(root, 'templates'),
     ui: path.join(root, 'ui'),
     projects: path.join(root, 'projects'),
+    telemetry: path.join(root, 'telemetry'),
     logs: path.join(root, 'logs'),
     installLog: path.join(root, 'logs', 'install.log'),
     uiPidFile: path.join(root, 'runtime', 'ui.pid'),

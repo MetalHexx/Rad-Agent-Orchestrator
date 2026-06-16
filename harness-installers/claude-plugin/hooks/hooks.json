@@ -6,6 +6,15 @@
     "SessionStart": [
       { "hooks": [{ "type": "command", "command": "node -e \"const r=process.env.CLAUDE_PLUGIN_ROOT||'';const n=process.platform==='win32'&&r[0]==='/'&&r[2]==='/'?r[1].toUpperCase()+':'+r.slice(2):r;process.env.CLAUDE_PLUGIN_ROOT=n;import('node:url').then(u=>import(u.pathToFileURL(n+'/hooks/drift-check.mjs').href))\"" }] },
       { "hooks": [{ "type": "command", "command": "node -e \"const r=process.env.CLAUDE_PLUGIN_ROOT||'';const n=process.platform==='win32'&&r[0]==='/'&&r[2]==='/'?r[1].toUpperCase()+':'+r.slice(2):r;process.env.CLAUDE_PLUGIN_ROOT=n;import('node:url').then(u=>import(u.pathToFileURL(n+'/hooks/session-preamble.mjs').href))\"" }] }
+    ],
+    "PostToolUse": [
+      { "matcher": "Agent", "hooks": [{ "type": "command", "command": "node -e \"const r=process.env.CLAUDE_PLUGIN_ROOT||'';const n=process.platform==='win32'&&r[0]==='/'&&r[2]==='/'?r[1].toUpperCase()+':'+r.slice(2):r;process.env.CLAUDE_PLUGIN_ROOT=n;import('node:url').then(u=>import(u.pathToFileURL(n+'/hooks/telemetry-capture.mjs').href))\"" }] }
+    ],
+    "Stop": [
+      { "hooks": [{ "type": "command", "command": "node -e \"const r=process.env.CLAUDE_PLUGIN_ROOT||'';const n=process.platform==='win32'&&r[0]==='/'&&r[2]==='/'?r[1].toUpperCase()+':'+r.slice(2):r;process.env.CLAUDE_PLUGIN_ROOT=n;import('node:url').then(u=>import(u.pathToFileURL(n+'/hooks/telemetry-capture.mjs').href))\"" }] }
+    ],
+    "SessionEnd": [
+      { "hooks": [{ "type": "command", "command": "node -e \"const r=process.env.CLAUDE_PLUGIN_ROOT||'';const n=process.platform==='win32'&&r[0]==='/'&&r[2]==='/'?r[1].toUpperCase()+':'+r.slice(2):r;process.env.CLAUDE_PLUGIN_ROOT=n;import('node:url').then(u=>import(u.pathToFileURL(n+'/hooks/telemetry-capture.mjs').href))\"" }] }
     ]
   }
 }

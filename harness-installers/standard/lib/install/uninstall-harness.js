@@ -26,7 +26,7 @@ import { loadBundledManifest } from './catalog.js';
 import { removeManifestFiles } from './remove-files.js';
 import { expandDestinationTokens } from './expand-tokens.js';
 import { loadRegistry, writeInstallJson } from './install-json.js';
-import { removePreambleHook } from './claude-hook-settings.js';
+import { removePreambleHook, removeTelemetryHooks } from './claude-hook-settings.js';
 
 /**
  * @typedef {Object} UninstallResult
@@ -93,6 +93,7 @@ export async function uninstallHarness({ bundleRoot, harness, settingsPath }) {
     const resolvedSettingsPath =
       settingsPath ?? path.join(harnessRoot('claude'), 'settings.json');
     removePreambleHook({ settingsPath: resolvedSettingsPath });
+    removeTelemetryHooks({ settingsPath: resolvedSettingsPath });
   }
 
   // Drop the registry entry; keep the install.json file itself.

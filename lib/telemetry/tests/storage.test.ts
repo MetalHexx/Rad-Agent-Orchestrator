@@ -67,6 +67,26 @@ describe('FileCheckpointStore', () => {
     cp.unlock('s1');
     expect(cp.tryLock('s1')).toBe(true);
   });
+
+  it('reclaims a stale lock left by a dead PID (FR-13, AD-11)', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tel-lock-'));
+    const store = new FileCheckpointStore({ root });
+    const lockDir = path.join(root, 'checkpoints');
+    fs.mkdirSync(lockDir, { recursive: true });
+    // A leaked lock: an impossible/dead PID and a fresh timestamp (PID-liveness must reclaim it).
+    fs.writeFileSync(path.join(lockDir, 's1.lock'),
+      JSON.stringify({ pid: 2 ** 31 - 1, acquiredAt: new Date().toISOString() }));
+    expect(store.tryLock('s1')).toBe(true);          // reclaimed
+  });
+
+  it('does not reclaim a live, fresh lock (FR-13)', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tel-lock-'));
+    const store = new FileCheckpointStore({ root });
+    fs.mkdirSync(path.join(root, 'checkpoints'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'checkpoints', 's2.lock'),
+      JSON.stringify({ pid: process.pid, acquiredAt: new Date().toISOString() }));
+    expect(store.tryLock('s2')).toBe(false);         // held by a live process
+  });
 });
 
 describe('pruneAgedPartitions', () => {
