@@ -10,6 +10,7 @@ import { ProgressBar } from '@/components/execution/progress-bar';
 import { NodeStatusBadge } from './node-status-badge';
 import { isLoopNode, parsePhaseNameFromDocPath, parseTaskNameFromDocPath, buildIterationItemValue, deriveIterationTaskProgress, deriveIterationBadgeLabel, shouldRenderTimelineRow, resolveStageBadge } from './dag-timeline-helpers';
 import type { CompatibleNodeState } from './dag-timeline-helpers';
+import { firstCommitHash } from './source-control-helpers';
 import { CommitChips } from './commit-chips';
 import type { IterationEntry } from '@/types/state';
 
@@ -150,8 +151,11 @@ export function DAGIterationPanel({
     // step nodes (e.g. phase_review) render at phase-level depth OUTSIDE the
     // task spine — aligning them with the phase header and bounding the spine
     // line to task-like content.
+    // Multi-repo: gate the `commit` row on the FIRST non-empty hash across all
+    // repos (not just repos[0]) — otherwise a later repo's commit is hidden.
+    const anyCommitHash = firstCommitHash(iteration.repos);
     const renderableEntries = Object.entries(iteration.nodes).filter(([childNodeId, childNode]) =>
-      shouldRenderTimelineRow(childNodeId, childNode as CompatibleNodeState, { commitHash: iteration.repos?.[0]?.commit_hash ?? null, prUrl: null })
+      shouldRenderTimelineRow(childNodeId, childNode as CompatibleNodeState, { commitHash: anyCommitHash, prUrl: null })
     );
     const loopIndex = renderableEntries.findIndex(([, n]) => isLoopNode(n));
     const preLoopEntries  = loopIndex === -1 ? renderableEntries : renderableEntries.slice(0, loopIndex);

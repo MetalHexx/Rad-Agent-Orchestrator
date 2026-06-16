@@ -25,8 +25,11 @@ export function resolveAndValidateFolder(rawPath: unknown): ResolveFolderResult 
   if (typeof rawPath !== 'string' || rawPath.trim() === '') {
     return { error: 'Missing folder path.' };
   }
-  // Reject traversal before any expansion/resolution.
-  if (rawPath.includes('..')) {
+  // Reject traversal before any expansion/resolution. Only a path *segment*
+  // equal to `..` is traversal — a bare `includes('..')` would also reject
+  // legitimate folder names like `foo..bar`. The allowed-roots prefix check
+  // below remains the real boundary; this is a fast, precise fail.
+  if (rawPath.split(/[\\/]+/).some((seg) => seg === '..')) {
     return { error: 'Invalid folder path.' };
   }
   // Expand a leading `~` (the convention paths are tilde-prefixed).

@@ -40,6 +40,15 @@ export interface CommitChipModel {
   linkable: boolean;
 }
 
+/**
+ * First non-empty commit hash across a multi-repo set. Drives the timeline
+ * `commit` row's visibility: indexing `repos[0]` alone would hide the row when
+ * the first repo hasn't committed but a later one has.
+ */
+export function firstCommitHash(repos: RepoCommitEntry[] | undefined): string | null {
+  return repos?.find((r) => r.commit_hash != null && r.commit_hash !== '')?.commit_hash ?? null;
+}
+
 export function buildCommitChip(repo: RepoCommitEntry, compareUrl: string | null): CommitChipModel {
   const baseUrl = deriveRepoBaseUrl(compareUrl);
   const link = getCommitLinkData(repo.commit_hash, baseUrl);

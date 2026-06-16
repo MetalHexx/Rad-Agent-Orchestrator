@@ -7,6 +7,9 @@ assert.deepEqual(parseRegistrySelection({ repo: null, group: 'rad-orc' }), { kin
 assert.deepEqual(parseRegistrySelection({ repo: 'fake-api', group: 'rad-orc' }), { kind: 'repo', slug: 'fake-api' });
 assert.equal(parseRegistrySelection({ repo: '', group: '' }), null);
 assert.equal(parseRegistrySelection({ repo: null, group: null }), null);
+// trims leading/trailing whitespace from the slug (not just the emptiness check)
+assert.deepEqual(parseRegistrySelection({ repo: '  fake-api  ', group: null }), { kind: 'repo', slug: 'fake-api' });
+assert.deepEqual(parseRegistrySelection({ repo: '   ', group: ' rad-orc ' }), { kind: 'group', slug: 'rad-orc' });
 
 // serialize — round-trips, encodes, blanks to bare path (AD-4)
 assert.equal(selectionToQuery({ kind: 'repo', slug: 'fake-api' }), '/repo-registry?repo=fake-api');

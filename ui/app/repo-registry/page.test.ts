@@ -156,8 +156,10 @@ test('detail wrapper drops the redundant p-6 so padding is a single layer (match
 
 test('searchParams useEffect calls guard() with paneDirty and a setSelected intent when dirty (FR-13)', () => {
   // The effect must use guard() when paneDirty is true, not call setSelected directly.
-  // We verify the pattern: guard(true, ...) or guard(paneDirty, ...) wrapping setSelected(parsed).
-  assert.match(page, /guard\(true,\s*\(\)\s*=>\s*setSelected\(parsed\)\)/);
+  // Confirming the guard discards unsaved changes, so the callback both selects the
+  // parsed target AND clears paneDirty (mirrors handleSelect) — otherwise a later
+  // nav re-prompts spuriously even though the user already chose to discard.
+  assert.match(page, /guard\(true,\s*\(\)\s*=>\s*\{[\s\S]*?setSelected\(parsed\)[\s\S]*?setPaneDirty\(false\)[\s\S]*?\}\)/);
 });
 
 test('searchParams useEffect compares parsed selection against current to avoid infinite loops (FR-13)', () => {

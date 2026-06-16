@@ -408,9 +408,8 @@ export default function ProjectsPage() {
       gateMode: v5State.pipeline.gate_mode,
       currentPhaseName: deriveCurrentPhase(typedPhaseLoop),
       progress: derivePhaseProgress(typedPhaseLoop),
-      compareUrlByRepo: sourceControlRepos.reduce<Record<string, string | null>>(
-        (m, r) => ({ ...m, [r.name]: r.compare_url }),
-        {}
+      compareUrlByRepo: Object.fromEntries(
+        sourceControlRepos.map((r): [string, string | null] => [r.name, r.compare_url])
       ),
       phaseLoopStatus: typedPhaseLoop?.status,
     };

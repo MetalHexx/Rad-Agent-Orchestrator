@@ -50,6 +50,12 @@ test('resolveAndValidateFolder rejects `..` traversal', () => {
   assert.ok('error' in r);
 });
 
+test('resolveAndValidateFolder allows a legit name that merely contains `..`', () => {
+  // `foo..bar` is a valid folder name — only a path segment that IS `..` is traversal.
+  const r = resolveAndValidateFolder('~/.radorc/worktrees/foo..bar/repo');
+  assert.ok('absPath' in r, '`foo..bar` must not be rejected as traversal');
+});
+
 test('resolveAndValidateFolder rejects a path outside the allowed roots', () => {
   const r = resolveAndValidateFolder('~/Downloads/evil');
   assert.ok('error' in r, 'a home path outside ~/.radorc must be rejected');

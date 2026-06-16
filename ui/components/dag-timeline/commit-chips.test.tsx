@@ -36,6 +36,18 @@ const compareUrlByRepo = { 'fake-api': 'https://github.com/o/fake-api/compare/ma
   assert.ok(html.includes('data-slot="tooltip-trigger"'), 'TooltipTrigger renders on not-landed chip (NFR-6)');
 }
 
+// Multi-repo + landed but not linkable (no base url) → short hash shown as plain
+// text, NOT misreported as "no commit yet" (regression: a real commit must not vanish)
+{
+  const html = renderToStaticMarkup(createElement(CommitChips, {
+    repos: [{ name: 'fake-api', commit_hash: 'abc1234def' }], compareUrlByRepo: { 'fake-api': null }, singleRepo: false,
+  }));
+  assert.ok(!html.includes('<a '), 'no anchor when not linkable');
+  assert.ok(html.includes('abc1234'), 'short hash still shown for a landed-but-unlinkable commit');
+  assert.ok(!html.includes('no commit yet'), 'a landed commit must NOT be reported as "no commit yet"');
+  assert.ok(html.includes('aria-label="fake-api commit abc1234 (link unavailable)"'), 'aria-label reflects landed-but-unlinkable state');
+}
+
 // Single-repo collapse → just the hash, no repo name (FR-12)
 {
   const html = renderToStaticMarkup(createElement(CommitChips, {

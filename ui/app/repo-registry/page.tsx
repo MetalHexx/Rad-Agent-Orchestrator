@@ -55,7 +55,9 @@ export default function RepoRegistryPage() {
       if (paneDirty) {
         // Stash the restore URL (current selection) so onCancel can push it back.
         cancelRestoreUrlRef.current = selectionToQuery(current);
-        guard(true, () => setSelected(parsed));
+        // Confirming = discard unsaved changes, so clear the dirty flag too
+        // (mirrors handleSelect) — otherwise the next nav re-prompts spuriously.
+        guard(true, () => { setSelected(parsed); setPaneDirty(false); });
         return current; // leave selection unchanged until confirmed
       }
       return parsed;

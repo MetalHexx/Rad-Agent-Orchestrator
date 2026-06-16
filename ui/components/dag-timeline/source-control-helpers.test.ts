@@ -3,6 +3,7 @@ import {
   resolveLocationKind,
   resolveRepoFolderPath,
   buildCommitChip,
+  firstCommitHash,
   LOCATION_KIND_LABEL,
 } from './source-control-helpers';
 
@@ -44,5 +45,14 @@ assert.equal(noBase.linkable, false);
 assert.equal(LOCATION_KIND_LABEL.worktree, 'Worktree');
 assert.equal(LOCATION_KIND_LABEL['in-place'], 'In-place · main clone');
 assert.equal(LOCATION_KIND_LABEL['side-project'], 'Local · side-project');
+
+// firstCommitHash — first non-empty hash across repos (multi-repo commit-row gate)
+assert.equal(firstCommitHash(undefined), null);
+assert.equal(firstCommitHash([]), null);
+assert.equal(firstCommitHash([{ name: 'a', commit_hash: null }, { name: 'b', commit_hash: null }]), null);
+// the bug this guards: repos[0] empty but a later repo HAS a commit
+assert.equal(firstCommitHash([{ name: 'a', commit_hash: null }, { name: 'b', commit_hash: 'deadbeef' }]), 'deadbeef');
+assert.equal(firstCommitHash([{ name: 'a', commit_hash: '' }, { name: 'b', commit_hash: 'abc123' }]), 'abc123');
+assert.equal(firstCommitHash([{ name: 'a', commit_hash: 'first' }, { name: 'b', commit_hash: 'second' }]), 'first');
 
 console.log('source-control-helpers ✓');

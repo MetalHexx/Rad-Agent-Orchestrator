@@ -39,17 +39,28 @@ function parsePrNumber(url: string): string {
 }
 
 /**
+ * SC-PANEL-POLISH: when the OS file explorer can't be opened, surface an
+ * actionable message through the panel's inline `role="alert"` — the project's
+ * existing error surface (cf. ExecutePlanButton) — naming the folder so the
+ * user can navigate to it manually. The server never echoes absolute paths, so
+ * we use the convention path the client already holds.
+ */
+export function buildFolderOpenError(path: string): string {
+  return `Couldn't open the folder in your file explorer. Navigate to it directly: ${path}`;
+}
+
+/**
  * SC-PANEL-POLISH: a simple link that opens the repo folder in the OS file
  * explorer (Explorer / Finder / file-manager) via the guarded local endpoint.
- * No clipboard copy, no checkmark. A missing folder renders disabled.
+ * No clipboard copy, no checkmark. A missing folder renders disabled. A failed
+ * open is reported up via `onResult` to the panel-level inline alert.
  */
-function FolderOpenButton({ path, label, missing, projectName }: { path: string; label: string; missing: boolean; projectName: string }) {
-  const [failed, setFailed] = useState(false);
+function FolderOpenButton({ path, label, missing, projectName, onResult }: { path: string; label: string; missing: boolean; projectName: string; onResult: (error: string | null) => void }) {
   const onOpen = useCallback(async () => {
-    setFailed(false);
+    onResult(null); // clear any prior error on a fresh attempt
     const res = await postOpenFolder(projectName, path);
-    if (!res.success) { setFailed(true); setTimeout(() => setFailed(false), 3000); }
-  }, [projectName, path]);
+    if (!res.success) onResult(buildFolderOpenError(path));
+  }, [projectName, path, onResult]);
 
   if (missing) {
     return (
@@ -76,12 +87,14 @@ function FolderOpenButton({ path, label, missing, projectName }: { path: string;
         {/* visible label is the (truncated) folder path, not the word "Folder" */}
         <span className="max-w-[200px] truncate">{label}</span>
       </TooltipTrigger>
-      <TooltipContent>{failed ? `Couldn't open ${path}` : `Open ${path} in file explorer`}</TooltipContent>
+      <TooltipContent>Open {path} in file explorer</TooltipContent>
     </Tooltip>
   );
 }
 
 export function SourceControlPanel({ repos, projectName, projectType, autoCommit, autoPr, bindByName }: SourceControlPanelProps) {
+  // Panel-level inline alert for a failed file-explorer open (latest attempt wins).
+  const [folderError, setFolderError] = useState<string | null>(null);
   if (!repos || repos.length === 0) return null; // FR-3 safety net (page also gates)
   const panelKind = resolveLocationKind(projectType, repos.length > 0 && repos.every((r) => r.in_place === true));
   const LocIcon = LOCATION_KIND_ICON[panelKind];
@@ -153,7 +166,7 @@ export function SourceControlPanel({ repos, projectName, projectType, autoCommit
                     return (
                       <div className="ml-auto flex items-center gap-3">
                         {/* DD-4 trailing order: Folder → Compare → PR */}
-                        <FolderOpenButton path={folderPath} label={folderLabel} missing={missing} projectName={projectName} />
+                        <FolderOpenButton path={folderPath} label={folderLabel} missing={missing} projectName={projectName} onResult={setFolderError} />
                         {!isSide && repo.compare_url && (
                           <Tooltip>
                             <TooltipTrigger render={<span className="inline-flex" />}>
@@ -184,6 +197,11 @@ export function SourceControlPanel({ repos, projectName, projectType, autoCommit
               );
             })}
           </div>
+          {folderError && (
+            <p role="alert" className="border-t border-border/50 px-3 py-2 text-xs text-destructive">
+              {folderError}
+            </p>
+          )}
         </div>
       </TooltipProvider>
     </div>

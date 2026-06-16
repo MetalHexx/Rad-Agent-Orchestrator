@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import React, { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { SourceControlPanel } from './source-control-panel';
+import { SourceControlPanel, buildFolderOpenError } from './source-control-panel';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 (globalThis as any).React = React;
 
@@ -58,6 +58,14 @@ const bindByName = { 'fake-api': { state: 'bound' as const, path: '/clones/fake-
   }));
   assert.ok(html.includes('→'), 'non-side-project must render → arrow');
   assert.ok(html.includes('main'), 'base branch present after arrow');
+}
+
+// SC-PANEL-POLISH: a failed file-explorer open surfaces an actionable message
+// (project's inline alert mechanism) that names the path the user can navigate to.
+{
+  const msg = buildFolderOpenError('~/.radorc/worktrees/FAKE-NEWS/fake-api/');
+  assert.ok(/navigate to it directly/i.test(msg), 'message tells the user to navigate manually');
+  assert.ok(msg.includes('~/.radorc/worktrees/FAKE-NEWS/fake-api/'), 'message includes the folder path');
 }
 
 console.log('SourceControlPanel rows ✓');

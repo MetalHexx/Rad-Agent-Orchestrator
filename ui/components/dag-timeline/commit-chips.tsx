@@ -19,10 +19,15 @@ export function CommitChips({ repos, compareUrlByRepo, singleRepo }: CommitChips
           const chip = buildCommitChip(repo, compareUrlByRepo[repo.name] ?? null);
           const showName = !singleRepo;
           if (chip.linkable && chip.shortHash) {
+            // The chip sits in the iteration-header trailing area alongside other
+            // links (Doc/Compare/PR), not inside a roving-tabindex row with a
+            // keydown handler — so it MUST stay in the natural tab order (no
+            // tabIndex override) to be keyboard-reachable, mirroring the
+            // DocumentLink convention enforced elsewhere in this folder.
             return (
               <Tooltip key={repo.name}>
                 <TooltipTrigger render={
-                  <a href={chip.href!} target="_blank" rel="noopener noreferrer" tabIndex={-1}
+                  <a href={chip.href!} target="_blank" rel="noopener noreferrer"
                     aria-label={`View ${repo.name} commit ${chip.shortHash} on GitHub`}
                     className="inline-flex items-center gap-1 rounded-sm text-xs hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
                 }>
@@ -34,18 +39,24 @@ export function CommitChips({ repos, compareUrlByRepo, singleRepo }: CommitChips
               </Tooltip>
             );
           }
-          // not landed / not linkable
-          if (singleRepo) return null; // FR-12: single-repo + not linkable → suppress (a lone icon conveys nothing)
+          // Single-repo + not linkable → suppress entirely (FR-12: a lone icon conveys nothing).
+          if (singleRepo) return null;
+          // Multi-repo not-linkable: a commit that landed but has no compare/base
+          // URL still shows its short hash as plain text, so a real commit is NOT
+          // misreported as "no commit yet". Only a genuinely absent commit (no
+          // shortHash) renders the "no commit yet" state.
+          const landed = chip.shortHash != null;
           return (
             <Tooltip key={repo.name}>
               <TooltipTrigger render={
                 <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground"
-                  aria-label={`${repo.name} — no commit yet`} />
+                  aria-label={landed ? `${repo.name} commit ${chip.shortHash} (link unavailable)` : `${repo.name} — no commit yet`} />
               }>
                 <Github className="h-3.5 w-3.5" aria-hidden="true" />
-                <span>{repo.name}</span>
+                <span>{repo.name}{landed ? ':' : ''}</span>
+                {landed && <span className="font-medium">{chip.shortHash}</span>}
               </TooltipTrigger>
-              <TooltipContent>{repo.name} — no commit yet</TooltipContent>
+              <TooltipContent>{landed ? `${repo.commit_hash} · commit landed (link unavailable)` : `${repo.name} — no commit yet`}</TooltipContent>
             </Tooltip>
           );
         })}

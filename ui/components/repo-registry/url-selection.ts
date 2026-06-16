@@ -1,8 +1,12 @@
 import type { RailSelection } from './registry-rail';
 
 export function parseRegistrySelection(params: { repo: string | null; group: string | null }): RailSelection | null {
-  if (params.repo && params.repo.trim() !== '') return { kind: 'repo', slug: params.repo };
-  if (params.group && params.group.trim() !== '') return { kind: 'group', slug: params.group };
+  // Return the trimmed value as the slug — testing `.trim()` for emptiness but
+  // keeping the untrimmed value would leak leading/trailing spaces into lookups.
+  const repo = params.repo?.trim();
+  if (repo) return { kind: 'repo', slug: repo };
+  const group = params.group?.trim();
+  if (group) return { kind: 'group', slug: group };
   return null;
 }
 
