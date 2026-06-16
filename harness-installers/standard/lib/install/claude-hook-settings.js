@@ -207,6 +207,9 @@ function buildTelemetryEntry(event, hookCommand) {
  *
  * - Adds the three telemetry hook entries (PostToolUse, Stop, SessionEnd) when absent.
  * - Refreshes in-place when the hookCommand has changed.
+ * - De-duplicates: collapses any extra telemetry-marked entries for an event down
+ *   to a single desired entry, so a manually-edited or older buggy settings file
+ *   self-heals to exactly one telemetry hook per event (NFR-5).
  * - No-ops when the entries already match the desired state (idempotent).
  * - Never touches the preamble or any other hook entry (NFR-3).
  *
@@ -220,10 +223,16 @@ export function reconcileTelemetryHooks({ settingsPath, hookCommand }) {
     if (!Array.isArray(settings.hooks[event])) settings.hooks[event] = [];
     const arr = settings.hooks[event];
     const desired = buildTelemetryEntry(event, hookCommand);
-    const idx = arr.findIndex(isTelemetryEntry);
-    if (idx === -1) { arr.push(desired); changed = true; }                       // add
-    else if (JSON.stringify(arr[idx]) !== JSON.stringify(desired)) {             // refresh
-      arr[idx] = desired; changed = true;
+    const idxs = arr.reduce((acc, e, i) => (isTelemetryEntry(e) ? (acc.push(i), acc) : acc), []);
+    if (idxs.length === 0) {
+      arr.push(desired); changed = true;                                         // add
+    } else {
+      if (JSON.stringify(arr[idxs[0]]) !== JSON.stringify(desired)) {            // refresh first
+        arr[idxs[0]] = desired; changed = true;
+      }
+      for (let k = idxs.length - 1; k >= 1; k--) {                              // de-dup extras
+        arr.splice(idxs[k], 1); changed = true;
+      }
     }
   }
   if (changed) writeSettings(settingsPath, settings);

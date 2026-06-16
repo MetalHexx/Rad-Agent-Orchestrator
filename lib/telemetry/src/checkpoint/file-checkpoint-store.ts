@@ -28,11 +28,13 @@ export class FileCheckpointStore implements CheckpointStore {
       const { pid, acquiredAt } = JSON.parse(raw) as { pid?: number; acquiredAt?: string };
       const ageMs = acquiredAt ? Date.now() - Date.parse(acquiredAt) : Infinity;
       if (Number.isFinite(ageMs) && ageMs > this.lockTtlMs) return true;   // aged out
-      if (typeof pid === 'number') {
+      if (typeof pid === 'number' && Number.isInteger(pid) && pid > 0) {
         try { process.kill(pid, 0); return false; }                        // signalable ⇒ alive
-        catch (e) { return (e as NodeJS.ErrnoException).code === 'ESRCH'; } // ESRCH ⇒ dead ⇒ stale
+        // EPERM ⇒ process exists but we can't signal it ⇒ alive. Any other
+        // error (ESRCH ⇒ no such process, EINVAL ⇒ invalid pid, etc.) ⇒ stale.
+        catch (e) { return (e as NodeJS.ErrnoException).code !== 'EPERM'; }
       }
-      return true;                                                         // no pid ⇒ unusable
+      return true;                                                         // missing / non-positive / non-integer pid ⇒ unusable ⇒ stale
     } catch { return true; }                                               // unparseable ⇒ stale
   }
 

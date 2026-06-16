@@ -48,6 +48,20 @@ test('changed command refreshes in place (NFR-5)', () => {
   assert.ok(s.hooks.Stop[0].hooks[0].command.includes('new'));
 });
 
+test('reconcile de-duplicates extra telemetry entries to a single hook per event (NFR-5)', () => {
+  const p = tmp();
+  fs.mkdirSync(path.dirname(p), { recursive: true });
+  // Two telemetry-marked entries for one event (manual edit / older buggy install).
+  fs.writeFileSync(p, JSON.stringify({ hooks: { Stop: [
+    { hooks: [{ type: 'command', command: 'node "shim" # rad-orc-telemetry' }] },
+    { hooks: [{ type: 'command', command: 'node "shim" # rad-orc-telemetry' }] },
+  ] } }));
+  reconcileTelemetryHooks({ settingsPath: p, hookCommand: 'node "shim"' });
+  const s = read(p);
+  const telemetryStop = s.hooks.Stop.filter((e) => e.hooks?.[0]?.command?.includes('rad-orc-telemetry'));
+  assert.equal(telemetryStop.length, 1, 'duplicate telemetry entries collapsed to one');
+});
+
 test('uninstall removes telemetry across all 3 arrays, leaves preamble (NFR-3)', () => {
   const p = tmp();
   mergePreambleHook({ settingsPath: p, hookCommand: 'node "preamble"' });
