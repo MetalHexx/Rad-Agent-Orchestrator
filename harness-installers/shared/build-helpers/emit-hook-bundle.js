@@ -2,7 +2,8 @@
 // for discipline-consistency with the other emit-helpers. Bundles
 // bootstrap.mjs with deps inlined, copies drift-check.mjs / hooks.json /
 // launcher.cjs / hooks/AGENTS.md verbatim from `source`, and stages the
-// single-source session-preamble.mjs shim from `sharedHooksDir` (AD-8).
+// single-source session-preamble.mjs + telemetry-capture.mjs shims from
+// `sharedHooksDir` (AD-8).
 
 import { build } from 'esbuild';
 import fs from 'node:fs';
@@ -14,9 +15,9 @@ import path from 'node:path';
  *    hooks.json + launcher.cjs + AGENTS.md
  *  - target: output hooks/ folder under the installer's output/
  *  - sharedHooksDir: the canonical shared hooks/ folder that owns the
- *    single-source session-preamble.mjs shim (AD-8). When provided, the shim
- *    is staged from here, not from the plugin `source` tree. Falls back to
- *    `source` when absent (backward compatibility).
+ *    single-source session-preamble.mjs + telemetry-capture.mjs shims (AD-8).
+ *    When provided, the shims are staged from here, not from the plugin
+ *    `source` tree. Falls back to `source` when absent (backward compatibility).
  *
  * esbuild resolves bootstrap.mjs's `../lib/install/*` imports naturally from
  * the entry's own location, so no explicit libRoot parameter is needed.
@@ -47,9 +48,9 @@ export async function emitHookBundle(opts) {
     }
   }
   // session-preamble.mjs + telemetry-capture.mjs are single-source (AD-8).
-  const preambleSource = sharedHooksDir ?? source;
+  const shimSource = sharedHooksDir ?? source;
   for (const shim of ['session-preamble.mjs', 'telemetry-capture.mjs']) {
-    const src = path.join(preambleSource, shim);
+    const src = path.join(shimSource, shim);
     if (fs.existsSync(src)) fs.copyFileSync(src, path.join(target, shim));
   }
 }
