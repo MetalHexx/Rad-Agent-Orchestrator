@@ -29,6 +29,15 @@ These rules apply to **every** review mode. Violations invalidate the review.
 5. **Verdicts cite the driving finding.** An `approved` verdict cites "no findings ≥ low severity, all audit rows on-track". A `changes_requested` verdict names the finding ID(s) that drove it.
 6. **Ran it yourself.** Test counts, build status, and diff stats come from commands you executed in this review session, not from any upstream report.
 
+## Worktree Safety Charter
+
+These rules apply to **every** review mode. Review runs inside the project's live git worktree; leaving HEAD detached there causes the orchestrator's next commit to land off-branch and be silently orphaned.
+
+1. **Never detach HEAD in the live worktree.** Do not run `git checkout <sha>`, `git switch --detach`, or anything that moves HEAD off the current branch.
+2. **Get baselines read-only.** Obtain historical content for comparison via `git diff <a>..<b>`, `git diff --stat <a>..<b>`, or `git show <sha>:<path>` — none of these move HEAD.
+3. **Build or inspect an old commit in a throwaway worktree.** If you must build/run at an earlier commit, use `git worktree add <tmp-dir> <sha>` and remove it when done — never check out the old commit in the live worktree.
+4. **If a checkout is ever unavoidable, restore the branch in a `finally`.** Capture the branch first with `git symbolic-ref --short HEAD`, and `git checkout <branch>` before returning, even on error.
+
 ## Finding-ID Scheme
 
 Every finding in every finding-bearing table gets a stable `F-N` identifier, numbered sequentially per review doc starting at `F-1`. Conformance-pass findings (drift / regression rows in the audit table) and quality-sweep findings share the same `F-N` space. IDs reset per review document — a corrective review starts fresh at `F-1`. The orchestrator's corrective-playbook addendum keys its disposition table off these IDs; missing or duplicate IDs break the mediation contract.
