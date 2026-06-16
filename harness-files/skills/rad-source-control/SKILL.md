@@ -19,6 +19,7 @@ Commit and PR operations work across one or more repos in a single CLI call. The
 - **Commit failure** — if a repo's commit fails, halt immediately and name the failing repo. Do not continue to remaining repos.
 - **Push failure** — if push fails for a repo, mark that repo as `pushed: false` and continue. The commit itself is still a success.
 - **No-change repo** — a repo with no staged changes is a clean skip (`committed: false`). Relay it as-is; the pipeline ignores it without error.
+- **Off-branch / detached HEAD** — if a repo's HEAD is not attached to its intended branch before commit, or the branch ref did not advance after commit, do not relay a commit row: emit the off-branch escalation and halt. Distinct from a benign remote-less `pushed:false` and a benign no-change `committed:false` skip. (FR-2, FR-3, NFR-3)
 
 The agent runs on the haiku model. All inputs (repo names, paths, branch names, messages, PR descriptions) come from the spawn prompt — no interactive prompting.
 
