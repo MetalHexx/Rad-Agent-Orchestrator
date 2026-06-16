@@ -58,6 +58,32 @@ The copy is per-skill-invocation. Iterating means re-running the skill after eac
 - Paths are always resolved via `path.resolve` / `path.join` from `rootDir`; no hardcoded absolute paths.
 - `output/` is wiped clean at the start of every build; the output tree is never partially updated.
 
+## Telemetry hook wiring (FR-14)
+
+Telemetry hooks are declared statically in `hooks/hooks.json` and deployed verbatim into `output/hooks/hooks.json` by the `emit-hook-bundle` build step. The plugin runtime registers them when Claude Code loads the plugin.
+
+### Three-event set in hooks.json
+
+| Hook event | `matcher` | Shim invoked |
+|---|---|---|
+| `PostToolUse` | `Agent` | `telemetry-capture.mjs` |
+| `Stop` | _(none)_ | `telemetry-capture.mjs` |
+| `SessionEnd` | _(none)_ | `telemetry-capture.mjs` |
+
+Each entry's command is the standard plugin dynamic-import launcher (`node -e "const r=process.env.CLAUDE_PLUGIN_ROOT||''; ...import(...telemetry-capture.mjs)"`) — the same pattern used by all other plugin hooks to resolve the shim relative to `CLAUDE_PLUGIN_ROOT`. The `PostToolUse` entry carries `"matcher": "Agent"` so it fires only on `Agent`-type tool calls.
+
+### source ↔ output parity
+
+`hooks/hooks.json` (source) and `output/hooks/hooks.json` (build artifact) must be identical. The `emit-hook-bundle` step copies `hooks.json` verbatim to `output/hooks/`. If you edit `hooks/hooks.json` you must rebuild (`node build-scripts/build.js`) to update `output/hooks/hooks.json`. The parity test (`tests/parity-validation.test.mjs`) can be used to verify file-set equality against a legacy payload, but day-to-day the simplest check is `diff hooks/hooks.json output/hooks/hooks.json`.
+
+### telemetry-capture.mjs shim
+
+`telemetry-capture.mjs` is single-source from `harness-installers/shared/hooks/telemetry-capture.mjs` (AD-8). The `emit-hook-bundle` build step copies it (along with `session-preamble.mjs`) from `sharedHooksDir` into `output/hooks/`. Do not create a plugin-local copy; always update the shim in `harness-installers/shared/hooks/`.
+
+### `telemetry/` sacred-folder skip
+
+The plugin installer does not write to `~/.radorc/telemetry/`. The sacred-folder skip is enforced by the standard installer's `remove-files.js` (see `harness-installers/standard/AGENTS.md`) and applies equally to any plugin-delivered manifest entry targeting that path. Plugin hooks never write directly to `~/.radorc/telemetry/`; writing is performed by the CLI's `telemetry capture` subcommand invoked inside the shim.
+
 ## Rules for making updates
 
 - Step order is load-bearing: adapter output must exist before `copy-agents`/`copy-skills`; bundles must exist before `expand-tokens`; `validate` must run last.
@@ -65,3 +91,4 @@ The copy is per-skill-invocation. Iterating means re-running the skill after eac
 - Adding a new step: place it in the correct position in `runBuild`, update the step-count comment, and update `validate.js` if a new required artifact is introduced.
 - `synthesizePackageJson` hard-codes `name: '@rad-orchestration/claude-plugin'`; changing the published package name requires updating it there.
 - Tests in `tests/` cover the build orchestration end-to-end; run them after any build-script change.
+- Adding or changing a telemetry hook event: edit `hooks/hooks.json`, rebuild, and verify `output/hooks/hooks.json` is updated. If the `PostToolUse` matcher or the three-event set changes, update this AGENTS.md and `harness-installers/standard/AGENTS.md` to keep documentation in sync.
