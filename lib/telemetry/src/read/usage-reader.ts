@@ -18,7 +18,14 @@ export function readUsageForDates(opts: ReadUsageOptions): TelemetryRecord[] {
     .sort((a, b) => a.name.localeCompare(b.name));
   const out: TelemetryRecord[] = [];
   for (const f of files) {
-    for (const line of readFileSync(join(usageDir, f.name), 'utf8').split('\n')) {
+    let content: string;
+    try {
+      content = readFileSync(join(usageDir, f.name), 'utf8');
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') continue; // partition pruned mid-read (NFR-6)
+      throw err;
+    }
+    for (const line of content.split('\n')) {
       if (!line.trim()) continue;
       try {
         const raw = JSON.parse(line) as Record<string, unknown>;
@@ -29,7 +36,7 @@ export function readUsageForDates(opts: ReadUsageOptions): TelemetryRecord[] {
     }
   }
   const deduped = new Map<string, TelemetryRecord>();
-  for (const r of out) deduped.set(`${r.sessionId}${r.usageId}`, r); // last-wins (FR-4)
+  for (const r of out) deduped.set(`${r.sessionId}\x00${r.usageId}`, r); // last-wins, collision-safe (FR-4, AD-3)
   const result = [...deduped.values()];
   return opts.filter ? result.filter(opts.filter) : result;
 }
