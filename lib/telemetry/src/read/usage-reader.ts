@@ -28,5 +28,8 @@ export function readUsageForDates(opts: ReadUsageOptions): TelemetryRecord[] {
       } catch { /* skip malformed (NFR-4) */ }
     }
   }
-  return opts.filter ? out.filter(opts.filter) : out;
+  const deduped = new Map<string, TelemetryRecord>();
+  for (const r of out) deduped.set(`${r.sessionId}${r.usageId}`, r); // last-wins (FR-4)
+  const result = [...deduped.values()];
+  return opts.filter ? result.filter(opts.filter) : result;
 }
