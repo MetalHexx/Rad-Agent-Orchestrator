@@ -24,7 +24,10 @@ export async function GET(req: Request) {
     const start = params.get('startDate') ?? todayUtc();
     const end = params.get('endDate') ?? todayUtc();
     const records = readUsageForDates({ root: getTelemetryRoot(), dates: expandRange(start, end) });
-    return NextResponse.json({ rows: records.map(toObservabilityUsageRow) });
+    // cache: "no-store" (FR-6, BE-API-1): force-dynamic stops Next's framework-level
+    // caching, but the explicit header is what keeps a browser/CDN/proxy from caching
+    // this always-fresh observability payload.
+    return NextResponse.json({ rows: records.map(toObservabilityUsageRow) }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Internal server error';
     return NextResponse.json({ error: { code: 'INTERNAL', message, field: '' } }, { status: 500 });

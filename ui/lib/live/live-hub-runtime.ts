@@ -1,4 +1,4 @@
-import { readFileSync, statSync } from 'node:fs';
+import { readFileSync, statSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { classifyArtifactEvent, type ArtifactSemanticEvent } from './artifact-adapter';
 import {
@@ -287,14 +287,14 @@ function build(args: RuntimeArgs) {
 
     w.on('change', (filePath: unknown) => {
       const fp = String(filePath);
-      if (!telemetryOffsets.has(fp)) {
-        // File was present at startup (ignoreInitial: true suppressed its 'add').
-        // Seed at current EOF so we only tail newly appended bytes from this point
-        // forward — a restart never re-emits already-seen rows (FR-12).
-        let seedOffset = 0;
-        try { seedOffset = statSync(fp).size; } catch { /* file may have disappeared */ }
-        telemetryOffsets.set(fp, seedOffset);
-      }
+      // Files present at watcher start are seeded at EOF in the 'ready' handler;
+      // files created afterward are seeded at 0 in the 'add' handler. If a 'change'
+      // still arrives for an untracked file (a missed-'add'/pre-'ready' race), seed
+      // at 0 and read the whole file rather than at the POST-write size — seeding at
+      // the post-write size silently drops the very rows that triggered this event
+      // (FR-10, FR-11). Re-delivery is harmless because consumers dedup on
+      // (sessionId, usageId) (NFR-3, NFR-5).
+      if (!telemetryOffsets.has(fp)) telemetryOffsets.set(fp, 0);
       scheduleTelemetryFlush(fp);
     });
 
@@ -307,13 +307,25 @@ function build(args: RuntimeArgs) {
 
     w.on('error', (err: unknown) => telemetrySupervisor.reportError(err));
     w.on('ready', () => {
-      // Seed any files already present at startup at EOF so restarts never
-      // re-emit rows already delivered before the restart (FR-12).
-      // (In production with ignoreInitial: false this would be emitted as 'add'
-      // events during the scan; with ignoreInitial: true we skip it. The
-      // production path seeds here only for files not yet in the map — i.e.
-      // files that existed before the watcher started but we haven't seen an
-      // 'add' for because ignoreInitial: true suppressed it.)
+      // Seed every partition already present at watcher start at its CURRENT EOF.
+      // 'ready' fires after the initial scan and before any queued 'change' events,
+      // so these offsets are observed by every subsequent handler. This serves two
+      // requirements at once: a restart never re-emits rows delivered before it
+      // (FR-12), AND the first append to a startup-present file is tailed from the
+      // pre-append EOF rather than the post-append EOF (FR-10, FR-11). Seeding lazily
+      // in 'change' read statSync().size AFTER the triggering append and silently
+      // dropped that first batch. ignoreInitial: true suppresses 'add' for these
+      // files, so this is the only place they get an offset.
+      if (args.telemetryRoot) {
+        try {
+          for (const name of readdirSync(args.telemetryRoot)) {
+            if (!name.endsWith('.ndjson')) continue;
+            const fp = path.join(args.telemetryRoot, name);
+            if (telemetryOffsets.has(fp)) continue;
+            try { telemetryOffsets.set(fp, statSync(fp).size); } catch { /* vanished mid-scan */ }
+          }
+        } catch { /* telemetryRoot absent — nothing present to seed */ }
+      }
       telemetrySupervisor.reportHealthy();
     });
 
@@ -355,7 +367,14 @@ function build(args: RuntimeArgs) {
     const rows: ReturnType<typeof toObservabilityUsageRow>[] = [];
     for (const line of result.lines) {
       try {
-        rows.push(toObservabilityUsageRow(JSON.parse(line)));
+        // Coalesce the legacy identifier read-side, exactly as readUsageForDates
+        // does, so the live path and the history path agree during the migration
+        // window (AD-9). A row carrying only radOrcId would otherwise project to
+        // usageId: undefined and break consumers keyed on (sessionId, usageId).
+        const raw = JSON.parse(line) as Record<string, unknown>;
+        const usageId = (raw.usageId ?? raw.radOrcId) as string | undefined;
+        if (!usageId) continue; // no identity — skip, matching the read module
+        rows.push(toObservabilityUsageRow({ ...raw, usageId } as Parameters<typeof toObservabilityUsageRow>[0]));
       } catch {
         // Skip malformed lines (NFR-4).
       }
@@ -499,6 +518,11 @@ function build(args: RuntimeArgs) {
         void telemetryWatcher.close().catch((e) => console.error('[live] telemetry watcher close failed:', e));
         telemetryWatcher = null;
       }
+      // Cancel any pending per-file flush debounces; otherwise their real timers fire
+      // ~50 ms after teardown and call flushTelemetryFile on the torn-down runtime
+      // (cross-test contamination, and a stray publish on a hot-reload teardown).
+      for (const h of telemetryDebounces.values()) clearTimeout(h);
+      telemetryDebounces.clear();
     },
   };
 }

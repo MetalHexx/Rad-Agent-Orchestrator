@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { readFileSync } from 'node:fs';
+import { readFileSync, mkdtempSync, writeFileSync, appendFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { __resetLiveRuntimeForTest, getLiveRuntime } from './live-hub-runtime';
 
@@ -307,4 +308,111 @@ test('a registry change never reaches an artifact subscriber (AD-1 topic isolati
   clock.flush();
   assert.equal(got.length, 0, 'a registry event must not be delivered to artifact subscribers');
   off();
+});
+
+// ── Telemetry watcher integration ───────────────────────────────────────────
+// Drives the real add/change/ready wiring through makeTelemetryWatcher. The P04
+// review flagged that this runtime wiring had no integration test; these cover
+// the seeding, teardown, and migration-coalesce behavior end-to-end.
+
+function telemetryTmpDir(): string { return mkdtempSync(path.join(tmpdir(), 'telem-rt-')); }
+// The flush debounce uses a real 50 ms setTimeout (not the injected scheduler),
+// so wait past it, then flush the hub clock to deliver the coalesced batch.
+const flushTick = () => new Promise<void>((resolve) => setTimeout(resolve, 90));
+
+test('the telemetry watcher delivers the first append to a partition present at startup, seeded at EOF on ready (FR-10, FR-11, FR-12)', async () => {
+  __resetLiveRuntimeForTest();
+  const dir = telemetryTmpDir();
+  const fp = path.join(dir, 'usage-2026-06-18-abc.ndjson');
+  // A partition already on disk when the watcher starts (the common "current day" file).
+  writeFileSync(fp, JSON.stringify({ sessionId: 's1', usageId: 'pre1', timestamp: '2026-06-18T00:00:00Z', inputTokens: 1, outputTokens: 2 }) + '\n');
+
+  const w = fakeWatcher();
+  const clock = manualClock();
+  const rt = getLiveRuntime({
+    projectsRoot: '/p',
+    telemetryRoot: dir,
+    makeWatcher: () => fakeWatcher() as never,
+    makeTelemetryWatcher: () => w as never,
+    coalesceWindowMs: 50,
+    scheduler: clock,
+  });
+  const got: Array<{ usageId?: string }> = [];
+  const off = rt.subscribeTelemetry((n) => got.push(...n.payload.rows));
+
+  w.emit('ready'); // seeds fp at its current (pre-append) EOF
+
+  appendFileSync(fp, JSON.stringify({ sessionId: 's1', usageId: 'new1', timestamp: '2026-06-18T01:00:00Z', inputTokens: 3, outputTokens: 4 }) + '\n');
+  w.emit('change', fp);
+
+  await flushTick();
+  clock.flush();
+  off();
+  rt.teardown();
+
+  assert.deepEqual(got.map((r) => r.usageId), ['new1'],
+    'the first post-start append is delivered once; the pre-existing row is not re-emitted');
+});
+
+test('teardown cancels a pending telemetry flush debounce so no batch publishes afterward (clean teardown)', async () => {
+  __resetLiveRuntimeForTest();
+  const dir = telemetryTmpDir();
+  const fp = path.join(dir, 'usage-2026-06-18-xyz.ndjson');
+
+  const w = fakeWatcher();
+  const clock = manualClock();
+  const rt = getLiveRuntime({
+    projectsRoot: '/p',
+    telemetryRoot: dir,
+    makeWatcher: () => fakeWatcher() as never,
+    makeTelemetryWatcher: () => w as never,
+    coalesceWindowMs: 50,
+    scheduler: clock,
+  });
+  const got: Array<{ usageId?: string }> = [];
+  const off = rt.subscribeTelemetry((n) => got.push(...n.payload.rows));
+
+  w.emit('ready');
+  writeFileSync(fp, JSON.stringify({ sessionId: 's1', usageId: 'u1', timestamp: '2026-06-18T00:00:00Z', inputTokens: 0, outputTokens: 0 }) + '\n');
+  w.emit('add', fp);   // 'add' seeds offset 0 and schedules a 50 ms flush debounce
+  rt.teardown();       // must cancel the pending debounce
+
+  await flushTick();
+  clock.flush();
+  off();
+
+  assert.deepEqual(got, [], 'the pending flush debounce was cancelled at teardown — nothing published');
+});
+
+test('the live tail coalesces a legacy radOrcId row to usageId, matching the history read path (AD-9)', async () => {
+  __resetLiveRuntimeForTest();
+  const dir = telemetryTmpDir();
+  const fp = path.join(dir, 'usage-2026-06-18-leg.ndjson');
+
+  const w = fakeWatcher();
+  const clock = manualClock();
+  const rt = getLiveRuntime({
+    projectsRoot: '/p',
+    telemetryRoot: dir,
+    makeWatcher: () => fakeWatcher() as never,
+    makeTelemetryWatcher: () => w as never,
+    coalesceWindowMs: 50,
+    scheduler: clock,
+  });
+  const got: Array<{ usageId?: string }> = [];
+  const off = rt.subscribeTelemetry((n) => got.push(...n.payload.rows));
+
+  w.emit('ready');
+  // A brand-new partition (seeded at 0 by the 'add' handler) whose first row is a
+  // legacy radOrcId-only record (pre-rename schema — AD-9 migration window).
+  writeFileSync(fp, JSON.stringify({ sessionId: 's1', radOrcId: 'legacy1', timestamp: '2026-06-18T00:00:00Z', inputTokens: 1, outputTokens: 2 }) + '\n');
+  w.emit('add', fp);
+
+  await flushTick();
+  clock.flush();
+  off();
+  rt.teardown();
+
+  assert.deepEqual(got.map((r) => r.usageId), ['legacy1'],
+    'radOrcId is coalesced into usageId on the live path, not emitted as undefined');
 });

@@ -25,3 +25,14 @@ test('GET on an empty/absent store returns { rows: [] }, not an error (FR-3, DD-
   assert.equal(res.status, 200);
   assert.deepEqual(await res.json(), { rows: [] });
 });
+
+test('GET sets Cache-Control: no-store on the response (FR-6)', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'obs-nostore-'));
+  const dir = join(root, 'usage'); mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'usage-2026-06-17-s1.ndjson'),
+    JSON.stringify({ usageId: 'u1', sessionId: 's1', timestamp: '2026-06-17T00:00:00Z', inputTokens: 1, outputTokens: 2 }) + '\n');
+  process.env.RADORC_TELEMETRY_ROOT = root;
+  const { GET } = await import('./route');
+  const res = await GET(new Request('http://t/api/observability/usage?startDate=2026-06-17&endDate=2026-06-17'));
+  assert.equal(res.headers.get('cache-control'), 'no-store', 'FR-6 requires the route to set cache: no-store');
+});

@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { TelemetryCollector } from '../src/collector.js';
+import {
+  SCHEMA_VERSION,
+  type CaptureSignal, type CheckpointStore, type HarnessAdapter,
+  type OperationEventStore, type TelemetryRecord, type TelemetrySink,
+} from '../src/types.js';
 
 it('commits usageId values into the checkpoint seen-set (FR-9)', () => {
   const committed: string[] = [];
@@ -15,11 +20,6 @@ it('commits usageId values into the checkpoint seen-set (FR-9)', () => {
   collector.capture({ sessionId: 's1', cwd: '', kind: 'Stop' } as never);
   expect(committed).toContain('u1');
 });
-import {
-  SCHEMA_VERSION,
-  type CaptureSignal, type CheckpointStore, type HarnessAdapter,
-  type OperationEventStore, type TelemetryRecord, type TelemetrySink,
-} from '../src/types.js';
 
 const row = (id: string): TelemetryRecord => ({
   schemaVersion: SCHEMA_VERSION, harness: 'fake', usageId: id, sessionId: 's1',
