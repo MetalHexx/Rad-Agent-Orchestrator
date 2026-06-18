@@ -5,3 +5,4 @@ export { pruneAgedPartitions } from './retention.js';
 export { ClaudeCodeAdapter, subagentPathFor } from './adapter/claude-code-adapter.js';
 export { TelemetryCollector, type CaptureResult } from './collector.js';
 export { readUsageForDates, type ReadUsageOptions } from './read/usage-reader.js';
+export { toObservabilityUsageRow, type ObservabilityUsageRow } from './read/observability-row.js';
