@@ -103,6 +103,14 @@ async function run() {
     );
   });
 
+  await test('NAV_LINKS adds Observability before Brainstorm POC (FR-1)', () => {
+    const obs = sourceText.indexOf('/observability');
+    const poc = sourceText.indexOf('/brainstorm-poc');
+    assert.ok(obs !== -1, 'app-header-shell.tsx must contain an Observability nav entry (href="/observability")');
+    assert.ok(poc !== -1, 'Brainstorm POC nav entry must still exist');
+    assert.ok(obs < poc, 'Observability must be ordered before Brainstorm POC in NAV_LINKS');
+  });
+
   if (failed > 0) {
     console.error(`\n${failed} test(s) failed, ${passed} passed`);
     process.exit(1);
