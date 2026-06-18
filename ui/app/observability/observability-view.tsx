@@ -5,8 +5,10 @@ import { useObservabilityLive } from "@/hooks/use-observability-live";
 import { ActivityDot } from "@/components/observability/activity-dot";
 import { SummaryCards } from "@/components/observability/summary-cards";
 import { TotalRateChart } from "@/components/observability/total-rate-chart";
+import { ControlBar } from "@/components/observability/control-bar";
 import { deriveSessions, timeBucketedRate } from "@/lib/observability/sessions";
 import { isActive } from "@/lib/observability/activity-dot-color";
+import { canLoadEarlier } from "@/lib/observability/day-window";
 
 function useNow(intervalMs: number): number {
   const [now, setNow] = React.useState(() => Date.now());
@@ -26,11 +28,44 @@ function formatAgo(ms: number): string {
   return `${hrs}h ago`;
 }
 
+// UTC date string for today
+function todayUtc(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
 export function ObservabilityView() {
-  const { rows } = useObservabilityLive();
+  const { rows, earliestDay, loadEarlier } = useObservabilityLive();
   const now = useNow(1000);
 
-  const filteredSessions = React.useMemo(() => deriveSessions(rows), [rows]);
+  // Filter state (FR-6)
+  const [worktree, setWorktree] = React.useState<string>("All");
+  const [session, setSession] = React.useState<string>("All");
+
+  const allSessions = React.useMemo(() => deriveSessions(rows), [rows]);
+
+  // Unique worktree paths seen across all sessions (absent → "unknown")
+  const worktrees = React.useMemo(
+    () => [...new Set(allSessions.map((s) => s.worktree ?? ""))],
+    [allSessions]
+  );
+
+  // Apply worktree filter (mapping absent → "unknown" for comparison)
+  const sessionsAfterWorktree = React.useMemo(() => {
+    if (worktree === "All") return allSessions;
+    return allSessions.filter((s) => (s.worktree ?? "unknown") === worktree);
+  }, [allSessions, worktree]);
+
+  // Session IDs visible after worktree filter
+  const sessionIds = React.useMemo(
+    () => sessionsAfterWorktree.map((s) => s.sessionId),
+    [sessionsAfterWorktree]
+  );
+
+  // Apply session filter
+  const filteredSessions = React.useMemo(() => {
+    if (session === "All") return sessionsAfterWorktree;
+    return sessionsAfterWorktree.filter((s) => s.sessionId === session);
+  }, [sessionsAfterWorktree, session]);
   const activeNow = React.useMemo(
     () => filteredSessions.filter(s => isActive(now - s.lastMs)).length,
     [filteredSessions, now]
@@ -62,9 +97,19 @@ export function ObservabilityView() {
         )}
       </header>
 
+      <ControlBar
+        worktrees={worktrees}
+        worktree={worktree}
+        onWorktree={setWorktree}
+        sessions={sessionIds}
+        session={session}
+        onSession={setSession}
+        onEarlier={loadEarlier}
+        canEarlier={canLoadEarlier(earliestDay, todayUtc())}
+        onHelp={() => {}}
+      />
       <SummaryCards sessions={filteredSessions} activeNow={activeNow} />
       <TotalRateChart data={timeBucketedRate([...rows.values()], { endMs: now, windowMs: 60*60*1000, buckets: 60 })} />
-      {/* control bar — P03-T01 */}
       {/* session table — P03-T02 */}
     </main>
   );
