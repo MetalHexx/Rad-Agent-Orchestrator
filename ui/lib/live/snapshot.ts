@@ -1,6 +1,10 @@
 import { deriveArtifacts, type Artifact } from '@/lib/artifact-model';
 
 export interface ArtifactSnapshot {
+  /** False when the fetch failed (non-OK status or thrown). Distinguishes a failed
+   *  fetch from a genuinely empty project so callers never store a failure as the
+   *  diff baseline (which would make the next snapshot pulse every file as `added`). */
+  ok: boolean;
   files: string[];
   artifacts: Artifact[];
   mtimes: Record<string, number>;
@@ -13,7 +17,7 @@ export interface SnapshotChange {
 
 // Fresh per call so a caller that stores/mutates the arrays can't corrupt a
 // shared instance — matches the original non-OK return.
-const emptySnapshot = (): ArtifactSnapshot => ({ files: [], artifacts: [], mtimes: {} });
+const emptySnapshot = (): ArtifactSnapshot => ({ ok: false, files: [], artifacts: [], mtimes: {} });
 
 export async function fetchArtifactSnapshot(
   projectName: string,
@@ -26,7 +30,7 @@ export async function fetchArtifactSnapshot(
     const files = data.files ?? [];
     const mtimes = data.mtimes ?? {};
     const artifacts = deriveArtifacts(projectName, files);
-    return { files, artifacts, mtimes };
+    return { ok: true, files, artifacts, mtimes };
   } catch {
     // A rejected fetch (offline/DNS/CORS) or a thrown res.json() resolves to the
     // same empty snapshot as a non-OK response, so callers that `void` this
