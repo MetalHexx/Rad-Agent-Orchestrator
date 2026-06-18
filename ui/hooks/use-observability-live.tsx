@@ -4,6 +4,7 @@ import type { ObservabilityUsageRow } from "@rad-orchestration/telemetry";
 import type { SSEEvent } from "@/types/events";
 import { useSSEContext } from "@/hooks/use-sse-context";
 import { upsertRows } from "@/lib/observability/sessions";
+import { canLoadEarlier, previousUtcDay } from "@/lib/observability/day-window";
 
 const utcDay = (d: Date) => d.toISOString().slice(0, 10);
 async function fetchDay(date: string): Promise<ObservabilityUsageRow[]> {
@@ -11,11 +12,6 @@ async function fetchDay(date: string): Promise<ObservabilityUsageRow[]> {
   if (!res.ok) return [];
   const json = await res.json();
   return (json.rows ?? []) as ObservabilityUsageRow[];
-}
-
-export function isWithinRetention(day: string, nowMs: number, retentionDays = 14): boolean {
-  const floor = new Date(nowMs - retentionDays * 86_400_000).toISOString().slice(0, 10);
-  return day >= floor;
 }
 
 export function useObservabilityLive() {
@@ -42,10 +38,9 @@ export function useObservabilityLive() {
   }, [sseStatus, merge]);
 
   const loadEarlier = React.useCallback(() => {
-    const prev = new Date(`${earliestDay}T00:00:00Z`);
-    prev.setUTCDate(prev.getUTCDate() - 1);
-    const day = utcDay(prev);
-    if (!isWithinRetention(day, Date.now())) return;
+    const today = utcDay(new Date());
+    if (!canLoadEarlier(earliestDay, today)) return;
+    const day = previousUtcDay(earliestDay);
     setEarliestDay(day);
     void fetchDay(day).then(merge);
   }, [earliestDay, merge]);

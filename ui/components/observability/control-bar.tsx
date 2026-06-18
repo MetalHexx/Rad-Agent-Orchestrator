@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
 
 export interface ControlBarProps {
   /** All unique worktree paths seen in rows; absent worktree shown as "unknown". */
@@ -45,15 +46,29 @@ export function ControlBar({
     <div className="flex items-center gap-3 rounded-lg bg-card ring-1 ring-foreground/10 px-4 py-2">
       {/* Day window controls — Today anchor + Earlier step */}
       <div className="flex items-center gap-1">
-        <span className="text-sm font-medium text-foreground">Today</span>
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={!canEarlier}
-          onClick={onEarlier}
-        >
-          Earlier
-        </Button>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger>
+              <span className="text-sm font-medium text-foreground">Today</span>
+            </TooltipTrigger>
+            <TooltipContent>Shows today&apos;s sessions. &ldquo;Earlier&rdquo; steps back one day at a time within the 14-day retention window.</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!canEarlier}
+                onClick={onEarlier}
+              >
+                Earlier
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Steps back one day at a time within the 14-day retention window.</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       </div>
 
       <div className="h-4 w-px bg-border" aria-hidden="true" />

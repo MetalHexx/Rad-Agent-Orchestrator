@@ -14,6 +14,7 @@ import { humanizeTokens } from "@/lib/observability/format";
 import { formatDuration } from "@/lib/observability/duration-format";
 import { sessionDuration, timeBucketedRate } from "@/lib/observability/sessions";
 import type { SessionAgg } from "@/lib/observability/sessions";
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
 
 type SortKey = "startedMs" | "lastMs" | "spend" | "worktree" | "sessionId" | "duration";
 type SortDir = "asc" | "desc";
@@ -93,7 +94,14 @@ export function SessionTable({ sessions, now }: SessionTableProps) {
             <SortableHead colKey="sessionId">Session</SortableHead>
             <SortableHead colKey="startedMs">Started</SortableHead>
             <SortableHead colKey="duration">Duration</SortableHead>
-            <SortableHead colKey="spend">Total Spend</SortableHead>
+            <SortableHead colKey="spend">
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger>Total Spend</TooltipTrigger>
+                  <TooltipContent>Cache-weighted effective tokens — a cost-shaped count, not a dollar amount.</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </SortableHead>
             <TableHead>Current Rate</TableHead>
           </TableRow>
         </TableHeader>
