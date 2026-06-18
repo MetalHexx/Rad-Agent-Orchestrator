@@ -65,11 +65,11 @@ Surfaces a project's brainstorming artifacts — `*-BRAINSTORMING.md`, `*-BRAINS
 
 ### Compiled workspace-package exception
 
-**The UI MAY import `@rad-orchestration/repo-registry` by its package name** in server-side API routes (`app/api/**/*.ts`). This is a sanctioned exception because:
+**The UI MAY import `@rad-orchestration/repo-registry` and `@rad-orchestration/telemetry` by their package names** in server-side API routes (`app/api/**/*.ts`). This is a sanctioned exception because:
 
 - The workspace symlink resolves against the library's compiled `dist/` (ESM `.js` + `.d.ts`), not raw TypeScript source — Next's webpack resolver handles it correctly.
 - The root `npm install` establishes the workspace symlink before any build step; no deep relative path is needed.
-- Browser-side code (pages, components, hooks) must still never import from this package; all `@rad-orchestration/repo-registry` imports must remain in server-side API routes only.
+- Browser-side code (pages, components, hooks) must still never import from these packages; all `@rad-orchestration/repo-registry` and `@rad-orchestration/telemetry` imports must remain in server-side API routes only.
 
 The general ban on importing another package's `.ts` source remains absolute. Only compiled output consumed through the by-name workspace symlink qualifies for this carve-out.
 
