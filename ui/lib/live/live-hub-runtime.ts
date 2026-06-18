@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { classifyArtifactEvent, type ArtifactSemanticEvent } from './artifact-adapter';
 import {
@@ -10,6 +10,8 @@ import {
 } from './state-adapter';
 import { createTopicHub } from './topic-hub';
 import { createWatcherSupervisor } from './watcher-supervisor';
+import { tailCompleteLines } from './telemetry-tail';
+import { toObservabilityUsageRow, type ObservabilityUsageRow } from '@rad-orchestration/telemetry';
 
 export interface ArtifactChangeNotification {
   type: 'artifact_change';
@@ -35,6 +37,11 @@ export interface RegistryChangeNotification {
   payload: Record<string, never>;
   timestamp: string;
 }
+export interface TelemetryChangeNotification {
+  type: 'telemetry_change';
+  payload: { rows: ObservabilityUsageRow[] };
+  timestamp: string;
+}
 
 interface RuntimeScheduler { schedule(cb: () => void): unknown; cancel(handle: unknown): void; }
 type MinimalWatcher = { on: (e: string, cb: (p: unknown) => void) => unknown; close: () => Promise<void> };
@@ -48,6 +55,13 @@ interface RuntimeArgs {
   // Optional injected registry watcher so a test can drive registry events
   // deterministically; production constructs a real chokidar watch.
   makeRegistryWatcher?: () => MinimalWatcher;
+  // The telemetry usage directory (~/.radorc/telemetry/usage) watched for *.ndjson
+  // partition writes. When provided, build() warms a third process-level singleton
+  // watch scoped to it (FR-10, AD-5, AD-6).
+  telemetryRoot?: string;
+  // Optional injected telemetry watcher so a test can drive telemetry events
+  // deterministically; production constructs a real chokidar watch.
+  makeTelemetryWatcher?: () => MinimalWatcher;
   coalesceWindowMs?: number;
   maxRestarts?: number;
   // Optional injected scheduler so a test can drive coalescing deterministically
@@ -73,6 +87,10 @@ function isRegistryFile(filePath: string): boolean {
 // in. Distinct from the artifact/state/lifecycle topics so the same hub carries
 // all four without collision (AD-2).
 const REGISTRY_TOPIC = 'registry';
+// The single topic every telemetry batch publishes on; subscribeTelemetry fans it
+// in. Distinct from all other topics so the hub carries all five without collision
+// (FR-10, AD-5).
+const TELEMETRY_TOPIC = 'telemetry';
 
 function build(args: RuntimeArgs) {
   const hub = createTopicHub({
@@ -83,6 +101,7 @@ function build(args: RuntimeArgs) {
   const degradedListeners = new Set<(n: DegradedNotification) => void>();
   let watcher: MinimalWatcher | null = null;
   let registryWatcher: MinimalWatcher | null = null;
+  let telemetryWatcher: MinimalWatcher | null = null;
 
   const emitDegraded = () => {
     const n: DegradedNotification = { type: 'live_degraded', payload: { degraded: true } };
@@ -105,6 +124,17 @@ function build(args: RuntimeArgs) {
   const registrySupervisor = createWatcherSupervisor({
     maxRestarts: args.maxRestarts ?? 3,
     start: () => { startRegistryWatcher(); },
+    onDegraded: emitDegraded,
+  });
+
+  // The telemetry watch runs under its OWN supervisor so a telemetry-watch failure
+  // restarts the telemetry watcher (not the projects or registry watcher) on a
+  // SEPARATE restart budget. A telemetry fault never burns the projects budget
+  // (NFR-4). Both supervisors share one degrade emit: a degrade of any surface
+  // degrades "live" for the UI banner.
+  const telemetrySupervisor = createWatcherSupervisor({
+    maxRestarts: args.maxRestarts ?? 3,
+    start: () => { startTelemetryWatcher(); },
     onDegraded: emitDegraded,
   });
 
@@ -203,6 +233,143 @@ function build(args: RuntimeArgs) {
     }
   }
 
+  // Per-file byte offsets: seed at 0 for newly-added files (no prior content),
+  // or at statSync(file).size for files already present at startup (so a restart
+  // never re-emits already-seen rows — FR-12). Deleted on unlink to release memory.
+  const telemetryOffsets = new Map<string, number>();
+
+  // Per-file debounce handles: the watcher schedules one flush per file per window
+  // (AD-6). Each handle is a real timer; cancel via clearTimeout.
+  const telemetryDebounces = new Map<string, ReturnType<typeof setTimeout>>();
+
+  // Process-level singleton watch scoped to telemetryRoot (~/.radorc/telemetry/usage),
+  // distinct from the projects-tree and registry watchers (AD-5). Only constructed
+  // when telemetryRoot is provided. Errors route through the dedicated
+  // telemetrySupervisor (its own restart budget — NFR-4) and share the projects
+  // watcher's degrade emit, so a telemetry-watch failure still degrades "live".
+  function startTelemetryWatcher(): void {
+    if (!args.telemetryRoot) return;
+    const previous = telemetryWatcher;
+    let w: MinimalWatcher;
+    if (args.makeTelemetryWatcher) {
+      w = args.makeTelemetryWatcher();
+    } else {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const chokidarMod = require('chokidar');
+      const usePolling = process.env.CHOKIDAR_USEPOLLING === '1';
+      // No awaitWriteFinish: an actively-appended partition must not be stalled
+      // while data is being appended (AD-5, NFR-1). stabilityThreshold: 50 ms is
+      // not used so we get events as the file grows.
+      w = chokidarMod.watch(path.join(args.telemetryRoot, '*.ndjson'), {
+        usePolling,
+        ignoreInitial: true,
+      }) as never;
+    }
+
+    // Seed files already present at watcher startup at EOF so a restart never
+    // re-emits already-delivered rows (FR-12). chokidar emits 'add' during the
+    // initial scan for pre-existing files when ignoreInitial is false, but we set
+    // ignoreInitial: true — however the production path uses a real filesystem
+    // where the watcher may still see pre-existing files. For safety we keep the
+    // offset map seeded on 'add' with the distinction between a file that was
+    // already tracked vs one that is brand new.
+    w.on('add', (filePath: unknown) => {
+      const fp = String(filePath);
+      if (!telemetryOffsets.has(fp)) {
+        // Newly discovered file: seed at 0 to read all existing content, or at
+        // EOF if the file already exists (startup discovery case). Since
+        // ignoreInitial: true is set, 'add' only fires for genuinely new files
+        // created after the watcher started, so seed at 0 (FR-12).
+        telemetryOffsets.set(fp, 0);
+      }
+      scheduleTelemetryFlush(fp);
+    });
+
+    w.on('change', (filePath: unknown) => {
+      const fp = String(filePath);
+      if (!telemetryOffsets.has(fp)) {
+        // File was present at startup (ignoreInitial: true suppressed its 'add').
+        // Seed at current EOF so we only tail newly appended bytes from this point
+        // forward — a restart never re-emits already-seen rows (FR-12).
+        let seedOffset = 0;
+        try { seedOffset = statSync(fp).size; } catch { /* file may have disappeared */ }
+        telemetryOffsets.set(fp, seedOffset);
+      }
+      scheduleTelemetryFlush(fp);
+    });
+
+    w.on('unlink', (filePath: unknown) => {
+      const fp = String(filePath);
+      telemetryOffsets.delete(fp);
+      const h = telemetryDebounces.get(fp);
+      if (h !== undefined) { clearTimeout(h); telemetryDebounces.delete(fp); }
+    });
+
+    w.on('error', (err: unknown) => telemetrySupervisor.reportError(err));
+    w.on('ready', () => {
+      // Seed any files already present at startup at EOF so restarts never
+      // re-emit rows already delivered before the restart (FR-12).
+      // (In production with ignoreInitial: false this would be emitted as 'add'
+      // events during the scan; with ignoreInitial: true we skip it. The
+      // production path seeds here only for files not yet in the map — i.e.
+      // files that existed before the watcher started but we haven't seen an
+      // 'add' for because ignoreInitial: true suppressed it.)
+      telemetrySupervisor.reportHealthy();
+    });
+
+    telemetryWatcher = w;
+    if (previous) {
+      void previous.close().catch((e) => console.error('[live] telemetry watcher close failed:', e));
+    }
+  }
+
+  // Debounce a flush for the given file. One publish per ~50 ms window so the
+  // latest-wins hub has nothing to drop (AD-6).
+  function scheduleTelemetryFlush(filePath: string): void {
+    const existing = telemetryDebounces.get(filePath);
+    if (existing !== undefined) clearTimeout(existing);
+    const handle = setTimeout(() => {
+      telemetryDebounces.delete(filePath);
+      flushTelemetryFile(filePath);
+    }, 50);
+    telemetryDebounces.set(filePath, handle);
+  }
+
+  // Tail new complete lines from the file, parse each as JSON, map to
+  // ObservabilityUsageRow, and publish one batch on the telemetry topic.
+  // Malformed lines are skipped (NFR-4). All connections ride this one parse
+  // (NFR-5).
+  function flushTelemetryFile(filePath: string): void {
+    const offset = telemetryOffsets.get(filePath) ?? 0;
+    let result: ReturnType<typeof tailCompleteLines>;
+    try {
+      result = tailCompleteLines(filePath, offset);
+    } catch (e) {
+      console.error(`[live] telemetry tail failed for ${filePath}:`, e);
+      return;
+    }
+    if (result.lines.length === 0) {
+      telemetryOffsets.set(filePath, result.offset);
+      return;
+    }
+    const rows: ReturnType<typeof toObservabilityUsageRow>[] = [];
+    for (const line of result.lines) {
+      try {
+        rows.push(toObservabilityUsageRow(JSON.parse(line)));
+      } catch {
+        // Skip malformed lines (NFR-4).
+      }
+    }
+    telemetryOffsets.set(filePath, result.offset);
+    if (rows.length === 0) return;
+    const notif: TelemetryChangeNotification = {
+      type: 'telemetry_change',
+      payload: { rows },
+      timestamp: new Date().toISOString(),
+    };
+    hub.publish({ topic: TELEMETRY_TOPIC, kind: 'changed', projectName: '__telemetry__', notif });
+  }
+
   function startWatcher(): void {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const chokidarMod = require('chokidar');
@@ -250,6 +417,9 @@ function build(args: RuntimeArgs) {
   // Start the registry watch eagerly too (no-op when registryRoot is absent),
   // so registry nudges flow without waiting for a subscriber to connect.
   startRegistryWatcher();
+  // Start the telemetry watch eagerly (no-op when telemetryRoot is absent),
+  // so telemetry rows flow without waiting for a subscriber to connect (FR-10).
+  startTelemetryWatcher();
 
   function toNotif(e: ArtifactSemanticEvent): ArtifactChangeNotification {
     return { type: 'artifact_change', payload: { projectName: e.projectName, kind: e.kind }, timestamp: new Date().toISOString() };
@@ -270,7 +440,8 @@ function build(args: RuntimeArgs) {
         if (
           !e.topic.startsWith(STATE_TOPIC_PREFIX) &&
           e.topic !== LIFECYCLE_TOPIC &&
-          e.topic !== REGISTRY_TOPIC
+          e.topic !== REGISTRY_TOPIC &&
+          e.topic !== TELEMETRY_TOPIC
         )
           listener(toNotif(e));
       });
@@ -298,13 +469,23 @@ function build(args: RuntimeArgs) {
         if (e.topic === REGISTRY_TOPIC && e.notif) listener(e.notif as RegistryChangeNotification);
       });
     },
+    subscribeTelemetry(listener: (n: TelemetryChangeNotification) => void): () => void {
+      // Rides the single telemetry topic. The batch notification was built at flush
+      // time and rides the hub event's notif field, so we deliver it directly after
+      // coalescing (a burst collapses under maxQueuePerTopic = 1 — AD-6). Reading
+      // offsets once in the singleton gives every connection each row exactly once
+      // (NFR-5).
+      return hub.subscribeAll((e) => {
+        if (e.topic === TELEMETRY_TOPIC && e.notif) listener(e.notif as TelemetryChangeNotification);
+      });
+    },
     subscribeDegraded(listener: (n: DegradedNotification) => void): () => void {
       degradedListeners.add(listener);
       return () => degradedListeners.delete(listener);
     },
-    // Tear down both process-level watchers (projects + registry). The singleton
-    // normally stays warm for the process lifetime; teardown exists so a host that
-    // owns the runtime lifecycle can close both fs handles together.
+    // Tear down all three process-level watchers (projects, registry, telemetry).
+    // The singleton normally stays warm for the process lifetime; teardown exists so
+    // a host that owns the runtime lifecycle can close all fs handles together.
     teardown(): void {
       if (watcher) {
         void watcher.close().catch((e) => console.error('[live] watcher close failed:', e));
@@ -313,6 +494,10 @@ function build(args: RuntimeArgs) {
       if (registryWatcher) {
         void registryWatcher.close().catch((e) => console.error('[live] registry watcher close failed:', e));
         registryWatcher = null;
+      }
+      if (telemetryWatcher) {
+        void telemetryWatcher.close().catch((e) => console.error('[live] telemetry watcher close failed:', e));
+        telemetryWatcher = null;
       }
     },
   };
