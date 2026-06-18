@@ -1,8 +1,9 @@
 import { readdir } from 'node:fs/promises';
+import path from 'node:path';
 
 import type { SSEEvent, SSEEventType, SSEPayloadMap } from '@/types/events';
 import type { AnyProjectState } from '@/types/state';
-import { getProjectsRoot, getRegistryRoot } from '@/lib/path-resolver';
+import { getProjectsRoot, getRegistryRoot, getTelemetryRoot } from '@/lib/path-resolver';
 import { getLiveRuntime } from '@/lib/live/live-hub-runtime';
 
 export const dynamic = 'force-dynamic';
@@ -74,6 +75,7 @@ export async function GET(request: Request) {
       const liveRuntime = getLiveRuntime({
         projectsRoot: absoluteProjectsDir,
         registryRoot: getRegistryRoot(),
+        telemetryRoot: path.join(getTelemetryRoot(), 'usage'),
       });
       const unsubArtifacts = liveRuntime.subscribeAllArtifactTopics((n) =>
         enqueue(createSSEEvent('artifact_change', n.payload)),
