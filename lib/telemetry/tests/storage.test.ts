@@ -12,7 +12,7 @@ function tmpRoot(): string {
 }
 function rec(id: string, session: string, day: string): TelemetryRecord {
   return {
-    schemaVersion: SCHEMA_VERSION, harness: 'claude-code', radOrcId: id,
+    schemaVersion: SCHEMA_VERSION, harness: 'claude-code', usageId: id,
     sessionId: session, timestamp: `${day}T12:00:00Z`, model: 'm',
     inputTokens: 1, outputTokens: 2, source: 'subagent',
     pointers: { sourceFile: 'f.jsonl', requestId: id },
@@ -29,7 +29,7 @@ describe('NdjsonSink', () => {
     const lines = fs.readFileSync(file, 'utf8').trim().split('\n');
     expect(lines).toHaveLength(2);
     expect(JSON.parse(lines[0]).schemaVersion).toBe(SCHEMA_VERSION);
-    expect(JSON.parse(lines[1]).radOrcId).toBe('b');
+    expect(JSON.parse(lines[1]).usageId).toBe('b');
   });
 
   it('appends across calls without truncating (FR-6)', () => {

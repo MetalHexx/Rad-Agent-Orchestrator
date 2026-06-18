@@ -29,7 +29,7 @@ export class ClaudeCodeAdapter implements HarnessAdapter {
         if (!line.message?.usage || !line.requestId) continue;
         const id = this.identity(line);
         if (seen.has(id)) continue;
-        byKey.set(id, { line, file, source, identity }); // last line per radOrcId wins — the complete one (FR-3)
+        byKey.set(id, { line, file, source, identity }); // last line per usageId wins — the complete one (FR-3)
       }
     }
     return [...byKey.values()].map(({ line, file, source, identity }) => this.toRecord(ev, line, file, source, identity));
@@ -69,7 +69,7 @@ export class ClaudeCodeAdapter implements HarnessAdapter {
     return {
       schemaVersion: SCHEMA_VERSION,
       harness: this.harness,
-      radOrcId: this.identity(line),
+      usageId: this.identity(line),
       sessionId: ev.sessionId,
       timestamp: line.timestamp ?? new Date().toISOString(),
       model: line.message?.model ?? 'unknown',

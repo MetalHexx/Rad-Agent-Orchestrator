@@ -11,7 +11,7 @@ export interface OperationBlock {
 export interface TelemetryRecord {
   schemaVersion: number;
   harness: string;
-  radOrcId: string;
+  usageId: string;
   sessionId: string;
   timestamp: string;
   model: string;
