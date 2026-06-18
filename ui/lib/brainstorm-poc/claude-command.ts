@@ -9,7 +9,11 @@ export interface ClaudeCommandInput {
 export function buildClaudeCommand({ sessionId, isFirstTurn }: ClaudeCommandInput): string {
   // --session-id is create-only (turn 1); --resume continues every later turn (AD-2).
   const sessionFlag = isFirstTurn ? `--session-id ${sessionId}` : `--resume ${sessionId}`;
-  // --safe-mode = vanilla (no hooks/CLAUDE.md/skills/memory) while OAuth auth still works;
-  // --tools "" disables all built-in tools; JSON output is read for the `result` field (AD-3, FR-7).
-  return `claude -p ${sessionFlag} --safe-mode --tools "" --output-format json`;
+  // A normal session: hooks, CLAUDE.md, skills, memory, and tools all load (no --safe-mode,
+  // no --tools "") — so the background agent behaves like an interactive CLI session. Staying
+  // on the Max plan is guaranteed by stripping metered credentials in buildChildEnv, NOT by
+  // these flags (auth/billing is orthogonal to config + tools).
+  // --permission-mode auto lets the headless session act on tool calls without an interactive
+  // prompt (which it can't show); JSON output is read for the `result` field (AD-3, FR-7).
+  return `claude -p ${sessionFlag} --permission-mode auto --output-format json`;
 }

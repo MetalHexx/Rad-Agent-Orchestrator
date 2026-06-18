@@ -64,7 +64,10 @@ async function run() {
     assert.strictEqual(out.sessionId, MINT);
     assert.ok(captured.command!.includes(`--session-id ${MINT}`));
     assert.ok(!captured.command!.includes('--resume'));
-    assert.ok(captured.command!.includes('--tools ""'));
+    // normal session: no safe-mode, no tool-off, auto permission mode
+    assert.ok(!captured.command!.includes('--safe-mode'));
+    assert.ok(!captured.command!.includes('--tools'));
+    assert.ok(captured.command!.includes('--permission-mode auto'));
     assert.strictEqual(captured.stdin, 'ping');
     assert.strictEqual(captured.options!.shell, true);
     assert.strictEqual(captured.options!.cwd, '/work');
@@ -99,6 +102,9 @@ async function run() {
     assert.ok(routeSource.includes('runClaudeTurn'));
     assert.ok(routeSource.includes('isValidSessionId'));
     assert.ok(routeSource.includes('resume'));
+    // the agent runs rooted at the hardcoded orchestration workspace, not the server cwd
+    assert.ok(routeSource.includes('orchestration'));
+    assert.ok(!routeSource.includes('process.cwd()'));
   });
 
   console.log(`\n${passed} passed, ${failed} failed`);
