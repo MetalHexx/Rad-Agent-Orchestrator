@@ -22,7 +22,7 @@ test('use-artifact-live subscribes through the shared provider and constructs no
 });
 
 test('use-artifact-live still self-heals via snapshot reconcile on reconnect (FR-13, NFR-2)', () => {
-  assert.ok(artifactSrc.includes('refreshSnapshot(true)'), 'reconnect self-heal reconcile must be preserved');
+  assert.ok(/refreshSnapshot\(\s*['"]reconcile['"]\s*\)/.test(artifactSrc), 'reconnect self-heal reconcile must be preserved');
 });
 
 test('use-registry-live subscribes through the shared provider and keeps hold-while-dirty (FR-12, FR-13, NFR-2)', () => {
