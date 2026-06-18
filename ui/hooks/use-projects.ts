@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useRouter, usePathname } from "next/navigation";
+import { usePathname } from "next/navigation";
 import type { ProjectSummary } from "@/types/components";
 import type { AnyProjectState } from "@/types/state";
 import { isV6State } from "@/types/state";
@@ -31,7 +31,6 @@ interface UseProjectsReturn {
 }
 
 export function useProjects(initialProject?: string | null): UseProjectsReturn {
-  const router = useRouter();
   const pathname = usePathname();
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
@@ -174,9 +173,16 @@ export function useProjects(initialProject?: string | null): UseProjectsReturn {
     setSelectedProject(name);
     try { localStorage.setItem(STORAGE_KEY, name); } catch { /* unavailable */ }
     const target = `/projects/${encodeURIComponent(name)}`;
-    if (pathname !== target) router.push(target);
+    // Shallow URL update — NOT router.push. router.push re-keys the [[...slug]]
+    // segment, which remounts the whole ProjectsPage subtree (including the
+    // sidebar), wiping the sidebar's local search-filter state and refetching
+    // (the "full page reload" jank). window.history.pushState updates the
+    // address bar without a navigation, so the page only re-renders: the filter
+    // survives selection. usePathname() (read side, page.tsx) tracks this shallow
+    // update and drives selection. Mirrors the in-modal doc nav (page.tsx).
+    if (pathname !== target) window.history.pushState(null, '', target);
     fetchProjectState(name);
-  }, [fetchProjectState, router, pathname]);
+  }, [fetchProjectState, pathname]);
 
   // Fetch project list on mount
   useEffect(() => {
