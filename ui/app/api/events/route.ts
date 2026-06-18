@@ -81,6 +81,9 @@ export async function GET(request: Request) {
       const unsubDegraded = liveRuntime.subscribeDegraded((n) =>
         enqueue(createSSEEvent('live_degraded', n.payload)),
       );
+      const unsubTelemetry = liveRuntime.subscribeTelemetry((n) =>
+        enqueue(createSSEEvent('telemetry_rows', n.payload)),
+      );
       const unsubState = liveRuntime.subscribeAllStateTopics((n) =>
         enqueue(
           createSSEEvent('state_change', {
@@ -109,6 +112,7 @@ export async function GET(request: Request) {
         clearInterval(heartbeatInterval);
         unsubArtifacts();
         unsubDegraded();
+        unsubTelemetry();
         unsubState();
         unsubRegistry();
         unsubLifecycle();

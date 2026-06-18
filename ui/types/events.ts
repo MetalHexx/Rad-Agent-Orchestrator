@@ -1,4 +1,5 @@
 import type { AnyProjectState } from './state';
+import type { ObservabilityUsageRow } from '@rad-orchestration/telemetry';
 
 /** SSE event types sent from server to client */
 export type SSEEventType =
@@ -9,7 +10,8 @@ export type SSEEventType =
   | 'heartbeat'
   | 'artifact_change'
   | 'live_degraded'
-  | 'registry_change';
+  | 'registry_change'
+  | 'telemetry_rows';
 
 export interface SSEEvent<T extends SSEEventType = SSEEventType> {
   type: T;
@@ -40,7 +42,23 @@ export interface SSEPayloadMap {
     degraded: boolean;
   };
   registry_change: Record<string, never>;
+  telemetry_rows: { rows: ObservabilityUsageRow[] };
 }
+
+/** Single-source-of-truth runtime array of all registered SSE event names.
+ *  The client registers an EventSource listener for each entry — an event NOT
+ *  in this array is silently dropped by the browser (FR-14). */
+export const EVENT_TYPES: SSEEventType[] = [
+  'connected',
+  'state_change',
+  'project_added',
+  'project_removed',
+  'heartbeat',
+  'registry_change',
+  'artifact_change',
+  'live_degraded',
+  'telemetry_rows',
+];
 
 /** Connection status for the SSE client hook */
 export type SSEConnectionStatus = 'connected' | 'reconnecting' | 'disconnected';

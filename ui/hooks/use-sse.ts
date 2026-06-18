@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import type { SSEEvent, SSEEventType, SSEConnectionStatus } from "@/types/events";
+import { EVENT_TYPES } from "@/types/events";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -10,17 +11,6 @@ const BACKOFF_MULTIPLIER = 2;
 const BACKOFF_MAX_MS = 30000;
 const MAX_RECONNECT_ATTEMPTS = 10;
 const DEFAULT_MAX_EVENTS = 50;
-
-const EVENT_TYPES: SSEEventType[] = [
-  "connected",
-  "state_change",
-  "project_added",
-  "project_removed",
-  "heartbeat",
-  "registry_change",
-  "artifact_change",
-  "live_degraded",
-];
 
 // ─── Interfaces ─────────────────────────────────────────────────────────────
 
