@@ -4,7 +4,8 @@ import * as React from "react";
 import { useObservabilityLive } from "@/hooks/use-observability-live";
 import { ActivityDot } from "@/components/observability/activity-dot";
 import { SummaryCards } from "@/components/observability/summary-cards";
-import { deriveSessions } from "@/lib/observability/sessions";
+import { TotalRateChart } from "@/components/observability/total-rate-chart";
+import { deriveSessions, timeBucketedRate } from "@/lib/observability/sessions";
 import { isActive } from "@/lib/observability/activity-dot-color";
 
 function useNow(intervalMs: number): number {
@@ -62,7 +63,7 @@ export function ObservabilityView() {
       </header>
 
       <SummaryCards sessions={filteredSessions} activeNow={activeNow} />
-      {/* total rate chart — P02-T03 */}
+      <TotalRateChart data={timeBucketedRate([...rows.values()], { endMs: Date.now(), windowMs: 60*60*1000, buckets: 60 })} />
       {/* control bar — P03-T01 */}
       {/* session table — P03-T02 */}
     </main>
