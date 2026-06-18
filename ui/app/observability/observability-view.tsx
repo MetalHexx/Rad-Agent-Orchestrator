@@ -9,6 +9,7 @@ import { ControlBar } from "@/components/observability/control-bar";
 import { deriveSessions, timeBucketedRate } from "@/lib/observability/sessions";
 import { isActive } from "@/lib/observability/activity-dot-color";
 import { canLoadEarlier } from "@/lib/observability/day-window";
+import { SessionTable } from "@/components/observability/session-table";
 
 function useNow(intervalMs: number): number {
   const [now, setNow] = React.useState(() => Date.now());
@@ -110,7 +111,7 @@ export function ObservabilityView() {
       />
       <SummaryCards sessions={filteredSessions} activeNow={activeNow} />
       <TotalRateChart data={timeBucketedRate([...rows.values()], { endMs: now, windowMs: 60*60*1000, buckets: 60 })} />
-      {/* session table — P03-T02 */}
+      <SessionTable sessions={filteredSessions} now={now} />
     </main>
   );
 }
