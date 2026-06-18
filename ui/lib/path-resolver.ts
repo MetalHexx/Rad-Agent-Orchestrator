@@ -12,6 +12,8 @@ export function getTemplatesRoot(): string { return path.join(radorchHome(), 'te
 export function getOrchestrationYmlPath(): string { return path.join(radorchHome(), 'orchestration.yml'); }
 export function resolveProjectDir(name: string): string { return path.join(getProjectsRoot(), name); }
 
+export function getTelemetryRoot(): string { return process.env.RADORC_TELEMETRY_ROOT ?? path.join(radorchHome(), 'telemetry'); }
+
 export function resolveDocPath(projectName: string, relativePath: string): string {
   const cleaned = relativePath.replace(/\\/g, '/').replace(/^\/+/, '');
   const prefix = projectName + '/';

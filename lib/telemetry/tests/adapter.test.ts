@@ -25,13 +25,13 @@ const asst = (requestId: string, output: number, extra: Record<string, unknown> 
 });
 
 describe('ClaudeCodeAdapter', () => {
-  it('emits one record per radOrcId keeping the final line, excluding sidechain and usage-less rows — fixture-backed (FR-3, NFR-5)', () => {
+  it('emits one record per usageId keeping the final line, excluding sidechain and usage-less rows — fixture-backed (FR-3, NFR-5)', () => {
     const signal: HookEvent = { sessionId: 's1', cwd: '.', kind: 'Stop', event: 'Stop', transcriptPath: MAIN_FIXTURE };
     const records = new ClaudeCodeAdapter().capture(signal, new Set());
 
-    // Two distinct surviving radOrcIds: req_main_1 (deduped, final wins) + req_main_2.
+    // Two distinct surviving usageIds: req_main_1 (deduped, final wins) + req_main_2.
     // req_sidechain (isSidechain) and req_no_usage (no message.usage) are excluded.
-    const byId = new Map(records.map((r) => [r.radOrcId, r]));
+    const byId = new Map(records.map((r) => [r.usageId, r]));
     expect([...byId.keys()].sort()).toEqual(['req_main_1', 'req_main_2']);
 
     const main1 = byId.get('req_main_1')!;
@@ -40,34 +40,34 @@ describe('ClaudeCodeAdapter', () => {
     expect(main1.cacheCreationTokens).toBe(4);       // only present on the final line
     expect(main1.source).toBe('main-agent');
 
-    expect(records.some((r) => r.radOrcId === 'req_sidechain')).toBe(false); // isSidechain excluded (FR-3)
-    expect(records.some((r) => r.radOrcId === 'req_no_usage')).toBe(false);  // no usage excluded (FR-3)
+    expect(records.some((r) => r.usageId === 'req_sidechain')).toBe(false); // isSidechain excluded (FR-3)
+    expect(records.some((r) => r.usageId === 'req_no_usage')).toBe(false);  // no usage excluded (FR-3)
   });
 
-  it('computes radOrcId = requestId, emits lean pointers, and leaves operation dormant (AD-2, NFR-8, AD-9)', () => {
+  it('computes usageId = requestId, emits lean pointers, and leaves operation dormant (AD-2, NFR-8, AD-9)', () => {
     const file = writeTranscript([asst('req_x', 7)]);
     const signal: HookEvent = { sessionId: 's1', cwd: '.', kind: 'Stop', event: 'Stop', transcriptPath: file };
     const [r] = new ClaudeCodeAdapter().capture(signal, new Set());
-    expect(r.radOrcId).toBe('req_x');
+    expect(r.usageId).toBe('req_x');
     expect(r.pointers.requestId).toBe('req_x');
     expect(r.pointers.sourceFile).toBe(file);
     expect(r.operation).toBeUndefined();             // dormant (AD-9)
     expect('prompt' in r || 'response' in r).toBe(false); // no bodies (NFR-8)
   });
 
-  it('skips radOrcIds already in the checkpoint seen-set (FR-3)', () => {
+  it('skips usageIds already in the checkpoint seen-set (FR-3)', () => {
     const signal: HookEvent = { sessionId: 's1', cwd: '.', kind: 'Stop', event: 'Stop', transcriptPath: MAIN_FIXTURE };
     const records = new ClaudeCodeAdapter().capture(signal, new Set(['req_main_1']));
     // req_main_1 was pre-seen, so only req_main_2 survives.
-    expect(records.map((r) => r.radOrcId)).toEqual(['req_main_2']);
+    expect(records.map((r) => r.usageId)).toEqual(['req_main_2']);
   });
 
-  it('SessionEnd unions distinct main + subagent radOrcIds with disjoint per-source tagging — fixture-backed (FR-3, NFR-5)', () => {
+  it('SessionEnd unions distinct main + subagent usageIds with disjoint per-source tagging — fixture-backed (FR-3, NFR-5)', () => {
     const signal: HookEvent = {
       sessionId: 's1', cwd: '.', kind: 'SessionEnd', event: 'SessionEnd', transcriptPath: MAIN_FIXTURE,
     };
     const records = new ClaudeCodeAdapter().capture(signal, new Set());
-    const byId = new Map(records.map((r) => [r.radOrcId, r]));
+    const byId = new Map(records.map((r) => [r.usageId, r]));
 
     // Disjoint union: main fixture contributes req_main_1 + req_main_2, the
     // discovered subagent transcript contributes req_sub_1 + req_sub_2.
@@ -79,8 +79,8 @@ describe('ClaudeCodeAdapter', () => {
     expect(byId.get('req_sub_2')!.source).toBe('subagent');
 
     // Sums are disjoint: no requestId is shared across the two sources.
-    const mainIds = records.filter((r) => r.source === 'main-agent').map((r) => r.radOrcId);
-    const subIds = records.filter((r) => r.source === 'subagent').map((r) => r.radOrcId);
+    const mainIds = records.filter((r) => r.source === 'main-agent').map((r) => r.usageId);
+    const subIds = records.filter((r) => r.source === 'subagent').map((r) => r.usageId);
     expect(mainIds.some((id) => subIds.includes(id))).toBe(false);
 
     // Subagent rows are read from the path the transcript helpers derive.
@@ -105,7 +105,7 @@ describe('ClaudeCodeAdapter', () => {
 
     const signal: HookEvent = { sessionId: 's1', cwd: '.', kind: 'SessionEnd', event: 'SessionEnd', transcriptPath: main };
     const records = new ClaudeCodeAdapter().capture(signal, new Set()); // must not throw
-    const sub = records.find((r) => r.radOrcId === 'req_sub_z')!;
+    const sub = records.find((r) => r.usageId === 'req_sub_z')!;
     expect(sub.source).toBe('subagent');
     expect(sub.pointers.agentId).toBe('deadbeef');       // recovered from filename
     expect(sub.agentType).toBeUndefined();               // no sidecar ⇒ no type
@@ -120,11 +120,11 @@ describe('ClaudeCodeAdapter', () => {
     const records = new ClaudeCodeAdapter().capture(signal, new Set());
 
     // Only the subagent transcript is consulted — no main-agent rows leak in.
-    expect(records.map((r) => r.radOrcId).sort()).toEqual(['req_sub_1', 'req_sub_2']);
+    expect(records.map((r) => r.usageId).sort()).toEqual(['req_sub_1', 'req_sub_2']);
     expect(records.every((r) => r.source === 'subagent')).toBe(true);
-    expect(records.some((r) => r.radOrcId === 'req_main_1' || r.radOrcId === 'req_main_2')).toBe(false);
+    expect(records.some((r) => r.usageId === 'req_main_1' || r.usageId === 'req_main_2')).toBe(false);
 
-    const sub1 = records.find((r) => r.radOrcId === 'req_sub_1')!;
+    const sub1 = records.find((r) => r.usageId === 'req_sub_1')!;
     expect(sub1.outputTokens).toBe(55);
     expect(sub1.agentType).toBe('coder');                 // subagent rows carry agentType (toRecord)
     expect(sub1.pointers.agentId).toBe(SUBAGENT_ID);

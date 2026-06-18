@@ -6,8 +6,23 @@ import {
   type OperationEventStore, type TelemetryRecord, type TelemetrySink,
 } from '../src/types.js';
 
+it('commits usageId values into the checkpoint seen-set (FR-9)', () => {
+  const committed: string[] = [];
+  const adapter = { capture: () => [{ usageId: 'u1', sessionId: 's1', timestamp: '2026-06-17T00:00:00Z', inputTokens: 0, outputTokens: 0 }] };
+  const sink = { write: () => {} };
+  const checkpoint = {
+    tryLock: () => true,
+    seen: () => new Set<string>(),
+    commit: (_s: string, ids: Set<string>) => { committed.push(...ids); },
+    unlock: () => {},
+  };
+  const collector = new TelemetryCollector(adapter as never, sink as never, checkpoint as never);
+  collector.capture({ sessionId: 's1', cwd: '', kind: 'Stop' } as never);
+  expect(committed).toContain('u1');
+});
+
 const row = (id: string): TelemetryRecord => ({
-  schemaVersion: SCHEMA_VERSION, harness: 'fake', radOrcId: id, sessionId: 's1',
+  schemaVersion: SCHEMA_VERSION, harness: 'fake', usageId: id, sessionId: 's1',
   timestamp: '2026-06-15T12:00:00Z', model: 'm', inputTokens: 1, outputTokens: 2,
   source: 'subagent', pointers: { sourceFile: 'f' },
 });
@@ -34,7 +49,7 @@ describe('TelemetryCollector', () => {
     const sink = new FakeSink(); const cp = new FakeCheckpoint();
     const res = new TelemetryCollector(new FakeAdapter(['a', 'b']), sink, cp).capture(signal);
     expect(res.written).toBe(2);
-    expect(sink.written.map((r) => r.radOrcId)).toEqual(['a', 'b']);
+    expect(sink.written.map((r) => r.usageId)).toEqual(['a', 'b']);
     expect([...cp.seen('s1')].sort()).toEqual(['a', 'b']);
   });
 

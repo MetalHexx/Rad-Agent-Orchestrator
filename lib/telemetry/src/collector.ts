@@ -16,13 +16,13 @@ export class TelemetryCollector {
     if (!this.checkpoint.tryLock(signal.sessionId)) return { written: 0, skipped: 0, locked: true };
     try {
       const seen = this.checkpoint.seen(signal.sessionId);
-      let rows = this.adapter.capture(signal, seen); // sweep: all un-checkpointed radOrcIds (FR-4)
+      let rows = this.adapter.capture(signal, seen); // sweep: all un-checkpointed usageIds (FR-4)
       if (this.ops) {
         const ops = this.ops;
         rows = rows.map((r) => ({ ...r, operation: r.operation ?? ops.resolve(r, signal) }));
       }
       this.sink.write(rows);
-      this.checkpoint.commit(signal.sessionId, new Set([...seen, ...rows.map((r) => r.radOrcId)]));
+      this.checkpoint.commit(signal.sessionId, new Set([...seen, ...rows.map((r) => r.usageId)]));
       return { written: rows.length, skipped: seen.size, locked: false };
     } finally {
       this.checkpoint.unlock(signal.sessionId);

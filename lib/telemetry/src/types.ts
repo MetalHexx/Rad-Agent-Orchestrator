@@ -11,7 +11,7 @@ export interface OperationBlock {
 export interface TelemetryRecord {
   schemaVersion: number;
   harness: string;
-  radOrcId: string;
+  usageId: string;
   sessionId: string;
   timestamp: string;
   model: string;
@@ -22,6 +22,7 @@ export interface TelemetryRecord {
   serverToolUse?: Record<string, number>;
   toolCalls?: { total: number; byName?: Record<string, number>; errors?: number };
   agentType?: string;
+  worktree?: string;
   source: 'main-agent' | 'subagent';
   pointers: { sourceFile: string; requestId?: string; agentId?: string; toolUseId?: string };
   operation?: OperationBlock;            // DORMANT until TELEMETRY-4 (AD-9)

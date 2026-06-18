@@ -68,7 +68,7 @@ export const telemetryCaptureCommand = defineCommand({
     const { root, telemetry } = userDataPaths();
     const signal: HookEvent = {
       sessionId: flags.session ?? '',
-      cwd: flags.cwd ?? process.cwd(),
+      cwd: flags.cwd ?? '',
       kind: flags.event ?? 'Stop',
       event: asHookEvent(flags.event),
       transcriptPath: flags['transcript-path'] ?? '',

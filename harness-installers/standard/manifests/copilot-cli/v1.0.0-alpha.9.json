@@ -50,7 +50,7 @@
     {
       "bundlePath": "action-events/action.invoke_source_control_commit.md",
       "destinationPath": "${RAD_HOME}/action-events/action.invoke_source_control_commit.md",
-      "sha256": "5e34dfec4e3445732ccc15827d80f8b8964aecb302eadf1758f0d5a0e82abf82"
+      "sha256": "20cf80cb6cc0ac807448a1c3641e9d3595a18c4d74235d380c77c1d3192829d4"
     },
     {
       "bundlePath": "action-events/action.invoke_source_control_pr.md",
@@ -100,7 +100,7 @@
     {
       "bundlePath": "action-events/event.commit_completed.md",
       "destinationPath": "${RAD_HOME}/action-events/event.commit_completed.md",
-      "sha256": "ec1bca9303834219dbfb1be722905c2800126a12e06c6f1aa4ece3cc517f799a"
+      "sha256": "fc7760cc60434102a0d31c8d5034adda6a1837fc5450eed7a383b8f7eeda6176"
     },
     {
       "bundlePath": "action-events/event.explosion_completed.md",
@@ -300,7 +300,7 @@
     {
       "bundlePath": "skills/rad-code-review/SKILL.md",
       "destinationPath": "${HARNESS_ROOT}/skills/rad-code-review/SKILL.md",
-      "sha256": "2fc3b749dd4dc78d355038baa71fa5a4d04c76f2635f301b6645df64f7c84b3d"
+      "sha256": "153b2ac0ffa405e92dd07a673263c7c4498acbd909d3d39b5570c40865cf90fd"
     },
     {
       "bundlePath": "skills/rad-code-review/final-review/template.md",
@@ -310,7 +310,7 @@
     {
       "bundlePath": "skills/rad-code-review/final-review/workflow.md",
       "destinationPath": "${HARNESS_ROOT}/skills/rad-code-review/final-review/workflow.md",
-      "sha256": "7124ed6e5ab7f8cbed684d1a022ba34de41aaacdbbc449963b8829f8162025de"
+      "sha256": "9263a2865790b0639348d8237d156c0f425f23f86637525538f671996b332ae5"
     },
     {
       "bundlePath": "skills/rad-code-review/phase-review/template.md",
@@ -320,7 +320,7 @@
     {
       "bundlePath": "skills/rad-code-review/phase-review/workflow.md",
       "destinationPath": "${HARNESS_ROOT}/skills/rad-code-review/phase-review/workflow.md",
-      "sha256": "1bf62970efbd2fcfb188cdb8be8506ba873d4e686208b4e5ac2d31f0e48a3ca2"
+      "sha256": "59514d60ed79ce91beba398c8d8d539684c203f3f019d18f6ad091494746c5bc"
     },
     {
       "bundlePath": "skills/rad-code-review/task-review/template.md",
@@ -330,7 +330,7 @@
     {
       "bundlePath": "skills/rad-code-review/task-review/workflow.md",
       "destinationPath": "${HARNESS_ROOT}/skills/rad-code-review/task-review/workflow.md",
-      "sha256": "aa72f2c5d6c59730949ed62aae5e361a0d512ffe548981be5ac5b141cd28a3c4"
+      "sha256": "42523cfcfb77aa5ab21db24232df242e6b95b4f0909e02e185764852ce719477"
     },
     {
       "bundlePath": "skills/rad-create-plans/SKILL.md",
@@ -405,7 +405,7 @@
     {
       "bundlePath": "skills/rad-orchestration/scripts/radorch.mjs",
       "destinationPath": "${HARNESS_ROOT}/skills/rad-orchestration/scripts/radorch.mjs",
-      "sha256": "26d77875d55c9f38b481ca1fb01bd2efa30e1a65e98c21a25e697de7077fe070"
+      "sha256": "df1eec9d07d3442dcf770cf11e9c41de35aaa496a33ab8edcf01efe6cbebe2e4"
     },
     {
       "bundlePath": "skills/rad-plan-audit/SKILL.md",
@@ -490,12 +490,12 @@
     {
       "bundlePath": "skills/rad-source-control/SKILL.md",
       "destinationPath": "${HARNESS_ROOT}/skills/rad-source-control/SKILL.md",
-      "sha256": "d9227694cb86cf090f849fbaed2f6d785b869c8572d409ff48299d8c327a97b1"
+      "sha256": "5c28953537d034dc5396a9036b299e0aa001e55b7d38c3228fa081a17b21921a"
     },
     {
       "bundlePath": "skills/rad-source-control/references/creating-commits.md",
       "destinationPath": "${HARNESS_ROOT}/skills/rad-source-control/references/creating-commits.md",
-      "sha256": "11bcab821c55927db5755bc4e56424ae8a3b7762d720a00987f0add3d43d2d7f"
+      "sha256": "e85c5aa364f670bc025f124fa1b2d55b22e5244b3435a3dec30d11386a67d93d"
     },
     {
       "bundlePath": "skills/rad-source-control/references/working-with-prs.md",

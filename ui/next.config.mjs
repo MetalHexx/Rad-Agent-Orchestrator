@@ -9,12 +9,16 @@ const nextConfig = {
   experimental: {
     outputFileTracingRoot: repoRoot,
     externalDir: true,
-    serverComponentsExternalPackages: ['@rad-orchestration/repo-registry'],
+    serverComponentsExternalPackages: ['@rad-orchestration/repo-registry', '@rad-orchestration/telemetry'],
     outputFileTracingIncludes: {
       '/api/registry-smoke': [
         '../lib/repo-registry/dist/**',
         '../lib/repo-registry/package.json',
         '../node_modules/js-yaml/**',
+      ],
+      '/api/observability/usage': [
+        '../lib/telemetry/dist/**',
+        '../lib/telemetry/package.json',
       ],
     },
   },

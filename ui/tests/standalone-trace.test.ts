@@ -24,6 +24,7 @@ function findFirst(...candidates: string[]): string | null {
 before(() => {
   if (!TRACE_GATE) return;
   execSync('npm run build -w @rad-orchestration/repo-registry', { cwd: repoRoot, stdio: 'inherit', shell: process.platform === 'win32' });
+  execSync('npm run build -w @rad-orchestration/telemetry', { cwd: repoRoot, stdio: 'inherit', shell: process.platform === 'win32' });
   execSync('npm run build-standalone', { cwd: uiRoot, stdio: 'inherit', shell: process.platform === 'win32' });
 });
 
@@ -61,4 +62,13 @@ test('standalone ships a reachable js-yaml (the make-or-break check)', { skip: T
     if (found) break;
   }
   assert.ok(found, 'js-yaml lib + package.json not reachable in standalone — route would throw at runtime');
+});
+
+test('standalone ships the telemetry lib dist + package.json (AD-1)', { skip: TRACE_GATE ? false : 'set RADORCH_STANDALONE_TRACE=1 to run the standalone trace gate' }, () => {
+  const idx = findFirst(
+    path.join(standalone, 'lib/telemetry/dist/index.js'),
+    path.join(standalone, 'node_modules/@rad-orchestration/telemetry/dist/index.js'),
+  );
+  assert.ok(idx, 'telemetry dist/index.js not traced into standalone');
+  assert.ok(findFirst(path.join(standalone, 'lib/telemetry/package.json')), 'telemetry package.json not traced');
 });
