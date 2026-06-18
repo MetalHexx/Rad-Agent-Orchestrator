@@ -8,6 +8,10 @@ import {
 
 export { subagentPathFor } from './transcript.js';
 
+export function worktreeFromCwd(cwd?: string): string | undefined {
+  return cwd?.trim() ? cwd : undefined;
+}
+
 type Source = 'main-agent' | 'subagent';
 
 // Subagent attribution resolved from the .meta.json sidecar (SessionEnd backstop),
@@ -78,6 +82,7 @@ export class ClaudeCodeAdapter implements HarnessAdapter {
       cacheReadTokens: u.cache_read_input_tokens,
       cacheCreationTokens: u.cache_creation_input_tokens,
       agentType,
+      worktree: worktreeFromCwd(ev.cwd),
       source,
       pointers: {
         sourceFile: file,
