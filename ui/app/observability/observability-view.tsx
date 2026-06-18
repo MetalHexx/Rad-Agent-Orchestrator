@@ -10,6 +10,8 @@ import { deriveSessions, timeBucketedRate } from "@/lib/observability/sessions";
 import { isActive } from "@/lib/observability/activity-dot-color";
 import { canLoadEarlier } from "@/lib/observability/day-window";
 import { SessionTable } from "@/components/observability/session-table";
+import { HelpPanel } from "@/components/observability/help-panel";
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
 
 function useNow(intervalMs: number): number {
   const [now, setNow] = React.useState(() => Date.now());
@@ -37,6 +39,9 @@ function todayUtc(): string {
 export function ObservabilityView() {
   const { rows, earliestDay, loadEarlier } = useObservabilityLive();
   const now = useNow(1000);
+
+  // Help panel state (FR-13)
+  const [helpOpen, setHelpOpen] = React.useState(false);
 
   // Filter state (FR-6)
   const [worktree, setWorktree] = React.useState<string>("All");
@@ -91,10 +96,20 @@ export function ObservabilityView() {
           <p className="text-sm text-muted-foreground">System-wide token usage</p>
         </div>
         {latestMs > 0 && (
-          <div className="flex items-center gap-1.5 pb-0.5">
-            <ActivityDot msSinceActivity={msSinceActivity} />
-            <span className="text-xs text-muted-foreground">updated {formatAgo(msSinceActivity)}</span>
-          </div>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger
+                className="flex items-center gap-1.5 pb-0.5 cursor-default bg-transparent border-none p-0"
+                aria-label={`Activity indicator: updated ${formatAgo(msSinceActivity)}`}
+              >
+                <ActivityDot msSinceActivity={msSinceActivity} />
+                <span className="text-xs text-muted-foreground">updated {formatAgo(msSinceActivity)}</span>
+              </TooltipTrigger>
+              <TooltipContent>
+                Live activity indicator — glows green when a session sent tokens recently, fades to grey when idle.
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         )}
       </header>
 
@@ -107,11 +122,12 @@ export function ObservabilityView() {
         onSession={setSession}
         onEarlier={loadEarlier}
         canEarlier={canLoadEarlier(earliestDay, todayUtc())}
-        onHelp={() => {}}
+        onHelp={() => setHelpOpen(true)}
       />
       <SummaryCards sessions={filteredSessions} activeNow={activeNow} />
       <TotalRateChart data={timeBucketedRate([...rows.values()], { endMs: now, windowMs: 60*60*1000, buckets: 60 })} />
       <SessionTable sessions={filteredSessions} now={now} />
+      <HelpPanel open={helpOpen} onOpenChange={setHelpOpen} />
     </main>
   );
 }
