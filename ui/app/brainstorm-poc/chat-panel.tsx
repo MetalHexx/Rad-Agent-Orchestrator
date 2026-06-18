@@ -5,8 +5,8 @@ import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { SessionIdField } from "./session-id-field";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -57,11 +57,32 @@ export function ChatPanel() {
     }
   }
 
+  async function newSession() {
+    setError(null);
+    try {
+      const res = await fetch("/api/brainstorm-poc", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reset: true }),
+      });
+      const data = await res.json();
+      if (data.sessionId) setSessionId(data.sessionId);
+      setMessages([]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
   return (
     <Card className="m-4 flex flex-1 flex-col overflow-hidden">
-      <div className="flex items-center justify-between gap-2 border-b px-4 py-3">
+      <div className="flex flex-col gap-2 border-b px-4 py-3">
         <h1 className="text-sm font-semibold">Brainstorm POC</h1>
-        <Badge variant="secondary" className="font-mono text-xs">{sessionId || "no session"}</Badge>
+        <SessionIdField
+          sessionId={sessionId}
+          onSessionIdChange={setSessionId}
+          onNewSession={newSession}
+          disabled={thinking}
+        />
       </div>
       <ScrollArea className="flex-1">
         <div ref={scrollRef} className="flex flex-col gap-3 p-4">
