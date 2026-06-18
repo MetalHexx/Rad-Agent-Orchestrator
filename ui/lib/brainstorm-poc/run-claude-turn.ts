@@ -1,12 +1,13 @@
 import { spawn as nodeSpawn } from 'node:child_process';
-import { resolveTurn, type SessionStoreApi } from './session-logic';
 import { buildClaudeCommand } from './claude-command';
 import { buildChildEnv } from './child-env';
 
 // Loose structural shape of child_process.spawn so a fake can be injected in tests.
+// windowsHide keeps the cmd.exe wrapper (needed because `claude` is a .cmd shim)
+// from flashing a visible console window on every turn.
 export type SpawnLike = (
   command: string,
-  options: { shell: boolean; cwd: string; env: NodeJS.ProcessEnv },
+  options: { shell: boolean; cwd: string; env: NodeJS.ProcessEnv; windowsHide?: boolean },
 ) => {
   stdin: { write: (chunk: string) => void; end: () => void };
   stdout: { on: (event: 'data', listener: (chunk: Buffer | string) => void) => void };
@@ -17,30 +18,31 @@ export type SpawnLike = (
 export interface RunDeps {
   env: NodeJS.ProcessEnv;
   cwd: string;
-  store: SessionStoreApi;
-  mint: () => string;
   spawnFn?: SpawnLike;
 }
 
 export interface TurnInput {
   message: string;
-  clientSessionId?: string;
+  sessionId: string;
+  resume: boolean;
 }
 
-// Spawn one Claude turn: build the command, strip the API key, feed the message
-// via stdin (shell: true is required because `claude` is a .cmd shim on Windows),
-// collect stdout, parse the JSON `result`, and update the session store (AD-1, AD-2, AD-4).
+// Spawn one Claude turn. The client owns the session id and decides create-vs-resume
+// via `resume` (resume=false -> --session-id creates it on turn 1; resume=true ->
+// --resume continues it), so the server holds no session state. The message is fed
+// via stdin (no shell escaping); shell:true is required because `claude` is a .cmd
+// shim on Windows; the API key is stripped so the cached OAuth is used (AD-1..AD-4).
 export function runClaudeTurn(
   input: TurnInput,
   deps: RunDeps,
 ): Promise<{ reply: string; sessionId: string }> {
   const spawnFn = deps.spawnFn ?? (nodeSpawn as unknown as SpawnLike);
-  const { sessionId, isFirstTurn } = resolveTurn(deps.store.getState(), input.clientSessionId, deps.mint);
-  const command = buildClaudeCommand({ sessionId, isFirstTurn });
+  const isFirstTurn = !input.resume;
+  const command = buildClaudeCommand({ sessionId: input.sessionId, isFirstTurn });
   const env = buildChildEnv(deps.env);
 
   return new Promise((resolve, reject) => {
-    const child = spawnFn(command, { shell: true, cwd: deps.cwd, env });
+    const child = spawnFn(command, { shell: true, cwd: deps.cwd, env, windowsHide: true });
     let stdout = '';
     let stderr = '';
     child.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
@@ -58,9 +60,7 @@ export function runClaudeTurn(
         reject(new Error(`Could not parse Claude JSON output: ${stdout.slice(0, 200)}`));
         return;
       }
-      const established = parsed.session_id ?? sessionId;
-      deps.store.setState({ sessionId: established, established: true });
-      resolve({ reply: parsed.result ?? '', sessionId: established });
+      resolve({ reply: parsed.result ?? '', sessionId: parsed.session_id ?? input.sessionId });
     });
     child.stdin.write(input.message);
     child.stdin.end();

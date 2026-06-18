@@ -1,5 +1,5 @@
 import assert from 'node:assert';
-import { resolveTurn, isValidSessionId, mintFreshSession, type SessionState } from './session-logic';
+import { isValidSessionId } from './session-logic';
 import { buildClaudeCommand } from './claude-command';
 import { buildChildEnv } from './child-env';
 
@@ -11,41 +11,13 @@ function test(name: string, fn: () => void) {
 }
 
 const FIXED = '11111111-2222-4333-8444-555555555555';
-const mint = () => FIXED;
 
 console.log('brainstorm-poc helpers');
-
-test('fresh state mints a session and marks the first turn', () => {
-  const r = resolveTurn({ sessionId: null, established: false }, undefined, mint);
-  assert.strictEqual(r.sessionId, FIXED);
-  assert.strictEqual(r.isFirstTurn, true);
-  assert.deepStrictEqual(r.nextState, { sessionId: FIXED, established: true });
-});
-
-test('an established session resumes and is not a first turn', () => {
-  const state: SessionState = { sessionId: 'abc', established: true };
-  const r = resolveTurn(state, undefined, mint);
-  assert.strictEqual(r.sessionId, 'abc');
-  assert.strictEqual(r.isFirstTurn, false);
-});
-
-test('a client-supplied id is resumed verbatim (hijack probe)', () => {
-  const r = resolveTurn({ sessionId: 'mine', established: true }, '  external-id  ', mint);
-  assert.strictEqual(r.sessionId, 'external-id');
-  assert.strictEqual(r.isFirstTurn, false);
-  assert.deepStrictEqual(r.nextState, { sessionId: 'external-id', established: true });
-});
 
 test('isValidSessionId accepts a UUID and rejects junk / injection', () => {
   assert.strictEqual(isValidSessionId(FIXED), true);
   assert.strictEqual(isValidSessionId('not-a-uuid'), false);
   assert.strictEqual(isValidSessionId('x" && rm -rf /'), false);
-});
-
-test('mintFreshSession returns a new, not-yet-established session', () => {
-  const r = mintFreshSession(mint);
-  assert.strictEqual(r.sessionId, FIXED);
-  assert.deepStrictEqual(r.nextState, { sessionId: FIXED, established: false });
 });
 
 test('first-turn command creates with --session-id, vanilla and tool-off', () => {

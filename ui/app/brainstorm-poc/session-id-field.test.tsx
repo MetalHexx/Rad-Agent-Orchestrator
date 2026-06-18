@@ -31,9 +31,9 @@ test('offers a New session reset action (FR-5)', () => {
 test('frames the resume / hijack probe (FR-5)', () => {
   assert.ok(source.toLowerCase().includes('resume'));
 });
-test('chat panel mounts the field and calls the reset endpoint (FR-5)', () => {
+test('chat panel mounts the field and owns the session client-side (FR-5)', () => {
   assert.ok(panel.includes('SessionIdField'));
-  assert.ok(panel.includes('reset: true') || panel.includes('reset:true'));
+  assert.ok(panel.includes('crypto.randomUUID'));
 });
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

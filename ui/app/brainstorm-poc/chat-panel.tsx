@@ -18,15 +18,15 @@ export function ChatPanel() {
   const [input, setInput] = useState("");
   const [thinking, setThinking] = useState(false);
   const [sessionId, setSessionId] = useState("");
+  const [resume, setResume] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Load the active session id for display on mount (FR-4).
+  // The client owns the session: mint a fresh id on mount. The first turn creates
+  // it (resume=false) and every later turn resumes it (FR-4, FR-5, AD-6).
   useEffect(() => {
-    fetch("/api/brainstorm-poc")
-      .then((r) => r.json())
-      .then((d) => { if (d.sessionId) setSessionId(d.sessionId); })
-      .catch(() => {});
+    setSessionId(crypto.randomUUID());
+    setResume(false);
   }, []);
 
   useEffect(() => {
@@ -44,11 +44,13 @@ export function ChatPanel() {
       const res = await fetch("/api/brainstorm-poc", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text, sessionId: sessionId || undefined }),
+        body: JSON.stringify({ message: text, sessionId, resume }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Request failed");
+      // Adopt the id Claude actually used, then resume it from here on.
       if (data.sessionId) setSessionId(data.sessionId);
+      setResume(true);
       setMessages((m) => [...m, { role: "assistant", text: data.reply ?? "" }]);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -57,20 +59,20 @@ export function ChatPanel() {
     }
   }
 
-  async function newSession() {
+  // "New session" is purely client-side now: a fresh id, no server round-trip.
+  function newSession() {
     setError(null);
-    try {
-      const res = await fetch("/api/brainstorm-poc", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reset: true }),
-      });
-      const data = await res.json();
-      if (data.sessionId) setSessionId(data.sessionId);
-      setMessages([]);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
+    setSessionId(crypto.randomUUID());
+    setResume(false);
+    setMessages([]);
+  }
+
+  // A manual paste/edit means the user wants to resume that id on the next turn
+  // (the portability / hijack probe, FR-5). Programmatic updates use setSessionId
+  // directly so they never flip resume.
+  function handleManualSessionIdChange(value: string) {
+    setSessionId(value);
+    setResume(true);
   }
 
   return (
@@ -79,7 +81,7 @@ export function ChatPanel() {
         <h1 className="text-sm font-semibold">Brainstorm POC</h1>
         <SessionIdField
           sessionId={sessionId}
-          onSessionIdChange={setSessionId}
+          onSessionIdChange={handleManualSessionIdChange}
           onNewSession={newSession}
           disabled={thinking}
         />
