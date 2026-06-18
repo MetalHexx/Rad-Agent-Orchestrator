@@ -20,3 +20,13 @@ test('isActive is true within the decay window, false at/after it (FR-12)', () =
   assert.equal(isActive(DECAY_WINDOW_MS - 1), true);
   assert.equal(isActive(DECAY_WINDOW_MS), false);
 });
+
+test('DECAY_WINDOW_MS is the single canonical export from sessions (FR-2)', async () => {
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const src = fs.readFileSync(path.resolve(import.meta.dirname, 'activity-dot-color.ts'), 'utf8');
+  assert.match(src, /import\s*\{[^}]*\bDECAY_WINDOW_MS\b[^}]*\}\s*from\s*["']\.\/sessions["']/,
+    'activity-dot-color.ts must import DECAY_WINDOW_MS from ./sessions');
+  assert.doesNotMatch(src, /export\s+const\s+DECAY_WINDOW_MS\b/,
+    'activity-dot-color.ts must not declare its own DECAY_WINDOW_MS');
+});

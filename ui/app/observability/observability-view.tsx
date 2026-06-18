@@ -63,7 +63,7 @@ export function ObservabilityView() {
       </header>
 
       <SummaryCards sessions={filteredSessions} activeNow={activeNow} />
-      <TotalRateChart data={timeBucketedRate([...rows.values()], { endMs: Date.now(), windowMs: 60*60*1000, buckets: 60 })} />
+      <TotalRateChart data={timeBucketedRate([...rows.values()], { endMs: now, windowMs: 60*60*1000, buckets: 60 })} />
       {/* control bar — P03-T01 */}
       {/* session table — P03-T02 */}
     </main>

@@ -1,4 +1,5 @@
-export const DECAY_WINDOW_MS = 5 * 60 * 1000;
+import { DECAY_WINDOW_MS } from "./sessions";
+export { DECAY_WINDOW_MS } from "./sessions";
 
 export function dotFreshness(msSinceActivity: number): number {
   if (msSinceActivity <= 0) return 1;

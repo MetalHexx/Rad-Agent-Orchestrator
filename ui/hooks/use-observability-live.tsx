@@ -13,6 +13,11 @@ async function fetchDay(date: string): Promise<ObservabilityUsageRow[]> {
   return (json.rows ?? []) as ObservabilityUsageRow[];
 }
 
+export function isWithinRetention(day: string, nowMs: number, retentionDays = 14): boolean {
+  const floor = new Date(nowMs - retentionDays * 86_400_000).toISOString().slice(0, 10);
+  return day >= floor;
+}
+
 export function useObservabilityLive() {
   const { subscribe, sseStatus } = useSSEContext();
   const [rows, setRows] = React.useState<Map<string, ObservabilityUsageRow>>(new Map());
@@ -40,6 +45,7 @@ export function useObservabilityLive() {
     const prev = new Date(`${earliestDay}T00:00:00Z`);
     prev.setUTCDate(prev.getUTCDate() - 1);
     const day = utcDay(prev);
+    if (!isWithinRetention(day, Date.now())) return;
     setEarliestDay(day);
     void fetchDay(day).then(merge);
   }, [earliestDay, merge]);
