@@ -3,6 +3,9 @@
 import * as React from "react";
 import { useObservabilityLive } from "@/hooks/use-observability-live";
 import { ActivityDot } from "@/components/observability/activity-dot";
+import { SummaryCards } from "@/components/observability/summary-cards";
+import { deriveSessions } from "@/lib/observability/sessions";
+import { isActive } from "@/lib/observability/activity-dot-color";
 
 function useNow(intervalMs: number): number {
   const [now, setNow] = React.useState(() => Date.now());
@@ -25,6 +28,12 @@ function formatAgo(ms: number): string {
 export function ObservabilityView() {
   const { rows } = useObservabilityLive();
   const now = useNow(1000);
+
+  const filteredSessions = React.useMemo(() => deriveSessions(rows), [rows]);
+  const activeNow = React.useMemo(
+    () => filteredSessions.filter(s => isActive(now - s.lastMs)).length,
+    [filteredSessions, now]
+  );
 
   const latestMs = React.useMemo(() => {
     let max = 0;
@@ -52,7 +61,7 @@ export function ObservabilityView() {
         )}
       </header>
 
-      {/* summary cards — P02-T02 */}
+      <SummaryCards sessions={filteredSessions} activeNow={activeNow} />
       {/* total rate chart — P02-T03 */}
       {/* control bar — P03-T01 */}
       {/* session table — P03-T02 */}
