@@ -98,7 +98,7 @@ export function ObservabilityView() {
   const msSinceActivity = latestMs > 0 ? now - latestMs : Infinity;
 
   return (
-    <main id="main-content" className="mx-auto w-full max-w-screen-2xl px-6 py-6">
+    <main id="main-content" className="mx-auto w-full max-w-screen-2xl px-4 sm:px-6 py-[var(--space-5)] space-y-[var(--space-5)]">
       <header className="flex items-end justify-between gap-4">
         <div className="flex flex-col gap-0.5">
           <h1 className="text-xl font-semibold text-foreground">All Sessions</h1>

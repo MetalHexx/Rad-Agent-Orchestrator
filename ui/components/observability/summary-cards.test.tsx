@@ -24,3 +24,9 @@ test('Total Spend shows summed effective tokens, Sessions the count, Active Now 
   assert.ok(html.includes('>2<') || html.includes('2'), 'session count is 2');
   assert.ok(!html.includes('$'), 'no dollar cost shown (DD-2)');
 });
+
+test('summary cards stack on narrow screens and use token gaps (FR-8, DD-10, DD-2)', () => {
+  const html = renderToStaticMarkup(createElement(SummaryCards, { sessions: [], activeNow: 0 }));
+  assert.ok(html.includes('grid-cols-1') && html.includes('sm:grid-cols-3'), 'one column below sm, three at sm+');
+  assert.ok(html.includes('var(--space-'), 'card grid gap uses the spacing scale');
+});

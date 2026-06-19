@@ -35,7 +35,7 @@ export function SummaryCards({ sessions, activeNow }: SummaryCardsProps) {
   const totalSpend = sessions.reduce((sum, s) => sum + s.spend, 0);
 
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+    <div className="grid grid-cols-1 gap-[var(--space-4)] sm:grid-cols-3">
       <SummaryCard
         label="Total Spend"
         value={humanizeTokens(totalSpend)}
