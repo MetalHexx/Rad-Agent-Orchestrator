@@ -14,6 +14,7 @@ import { SessionTable } from "@/components/observability/session-table";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
 import { bucketsForWindow } from "@/lib/observability/time-range";
 import { type TimeRange, DEFAULT_RANGE, retentionFloorMs, resolveWindow } from "@/lib/time-range/range";
+import { fitToSession } from "@/lib/observability/fit-to-session";
 
 // HelpPanel renders MarkdownRenderer (react-markdown), whose default export
 // resolves to `undefined` in Next's App-Router server bundle, crashing this
@@ -124,6 +125,16 @@ export function ObservabilityView() {
   // Refresh now: advance manualTick to the current time, forcing a window recompute (FR-2)
   const handleRefreshNow = React.useCallback(() => { setManualTick(Date.now()); }, []);
 
+  // Session selection: pin range to session start; clearing preserves the current range (FR-5, FR-6)
+  const handleSession = React.useCallback((id: string) => {
+    setSession(id);
+    if (id !== "All") {
+      const s = allSessions.find((x) => x.sessionId === id);
+      if (s) setRange(fitToSession(s.startedMs, retentionFloorMs(Date.now())));
+    }
+    // clearing (id === "All") intentionally leaves `range` untouched (FR-6)
+  }, [allSessions]);
+
   // Chart data: anchored to an absolute time grid so the curve's shape stays steady as the window
   // slides (no per-tick warp); the bucket COUNT comes from the nominal range so the grid size is
   // stable — deriving it from the live, retention-clamped window would make the snap circular
@@ -166,7 +177,7 @@ export function ObservabilityView() {
       <div className="flex flex-wrap items-center gap-[var(--space-4)]">
         <TimeRangePicker value={range} onChange={setRange} min={floorMs} max={effectiveTick} scopeLabel="All sessions" />
         <FilterSelect label="Worktree" value={worktree} options={worktrees} onChange={setWorktree} />
-        <FilterSelect label="Session" value={session} options={sessionIds} onChange={setSession} />
+        <FilterSelect label="Session" value={session} options={sessionIds} onChange={handleSession} />
         <div className="flex-1" />
         <button type="button" aria-label="Refresh now" onClick={handleRefreshNow}
           className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border">↻</button>
