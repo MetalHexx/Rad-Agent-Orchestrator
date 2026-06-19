@@ -6,12 +6,14 @@ import { useObservabilityLive } from "@/hooks/use-observability-live";
 import { ActivityDot } from "@/components/observability/activity-dot";
 import { SummaryCards } from "@/components/observability/summary-cards";
 import { TotalRateChart } from "@/components/observability/total-rate-chart";
-import { ControlBar } from "@/components/observability/control-bar";
+import { FilterSelect } from "@/components/observability/filter-select";
+import { TimeRangePicker } from "@/components/time-range/time-range-picker";
 import { deriveSessions, timeBucketedRate, rowsInWindow, rowsSince } from "@/lib/observability/sessions";
 import { isActive } from "@/lib/observability/activity-dot-color";
 import { SessionTable } from "@/components/observability/session-table";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
-import { type QuickRangeId, DEFAULT_RANGE_ID, rangeWindow, bucketsForWindow, rangeMs } from "@/lib/observability/time-range";
+import { bucketsForWindow } from "@/lib/observability/time-range";
+import { type TimeRange, DEFAULT_RANGE, retentionFloorMs, resolveWindow } from "@/lib/time-range/range";
 
 // HelpPanel renders MarkdownRenderer (react-markdown), whose default export
 // resolves to `undefined` in Next's App-Router server bundle, crashing this
@@ -41,24 +43,24 @@ function formatAgo(ms: number): string {
 }
 
 export function ObservabilityView() {
-  // Range + refresh state (FR-3, FR-4, FR-5, AD-3)
-  const [rangeId, setRangeId] = React.useState<QuickRangeId>(DEFAULT_RANGE_ID);
-  const [refreshMs, setRefreshMs] = React.useState(10000);
+  // Time range state (FR-1, AD-9)
+  const [range, setRange] = React.useState<TimeRange>(DEFAULT_RANGE);
 
   // 1-second clock: freshness text and ActivityDot decay only (AD-3)
   const now = useNow(1000);
 
-  // Slow refresh tick: drives re-bucketing (AD-3) — when Off, poll at 1-hour cadence
-  const tick = useNow(refreshMs || 3_600_000);
+  // Slow refresh tick: drives re-bucketing (AD-3)
+  const tick = useNow(10_000);
 
   // Manual refresh state: advances the effective tick to now on demand (FR-2)
   const [manualTick, setManualTick] = React.useState(0);
   const effectiveTick = Math.max(tick, manualTick);
 
   // Compute window from the selected range and the refresh tick
+  const floorMs = retentionFloorMs(tick);
   const { startMs: rangeStart, endMs: rangeEnd } = React.useMemo(
-    () => rangeWindow(rangeId, effectiveTick),
-    [rangeId, effectiveTick]
+    () => resolveWindow(range, effectiveTick, floorMs),
+    [range, effectiveTick, floorMs]
   );
 
   const { rows } = useObservabilityLive({ rangeStart, rangeEnd, manualTick });
@@ -129,9 +131,9 @@ export function ObservabilityView() {
   const chartData = React.useMemo(
     () => timeBucketedRate(
       rowsInWindow([...rows.values()], rangeStart, rangeEnd),
-      { endMs: rangeEnd, windowMs: rangeEnd - rangeStart, buckets: bucketsForWindow(rangeMs(rangeId)), anchor: "grid" }
+      { endMs: rangeEnd, windowMs: rangeEnd - rangeStart, buckets: bucketsForWindow(rangeEnd - rangeStart), anchor: "grid" }
     ),
-    [rows, rangeStart, rangeEnd, rangeId]
+    [rows, rangeStart, rangeEnd]
   );
 
   return (
@@ -161,20 +163,16 @@ export function ObservabilityView() {
 
       <SummaryCards sessions={filteredSessions} activeNow={activeNow} />
       <TotalRateChart data={chartData} rangeStart={rangeStart} rangeEnd={rangeEnd} />
-      <ControlBar
-        rangeId={rangeId}
-        onRange={setRangeId}
-        refreshMs={refreshMs}
-        onRefreshMs={setRefreshMs}
-        onRefreshNow={handleRefreshNow}
-        worktrees={worktrees}
-        worktree={worktree}
-        onWorktree={setWorktree}
-        sessions={sessionIds}
-        session={session}
-        onSession={setSession}
-        onHelp={() => setHelpOpen(true)}
-      />
+      <div className="flex flex-wrap items-center gap-[var(--space-4)]">
+        <TimeRangePicker value={range} onChange={setRange} min={floorMs} max={effectiveTick} scopeLabel="All sessions" />
+        <FilterSelect label="Worktree" value={worktree} options={worktrees} onChange={setWorktree} />
+        <FilterSelect label="Session" value={session} options={sessionIds} onChange={setSession} />
+        <div className="flex-1" />
+        <button type="button" aria-label="Refresh now" onClick={handleRefreshNow}
+          className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border">↻</button>
+        <button type="button" aria-label="Help" onClick={() => setHelpOpen(true)}
+          className="inline-flex h-8 w-8 items-center justify-center rounded-md">?</button>
+      </div>
       <SessionTable sessions={filteredSessions} now={now} rangeStart={rangeStart} rangeEnd={rangeEnd} />
       <HelpPanel open={helpOpen} onOpenChange={setHelpOpen} />
     </main>

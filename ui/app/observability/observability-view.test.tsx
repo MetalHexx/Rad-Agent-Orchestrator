@@ -47,3 +47,17 @@ test('manual refresh advances the window to now (FR-2)', async () => {
   assert.doesNotMatch(src, /setRangeId\(\s*id\s*=>\s*id\s*\)/, 'manual refresh is no longer a no-op');
   assert.match(src, /handleRefreshNow[\s\S]{0,120}(Date\.now\(\)|setManualTick)/, 'manual refresh advances the now-relative window');
 });
+
+test('order is cards → chart → controls → table, with the time picker not the old bar (DD-2, AD-9, NFR-4)', async () => {
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const src = fs.readFileSync(path.resolve(import.meta.dirname, 'observability-view.tsx'), 'utf8');
+  assert.match(src, /TimeRangePicker/, 'view composes the TimeRangePicker (AD-9)');
+  assert.doesNotMatch(src, /ControlBar|Auto · /, 'old control bar and auto-refresh pill are gone (FR-14)');
+
+  const html = renderToStaticMarkup(createElement(ObservabilityView));
+  const iChart = html.indexOf('Total Rate');
+  const iBar = html.indexOf('Worktree');
+  const iTable = html.indexOf('Current Rate');
+  assert.ok(iChart > -1 && iBar > iChart && iTable > iBar, 'order preserved: chart → controls → table (DD-2)');
+});
