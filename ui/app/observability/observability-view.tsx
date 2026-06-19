@@ -15,6 +15,7 @@ import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/comp
 import { bucketsForWindow } from "@/lib/observability/time-range";
 import { type TimeRange, DEFAULT_RANGE, retentionFloorMs, resolveWindow } from "@/lib/time-range/range";
 import { fitToSession } from "@/lib/observability/fit-to-session";
+import { readViewState, writeViewState } from "@/lib/time-range/url-state";
 
 // HelpPanel renders MarkdownRenderer (react-markdown), whose default export
 // resolves to `undefined` in Next's App-Router server bundle, crashing this
@@ -72,6 +73,29 @@ export function ObservabilityView() {
   // Filter state (FR-6)
   const [worktree, setWorktree] = React.useState<string>("All");
   const [session, setSession] = React.useState<string>("All");
+
+  // Hydrate range + filters from the URL query string on first mount (FR-12, AD-8).
+  // Uses window.location.search directly — never useSearchParams() — so this component
+  // stays renderable without a router context (NFR-4, keeps existing tests green).
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    if (!params.toString()) return; // nothing in the URL → keep defaults
+    const vs = readViewState(params);
+    setRange(vs.range);
+    setWorktree(vs.worktree);
+    setSession(vs.session);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // run once on mount only
+
+  // Persist range + filters back to the URL shallowly on every change (FR-12, AD-8).
+  // Mirrors the projects-page precedent: window.history.replaceState (no router.push)
+  // so there are no remounts and no Next router dependency here.
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const qs = writeViewState(new URLSearchParams(window.location.search), { range, worktree, session });
+    window.history.replaceState(null, '', `?${qs}`);
+  }, [range, worktree, session]);
 
   // Scope rows to the live tail: lower-bounded to rangeStart, no upper clamp so SSE
   // appends newer than the tick-pinned rangeEnd surface immediately (FR-9, AD-6).
