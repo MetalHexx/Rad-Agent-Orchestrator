@@ -31,3 +31,11 @@ test('page container applies token-based vertical rhythm and responsive padding 
   assert.ok(html.includes('var(--space-'), 'sections are spaced via the --space-* scale');
   assert.ok(/px-4\b/.test(html) && html.includes('sm:'), 'container padding is responsive (tightens on narrow screens)');
 });
+
+test('table/cards include the live tail; chart keeps the range-end bound (FR-9, AD-6, DD-4)', async () => {
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const src = fs.readFileSync(path.resolve(import.meta.dirname, 'observability-view.tsx'), 'utf8');
+  assert.match(src, /rowsSince\(\[\.\.\.rows\.values\(\)\]\s*,\s*rangeStart\)/, 'table/cards window is lower-bounded to the live tail, not clamped to rangeEnd');
+  assert.match(src, /endMs:\s*rangeEnd\b/, 'chart still buckets to the tick-pinned range end (DD-4 axis stability preserved)');
+});

@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { effectiveTokens } from './effective-tokens';
-import { upsertRows, deriveSessions, sessionDuration, timeBucketedRate, rowKey, rowsInWindow } from './sessions';
+import { upsertRows, deriveSessions, sessionDuration, timeBucketedRate, rowKey, rowsInWindow, rowsSince } from './sessions';
 
 const row = (o: Partial<any> = {}): any => ({
   sessionId: 's1', usageId: 'u1', timestamp: '2026-06-18T00:00:00.000Z',
@@ -72,4 +72,37 @@ test('timeBucketedRate yields a flat zero series for a zero-length window (FR-5)
   const series = timeBucketedRate([row({ timestamp: '2026-06-18T00:00:00.000Z', outputTokens: 2 })], { endMs: t, windowMs: 0, buckets: 30 });
   assert.equal(series.length, 30);
   assert.ok(series.every(p => Number.isFinite(p.t) && Number.isFinite(p.value)), 'no NaN buckets');
+});
+
+test('rowsSince keeps the live tail so SSE appends newer than rangeEnd are not dropped (FR-9, AD-6)', () => {
+  const rangeStart = Date.parse('2026-06-18T00:00:00.000Z');
+  const rangeEnd   = Date.parse('2026-06-18T01:00:00.000Z'); // tick-pinned, already stale
+  const rows = [...upsertRows(new Map(), [
+    row({ sessionId: 's-old', usageId: 'a', timestamp: '2026-06-18T00:30:00.000Z', outputTokens: 2 }),
+    row({ sessionId: 's-new', usageId: 'b', timestamp: '2026-06-18T01:00:30.000Z', outputTokens: 4 }), // SSE append after rangeEnd
+    row({ sessionId: 's-early', usageId: 'c', timestamp: '2026-06-17T23:59:00.000Z', outputTokens: 8 }), // before rangeStart
+  ]).values()];
+  // The old clamped window drops the live-tail row…
+  assert.ok(!rowsInWindow(rows, rangeStart, rangeEnd).some(r => r.sessionId === 's-new'), 'clamped window drops the live-tail row');
+  // …rowsSince keeps it, still drops the pre-window row.
+  const live = rowsSince(rows, rangeStart);
+  assert.ok(live.some(r => r.sessionId === 's-new'), 'live-tail row kept');
+  assert.ok(!live.some(r => r.sessionId === 's-early'), 'rows before rangeStart still excluded');
+});
+
+test('a new SSE row surfaces a new session and updates an existing one (FR-9)', () => {
+  let map = upsertRows(new Map(), [row({ sessionId: 's1', usageId: 'a', timestamp: '2026-06-18T00:00:00.000Z', outputTokens: 2 })]);
+  let s1 = deriveSessions(rowsSince([...map.values()], 0)).find(s => s.sessionId === 's1');
+  assert.equal(s1.spend, 10); // outputTokens 2 → effective 10
+  assert.equal(s1.lastMs, Date.parse('2026-06-18T00:00:00.000Z'));
+  // SSE delivers a later row for s1 and a first row for a brand-new s2
+  map = upsertRows(map, [
+    row({ sessionId: 's1', usageId: 'b', timestamp: '2026-06-18T00:05:00.000Z', outputTokens: 4 }),
+    row({ sessionId: 's2', usageId: 'c', timestamp: '2026-06-18T00:06:00.000Z', outputTokens: 2 }),
+  ]);
+  const sessions = deriveSessions(rowsSince([...map.values()], 0));
+  s1 = sessions.find(s => s.sessionId === 's1');
+  assert.equal(s1.spend, 30, 'existing row spend folds in the new telemetry');
+  assert.equal(s1.lastMs, Date.parse('2026-06-18T00:05:00.000Z'), 'lastMs advances (Activity dot + Duration update)');
+  assert.ok(sessions.some(s => s.sessionId === 's2'), 'new session appears');
 });

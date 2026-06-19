@@ -54,6 +54,12 @@ export function rowsInWindow(rows: ObservabilityUsageRow[], startMs: number, end
   return rows.filter(r => { const t = Date.parse(r.timestamp); return t >= startMs && t <= endMs; });
 }
 
+/** Keep rows at or after startMs with no upper clamp, so live-tail SSE appends
+ *  newer than the tick-pinned rangeEnd surface immediately (FR-9, AD-6). */
+export function rowsSince(rows: ObservabilityUsageRow[], startMs: number): ObservabilityUsageRow[] {
+  return rows.filter(r => Date.parse(r.timestamp) >= startMs);
+}
+
 export interface RatePoint { t: number; value: number; }
 
 /** Spiky per-bucket effective-spend rate (NOT cumulative) over a rolling window (FR-10, FR-5). */

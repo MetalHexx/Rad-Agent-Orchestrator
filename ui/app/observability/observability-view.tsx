@@ -7,7 +7,7 @@ import { ActivityDot } from "@/components/observability/activity-dot";
 import { SummaryCards } from "@/components/observability/summary-cards";
 import { TotalRateChart } from "@/components/observability/total-rate-chart";
 import { ControlBar } from "@/components/observability/control-bar";
-import { deriveSessions, timeBucketedRate, rowsInWindow } from "@/lib/observability/sessions";
+import { deriveSessions, timeBucketedRate, rowsInWindow, rowsSince } from "@/lib/observability/sessions";
 import { isActive } from "@/lib/observability/activity-dot-color";
 import { SessionTable } from "@/components/observability/session-table";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
@@ -66,10 +66,11 @@ export function ObservabilityView() {
   const [worktree, setWorktree] = React.useState<string>("All");
   const [session, setSession] = React.useState<string>("All");
 
-  // Scope rows to the selected window (FR-3)
+  // Scope rows to the live tail: lower-bounded to rangeStart, no upper clamp so SSE
+  // appends newer than the tick-pinned rangeEnd surface immediately (FR-9, AD-6).
   const windowedRows = React.useMemo(
-    () => rowsInWindow([...rows.values()], rangeStart, rangeEnd),
-    [rows, rangeStart, rangeEnd]
+    () => rowsSince([...rows.values()], rangeStart),
+    [rows, rangeStart]
   );
 
   const allSessions = React.useMemo(() => deriveSessions(windowedRows), [windowedRows]);
