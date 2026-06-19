@@ -13,7 +13,8 @@ import { isActive } from "@/lib/observability/activity-dot-color";
 import { SessionTable } from "@/components/observability/session-table";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
 import { bucketsForWindow } from "@/lib/observability/time-range";
-import { type TimeRange, DEFAULT_RANGE, retentionFloorMs, resolveWindow } from "@/lib/time-range/range";
+import { type TimeRange, DEFAULT_RANGE, retentionFloorMs, resolveWindow, isLive } from "@/lib/time-range/range";
+import { windowMsForBuckets } from "@/lib/observability/bucket-count";
 import { fitToSession } from "@/lib/observability/fit-to-session";
 import { readViewState, writeViewState } from "@/lib/time-range/url-state";
 
@@ -51,8 +52,8 @@ export function ObservabilityView() {
   // 1-second clock: freshness text and ActivityDot decay only (AD-3)
   const now = useNow(1000);
 
-  // Slow refresh tick: drives re-bucketing (AD-3)
-  const tick = useNow(10_000);
+  // Re-bucket tick: advances live windows every 5 s, frozen for absolute ranges (FR-8, AD-11)
+  const tick = useNow(isLive(range) ? 5000 : 3_600_000);
 
   // Manual refresh state: advances the effective tick to now on demand (FR-2)
   const [manualTick, setManualTick] = React.useState(0);
@@ -166,7 +167,7 @@ export function ObservabilityView() {
   const chartData = React.useMemo(
     () => timeBucketedRate(
       rowsInWindow([...rows.values()], rangeStart, rangeEnd),
-      { endMs: rangeEnd, windowMs: rangeEnd - rangeStart, buckets: bucketsForWindow(rangeEnd - rangeStart), anchor: "grid" }
+      { endMs: rangeEnd, windowMs: rangeEnd - rangeStart, buckets: bucketsForWindow(windowMsForBuckets(range, effectiveTick)), anchor: "grid" }
     ),
     [rows, rangeStart, rangeEnd]
   );
