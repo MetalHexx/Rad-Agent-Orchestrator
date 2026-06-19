@@ -17,6 +17,7 @@ import { type TimeRange, DEFAULT_RANGE, retentionFloorMs, resolveWindow, isLive 
 import { windowMsForBuckets } from "@/lib/observability/bucket-count";
 import { fitToSession } from "@/lib/observability/fit-to-session";
 import { readViewState, writeViewState } from "@/lib/time-range/url-state";
+import { FilteredBadge } from "@/components/observability/filtered-badge";
 
 // HelpPanel renders MarkdownRenderer (react-markdown), whose default export
 // resolves to `undefined` in Next's App-Router server bundle, crashing this
@@ -74,6 +75,9 @@ export function ObservabilityView() {
   // Filter state (FR-6)
   const [worktree, setWorktree] = React.useState<string>("All");
   const [session, setSession] = React.useState<string>("All");
+
+  // Filtered badge: active when any filter is non-default (FR-10, DD-3)
+  const filtered = worktree !== "All" || session !== "All";
 
   // Hydrate range + filters from the URL query string on first mount (FR-12, AD-8).
   // Uses window.location.search directly — never useSearchParams() — so this component
@@ -178,7 +182,7 @@ export function ObservabilityView() {
     <main id="main-content" className="mx-auto w-full max-w-screen-2xl px-4 sm:px-6 py-[var(--space-5)] space-y-[var(--space-5)]">
       <header className="flex items-end justify-between gap-4">
         <div className="flex flex-col gap-0.5">
-          <h1 className="text-xl font-semibold text-foreground">All Sessions</h1>
+          <h1 className="flex items-center gap-2 text-xl font-semibold text-foreground">All Sessions<FilteredBadge active={filtered} /></h1>
           <p className="text-sm text-muted-foreground">System-wide token usage</p>
         </div>
         {latestMs > 0 && (
@@ -200,7 +204,7 @@ export function ObservabilityView() {
       </header>
 
       <SummaryCards sessions={filteredSessions} activeNow={activeNow} />
-      <TotalRateChart data={chartData} rangeStart={rangeStart} rangeEnd={rangeEnd} />
+      <TotalRateChart data={chartData} rangeStart={rangeStart} rangeEnd={rangeEnd} filtered={filtered} />
       <div className="flex flex-wrap items-center gap-[var(--space-4)]">
         <TimeRangePicker value={range} onChange={setRange} min={floorMs} max={effectiveTick} scopeLabel="All sessions" />
         <FilterSelect label="Worktree" value={worktree} options={worktrees} onChange={setWorktree} />
