@@ -22,9 +22,14 @@ type SortDir = "asc" | "desc";
 interface SessionTableProps {
   sessions: SessionAgg[];
   now: number;
+  /** The shared now-anchored window (same as the Total Rate chart). When supplied, each row's
+   *  scanline buckets over it so it slides/updates live; absent, it falls back to the session's
+   *  own lifetime (keeps prior behavior for callers/tests that don't pass a window). */
+  rangeStart?: number;
+  rangeEnd?: number;
 }
 
-export function SessionTable({ sessions, now }: SessionTableProps) {
+export function SessionTable({ sessions, now, rangeStart, rangeEnd }: SessionTableProps) {
   const [sortKey, setSortKey] = React.useState<SortKey>("startedMs");
   const [sortDir, setSortDir] = React.useState<SortDir>("desc");
 
@@ -160,9 +165,13 @@ export function SessionTable({ sessions, now }: SessionTableProps) {
               <TableCell className="hidden sm:table-cell">
                 <RateSparkline
                   data={timeBucketedRate(s.rows, {
-                    endMs: s.lastMs,
-                    windowMs: s.lastMs - s.startedMs,
+                    // Bucket over the SAME now-anchored, grid-snapped window as the Total Rate chart
+                    // so each scanline slides and updates live exactly like it, scoped to one session.
+                    // Falls back to the session's own lifetime when no window is supplied (FR-10).
+                    endMs: rangeEnd ?? s.lastMs,
+                    windowMs: (rangeEnd ?? s.lastMs) - (rangeStart ?? s.startedMs),
                     buckets: 30,
+                    anchor: rangeEnd != null ? "grid" : "window",
                   })}
                 />
               </TableCell>

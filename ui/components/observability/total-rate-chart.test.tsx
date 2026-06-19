@@ -31,3 +31,13 @@ test('gradient is strengthened and gridlines stay off (DD-6)', () => {
   assert.match(src, /stopOpacity=\{0\.8[0-9]?\}|stopOpacity=\{0\.9\}/, 'top gradient stop is strong (>= 0.8)');
   assert.ok(!src.includes('CartesianGrid'), 'still no gridlines');
 });
+
+test('axes show a fixed, small number of labels — X is not the d3-time bloat (NFR-4)', () => {
+  assert.ok(src.includes('ticks={xTicks}') && src.includes('interval={0}'), 'X axis renders an explicit fixed tick set, not auto time ticks');
+  assert.ok(!src.includes('tickCount={5}'), 'the ignored tickCount hint is gone');
+});
+
+test('Y axis humanizes token counts so labels are meaningful, not the clipped "00000" bug', () => {
+  assert.ok(src.includes('tickFormatter={humanizeTokens}'), 'Y axis formats ticks via humanizeTokens (250K / 1.2M)');
+  assert.ok(src.includes('humanizeTokens'), 'imports the shared humanizer');
+});

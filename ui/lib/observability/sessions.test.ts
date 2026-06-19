@@ -106,3 +106,27 @@ test('a new SSE row surfaces a new session and updates an existing one (FR-9)', 
   assert.equal(s1.lastMs, Date.parse('2026-06-18T00:05:00.000Z'), 'lastMs advances (Activity dot + Duration update)');
   assert.ok(sessions.some(s => s.sessionId === 's2'), 'new session appears');
 });
+
+test('timeBucketedRate grid mode anchors buckets to an absolute clock — shape is stable as the window slides', () => {
+  const WINDOW = 10 * 60 * 1000; // 10 min over 2 buckets → 5 min grid
+  const rows = [row({ usageId: 'a', timestamp: '2026-06-18T00:07:00.000Z', outputTokens: 2 })]; // effective 10
+  const gridAt = (iso: string) =>
+    timeBucketedRate(rows, { endMs: Date.parse(iso), windowMs: WINDOW, buckets: 2, anchor: 'grid' });
+
+  // Advancing the window end by 1 min (< the 5-min bucket size) must NOT re-bucket the row: it stays
+  // pinned to the absolute 00:05 grid point in both renders (this is what kills the per-tick warp).
+  const gridT = Date.parse('2026-06-18T00:05:00.000Z');
+  const b1 = gridAt('2026-06-18T00:10:00.000Z').find(p => p.value > 0);
+  const b2 = gridAt('2026-06-18T00:11:00.000Z').find(p => p.value > 0);
+  assert.ok(b1 && b2, 'the spend bucket exists in both renders');
+  assert.equal(b1.t, gridT, 'bucket is anchored to the absolute 5-min grid');
+  assert.equal(b2.t, gridT, 'same absolute bucket after the window advances — no warp');
+  assert.equal(b1.value, 10);
+  assert.equal(b2.value, 10);
+
+  // Contrast: the default 'window' mode re-anchors to endMs, so the same row lands on a different t
+  // when the window moves — that is the distortion grid mode fixes.
+  const w1 = timeBucketedRate(rows, { endMs: Date.parse('2026-06-18T00:10:00.000Z'), windowMs: WINDOW, buckets: 2 }).find(p => p.value > 0);
+  const w2 = timeBucketedRate(rows, { endMs: Date.parse('2026-06-18T00:11:00.000Z'), windowMs: WINDOW, buckets: 2 }).find(p => p.value > 0);
+  assert.notEqual(w1.t, w2.t, 'window mode re-anchors (the old warp); grid mode does not');
+});

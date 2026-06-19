@@ -62,15 +62,44 @@ export function rowsSince(rows: ObservabilityUsageRow[], startMs: number): Obser
 
 export interface RatePoint { t: number; value: number; }
 
-/** Spiky per-bucket effective-spend rate (NOT cumulative) over a rolling window (FR-10, FR-5). */
-export function timeBucketedRate(rows: ObservabilityUsageRow[], opts: { endMs: number; windowMs: number; buckets: number }): RatePoint[] {
-  const { endMs, windowMs, buckets } = opts;
+/**
+ * Spiky per-bucket effective-spend rate (NOT cumulative) over a rolling window (FR-10, FR-5).
+ *
+ * `anchor` controls where the bucket boundaries fall:
+ *  - 'window' (default): boundaries are relative to the window — `startMs + i*size`. Simple, but
+ *    every time `endMs` advances the boundaries slide and rows re-bucket, so a live chart's shape
+ *    warps on each tick. Kept as the default to preserve existing call sites and their tests.
+ *  - 'grid': boundaries are snapped to an ABSOLUTE wall-clock grid (multiples of `size`). A data
+ *    point therefore keeps the same bucket — the same `t` — across renders as the window slides, so
+ *    the viewport scrolls smoothly while the curve's shape stays steady (no per-tick distortion).
+ *    The leftmost bucket may begin slightly before `startMs` (it scrolls off the left edge) and a
+ *    new rightmost bucket fills in as time advances.
+ */
+export function timeBucketedRate(
+  rows: ObservabilityUsageRow[],
+  opts: { endMs: number; windowMs: number; buckets: number; anchor?: "window" | "grid" }
+): RatePoint[] {
+  const { endMs, windowMs, buckets, anchor = "window" } = opts;
   // Guard: zero-length or negative window — return a flat zero series anchored at endMs (FR-5).
   if (windowMs <= 0) {
     return Array.from({ length: buckets }, (_, i) => ({ t: endMs + i, value: 0 }));
   }
   const startMs = endMs - windowMs;
   const size = windowMs / buckets;
+
+  if (anchor === "grid") {
+    const gridStart = Math.floor(startMs / size) * size;
+    const count = Math.max(1, Math.ceil((endMs - gridStart) / size));
+    const series: RatePoint[] = Array.from({ length: count }, (_, i) => ({ t: gridStart + i * size, value: 0 }));
+    for (const r of rows) {
+      const t = Date.parse(r.timestamp);
+      if (t < startMs || t >= endMs) continue;
+      const idx = Math.min(count - 1, Math.floor((t - gridStart) / size));
+      series[idx].value += effectiveTokens(r);
+    }
+    return series;
+  }
+
   const series: RatePoint[] = Array.from({ length: buckets }, (_, i) => ({ t: startMs + i * size, value: 0 }));
   for (const r of rows) {
     const t = Date.parse(r.timestamp);

@@ -3,6 +3,11 @@ import * as React from "react";
 import { Area, AreaChart, ResponsiveContainer, XAxis, YAxis } from "recharts";
 import type { RatePoint } from "@/lib/observability/sessions";
 import { niceMax } from "@/lib/observability/chart-scale";
+import { humanizeTokens } from "@/lib/observability/format";
+
+// A small, fixed number of axis labels. Recharts' d3 time scale otherwise generates its own dense
+// "nice" ticks and ignores tickCount, crowding the X axis with ~11 labels.
+const AXIS_TICKS = 5;
 
 function formatTime(ms: number): string {
   const d = new Date(ms);
@@ -24,6 +29,15 @@ export function TotalRateChart({
 
   const yMax = niceMax(data.map((d) => d.value));
 
+  // Explicit, evenly-spaced ticks so both axes show exactly AXIS_TICKS labels. The X ticks slide with
+  // the window; the Y ticks span [0, yMax] and are humanized (250K / 1.2M) — raw token counts in a
+  // narrow axis were clipping their leading digits into the garbled "00000".
+  const xTicks = React.useMemo(
+    () => Array.from({ length: AXIS_TICKS }, (_, i) => Math.round(rangeStart + (i * (rangeEnd - rangeStart)) / (AXIS_TICKS - 1))),
+    [rangeStart, rangeEnd]
+  );
+  const yTicks = Array.from({ length: AXIS_TICKS }, (_, i) => (i * yMax) / (AXIS_TICKS - 1));
+
   return (
     <div className="rounded-xl bg-card ring-1 ring-foreground/10 p-[var(--space-4)]">
       <h2 className="text-sm font-medium text-foreground mb-2">Total Rate</h2>
@@ -43,17 +57,21 @@ export function TotalRateChart({
               domain={[rangeStart, rangeEnd]}
               scale="time"
               tickFormatter={formatTime}
-              tickCount={5}
+              ticks={xTicks}
+              interval={0}
               tick={{ fontSize: 10 }}
               tickLine={false}
               axisLine={false}
             />
             <YAxis
               domain={[0, yMax]}
+              ticks={yTicks}
+              tickFormatter={humanizeTokens}
+              allowDecimals={false}
               tick={{ fontSize: 10 }}
               tickLine={false}
               axisLine={false}
-              width={40}
+              width={52}
             />
             <Area
               type="monotone"

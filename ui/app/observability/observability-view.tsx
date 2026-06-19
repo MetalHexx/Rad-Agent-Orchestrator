@@ -11,7 +11,7 @@ import { deriveSessions, timeBucketedRate, rowsInWindow, rowsSince } from "@/lib
 import { isActive } from "@/lib/observability/activity-dot-color";
 import { SessionTable } from "@/components/observability/session-table";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
-import { type QuickRangeId, DEFAULT_RANGE_ID, rangeWindow, bucketsForWindow } from "@/lib/observability/time-range";
+import { type QuickRangeId, DEFAULT_RANGE_ID, rangeWindow, bucketsForWindow, rangeMs } from "@/lib/observability/time-range";
 
 // HelpPanel renders MarkdownRenderer (react-markdown), whose default export
 // resolves to `undefined` in Next's App-Router server bundle, crashing this
@@ -61,7 +61,7 @@ export function ObservabilityView() {
     [rangeId, effectiveTick]
   );
 
-  const { rows } = useObservabilityLive({ rangeStart, rangeEnd });
+  const { rows } = useObservabilityLive({ rangeStart, rangeEnd, manualTick });
 
   // Help panel state (FR-13)
   const [helpOpen, setHelpOpen] = React.useState(false);
@@ -122,13 +122,16 @@ export function ObservabilityView() {
   // Refresh now: advance manualTick to the current time, forcing a window recompute (FR-2)
   const handleRefreshNow = React.useCallback(() => { setManualTick(Date.now()); }, []);
 
-  // Chart data: scoped to window with adaptive bucket count (FR-5, AD-3, NFR-4)
+  // Chart data: anchored to an absolute time grid so the curve's shape stays steady as the window
+  // slides (no per-tick warp); the bucket COUNT comes from the nominal range so the grid size is
+  // stable — deriving it from the live, retention-clamped window would make the snap circular
+  // (FR-5, AD-3, NFR-4).
   const chartData = React.useMemo(
     () => timeBucketedRate(
       rowsInWindow([...rows.values()], rangeStart, rangeEnd),
-      { endMs: rangeEnd, windowMs: rangeEnd - rangeStart, buckets: bucketsForWindow(rangeEnd - rangeStart) }
+      { endMs: rangeEnd, windowMs: rangeEnd - rangeStart, buckets: bucketsForWindow(rangeMs(rangeId)), anchor: "grid" }
     ),
-    [rows, rangeStart, rangeEnd]
+    [rows, rangeStart, rangeEnd, rangeId]
   );
 
   return (
@@ -172,7 +175,7 @@ export function ObservabilityView() {
         onSession={setSession}
         onHelp={() => setHelpOpen(true)}
       />
-      <SessionTable sessions={filteredSessions} now={now} />
+      <SessionTable sessions={filteredSessions} now={now} rangeStart={rangeStart} rangeEnd={rangeEnd} />
       <HelpPanel open={helpOpen} onOpenChange={setHelpOpen} />
     </main>
   );

@@ -72,3 +72,21 @@ test('Current Rate column is hidden below the sm breakpoint (DD-10, FR-8)', () =
   const html = renderToStaticMarkup(createElement(SessionTable, { sessions, now: Date.parse('2026-06-18T11:30:00Z') }));
   assert.ok(/hidden\s+sm:table-cell/.test(html), 'sparkline column collapses on small screens');
 });
+
+test('row scanline buckets over the shared now-window (grid-anchored) when one is supplied (live, FR-10)', () => {
+  // The sparkline must follow the passed range window, not the frozen session lifetime, so it slides
+  // and updates like the Total Rate chart. Falls back to the lifetime when no window is supplied.
+  assert.match(sessionTableSource, /rangeStart\?:\s*number/, 'accepts an optional rangeStart window prop');
+  assert.match(sessionTableSource, /endMs:\s*rangeEnd\s*\?\?\s*s\.lastMs/, 'scanline end follows the now-window (falls back to lifetime)');
+  assert.match(sessionTableSource, /anchor:\s*rangeEnd\s*!=\s*null\s*\?\s*["']grid["']/, 'scanline uses grid anchoring under the shared window');
+});
+
+test('renders with an explicit window without error (live scanline path)', () => {
+  const html = renderToStaticMarkup(createElement(SessionTable, {
+    sessions,
+    now: Date.parse('2026-06-18T11:30:00Z'),
+    rangeStart: Date.parse('2026-06-18T09:00:00Z'),
+    rangeEnd: Date.parse('2026-06-18T11:30:00Z'),
+  }));
+  assert.ok(html.includes('sess-1111aaaa'), 'rows still render under the windowed scanline path');
+});
