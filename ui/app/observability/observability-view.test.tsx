@@ -39,3 +39,11 @@ test('table/cards include the live tail; chart keeps the range-end bound (FR-9, 
   assert.match(src, /rowsSince\(\[\.\.\.rows\.values\(\)\]\s*,\s*rangeStart\)/, 'table/cards window is lower-bounded to the live tail, not clamped to rangeEnd');
   assert.match(src, /endMs:\s*rangeEnd\b/, 'chart still buckets to the tick-pinned range end (DD-4 axis stability preserved)');
 });
+
+test('manual refresh advances the window to now (FR-2)', async () => {
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const src = fs.readFileSync(path.resolve(import.meta.dirname, 'observability-view.tsx'), 'utf8');
+  assert.doesNotMatch(src, /setRangeId\(\s*id\s*=>\s*id\s*\)/, 'manual refresh is no longer a no-op');
+  assert.match(src, /handleRefreshNow[\s\S]{0,120}(Date\.now\(\)|setManualTick)/, 'manual refresh advances the now-relative window');
+});

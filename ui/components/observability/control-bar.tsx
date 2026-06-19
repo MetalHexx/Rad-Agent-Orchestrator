@@ -6,10 +6,10 @@ import { QUICK_RANGES, type QuickRangeId } from "@/lib/observability/time-range"
 // ── Refresh interval options ─────────────────────────────────────────────────
 const REFRESH_OPTIONS: { label: string; ms: number }[] = [
   { label: 'Off',       ms: 0 },
+  { label: '5 s',       ms: 5_000 },
   { label: '10 s',      ms: 10_000 },
   { label: '30 s',      ms: 30_000 },
   { label: '1 min',     ms: 60_000 },
-  { label: '5 min',     ms: 300_000 },
 ];
 
 function refreshLabel(ms: number): string {

@@ -37,3 +37,10 @@ test('keeps Worktree/Session filters and Help, and wraps responsively (FR-6, FR-
 test('styled from house tokens and spacing scale (NFR-2, DD-9)', () => {
   assert.ok(src.includes('var(--space-') , 'uses the spacing scale');
 });
+
+test('refresh interval options are exactly Off, 5s, 10s, 30s, 1m (FR-2)', () => {
+  // 5s must be present and 5min (300_000) must be gone
+  const controlBarSource = fs.readFileSync(path.join(__dirname, 'control-bar.tsx'), 'utf8');
+  assert.match(controlBarSource, /ms:\s*5_?000\b/, '5 s option present');
+  assert.doesNotMatch(controlBarSource, /ms:\s*300_?000\b/, '5 min option removed');
+});

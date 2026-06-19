@@ -51,10 +51,14 @@ export function ObservabilityView() {
   // Slow refresh tick: drives re-bucketing (AD-3) — when Off, poll at 1-hour cadence
   const tick = useNow(refreshMs || 3_600_000);
 
+  // Manual refresh state: advances the effective tick to now on demand (FR-2)
+  const [manualTick, setManualTick] = React.useState(0);
+  const effectiveTick = Math.max(tick, manualTick);
+
   // Compute window from the selected range and the refresh tick
   const { startMs: rangeStart, endMs: rangeEnd } = React.useMemo(
-    () => rangeWindow(rangeId, tick),
-    [rangeId, tick]
+    () => rangeWindow(rangeId, effectiveTick),
+    [rangeId, effectiveTick]
   );
 
   const { rows } = useObservabilityLive({ rangeStart, rangeEnd });
@@ -115,10 +119,8 @@ export function ObservabilityView() {
 
   const msSinceActivity = latestMs > 0 ? now - latestMs : Infinity;
 
-  // Refresh now: advance tick by resetting range window
-  const handleRefreshNow = React.useCallback(() => {
-    setRangeId(id => id);
-  }, []);
+  // Refresh now: advance manualTick to the current time, forcing a window recompute (FR-2)
+  const handleRefreshNow = React.useCallback(() => { setManualTick(Date.now()); }, []);
 
   // Chart data: scoped to window with adaptive bucket count (FR-5, AD-3, NFR-4)
   const chartData = React.useMemo(
