@@ -9,7 +9,7 @@ import { TotalRateChart } from "@/components/observability/total-rate-chart";
 import { FilterSelect } from "@/components/observability/filter-select";
 import { TimeRangePicker } from "@/components/time-range/time-range-picker";
 import { deriveSessions, timeBucketedRate, rowsInWindow, rowsSince } from "@/lib/observability/sessions";
-import { isActive } from "@/lib/observability/activity-dot-color";
+import { countActiveNow } from "@/lib/observability/live-active";
 import { SessionTable } from "@/components/observability/session-table";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
 import { bucketsForWindow } from "@/lib/observability/time-range";
@@ -66,7 +66,7 @@ export function ObservabilityView() {
     [range, effectiveTick, floorMs]
   );
 
-  const { rows } = useObservabilityLive({ rangeStart, rangeEnd, manualTick });
+  const { rows, todayRows } = useObservabilityLive({ rangeStart, rangeEnd, manualTick });
 
   // Help panel state (FR-13)
   const [helpOpen, setHelpOpen] = React.useState(false);
@@ -131,9 +131,11 @@ export function ObservabilityView() {
     return sessionsAfterWorktree.filter((s) => s.sessionId === session);
   }, [sessionsAfterWorktree, session]);
 
+  // Derive activeNow from the system-wide today baseline (not the analyzed/filtered window) so that
+  // deep-linked historical absolute ranges still report real-time activity correctly (FR-9, AD-7).
   const activeNow = React.useMemo(
-    () => filteredSessions.filter(s => isActive(now - s.lastMs)).length,
-    [filteredSessions, now]
+    () => countActiveNow(deriveSessions(todayRows), now),
+    [todayRows, now]
   );
 
   const latestMs = React.useMemo(() => {
