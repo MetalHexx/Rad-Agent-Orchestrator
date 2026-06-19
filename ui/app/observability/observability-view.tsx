@@ -7,11 +7,11 @@ import { ActivityDot } from "@/components/observability/activity-dot";
 import { SummaryCards } from "@/components/observability/summary-cards";
 import { TotalRateChart } from "@/components/observability/total-rate-chart";
 import { ControlBar } from "@/components/observability/control-bar";
-import { deriveSessions, timeBucketedRate } from "@/lib/observability/sessions";
+import { deriveSessions, timeBucketedRate, rowsInWindow } from "@/lib/observability/sessions";
 import { isActive } from "@/lib/observability/activity-dot-color";
-import { canLoadEarlier } from "@/lib/observability/day-window";
 import { SessionTable } from "@/components/observability/session-table";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
+import { type QuickRangeId, DEFAULT_RANGE_ID, rangeWindow, bucketsForWindow } from "@/lib/observability/time-range";
 
 // HelpPanel renders MarkdownRenderer (react-markdown), whose default export
 // resolves to `undefined` in Next's App-Router server bundle, crashing this
@@ -40,14 +40,24 @@ function formatAgo(ms: number): string {
   return `${hrs}h ago`;
 }
 
-// UTC date string for today
-function todayUtc(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
 export function ObservabilityView() {
-  const { rows, earliestDay, loadEarlier } = useObservabilityLive();
+  // Range + refresh state (FR-3, FR-4, FR-5, AD-3)
+  const [rangeId, setRangeId] = React.useState<QuickRangeId>(DEFAULT_RANGE_ID);
+  const [refreshMs, setRefreshMs] = React.useState(10000);
+
+  // 1-second clock: freshness text and ActivityDot decay only (AD-3)
   const now = useNow(1000);
+
+  // Slow refresh tick: drives re-bucketing (AD-3) — when Off, poll at 1-hour cadence
+  const tick = useNow(refreshMs || 3_600_000);
+
+  // Compute window from the selected range and the refresh tick
+  const { startMs: rangeStart, endMs: rangeEnd } = React.useMemo(
+    () => rangeWindow(rangeId, tick),
+    [rangeId, tick]
+  );
+
+  const { rows } = useObservabilityLive({ rangeStart, rangeEnd });
 
   // Help panel state (FR-13)
   const [helpOpen, setHelpOpen] = React.useState(false);
@@ -56,7 +66,13 @@ export function ObservabilityView() {
   const [worktree, setWorktree] = React.useState<string>("All");
   const [session, setSession] = React.useState<string>("All");
 
-  const allSessions = React.useMemo(() => deriveSessions(rows), [rows]);
+  // Scope rows to the selected window (FR-3)
+  const windowedRows = React.useMemo(
+    () => rowsInWindow([...rows.values()], rangeStart, rangeEnd),
+    [rows, rangeStart, rangeEnd]
+  );
+
+  const allSessions = React.useMemo(() => deriveSessions(windowedRows), [windowedRows]);
 
   // Unique worktree paths seen across all sessions (absent → "unknown")
   const worktrees = React.useMemo(
@@ -81,6 +97,7 @@ export function ObservabilityView() {
     if (session === "All") return sessionsAfterWorktree;
     return sessionsAfterWorktree.filter((s) => s.sessionId === session);
   }, [sessionsAfterWorktree, session]);
+
   const activeNow = React.useMemo(
     () => filteredSessions.filter(s => isActive(now - s.lastMs)).length,
     [filteredSessions, now]
@@ -96,6 +113,20 @@ export function ObservabilityView() {
   }, [rows]);
 
   const msSinceActivity = latestMs > 0 ? now - latestMs : Infinity;
+
+  // Refresh now: advance tick by resetting range window
+  const handleRefreshNow = React.useCallback(() => {
+    setRangeId(id => id);
+  }, []);
+
+  // Chart data: scoped to window with adaptive bucket count (FR-5, AD-3, NFR-4)
+  const chartData = React.useMemo(
+    () => timeBucketedRate(
+      rowsInWindow([...rows.values()], rangeStart, rangeEnd),
+      { endMs: rangeEnd, windowMs: rangeEnd - rangeStart, buckets: bucketsForWindow(rangeEnd - rangeStart) }
+    ),
+    [rows, rangeStart, rangeEnd]
+  );
 
   return (
     <main id="main-content" className="mx-auto w-full max-w-screen-2xl px-4 sm:px-6 py-[var(--space-5)] space-y-[var(--space-5)]">
@@ -122,19 +153,22 @@ export function ObservabilityView() {
         )}
       </header>
 
+      <SummaryCards sessions={filteredSessions} activeNow={activeNow} />
+      <TotalRateChart data={chartData} />
       <ControlBar
+        rangeId={rangeId}
+        onRange={setRangeId}
+        refreshMs={refreshMs}
+        onRefreshMs={setRefreshMs}
+        onRefreshNow={handleRefreshNow}
         worktrees={worktrees}
         worktree={worktree}
         onWorktree={setWorktree}
         sessions={sessionIds}
         session={session}
         onSession={setSession}
-        onEarlier={loadEarlier}
-        canEarlier={canLoadEarlier(earliestDay, todayUtc())}
         onHelp={() => setHelpOpen(true)}
       />
-      <SummaryCards sessions={filteredSessions} activeNow={activeNow} />
-      <TotalRateChart data={timeBucketedRate([...rows.values()], { endMs: now, windowMs: 60*60*1000, buckets: 60 })} />
       <SessionTable sessions={filteredSessions} now={now} />
       <HelpPanel open={helpOpen} onOpenChange={setHelpOpen} />
     </main>

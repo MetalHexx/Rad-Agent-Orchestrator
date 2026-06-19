@@ -49,6 +49,11 @@ export function sessionDuration(s: SessionAgg): number {
   return s.lastMs - s.startedMs;
 }
 
+/** Keep only rows whose timestamp falls within [startMs, endMs] (FR-3). */
+export function rowsInWindow(rows: ObservabilityUsageRow[], startMs: number, endMs: number): ObservabilityUsageRow[] {
+  return rows.filter(r => { const t = Date.parse(r.timestamp); return t >= startMs && t <= endMs; });
+}
+
 export interface RatePoint { t: number; value: number; }
 
 /** Spiky per-bucket effective-spend rate (NOT cumulative) over a rolling window (FR-10). */

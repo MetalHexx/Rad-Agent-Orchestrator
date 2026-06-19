@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { effectiveTokens } from './effective-tokens';
-import { upsertRows, deriveSessions, sessionDuration, timeBucketedRate, rowKey } from './sessions';
+import { upsertRows, deriveSessions, sessionDuration, timeBucketedRate, rowKey, rowsInWindow } from './sessions';
 
 const row = (o: Partial<any> = {}): any => ({
   sessionId: 's1', usageId: 'u1', timestamp: '2026-06-18T00:00:00.000Z',
@@ -55,4 +55,14 @@ test('timeBucketedRate is spiky (per-bucket sums), not cumulative (FR-10)', () =
   assert.equal(series.length, 2);
   assert.equal(series[0].value, 10);
   assert.equal(series[1].value, 20); // not 30 — buckets do not accumulate
+});
+
+test('rowsInWindow keeps only rows within [startMs, endMs] (FR-3)', () => {
+  const rows = [
+    row({ usageId: 'a', timestamp: '2026-06-18T00:00:00.000Z' }),
+    row({ usageId: 'b', timestamp: '2026-06-18T05:00:00.000Z' }),
+    row({ usageId: 'c', timestamp: '2026-06-18T23:00:00.000Z' }),
+  ];
+  const out = rowsInWindow(rows, Date.parse('2026-06-18T01:00:00.000Z'), Date.parse('2026-06-18T12:00:00.000Z'));
+  assert.deepEqual(out.map(r => r.usageId), ['b']);
 });

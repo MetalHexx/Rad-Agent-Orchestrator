@@ -7,29 +7,13 @@ import * as url from 'node:url';
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 const hookSource = fs.readFileSync(path.join(__dirname, 'use-observability-live.tsx'), 'utf8');
 
-test("loadEarlier uses the canonical day-window functions, no local floor math (AD-6)", () => {
-  assert.match(
-    hookSource,
-    /from\s*["']@\/lib\/observability\/day-window["']/,
-    "hook imports from the day-window module"
-  );
-  assert.ok(
-    hookSource.includes('canLoadEarlier') && hookSource.includes('previousUtcDay'),
-    "hook references both canLoadEarlier and previousUtcDay"
-  );
-  assert.doesNotMatch(
-    hookSource,
-    /function\s+isWithinRetention\b/,
-    "hook does not declare its own isWithinRetention helper"
-  );
-  assert.doesNotMatch(
-    hookSource,
-    /export\s+function\s+isWithinRetention\b/,
-    "hook does not export isWithinRetention"
-  );
-  assert.doesNotMatch(
-    hookSource,
-    /setUTCDate\(/,
-    "hook does not do inline day arithmetic via setUTCDate"
-  );
+test('hook fetches the selected range and drops the Earlier plumbing (FR-4, AD-2)', () => {
+  assert.ok(!hookSource.includes('canLoadEarlier') && !hookSource.includes('previousUtcDay'),
+    'the one-day-at-a-time Earlier plumbing is removed');
+  assert.match(hookSource, /rangeUtcDates|startDate=/, 'fetches the selected range via the range endpoint');
+});
+
+test('hook keeps the live SSE subscription and reconnect self-heal (NFR-3, AD-2)', () => {
+  assert.ok(hookSource.includes('subscribe') && hookSource.includes('telemetry_rows'), 'SSE subscription preserved');
+  assert.ok(hookSource.includes('upsertRows'), 'rows merged by upsert (self-heal on reconnect)');
 });

@@ -12,14 +12,18 @@ test('renders the All Sessions toolbar title and subtitle (FR-2)', () => {
   assert.ok(html.includes('System-wide token usage'), 'shows the subtitle');
 });
 
-test('total-rate chart window tracks the reactive clock (NFR-1)', async () => {
+test('chart window is range-driven and decoupled from the 1s clock; sections reordered (FR-5, AD-3, DD-3)', async () => {
   const fs = await import('node:fs');
   const path = await import('node:path');
   const src = fs.readFileSync(path.resolve(import.meta.dirname, 'observability-view.tsx'), 'utf8');
-  assert.match(src, /endMs:\s*now\b/,
-    'timeBucketedRate must use the reactive now as endMs');
-  assert.doesNotMatch(src, /endMs:\s*Date\.now\(\)/,
-    'timeBucketedRate must not use Date.now() as endMs');
+  assert.match(src, /endMs:\s*rangeEnd\b/, 'chart buckets to the selected range end, not the 1s now');
+  assert.doesNotMatch(src, /timeBucketedRate\(\[\.\.\.rows\.values\(\)\],\s*\{\s*endMs:\s*now\b/, 'chart no longer keyed to the per-second now');
+
+  const html = renderToStaticMarkup(createElement(ObservabilityView));
+  const iChart = html.indexOf('Total Rate');
+  const iBar = html.indexOf('Worktree');
+  const iTable = html.indexOf('Current Rate');
+  assert.ok(iChart > -1 && iBar > iChart && iTable > iBar, 'order is chart → control bar → table (DD-3)');
 });
 
 test('page container applies token-based vertical rhythm and responsive padding (DD-2, FR-8, DD-10)', () => {
