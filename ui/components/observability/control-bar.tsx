@@ -1,11 +1,120 @@
 "use client";
 
 import * as React from "react";
-import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
+import { QUICK_RANGES, type QuickRangeId } from "@/lib/observability/time-range";
 
+// ── Refresh interval options ─────────────────────────────────────────────────
+const REFRESH_OPTIONS: { label: string; ms: number }[] = [
+  { label: 'Off',       ms: 0 },
+  { label: '10 s',      ms: 10_000 },
+  { label: '30 s',      ms: 30_000 },
+  { label: '1 min',     ms: 60_000 },
+  { label: '5 min',     ms: 300_000 },
+];
+
+function refreshLabel(ms: number): string {
+  return REFRESH_OPTIONS.find(o => o.ms === ms)?.label ?? `${ms / 1000} s`;
+}
+
+// ── Minimal token-styled dropdown ────────────────────────────────────────────
+interface DropdownItem { label: string; value: string | number; active?: boolean }
+interface DropdownProps {
+  trigger: React.ReactNode;
+  items: DropdownItem[];
+  onSelect: (value: string | number) => void;
+}
+function Dropdown({ trigger, items, onSelect }: DropdownProps) {
+  const [open, setOpen] = React.useState(false);
+  const ref = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    if (!open) return;
+    function handle(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener('mousedown', handle);
+    return () => document.removeEventListener('mousedown', handle);
+  }, [open]);
+
+  return (
+    <div ref={ref} style={{ position: 'relative', display: 'inline-block' }}>
+      <button
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen(v => !v)}
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 'var(--space-2)',
+          padding: 'var(--space-1) var(--space-3)',
+          borderRadius: 'var(--radius-md, 6px)',
+          border: '1px solid var(--border)',
+          background: 'var(--background)',
+          color: 'var(--foreground)',
+          fontSize: '0.875rem',
+          fontWeight: 500,
+          cursor: 'pointer',
+        }}
+      >
+        {trigger}
+      </button>
+      {open && (
+        <div
+          role="listbox"
+          style={{
+            position: 'absolute',
+            top: 'calc(100% + var(--space-1))',
+            left: 0,
+            zIndex: 50,
+            minWidth: '10rem',
+            background: 'var(--popover, var(--background))',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-md, 6px)',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+            padding: 'var(--space-1) 0',
+          }}
+        >
+          {items.map(item => (
+            <div
+              key={item.value}
+              role="option"
+              aria-selected={item.active}
+              onClick={() => { onSelect(item.value); setOpen(false); }}
+              style={{
+                padding: 'var(--space-2) var(--space-3)',
+                fontSize: '0.875rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 'var(--space-2)',
+                background: item.active ? 'var(--muted)' : 'transparent',
+                color: 'var(--foreground)',
+              }}
+            >
+              {item.active && <span aria-hidden="true">✓</span>}
+              {item.label}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── ControlBarProps ──────────────────────────────────────────────────────────
 export interface ControlBarProps {
-  /** All unique worktree paths seen in rows; absent worktree shown as "unknown". */
+  /** Active quick-range ID. */
+  rangeId: QuickRangeId;
+  onRange: (id: QuickRangeId) => void;
+
+  /** Auto-refresh interval in ms; 0 = off. */
+  refreshMs: number;
+  onRefreshMs: (ms: number) => void;
+  /** Fires immediately to trigger a data reload. */
+  onRefreshNow: () => void;
+
+  /** All unique worktree paths seen in rows. */
   worktrees: string[];
   /** Currently selected worktree filter; "All" means no filter. */
   worktree: string;
@@ -17,84 +126,153 @@ export interface ControlBarProps {
   session: string;
   onSession: (value: string) => void;
 
-  /** Fires when the user clicks "Earlier". */
-  onEarlier: () => void;
-  /** When false the Earlier button is disabled (retention floor reached). */
-  canEarlier: boolean;
-
   /** Fires when the user clicks the Help button. */
   onHelp: () => void;
 }
 
 /**
- * Control bar — day window & filters (P03-T01, FR-6, AD-6, DD-4, NFR-2).
+ * Control bar — Grafana-style time-range + refresh cluster, filters, Help (FR-1, FR-2, FR-6, FR-8, NFR-2, NFR-4, AD-4, DD-9, DD-10).
  *
- * Layout: [Today] [Earlier]  [Worktree select]  [Session select]  ... [Help?]
+ * Layout: [TimeRange pill] [Refresh cluster]  |  [Worktree] [Session]  ...  [Help?]
+ * Wraps responsively via flex-wrap.
  */
 export function ControlBar({
+  rangeId,
+  onRange,
+  refreshMs,
+  onRefreshMs,
+  onRefreshNow,
   worktrees,
   worktree,
   onWorktree,
   sessions,
   session,
   onSession,
-  onEarlier,
-  canEarlier,
   onHelp,
 }: ControlBarProps) {
+  const activeRange = QUICK_RANGES.find(r => r.id === rangeId) ?? QUICK_RANGES[3];
+  const isAutoRefresh = refreshMs > 0;
+
   return (
-    <div className="flex items-center gap-3 rounded-lg bg-card ring-1 ring-foreground/10 px-4 py-2">
-      {/* Day window controls — Today anchor + Earlier step */}
-      <div className="flex items-center gap-1">
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger>
-              <span className="text-sm font-medium text-foreground">Today</span>
-            </TooltipTrigger>
-            <TooltipContent>Shows today&apos;s sessions. &ldquo;Earlier&rdquo; steps back one day at a time within the 14-day retention window.</TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={!canEarlier}
-                onClick={onEarlier}
-              >
-                Earlier
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Steps back one day at a time within the 14-day retention window.</TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+    <div
+      className="flex flex-wrap items-center"
+      style={{
+        gap: 'var(--space-4)',
+        padding: 'var(--space-3)',
+        borderRadius: 'var(--radius-lg, 8px)',
+        background: 'var(--card)',
+        boxShadow: '0 0 0 1px color-mix(in srgb, var(--foreground) 10%, transparent)',
+      }}
+    >
+      {/* ── Time-range pill ────────────────────────────────────────────── */}
+      <Dropdown
+        trigger={activeRange.label}
+        items={QUICK_RANGES.map(r => ({ label: r.label, value: r.id, active: r.id === rangeId }))}
+        onSelect={v => onRange(v as QuickRangeId)}
+      />
+
+      {/* ── Refresh cluster: now-button + auto interval pill ───────────── */}
+      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+        {/* Refresh now */}
+        <button
+          type="button"
+          aria-label="Refresh now"
+          onClick={onRefreshNow}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: 'var(--space-6)',
+            height: 'var(--space-6)',
+            borderRadius: 'var(--radius-md, 6px)',
+            border: '1px solid var(--border)',
+            background: 'var(--background)',
+            color: 'var(--foreground)',
+            cursor: 'pointer',
+            fontSize: '1rem',
+          }}
+        >
+          ↻
+        </button>
+
+        {/* Auto-refresh interval pill */}
+        <Dropdown
+          trigger={
+            <span>
+              {isAutoRefresh ? (
+                <>Auto · {refreshLabel(refreshMs)}</>
+              ) : (
+                <>Auto · Off</>
+              )}
+            </span>
+          }
+          items={REFRESH_OPTIONS.map(o => ({ label: o.label, value: o.ms, active: o.ms === refreshMs }))}
+          onSelect={v => onRefreshMs(v as number)}
+        />
       </div>
 
-      <div className="h-4 w-px bg-border" aria-hidden="true" />
+      {/* ── Divider ────────────────────────────────────────────────────── */}
+      <div
+        aria-hidden="true"
+        style={{
+          width: '1px',
+          height: 'var(--space-4)',
+          background: 'var(--border)',
+        }}
+      />
 
-      {/* Worktree filter */}
-      <label className="flex items-center gap-1.5 text-sm text-muted-foreground">
+      {/* ── Worktree filter ────────────────────────────────────────────── */}
+      <label
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 'var(--space-2)',
+          fontSize: '0.875rem',
+          color: 'var(--muted-foreground)',
+        }}
+      >
         Worktree
         <select
-          className="rounded border border-border bg-background px-2 py-0.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+          style={{
+            borderRadius: 'var(--radius-md, 6px)',
+            border: '1px solid var(--border)',
+            background: 'var(--background)',
+            padding: 'var(--space-1) var(--space-2)',
+            fontSize: '0.875rem',
+            color: 'var(--foreground)',
+          }}
           value={worktree}
           onChange={(e) => onWorktree(e.target.value)}
         >
           <option value="All">All</option>
           {worktrees.map((wt) => (
             <option key={wt} value={wt}>
-              {wt || "unknown"}
+              {wt || 'unknown'}
             </option>
           ))}
         </select>
       </label>
 
-      {/* Session filter */}
-      <label className="flex items-center gap-1.5 text-sm text-muted-foreground">
+      {/* ── Session filter ─────────────────────────────────────────────── */}
+      <label
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 'var(--space-2)',
+          fontSize: '0.875rem',
+          color: 'var(--muted-foreground)',
+        }}
+      >
         Session
         <select
-          className="rounded border border-border bg-background px-2 py-0.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+          style={{
+            borderRadius: 'var(--radius-md, 6px)',
+            border: '1px solid var(--border)',
+            background: 'var(--background)',
+            padding: 'var(--space-1) var(--space-2)',
+            fontSize: '0.875rem',
+            color: 'var(--foreground)',
+          }}
           value={session}
           onChange={(e) => onSession(e.target.value)}
         >
@@ -107,18 +285,31 @@ export function ControlBar({
         </select>
       </label>
 
-      {/* Spacer pushes Help to far right */}
-      <div className="flex-1" />
+      {/* ── Spacer pushes Help to far right ────────────────────────────── */}
+      <div style={{ flex: 1 }} />
 
-      {/* Help button — far right */}
-      <Button
-        variant="ghost"
-        size="icon-sm"
+      {/* ── Help button ────────────────────────────────────────────────── */}
+      <button
+        type="button"
         aria-label="Help"
         onClick={onHelp}
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: 'var(--space-6)',
+          height: 'var(--space-6)',
+          borderRadius: 'var(--radius-md, 6px)',
+          border: '1px solid transparent',
+          background: 'transparent',
+          color: 'var(--foreground)',
+          cursor: 'pointer',
+          fontSize: '0.875rem',
+          fontWeight: 600,
+        }}
       >
         ?
-      </Button>
+      </button>
     </div>
   );
 }
