@@ -175,7 +175,7 @@ export function ObservabilityView() {
       rowsInWindow([...rows.values()], rangeStart, rangeEnd),
       { endMs: rangeEnd, windowMs: rangeEnd - rangeStart, buckets: bucketsForWindow(windowMsForBuckets(range, effectiveTick)), anchor: "grid" }
     ),
-    [rows, rangeStart, rangeEnd]
+    [rows, rangeStart, rangeEnd, range, effectiveTick]
   );
 
   return (
