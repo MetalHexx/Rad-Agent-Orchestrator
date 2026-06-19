@@ -79,6 +79,11 @@ export function ObservabilityView() {
   // Filtered badge: active when any filter is non-default (FR-10, DD-3)
   const filtered = worktree !== "All" || session !== "All";
 
+  // Guards the persist effect's first (mount) run: the hydrate effect below runs in the
+  // same commit, but its setState is still pending, so a mount-time write would clobber a
+  // deep-linked query string with default state before hydration commits (FR-12, AD-8).
+  const urlHydrated = React.useRef(false);
+
   // Hydrate range + filters from the URL query string on first mount (FR-12, AD-8).
   // Uses window.location.search directly — never useSearchParams() — so this component
   // stays renderable without a router context (NFR-4, keeps existing tests green).
@@ -95,9 +100,11 @@ export function ObservabilityView() {
 
   // Persist range + filters back to the URL shallowly on every change (FR-12, AD-8).
   // Mirrors the projects-page precedent: window.history.replaceState (no router.push)
-  // so there are no remounts and no Next router dependency here.
+  // so there are no remounts and no Next router dependency here. The first invocation
+  // (mount) is skipped so a deep link survives until the hydrate effect's state commits.
   React.useEffect(() => {
     if (typeof window === 'undefined') return;
+    if (!urlHydrated.current) { urlHydrated.current = true; return; }
     const qs = writeViewState(new URLSearchParams(window.location.search), { range, worktree, session });
     window.history.replaceState(null, '', `?${qs}`);
   }, [range, worktree, session]);
