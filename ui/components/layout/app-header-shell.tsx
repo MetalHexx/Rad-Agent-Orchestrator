@@ -12,6 +12,7 @@ const NAV_LINKS: NavLink[] = [
   { label: "Repo Registry", href: "/repo-registry" },
   { label: "Process Editor", href: "/process-editor" },
   { label: "Instruction Editor", href: "/action-events" },
+  { label: "Observability", href: "/observability" },
   { label: "Brainstorm POC", href: "/brainstorm-poc" },
 ];
 
