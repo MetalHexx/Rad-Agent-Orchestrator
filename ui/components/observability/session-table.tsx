@@ -85,11 +85,20 @@ export function SessionTable({ sessions, now }: SessionTableProps) {
   }
 
   return (
-    <div className="mt-4 rounded-xl bg-card ring-1 ring-foreground/10 overflow-hidden">
-      <Table>
+    <div className="rounded-xl bg-card ring-1 ring-foreground/10 overflow-x-auto">
+      <Table className="table-fixed w-full">
+        <colgroup>
+          <col style={{ width: "60px" }} />
+          <col style={{ width: "auto" }} />
+          <col style={{ width: "auto" }} />
+          <col style={{ width: "1%" }} />
+          <col style={{ width: "1%" }} />
+          <col style={{ width: "1%" }} />
+          <col style={{ width: "1%" }} />
+        </colgroup>
         <TableHeader>
           <TableRow>
-            <TableHead className="w-10">Activity</TableHead>
+            <TableHead className="text-center">Activity</TableHead>
             <SortableHead colKey="worktree">Worktree</SortableHead>
             <SortableHead colKey="sessionId">Session</SortableHead>
             <SortableHead colKey="startedMs">Started</SortableHead>
@@ -102,7 +111,7 @@ export function SessionTable({ sessions, now }: SessionTableProps) {
                 </Tooltip>
               </TooltipProvider>
             </SortableHead>
-            <TableHead>Current Rate</TableHead>
+            <TableHead className="hidden sm:table-cell">Current Rate</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -119,17 +128,17 @@ export function SessionTable({ sessions, now }: SessionTableProps) {
                 }
               }}
             >
-              <TableCell>
+              <TableCell className="text-center">
                 <ActivityDot msSinceActivity={now - s.lastMs} />
               </TableCell>
               <TableCell
-                className="max-w-[160px] truncate font-mono text-xs"
+                className="truncate font-mono text-xs"
                 title={s.worktree ?? "unknown"}
               >
                 {s.worktree ?? "unknown"}
               </TableCell>
               <TableCell
-                className="max-w-[120px] truncate font-mono text-xs"
+                className="truncate font-mono text-xs"
                 title={s.sessionId}
               >
                 {s.sessionId}
@@ -143,11 +152,11 @@ export function SessionTable({ sessions, now }: SessionTableProps) {
               <TableCell className="whitespace-nowrap text-sm font-semibold tabular-nums">
                 {humanizeTokens(s.spend)}
               </TableCell>
-              <TableCell>
+              <TableCell className="hidden sm:table-cell">
                 <RateSparkline
                   data={timeBucketedRate(s.rows, {
-                    endMs: now,
-                    windowMs: 60 * 60 * 1000,
+                    endMs: s.lastMs,
+                    windowMs: s.lastMs - s.startedMs,
                     buckets: 30,
                   })}
                 />

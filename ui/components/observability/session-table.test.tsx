@@ -50,3 +50,15 @@ test('Total Spend column header carries an explanatory tooltip (FR-14, DD-10)', 
     "Total Spend header text is enclosed by TooltipTrigger/TooltipContent"
   );
 });
+
+test('Activity column is centered and columns use a fixed colgroup layout (DD-7, DD-8)', () => {
+  const html = renderToStaticMarkup(createElement(SessionTable, { sessions, now: Date.parse('2026-06-18T11:30:00Z') }));
+  assert.ok(html.includes('<colgroup'), 'a colgroup defines column widths');
+  assert.ok(/text-center/.test(html), 'the Activity header/cell is centered');
+  assert.ok(!html.includes('max-w-[160px]') && !html.includes('max-w-[120px]'), 'identity columns no longer hard-capped');
+});
+
+test('Current Rate column is hidden below the sm breakpoint (DD-10, FR-8)', () => {
+  const html = renderToStaticMarkup(createElement(SessionTable, { sessions, now: Date.parse('2026-06-18T11:30:00Z') }));
+  assert.ok(/hidden\s+sm:table-cell/.test(html), 'sparkline column collapses on small screens');
+});

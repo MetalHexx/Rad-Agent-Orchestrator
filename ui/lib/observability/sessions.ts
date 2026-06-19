@@ -56,9 +56,13 @@ export function rowsInWindow(rows: ObservabilityUsageRow[], startMs: number, end
 
 export interface RatePoint { t: number; value: number; }
 
-/** Spiky per-bucket effective-spend rate (NOT cumulative) over a rolling window (FR-10). */
+/** Spiky per-bucket effective-spend rate (NOT cumulative) over a rolling window (FR-10, FR-5). */
 export function timeBucketedRate(rows: ObservabilityUsageRow[], opts: { endMs: number; windowMs: number; buckets: number }): RatePoint[] {
   const { endMs, windowMs, buckets } = opts;
+  // Guard: zero-length or negative window — return a flat zero series anchored at endMs (FR-5).
+  if (windowMs <= 0) {
+    return Array.from({ length: buckets }, (_, i) => ({ t: endMs + i, value: 0 }));
+  }
   const startMs = endMs - windowMs;
   const size = windowMs / buckets;
   const series: RatePoint[] = Array.from({ length: buckets }, (_, i) => ({ t: startMs + i * size, value: 0 }));

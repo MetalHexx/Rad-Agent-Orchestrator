@@ -66,3 +66,10 @@ test('rowsInWindow keeps only rows within [startMs, endMs] (FR-3)', () => {
   const out = rowsInWindow(rows, Date.parse('2026-06-18T01:00:00.000Z'), Date.parse('2026-06-18T12:00:00.000Z'));
   assert.deepEqual(out.map(r => r.usageId), ['b']);
 });
+
+test('timeBucketedRate yields a flat zero series for a zero-length window (FR-5)', () => {
+  const t = Date.parse('2026-06-18T00:00:00.000Z');
+  const series = timeBucketedRate([row({ timestamp: '2026-06-18T00:00:00.000Z', outputTokens: 2 })], { endMs: t, windowMs: 0, buckets: 30 });
+  assert.equal(series.length, 30);
+  assert.ok(series.every(p => Number.isFinite(p.t) && Number.isFinite(p.value)), 'no NaN buckets');
+});
