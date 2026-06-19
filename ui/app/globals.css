@@ -120,6 +120,14 @@
     --gate-autonomous: hsl(142, 71%, 33%);
     --gate-global: hsl(215, 14%, 43%);
 
+    /* ── Semantic Spacing Scale (4px base) ── */
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 24px;
+    --space-6: 32px;
+
     /* ── Surface & Layout Tokens ── */
     --header-bg: var(--card);
     --header-border: var(--border);
