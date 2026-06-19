@@ -21,3 +21,13 @@ test('chart is a single-series area chart titled "Total Rate" with no legend/sub
 test('animates first render only — disabled on live updates (NFR-1)', () => {
   assert.ok(src.includes('isAnimationActive'), 'animation is explicitly controlled to avoid jitter on pushes');
 });
+
+test('renders a real time X axis and a stable Y domain (DD-4, DD-5)', () => {
+  assert.ok(src.includes('XAxis') && src.includes('type="number"') && src.includes('dataKey="t"'), 'numeric time X axis bound to t');
+  assert.ok(!src.includes('"dataMax"'), 'y-domain no longer autoscales to dataMax');
+  assert.ok(src.includes('niceMax'), 'y-domain uses the stable niceMax');
+});
+test('gradient is strengthened and gridlines stay off (DD-6)', () => {
+  assert.match(src, /stopOpacity=\{0\.8[0-9]?\}|stopOpacity=\{0\.9\}/, 'top gradient stop is strong (>= 0.8)');
+  assert.ok(!src.includes('CartesianGrid'), 'still no gridlines');
+});

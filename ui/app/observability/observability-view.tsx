@@ -154,7 +154,7 @@ export function ObservabilityView() {
       </header>
 
       <SummaryCards sessions={filteredSessions} activeNow={activeNow} />
-      <TotalRateChart data={chartData} />
+      <TotalRateChart data={chartData} rangeStart={rangeStart} rangeEnd={rangeEnd} />
       <ControlBar
         rangeId={rangeId}
         onRange={setRangeId}
