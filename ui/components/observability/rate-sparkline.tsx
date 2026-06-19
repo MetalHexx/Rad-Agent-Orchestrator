@@ -1,6 +1,6 @@
 "use client";
 import * as React from "react";
-import { Area, AreaChart, ResponsiveContainer, YAxis } from "recharts";
+import { Area, AreaChart, ResponsiveContainer, XAxis, YAxis } from "recharts";
 import type { RatePoint } from "@/lib/observability/sessions";
 
 interface RateSparklineProps {
@@ -19,6 +19,7 @@ export function RateSparkline({ data }: RateSparklineProps) {
               <stop offset="100%" stopColor="var(--chart-2)" stopOpacity={0} />
             </linearGradient>
           </defs>
+          <XAxis dataKey="t" type="number" domain={['dataMin', 'dataMax']} hide />
           <YAxis hide domain={[0, "dataMax"]} />
           <Area
             type="monotone"

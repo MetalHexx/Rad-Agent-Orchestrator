@@ -19,3 +19,9 @@ test('sparkline gradient id is unique per instance (NFR-5)', () => {
     "sparkline does not hardcode the gradient id as 'sparklineFill'"
   );
 });
+
+test('sparkline positions points on a numeric time axis and stays un-animated (DD-4, AD-5, NFR-1)', () => {
+  assert.ok(sparklineSource.includes('XAxis') && sparklineSource.includes('dataKey="t"') && sparklineSource.includes('type="number"'),
+    'points positioned by time t, not array index');
+  assert.ok(sparklineSource.includes('isAnimationActive={false}'), 'sparkline never animates');
+});
