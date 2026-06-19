@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import dynamic from "next/dynamic";
 import { useObservabilityLive } from "@/hooks/use-observability-live";
 import { ActivityDot } from "@/components/observability/activity-dot";
 import { SummaryCards } from "@/components/observability/summary-cards";
@@ -10,8 +11,16 @@ import { deriveSessions, timeBucketedRate } from "@/lib/observability/sessions";
 import { isActive } from "@/lib/observability/activity-dot-color";
 import { canLoadEarlier } from "@/lib/observability/day-window";
 import { SessionTable } from "@/components/observability/session-table";
-import { HelpPanel } from "@/components/observability/help-panel";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
+
+// HelpPanel renders MarkdownRenderer (react-markdown), whose default export
+// resolves to `undefined` in Next's App-Router server bundle, crashing this
+// statically-prerendered route. It is a click-triggered client drawer with no
+// SSR value, so load it client-only.
+const HelpPanel = dynamic(
+  () => import("@/components/observability/help-panel").then((m) => m.HelpPanel),
+  { ssr: false }
+);
 
 function useNow(intervalMs: number): number {
   const [now, setNow] = React.useState(() => Date.now());
