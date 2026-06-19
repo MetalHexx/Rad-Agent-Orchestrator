@@ -58,6 +58,16 @@ test('Activity column is centered and columns use a fixed colgroup layout (DD-7,
   assert.ok(!html.includes('max-w-[160px]') && !html.includes('max-w-[120px]'), 'identity columns no longer hard-capped');
 });
 
+test('metric columns carry explicit widths, not the broken width:1% trick (table-fixed)', () => {
+  // Under table-layout:fixed, width:1% is taken literally (~15px), collapsing the
+  // metric columns. They must use explicit pixel widths instead. Regression guard.
+  assert.ok(!/width:\s*["']?1%/.test(sessionTableSource), 'no metric column uses the width:1% trick');
+  assert.match(sessionTableSource, /width:\s*["']?176px/, 'Started column has an explicit pixel width');
+  assert.match(sessionTableSource, /width:\s*["']?120px/, 'Total Spend column has an explicit pixel width');
+  // identity columns still flex
+  assert.match(sessionTableSource, /width:\s*["']?auto/, 'identity columns remain auto-width (flex + truncate)');
+});
+
 test('Current Rate column is hidden below the sm breakpoint (DD-10, FR-8)', () => {
   const html = renderToStaticMarkup(createElement(SessionTable, { sessions, now: Date.parse('2026-06-18T11:30:00Z') }));
   assert.ok(/hidden\s+sm:table-cell/.test(html), 'sparkline column collapses on small screens');

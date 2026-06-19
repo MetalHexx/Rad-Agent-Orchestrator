@@ -88,13 +88,18 @@ export function SessionTable({ sessions, now }: SessionTableProps) {
     <div className="rounded-xl bg-card ring-1 ring-foreground/10 overflow-x-auto">
       <Table className="table-fixed w-full">
         <colgroup>
-          <col style={{ width: "60px" }} />
-          <col style={{ width: "auto" }} />
-          <col style={{ width: "auto" }} />
-          <col style={{ width: "1%" }} />
-          <col style={{ width: "1%" }} />
-          <col style={{ width: "1%" }} />
-          <col style={{ width: "1%" }} />
+          {/* table-fixed makes these widths authoritative. Identity columns flex
+              (auto) and truncate; metric columns get explicit widths sized to
+              content/header. NB: the percentage shrink-to-content trick does NOT
+              work under table-fixed (a percent width is taken literally → a sliver
+              of the table), so metric columns must carry real pixel widths. */}
+          <col style={{ width: "60px" }} />{/* Activity */}
+          <col style={{ width: "auto" }} />{/* Worktree */}
+          <col style={{ width: "auto" }} />{/* Session */}
+          <col style={{ width: "176px" }} />{/* Started — full toLocaleString */}
+          <col style={{ width: "96px" }} />{/* Duration */}
+          <col style={{ width: "120px" }} />{/* Total Spend */}
+          <col style={{ width: "140px" }} />{/* Current Rate (hidden < sm) */}
         </colgroup>
         <TableHeader>
           <TableRow>
