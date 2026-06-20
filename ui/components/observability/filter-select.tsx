@@ -12,7 +12,7 @@ export function FilterSelect({ label, value, options, onChange }: {
         <SelectTrigger>
           <SelectValue />
         </SelectTrigger>
-        <SelectContent>
+        <SelectContent className="min-w-max">
           <SelectItem value="All">All</SelectItem>
           {options.map((o) => (
             <SelectItem key={o} value={o}>{o || "unknown"}</SelectItem>
