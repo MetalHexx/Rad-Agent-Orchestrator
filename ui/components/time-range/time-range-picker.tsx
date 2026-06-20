@@ -1,7 +1,8 @@
 "use client";
 import * as React from "react";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { RelativeRangeList } from "./relative-range-list";
 import { AbsoluteRangeForm } from "./absolute-range-form";
 import { rangePillLabel } from "./range-label";
@@ -25,9 +26,7 @@ export function TimeRangePicker({ value, onChange, min = 0, max, scopeLabel }: T
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
-        render={(props) => (
-          <Button {...props} variant="outline" className="h-8 justify-start text-left font-normal" />
-        )}
+        className={cn(buttonVariants({ variant: "outline" }), "h-8 justify-start text-left font-normal")}
         aria-label={scopeLabel ? `Time range — ${scopeLabel}` : "Time range"}
       >
         {rangePillLabel(value)}
