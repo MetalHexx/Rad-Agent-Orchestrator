@@ -257,11 +257,16 @@ function build(args: RuntimeArgs) {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const chokidarMod = require('chokidar');
       const usePolling = process.env.CHOKIDAR_USEPOLLING === '1';
+      // chokidar v4 removed glob support: a '*.ndjson' path is treated as a
+      // literal filename and never matches, so the watcher fired zero events and
+      // telemetry never updated live. Watch the directory natively and filter for
+      // .ndjson in the handlers, mirroring the registry watcher (depth: 0 — the
+      // usage dir is flat: usage-<day>-<session>.ndjson files, never nested).
       // No awaitWriteFinish: an actively-appended partition must not be stalled
-      // while data is being appended (AD-5, NFR-1). stabilityThreshold: 50 ms is
-      // not used so we get events as the file grows.
-      w = chokidarMod.watch(path.join(args.telemetryRoot, '*.ndjson'), {
+      // while data is being appended (AD-5, NFR-1), so we get events as it grows.
+      w = chokidarMod.watch(args.telemetryRoot, {
         usePolling,
+        depth: 0,
         ignoreInitial: true,
       }) as never;
     }
@@ -275,6 +280,7 @@ function build(args: RuntimeArgs) {
     // already tracked vs one that is brand new.
     w.on('add', (filePath: unknown) => {
       const fp = String(filePath);
+      if (!fp.endsWith('.ndjson')) return; // native dir watch sees all children; only partitions matter
       if (!telemetryOffsets.has(fp)) {
         // Newly discovered file: seed at 0 to read all existing content, or at
         // EOF if the file already exists (startup discovery case). Since
@@ -287,6 +293,7 @@ function build(args: RuntimeArgs) {
 
     w.on('change', (filePath: unknown) => {
       const fp = String(filePath);
+      if (!fp.endsWith('.ndjson')) return; // native dir watch sees all children; only partitions matter
       // Files present at watcher start are seeded at EOF in the 'ready' handler;
       // files created afterward are seeded at 0 in the 'add' handler. If a 'change'
       // still arrives for an untracked file (a missed-'add'/pre-'ready' race), seed
@@ -300,6 +307,7 @@ function build(args: RuntimeArgs) {
 
     w.on('unlink', (filePath: unknown) => {
       const fp = String(filePath);
+      if (!fp.endsWith('.ndjson')) return; // native dir watch sees all children; only partitions matter
       telemetryOffsets.delete(fp);
       const h = telemetryDebounces.get(fp);
       if (h !== undefined) { clearTimeout(h); telemetryDebounces.delete(fp); }

@@ -416,3 +416,66 @@ test('the live tail coalesces a legacy radOrcId row to usageId, matching the his
   assert.deepEqual(got.map((r) => r.usageId), ['legacy1'],
     'radOrcId is coalesced into usageId on the live path, not emitted as undefined');
 });
+
+// ── Regression: the REAL chokidar watcher (no makeTelemetryWatcher injection) ─
+// Every telemetry test above injects a fake watcher, so the production
+// `chokidar.watch(...)` line was never exercised — which is exactly how a dead
+// watcher shipped. chokidar v4 dropped glob support, so the old
+// `path.join(root, '*.ndjson')` target matched nothing and the watcher fired
+// ZERO events (live token counts never advanced; new session rows never
+// appeared). This test drives a REAL chokidar watch against a temp dir and
+// asserts both a new partition ('add') and an append to it ('change') are
+// delivered, so any regression to a glob — or any non-matching watch target —
+// fails loudly here instead of silently in production.
+
+async function waitFor(pred: () => boolean, timeoutMs = 5000): Promise<void> {
+  const start = Date.now();
+  while (!pred()) {
+    if (Date.now() - start > timeoutMs) throw new Error('waitFor timed out');
+    await new Promise((r) => setTimeout(r, 25));
+  }
+}
+
+test('REGRESSION: the real chokidar watcher delivers a new partition and an append (chokidar v4 has no glob support)', async () => {
+  __resetLiveRuntimeForTest();
+  // Force polling so fs events are deterministic across platforms/CI. The bug
+  // (glob vs directory target) is independent of the polling mode — the glob
+  // fired nothing under both — so this still faithfully guards the fix.
+  const prevPolling = process.env.CHOKIDAR_USEPOLLING;
+  process.env.CHOKIDAR_USEPOLLING = '1';
+  const dir = telemetryTmpDir();
+  // Only the telemetry watcher is real; the projects watcher stays a fake so the
+  // test never watches the bogus '/p' path.
+  const rt = getLiveRuntime({
+    projectsRoot: '/p',
+    telemetryRoot: dir,
+    makeWatcher: () => fakeWatcher() as never,
+  });
+  const got: Array<{ usageId?: string }> = [];
+  const off = rt.subscribeTelemetry((n) => got.push(...n.payload.rows));
+
+  try {
+    // Let the real watcher finish its initial scan and emit 'ready'.
+    await new Promise((r) => setTimeout(r, 300));
+
+    // A brand-new session partition appears → must fire 'add' and deliver its row
+    // (the "new session row never shows up automatically" symptom).
+    const fp = path.join(dir, 'usage-2026-06-20-live.ndjson');
+    writeFileSync(fp, JSON.stringify({ sessionId: 's1', usageId: 'a1', timestamp: '2026-06-20T00:00:00Z', inputTokens: 1, outputTokens: 1 }) + '\n');
+    await waitFor(() => got.some((r) => r.usageId === 'a1'));
+
+    // An append to that partition → must fire 'change' and deliver the new row
+    // (the "live token count never advances" symptom).
+    appendFileSync(fp, JSON.stringify({ sessionId: 's1', usageId: 'a2', timestamp: '2026-06-20T00:01:00Z', inputTokens: 2, outputTokens: 2 }) + '\n');
+    await waitFor(() => got.some((r) => r.usageId === 'a2'));
+
+    const ids = new Set(got.map((r) => r.usageId));
+    assert.ok(ids.has('a1') && ids.has('a2'),
+      'both the new-partition add and the append change were delivered through the real watcher');
+  } finally {
+    off();
+    rt.teardown();
+    if (prevPolling === undefined) delete process.env.CHOKIDAR_USEPOLLING;
+    else process.env.CHOKIDAR_USEPOLLING = prevPolling;
+  }
+});
