@@ -17,8 +17,10 @@ export function readViewState(params: URLSearchParams): ViewState {
 export function writeViewState(params: URLSearchParams, s: ViewState): string {
   const next = new URLSearchParams(params);
   next.set('range', encodeRange(s.range));
-  s.worktree && s.worktree !== 'All' ? next.set('worktree', s.worktree) : next.delete('worktree');
-  s.session && s.session !== 'All' ? next.set('session', s.session) : next.delete('session');
+  if (s.worktree && s.worktree !== 'All') next.set('worktree', s.worktree);
+  else next.delete('worktree');
+  if (s.session && s.session !== 'All') next.set('session', s.session);
+  else next.delete('session');
   // URLSearchParams.toString() uses application/x-www-form-urlencoded (+for space);
   // replace + with %20 so deep-link URLs use RFC 3986 percent-encoding throughout.
   return next.toString().replace(/\+/g, '%20');

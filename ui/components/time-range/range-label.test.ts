@@ -2,7 +2,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { rangePillLabel } from './range-label';
-import type { TimeRange } from '@/lib/time-range/range';
 
 test('relative shows its preset label (FR-3, DD-1)', () => {
   assert.equal(rangePillLabel({ kind: 'relative', preset: '24h' }), 'Last 24 hours');

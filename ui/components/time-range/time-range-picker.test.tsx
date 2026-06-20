@@ -5,7 +5,7 @@ import React, { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { TimeRangePicker } from './time-range-picker';
 import type { TimeRange } from '@/lib/time-range/range';
-(globalThis as any).React = React;
+(globalThis as unknown as { React: typeof React }).React = React;
 
 test('renders the current range as the trigger label (FR-1, DD-1)', () => {
   const value: TimeRange = { kind: 'relative', preset: '6h' };

@@ -12,7 +12,10 @@ export interface AbsoluteForm {
 
 const hasParts = (d: string, t: string) => Boolean(d && t);
 
-export function formToTimeRange(f: AbsoluteForm): TimeRange | null {
+// The absolute/since form only ever yields a 'since' or 'absolute' range (never
+// 'relative'); the narrowed return type lets validateForm read startMs without
+// re-narrowing, and stays assignable to TimeRange for the onApply consumer.
+export function formToTimeRange(f: AbsoluteForm): Extract<TimeRange, { kind: 'since' | 'absolute' }> | null {
   if (!hasParts(f.startDate, f.startTime)) return null;
   const startMs = localPartsToUtcMs(f.startDate, f.startTime);
   if (f.endMode === 'now') return { kind: 'since', startMs };
