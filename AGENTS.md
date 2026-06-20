@@ -163,8 +163,10 @@ This repo is a polyglot monorepo with several test runners. Pick the right one:
   ```
   cd ui && npm test
   cd ui && npm run dev               # dev server (port 3000 — kill any prior occupant first)
+  cd ui && npm run dev:live          # dev server + RADORCH_CLI_PATH wired (gate/compose routes work)
   cd ui && npm run build-and-start   # full production build + start
   ```
+  Use `dev:live` to develop against a live UI with hot reload; it needs the CLI built (`cd cli && npm run build`). See `ui/AGENTS.md` for the full UI module guide.
 
 ## Prompt harnesses
 

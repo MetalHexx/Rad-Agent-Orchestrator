@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:live": "node ./scripts/dev-live.mjs",
     "build-and-start": "next build && next start",
     "build": "next build",
     "prebuild-standalone": "node ./scripts/clean-standalone.mjs",
