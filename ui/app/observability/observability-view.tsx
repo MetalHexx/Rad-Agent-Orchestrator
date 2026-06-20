@@ -225,7 +225,7 @@ export function ObservabilityView() {
           </div>
         </div>
       </header>
-      <main id="main-content" className="px-6 py-[var(--space-4)] space-y-[var(--space-5)]">
+      <main id="main-content" className="px-6 py-[var(--space-4)] space-y-[var(--space-4)]">
         <SummaryCards sessions={filteredSessions} activeNow={activeNow} />
         <TotalRateChart data={chartData} rangeStart={rangeStart} rangeEnd={rangeEnd} filtered={filtered} />
         <SessionTable sessions={filteredSessions} now={now} rangeStart={rangeStart} rangeEnd={rangeEnd} nominalWindowMs={nominalWindowMs} />
