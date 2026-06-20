@@ -190,42 +190,45 @@ export function ObservabilityView() {
   );
 
   return (
-    <main id="main-content" className="w-full px-6 py-[var(--space-4)] space-y-[var(--space-5)]">
-      <header className="flex items-end justify-between gap-4">
-        <div className="flex flex-col gap-0.5">
-          <h1 className="text-xl font-semibold text-foreground">All Sessions</h1>
-          <p className="text-sm text-muted-foreground">System-wide token usage</p>
+    <>
+      <header aria-label="All Sessions page" className="border-b border-border px-6 py-4">
+        <div className="flex items-center gap-3">
+          <h1 className="text-lg font-semibold">All Sessions</h1>
+          <span className="text-sm text-muted-foreground">System-wide token usage</span>
+          <div className="ml-auto flex items-center">
+            {latestMs > 0 && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger
+                    className="flex items-center gap-1.5 cursor-default bg-transparent border-none p-0"
+                    aria-label={`Activity indicator: updated ${formatAgo(msSinceActivity)}`}
+                  >
+                    <ActivityDot msSinceActivity={msSinceActivity} />
+                    <span className="text-xs text-muted-foreground">updated {formatAgo(msSinceActivity)}</span>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    Live activity indicator — glows green when a session sent tokens recently, fades to grey when idle.
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+          </div>
         </div>
-        {latestMs > 0 && (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger
-                className="flex items-center gap-1.5 pb-0.5 cursor-default bg-transparent border-none p-0"
-                aria-label={`Activity indicator: updated ${formatAgo(msSinceActivity)}`}
-              >
-                <ActivityDot msSinceActivity={msSinceActivity} />
-                <span className="text-xs text-muted-foreground">updated {formatAgo(msSinceActivity)}</span>
-              </TooltipTrigger>
-              <TooltipContent>
-                Live activity indicator — glows green when a session sent tokens recently, fades to grey when idle.
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )}
       </header>
-
-      <SummaryCards sessions={filteredSessions} activeNow={activeNow} />
-      <TotalRateChart data={chartData} rangeStart={rangeStart} rangeEnd={rangeEnd} filtered={filtered} />
-      <div className="flex flex-wrap items-center gap-[var(--space-4)] rounded-xl bg-card ring-1 ring-foreground/10 p-[var(--space-4)]">
-        <TimeRangePicker value={range} onChange={setRange} min={floorMs} max={effectiveTick} scopeLabel="All sessions" />
-        <FilterSelect label="Worktree" value={worktree} options={worktrees} onChange={setWorktree} />
-        <FilterSelect label="Session" value={session} options={sessionIds} onChange={handleSession} />
-        <div className="flex-1" />
-        <Button variant="outline" size="icon" aria-label="Refresh now" onClick={handleRefreshNow}>↻</Button>
-        <Button variant="outline" size="icon" aria-label="Help" onClick={() => setHelpOpen(true)}>?</Button>
-      </div>
-      <SessionTable sessions={filteredSessions} now={now} rangeStart={rangeStart} rangeEnd={rangeEnd} nominalWindowMs={nominalWindowMs} />
-      <HelpPanel open={helpOpen} onOpenChange={setHelpOpen} />
-    </main>
+      <main id="main-content" className="px-6 py-[var(--space-4)] space-y-[var(--space-5)]">
+        <SummaryCards sessions={filteredSessions} activeNow={activeNow} />
+        <TotalRateChart data={chartData} rangeStart={rangeStart} rangeEnd={rangeEnd} filtered={filtered} />
+        <div className="flex flex-wrap items-center gap-[var(--space-4)] rounded-xl bg-card ring-1 ring-foreground/10 p-[var(--space-4)]">
+          <TimeRangePicker value={range} onChange={setRange} min={floorMs} max={effectiveTick} scopeLabel="All sessions" />
+          <FilterSelect label="Worktree" value={worktree} options={worktrees} onChange={setWorktree} />
+          <FilterSelect label="Session" value={session} options={sessionIds} onChange={handleSession} />
+          <div className="flex-1" />
+          <Button variant="outline" size="icon" aria-label="Refresh now" onClick={handleRefreshNow}>↻</Button>
+          <Button variant="outline" size="icon" aria-label="Help" onClick={() => setHelpOpen(true)}>?</Button>
+        </div>
+        <SessionTable sessions={filteredSessions} now={now} rangeStart={rangeStart} rangeEnd={rangeEnd} nominalWindowMs={nominalWindowMs} />
+        <HelpPanel open={helpOpen} onOpenChange={setHelpOpen} />
+      </main>
+    </>
   );
 }
