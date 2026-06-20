@@ -25,7 +25,9 @@ export function TimeRangePicker({ value, onChange, min = 0, max, scopeLabel }: T
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
-        render={<Button variant="outline" className="h-8 justify-start text-left font-normal" />}
+        render={(props) => (
+          <Button {...props} variant="outline" className="h-8 justify-start text-left font-normal" />
+        )}
         aria-label={scopeLabel ? `Time range — ${scopeLabel}` : "Time range"}
       >
         {rangePillLabel(value)}

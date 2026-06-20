@@ -17,7 +17,7 @@ import { type TimeRange, DEFAULT_RANGE, retentionFloorMs, resolveWindow, isLive 
 import { windowMsForBuckets } from "@/lib/observability/bucket-count";
 import { fitToSession } from "@/lib/observability/fit-to-session";
 import { readViewState, writeViewState } from "@/lib/time-range/url-state";
-import { FilteredBadge } from "@/components/observability/filtered-badge";
+import { Button } from "@/components/ui/button";
 
 // HelpPanel renders MarkdownRenderer (react-markdown), whose default export
 // resolves to `undefined` in Next's App-Router server bundle, crashing this
@@ -173,23 +173,27 @@ export function ObservabilityView() {
     // clearing (id === "All") intentionally leaves `range` untouched (FR-6)
   }, [allSessions]);
 
+  // Nominal (snapped) window: drives BOTH the bucket count and the bucket size so the absolute grid
+  // size stays invariant as a live `since`/clamped window grows each tick. Sourcing windowMs from the
+  // live `rangeEnd - rangeStart` made `size` drift every tick (e.g. 50000→50083→50167), re-anchoring
+  // the grid and warping the curve instead of scrolling it (FR-5, AD-3, NFR-4).
+  const nominalWindowMs = windowMsForBuckets(range, effectiveTick);
+
   // Chart data: anchored to an absolute time grid so the curve's shape stays steady as the window
-  // slides (no per-tick warp); the bucket COUNT comes from the nominal range so the grid size is
-  // stable — deriving it from the live, retention-clamped window would make the snap circular
-  // (FR-5, AD-3, NFR-4).
+  // slides (no per-tick warp); both window length and count come from the nominal range above.
   const chartData = React.useMemo(
     () => timeBucketedRate(
       rowsInWindow([...rows.values()], rangeStart, rangeEnd),
-      { endMs: rangeEnd, windowMs: rangeEnd - rangeStart, buckets: bucketsForWindow(windowMsForBuckets(range, effectiveTick)), anchor: "grid" }
+      { endMs: rangeEnd, windowMs: nominalWindowMs, buckets: bucketsForWindow(nominalWindowMs), anchor: "grid" }
     ),
-    [rows, rangeStart, rangeEnd, range, effectiveTick]
+    [rows, rangeStart, rangeEnd, nominalWindowMs]
   );
 
   return (
     <main id="main-content" className="mx-auto w-full max-w-screen-2xl px-4 sm:px-6 py-[var(--space-5)] space-y-[var(--space-5)]">
       <header className="flex items-end justify-between gap-4">
         <div className="flex flex-col gap-0.5">
-          <h1 className="flex items-center gap-2 text-xl font-semibold text-foreground">All Sessions<FilteredBadge active={filtered} /></h1>
+          <h1 className="text-xl font-semibold text-foreground">All Sessions</h1>
           <p className="text-sm text-muted-foreground">System-wide token usage</p>
         </div>
         {latestMs > 0 && (
@@ -212,17 +216,15 @@ export function ObservabilityView() {
 
       <SummaryCards sessions={filteredSessions} activeNow={activeNow} />
       <TotalRateChart data={chartData} rangeStart={rangeStart} rangeEnd={rangeEnd} filtered={filtered} />
-      <div className="flex flex-wrap items-center gap-[var(--space-4)]">
+      <div className="flex flex-wrap items-center gap-[var(--space-4)] rounded-xl bg-card ring-1 ring-foreground/10 p-[var(--space-4)]">
         <TimeRangePicker value={range} onChange={setRange} min={floorMs} max={effectiveTick} scopeLabel="All sessions" />
         <FilterSelect label="Worktree" value={worktree} options={worktrees} onChange={setWorktree} />
         <FilterSelect label="Session" value={session} options={sessionIds} onChange={handleSession} />
         <div className="flex-1" />
-        <button type="button" aria-label="Refresh now" onClick={handleRefreshNow}
-          className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border">↻</button>
-        <button type="button" aria-label="Help" onClick={() => setHelpOpen(true)}
-          className="inline-flex h-8 w-8 items-center justify-center rounded-md">?</button>
+        <Button variant="outline" size="icon" aria-label="Refresh now" onClick={handleRefreshNow}>↻</Button>
+        <Button variant="outline" size="icon" aria-label="Help" onClick={() => setHelpOpen(true)}>?</Button>
       </div>
-      <SessionTable sessions={filteredSessions} now={now} rangeStart={rangeStart} rangeEnd={rangeEnd} />
+      <SessionTable sessions={filteredSessions} now={now} rangeStart={rangeStart} rangeEnd={rangeEnd} nominalWindowMs={nominalWindowMs} />
       <HelpPanel open={helpOpen} onOpenChange={setHelpOpen} />
     </main>
   );

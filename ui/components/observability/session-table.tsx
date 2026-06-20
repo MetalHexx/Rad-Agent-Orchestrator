@@ -27,9 +27,13 @@ interface SessionTableProps {
    *  own lifetime (keeps prior behavior for callers/tests that don't pass a window). */
   rangeStart?: number;
   rangeEnd?: number;
+  /** The nominal (snapped) window length the Total Rate chart buckets over. Sourced from the same
+   *  stable value, not the live `rangeEnd - rangeStart`, so the sparkline's grid size is invariant
+   *  across ticks (kills the per-tick warp). Falls back to the live span when absent. */
+  nominalWindowMs?: number;
 }
 
-export function SessionTable({ sessions, now, rangeStart, rangeEnd }: SessionTableProps) {
+export function SessionTable({ sessions, now, rangeStart, rangeEnd, nominalWindowMs }: SessionTableProps) {
   const [sortKey, setSortKey] = React.useState<SortKey>("startedMs");
   const [sortDir, setSortDir] = React.useState<SortDir>("desc");
 
@@ -167,9 +171,10 @@ export function SessionTable({ sessions, now, rangeStart, rangeEnd }: SessionTab
                   data={timeBucketedRate(s.rows, {
                     // Bucket over the SAME now-anchored, grid-snapped window as the Total Rate chart
                     // so each scanline slides and updates live exactly like it, scoped to one session.
-                    // Falls back to the session's own lifetime when no window is supplied (FR-10).
+                    // windowMs comes from the chart's stable nominal window (not the live span) so the
+                    // grid size holds across ticks; falls back to the session's lifetime (FR-10).
                     endMs: rangeEnd ?? s.lastMs,
-                    windowMs: (rangeEnd ?? s.lastMs) - (rangeStart ?? s.startedMs),
+                    windowMs: nominalWindowMs ?? ((rangeEnd ?? s.lastMs) - (rangeStart ?? s.startedMs)),
                     buckets: 30,
                     anchor: rangeEnd != null ? "grid" : "window",
                   })}
