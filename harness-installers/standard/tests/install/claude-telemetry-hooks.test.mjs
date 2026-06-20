@@ -9,14 +9,16 @@ import { mergePreambleHook, reconcileTelemetryHooks, removeTelemetryHooks }
 const tmp = () => path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'tel-hooks-')), 'settings.json');
 const read = (p) => JSON.parse(fs.readFileSync(p, 'utf8'));
 
-test('fresh install adds 3 marked events; PostToolUse carries matcher Agent (FR-1, AD-7)', () => {
+test('fresh install adds 3 marked events; no event carries a matcher (FR-1, AD-7 reversal)', () => {
   const p = tmp();
   reconcileTelemetryHooks({ settingsPath: p, hookCommand: 'node "shim"' });
   const s = read(p);
   for (const ev of ['PostToolUse', 'Stop', 'SessionEnd']) {
     assert.ok(s.hooks[ev].some((e) => e.hooks?.[0]?.command?.includes('rad-orc-telemetry')));
   }
-  assert.equal(s.hooks.PostToolUse[0].matcher, 'Agent');
+  // PostToolUse now fires on ALL tools (no matcher) so main-agent spend is captured
+  // mid-turn, not just at Stop. The added fires are non-blocking (CLI detaches).
+  assert.equal(s.hooks.PostToolUse[0].matcher, undefined);
 });
 
 test('re-run is idempotent and never touches the preamble (NFR-3, NFR-5)', () => {

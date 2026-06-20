@@ -196,10 +196,14 @@ function isTelemetryEntry(entry) {
     && entry.hooks.some((h) => typeof h.command === 'string' && h.command.includes(TELEMETRY_MARKER));
 }
 
-function buildTelemetryEntry(event, hookCommand) {
-  const entry = { hooks: [{ type: 'command', command: `${hookCommand} # ${TELEMETRY_MARKER}` }] };
-  if (event === 'PostToolUse') entry.matcher = 'Agent';   // per-event matcher (AD-7)
-  return entry;
+function buildTelemetryEntry(hookCommand) {
+  // AD-7 reversal: PostToolUse no longer carries matcher:'Agent' (subagent-only).
+  // It now fires on every tool so main-agent spend is harvested mid-turn, not just
+  // at Stop. The added per-tool fires are non-blocking — the CLI detaches a
+  // background worker for PostToolUse/Stop (see cli/.../telemetry/capture.ts).
+  // No matcher key on any telemetry event ⇒ fires for all tools, so the entry is now
+  // event-agnostic (every telemetry event gets the same shape).
+  return { hooks: [{ type: 'command', command: `${hookCommand} # ${TELEMETRY_MARKER}` }] };
 }
 
 /**
@@ -222,7 +226,7 @@ export function reconcileTelemetryHooks({ settingsPath, hookCommand }) {
   for (const event of TELEMETRY_EVENTS) {
     if (!Array.isArray(settings.hooks[event])) settings.hooks[event] = [];
     const arr = settings.hooks[event];
-    const desired = buildTelemetryEntry(event, hookCommand);
+    const desired = buildTelemetryEntry(hookCommand);
     const idxs = arr.reduce((acc, e, i) => (isTelemetryEntry(e) ? (acc.push(i), acc) : acc), []);
     if (idxs.length === 0) {
       arr.push(desired); changed = true;                                         // add
