@@ -1,7 +1,7 @@
 // ui/lib/time-range/range.ts
 import { retentionFloorDay } from '@/lib/observability/day-window';
 
-export type RelativePreset = '15m' | '1h' | '6h' | '24h' | '7d' | '14d';
+export type RelativePreset = '15m' | '1h' | '3h' | '6h' | '12h' | '24h' | '2d' | '7d' | '14d';
 
 export type TimeRange =
   | { kind: 'relative'; preset: RelativePreset }
@@ -13,8 +13,11 @@ const MIN = 60_000, HOUR = 60 * MIN, DAY = 24 * HOUR;
 export const PRESET_TIERS: { id: RelativePreset; label: string; ms: number }[] = [
   { id: '15m', label: 'Last 15 minutes', ms: 15 * MIN },
   { id: '1h',  label: 'Last 1 hour',     ms: HOUR },
+  { id: '3h',  label: 'Last 3 hours',    ms: 3 * HOUR },
   { id: '6h',  label: 'Last 6 hours',    ms: 6 * HOUR },
+  { id: '12h', label: 'Last 12 hours',   ms: 12 * HOUR },
   { id: '24h', label: 'Last 24 hours',   ms: DAY },
+  { id: '2d',  label: 'Last 2 days',     ms: 2 * DAY },
   { id: '7d',  label: 'Last 7 days',     ms: 7 * DAY },
   { id: '14d', label: 'Last 14 days',    ms: 14 * DAY },
 ];
@@ -22,7 +25,9 @@ export const PRESET_TIERS: { id: RelativePreset; label: string; ms: number }[] =
 export const DEFAULT_RANGE: TimeRange = { kind: 'relative', preset: '24h' };
 
 export function presetMs(p: RelativePreset): number {
-  return (PRESET_TIERS.find(t => t.id === p) ?? PRESET_TIERS[3]).ms;
+  return (PRESET_TIERS.find(t => t.id === p)
+    ?? PRESET_TIERS.find(t => t.id === (DEFAULT_RANGE as { preset: RelativePreset }).preset)!
+  ).ms;
 }
 
 export const isLive = (r: TimeRange): boolean => r.kind !== 'absolute';

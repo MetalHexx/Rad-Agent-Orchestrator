@@ -26,10 +26,6 @@ test('end-mode "now" produces a since range; "specific" produces an absolute ran
   assert.equal(formToTimeRange(base)!.kind, 'absolute');
 });
 
-test('a future time is rejected (DD-5)', () => {
-  assert.equal(validateForm({ ...base, endDate: '2026-06-30' }).valid, false);
-});
-
 test('local form parts round-trip back to the original UTC instant (DD-4, AD-10)', () => {
   const utcMs = Date.parse('2026-06-18T15:30:00Z');
   const form: AbsoluteForm = {

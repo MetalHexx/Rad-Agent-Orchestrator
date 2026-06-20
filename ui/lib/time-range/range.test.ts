@@ -1,7 +1,7 @@
 // ui/lib/time-range/range.test.ts
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveWindow, isLive, presetMs, snapUpToPresetMs, DEFAULT_RANGE, type TimeRange } from './range';
+import { resolveWindow, isLive, presetMs, snapUpToPresetMs, DEFAULT_RANGE, PRESET_TIERS, type TimeRange } from './range';
 
 const NOW = Date.parse('2026-06-19T12:00:00Z');
 const FLOOR = Date.parse('2026-06-06T00:00:00Z');
@@ -26,5 +26,13 @@ test('absolute is bounded and static (AD-1, AD-2)', () => {
 
 test('DEFAULT_RANGE is relative 24h; since-window snaps up to a preset tier (FR-3)', () => {
   assert.deepEqual(DEFAULT_RANGE, { kind: 'relative', preset: '24h' });
-  assert.equal(snapUpToPresetMs(90 * 60_000), 6 * 60 * 60_000); // 90m → snaps up to 6h tier
+  assert.equal(snapUpToPresetMs(90 * 60_000), 3 * 60 * 60_000); // 90m → snaps up to 3h tier
+});
+
+test('PRESET_TIERS has 9 entries; new presets have correct ms; fallback equals 24h (FR-3)', () => {
+  assert.equal(PRESET_TIERS.length, 9);
+  assert.equal(presetMs('3h'), 3 * 60 * 60_000);
+  assert.equal(presetMs('12h'), 12 * 60 * 60_000);
+  assert.equal(presetMs('2d'), 2 * 24 * 60 * 60_000);
+  assert.equal((presetMs as (p: string) => number)('unknown_id'), presetMs('24h'));
 });

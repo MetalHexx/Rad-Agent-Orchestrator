@@ -26,10 +26,7 @@ export function formToTimeRange(f: AbsoluteForm): Extract<TimeRange, { kind: 'si
 export function validateForm(f: AbsoluteForm): { valid: boolean; hint?: string } {
   const range = formToTimeRange(f);
   if (!range) return { valid: false, hint: 'Pick a start date and time.' };
-  const startMs = range.startMs;
   const endMs = range.kind === 'absolute' ? range.endMs : f.nowMs;
-  if (startMs < f.floorMs) return { valid: false, hint: 'Start is before the 14-day retention window.' };
-  if (endMs <= startMs) return { valid: false, hint: 'Start must be before end.' };
-  if (startMs > f.nowMs || endMs > f.nowMs) return { valid: false, hint: 'Times cannot be in the future.' };
+  if (endMs <= range.startMs) return { valid: false, hint: 'Start must be before end.' };
   return { valid: true };
 }

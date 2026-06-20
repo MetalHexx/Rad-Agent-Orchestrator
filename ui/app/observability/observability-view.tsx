@@ -181,12 +181,17 @@ export function ObservabilityView() {
 
   // Chart data: anchored to an absolute time grid so the curve's shape stays steady as the window
   // slides (no per-tick warp); both window length and count come from the nominal range above.
+  // Sourced from `filteredSessions` (the same set behind the cards and table) so the Total Rate
+  // honors the worktree/session filters — narrowed to one session it mirrors that row's sparkline.
   const chartData = React.useMemo(
     () => timeBucketedRate(
-      rowsInWindow([...rows.values()], rangeStart, rangeEnd),
+      rowsInWindow(filteredSessions.flatMap((s) => s.rows), rangeStart, rangeEnd),
       { endMs: rangeEnd, windowMs: nominalWindowMs, buckets: bucketsForWindow(nominalWindowMs), anchor: "grid" }
     ),
-    [rows, rangeStart, rangeEnd, nominalWindowMs]
+    // nominalWindowMs is fully derived from range + effectiveTick (windowMsForBuckets), so tracking
+    // those sources is equivalent; filteredSessions transitively tracks rows + the active filters.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [filteredSessions, rangeStart, rangeEnd, range, effectiveTick]
   );
 
   return (
@@ -198,14 +203,8 @@ export function ObservabilityView() {
             <span className="text-sm text-muted-foreground">System-wide token usage</span>
           </div>
           <div className="flex flex-wrap items-center gap-[var(--space-4)] sm:ml-auto">
-            <TimeRangePicker value={range} onChange={setRange} min={floorMs} max={effectiveTick} scopeLabel="All sessions" />
-            <FilterSelect label="Worktree" value={worktree} options={worktrees} onChange={setWorktree} />
-            <FilterSelect label="Session" value={session} options={sessionIds} onChange={handleSession} />
-            <Button variant="outline" size="icon" aria-label="Refresh now" onClick={handleRefreshNow}>↻</Button>
-            <Button variant="outline" size="icon" aria-label="Help" onClick={() => setHelpOpen(true)}>?</Button>
             {latestMs > 0 && (
               <>
-                <div className="hidden sm:block w-px h-4 bg-border" />
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger
@@ -220,8 +219,14 @@ export function ObservabilityView() {
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
+                <div className="hidden sm:block w-px h-4 bg-border" />
               </>
             )}
+            <TimeRangePicker value={range} onChange={setRange} min={floorMs} max={effectiveTick} scopeLabel="All sessions" />
+            <FilterSelect label="Worktree" value={worktree} options={worktrees} onChange={setWorktree} />
+            <FilterSelect label="Session" value={session} options={sessionIds} onChange={handleSession} />
+            <Button variant="outline" size="icon" aria-label="Refresh now" onClick={handleRefreshNow}>↻</Button>
+            <Button variant="outline" size="icon" aria-label="Help" onClick={() => setHelpOpen(true)}>?</Button>
           </div>
         </div>
       </header>

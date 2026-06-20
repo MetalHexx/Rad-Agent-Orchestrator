@@ -12,7 +12,8 @@ import { ActivityDot } from "@/components/observability/activity-dot";
 import { RateSparkline } from "@/components/observability/rate-sparkline";
 import { humanizeTokens } from "@/lib/observability/format";
 import { formatDuration } from "@/lib/observability/duration-format";
-import { sessionDuration, timeBucketedRate } from "@/lib/observability/sessions";
+import { sessionDuration, timeBucketedRate, rowsInWindow } from "@/lib/observability/sessions";
+import { bucketsForWindow } from "@/lib/observability/time-range";
 import type { SessionAgg } from "@/lib/observability/sessions";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
 
@@ -108,7 +109,7 @@ export function SessionTable({ sessions, now, rangeStart, rangeEnd, nominalWindo
           <col style={{ width: "176px" }} />{/* Started — full toLocaleString */}
           <col style={{ width: "96px" }} />{/* Duration */}
           <col style={{ width: "120px" }} />{/* Total Spend */}
-          <col style={{ width: "140px" }} />{/* Current Rate (hidden < sm) */}
+          <col style={{ width: "220px" }} />{/* Current Rate (hidden < sm) — wide enough to decompress the scanline */}
         </colgroup>
         <TableHeader>
           <TableRow>
@@ -168,16 +169,24 @@ export function SessionTable({ sessions, now, rangeStart, rangeEnd, nominalWindo
               </TableCell>
               <TableCell className="hidden sm:table-cell">
                 <RateSparkline
-                  data={timeBucketedRate(s.rows, {
-                    // Bucket over the SAME now-anchored, grid-snapped window as the Total Rate chart
-                    // so each scanline slides and updates live exactly like it, scoped to one session.
-                    // windowMs comes from the chart's stable nominal window (not the live span) so the
-                    // grid size holds across ticks; falls back to the session's lifetime (FR-10).
-                    endMs: rangeEnd ?? s.lastMs,
-                    windowMs: nominalWindowMs ?? ((rangeEnd ?? s.lastMs) - (rangeStart ?? s.startedMs)),
-                    buckets: 30,
-                    anchor: rangeEnd != null ? "grid" : "window",
-                  })}
+                  data={timeBucketedRate(
+                    // Scope to the same window the chart uses so the two paths are textually parallel;
+                    // moot once the sparkline clips its X-axis, but keeps the row set exact (FR-11).
+                    rangeStart != null && rangeEnd != null ? rowsInWindow(s.rows, rangeStart, rangeEnd) : s.rows,
+                    {
+                      // Bucket over the SAME now-anchored, grid-snapped window as the Total Rate chart so each
+                      // scanline obeys the identical window contract, scoped to one session (FR-11). Both windowMs
+                      // and the bucket count come from the chart's stable nominal window (not the live span), so the
+                      // grid size — and thus the curve's shape — match the chart exactly; falls back to the session's
+                      // lifetime / 30 buckets when no window is supplied (FR-10).
+                      endMs: rangeEnd ?? s.lastMs,
+                      windowMs: nominalWindowMs ?? ((rangeEnd ?? s.lastMs) - (rangeStart ?? s.startedMs)),
+                      buckets: nominalWindowMs != null ? bucketsForWindow(nominalWindowMs) : 30,
+                      anchor: rangeEnd != null ? "grid" : "window",
+                    }
+                  )}
+                  rangeStart={rangeStart}
+                  rangeEnd={rangeEnd}
                 />
               </TableCell>
             </TableRow>
