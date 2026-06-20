@@ -164,10 +164,18 @@ Run from the `ui/` directory:
 
 ```
 npm run dev               # Next dev server (live reload) on http://localhost:3000
+npm run dev:live          # same live reload, but auto-wires RADORCH_CLI_PATH (gate/compose routes work)
 npm test                  # node --test across lib/ hooks/ components/ app/
 npm run build             # next build (production; same as build-standalone but no clean step)
 npm run build-standalone  # the build the installer uses; runs the prebuild clean step + next build
 ```
+
+### `dev:live` vs `dev` — developing against a live UI
+
+Both give Fast Refresh / hot reload, and replace the heavy build → pack → reinstall → `radorch ui start` loop for UI work. The difference is `RADORCH_CLI_PATH`:
+
+- **`npm run dev`** runs `next dev` with nothing else wired. Read-only surfaces (project browsing, docs, the DAG, observability) work, but any route that shells out to the CLI — **driving gates** and the **action-event compose Preview** — returns HTTP 500 because `RADORCH_CLI_PATH` is unset (`lib/cli-shell.ts`).
+- **`npm run dev:live`** (`scripts/dev-live.mjs`) runs the same `next dev` but auto-points `RADORCH_CLI_PATH` at the locally built CLI (`cli/dist/bin/radorch.js`) — the same env var the production launcher (`radorch ui start`) sets — so the shell-out routes work in dev too. It needs the CLI built first (`cd cli && npm run build`, or `npm run watch` for continuous rebuilds); if the bundle is missing it prints a warning and continues, and the read-only surfaces still work.
 
 Run from the repo root to verify the full installer build picks up your UI changes:
 

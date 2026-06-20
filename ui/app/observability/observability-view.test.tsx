@@ -23,13 +23,15 @@ test('chart window is range-driven and decoupled from the 1s clock; sections reo
   const iChart = html.indexOf('Total Rate');
   const iBar = html.indexOf('Worktree');
   const iTable = html.indexOf('Current Rate');
-  assert.ok(iChart > -1 && iBar > iChart && iTable > iBar, 'order is chart → control bar → table (DD-3)');
+  // SSR order: the Worktree filter lives in the header (rendered first), then the
+  // Total Rate chart and Current Rate table follow in <main>: control bar → chart → table (DD-3).
+  assert.ok(iBar > -1 && iBar < iChart && iChart < iTable, 'order is control bar → chart → table (DD-3)');
 });
 
 test('page container applies token-based vertical rhythm and responsive padding (DD-2, FR-8, DD-10)', () => {
   const html = renderToStaticMarkup(createElement(ObservabilityView));
   assert.ok(html.includes('var(--space-'), 'sections are spaced via the --space-* scale');
-  assert.ok(/px-4\b/.test(html) && html.includes('sm:'), 'container padding is responsive (tightens on narrow screens)');
+  assert.ok(/px-6\b/.test(html) && html.includes('sm:'), 'container padding is responsive (tightens on narrow screens)');
 });
 
 test('table/cards include the live tail; chart keeps the range-end bound (FR-9, AD-6, DD-4)', async () => {
@@ -46,4 +48,20 @@ test('manual refresh advances the window to now (FR-2)', async () => {
   const src = fs.readFileSync(path.resolve(import.meta.dirname, 'observability-view.tsx'), 'utf8');
   assert.doesNotMatch(src, /setRangeId\(\s*id\s*=>\s*id\s*\)/, 'manual refresh is no longer a no-op');
   assert.match(src, /handleRefreshNow[\s\S]{0,120}(Date\.now\(\)|setManualTick)/, 'manual refresh advances the now-relative window');
+});
+
+test('order is cards → chart → controls → table, with the time picker not the old bar (DD-2, AD-9, NFR-4)', async () => {
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const src = fs.readFileSync(path.resolve(import.meta.dirname, 'observability-view.tsx'), 'utf8');
+  assert.match(src, /TimeRangePicker/, 'view composes the TimeRangePicker (AD-9)');
+  assert.doesNotMatch(src, /ControlBar|Auto · /, 'old control bar and auto-refresh pill are gone (FR-14)');
+
+  const html = renderToStaticMarkup(createElement(ObservabilityView));
+  const iChart = html.indexOf('Total Rate');
+  const iBar = html.indexOf('Worktree');
+  const iTable = html.indexOf('Current Rate');
+  // SSR order: Worktree (header control) precedes the Total Rate chart and Current Rate
+  // table in <main>, so the rendered sequence is controls → chart → table (DD-2).
+  assert.ok(iBar > -1 && iBar < iChart && iChart < iTable, 'order preserved: controls → chart → table (DD-2)');
 });

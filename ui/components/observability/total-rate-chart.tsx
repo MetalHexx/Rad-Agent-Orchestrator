@@ -4,6 +4,7 @@ import { Area, AreaChart, ResponsiveContainer, XAxis, YAxis } from "recharts";
 import type { RatePoint } from "@/lib/observability/sessions";
 import { niceMax } from "@/lib/observability/chart-scale";
 import { humanizeTokens } from "@/lib/observability/format";
+import { FilteredBadge } from "@/components/observability/filtered-badge";
 
 // A small, fixed number of axis labels. Recharts' d3 time scale otherwise generates its own dense
 // "nice" ticks and ignores tickCount, crowding the X axis with ~11 labels.
@@ -18,10 +19,12 @@ export function TotalRateChart({
   data,
   rangeStart,
   rangeEnd,
+  filtered = false,
 }: {
   data: RatePoint[];
   rangeStart: number;
   rangeEnd: number;
+  filtered?: boolean;
 }) {
   const animatedOnce = React.useRef(false);
   const animate = !animatedOnce.current;
@@ -40,7 +43,7 @@ export function TotalRateChart({
 
   return (
     <div className="rounded-xl bg-card ring-1 ring-foreground/10 p-[var(--space-4)]">
-      <h2 className="text-sm font-medium text-foreground mb-2">Total Rate</h2>
+      <h2 className="flex items-center gap-2 text-sm font-medium text-foreground mb-2">Total Rate<FilteredBadge active={filtered} /></h2>
       <div className="h-40">
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={data} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>

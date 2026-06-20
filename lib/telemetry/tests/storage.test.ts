@@ -87,6 +87,20 @@ describe('FileCheckpointStore', () => {
       JSON.stringify({ pid: process.pid, acquiredAt: new Date().toISOString() }));
     expect(store.tryLock('s2')).toBe(false);         // held by a live process
   });
+
+  it('reclaims a lock held by a LIVE pid once it ages past the TTL — wedged-worker / PID-reuse backstop', () => {
+    // The backstop window: an alive PID (so the dead-PID probe says "keep") but a
+    // timestamp older than the 120s TTL. A real capture is sub-second, so an aged
+    // "alive" lock is a wedged worker or a reused PID, not a capture in progress —
+    // it must be reclaimable. (A live, sub-TTL lock is protected; see the test above.)
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tel-lock-'));
+    const store = new FileCheckpointStore({ root });
+    fs.mkdirSync(path.join(root, 'checkpoints'), { recursive: true });
+    const threeMinAgo = new Date(Date.now() - 3 * 60 * 1000).toISOString();
+    fs.writeFileSync(path.join(root, 'checkpoints', 's3.lock'),
+      JSON.stringify({ pid: process.pid, acquiredAt: threeMinAgo }));   // live pid, aged out
+    expect(store.tryLock('s3')).toBe(true);          // reclaimed via the age backstop
+  });
 });
 
 describe('pruneAgedPartitions', () => {

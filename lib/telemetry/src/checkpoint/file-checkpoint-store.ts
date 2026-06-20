@@ -21,7 +21,17 @@ export class FileCheckpointStore implements CheckpointStore {
     fs.writeFileSync(tmp, JSON.stringify(payload), 'utf8');
     fs.renameSync(tmp, file); // MoveFileEx replace-existing on a same-volume Windows path — atomic (NFR-3)
   }
-  private readonly lockTtlMs = 15 * 60 * 1000;
+  // The age backstop for a lock whose holder still appears alive — i.e. a wedged
+  // worker or a reused PID. It MUST comfortably exceed the worst-case time a real
+  // capture holds the lock, or a slow-but-live capture would have its lock stolen
+  // by a concurrent worker and produce duplicate rows. A real capture is sub-second
+  // (~250ms against an 8MB transcript), so 120s leaves a large margin while still
+  // bounding how long a genuinely-stuck worker blocks a session's captures. This
+  // replaces the shim's old synchronous 10s SIGKILL bound (gone now that captures
+  // detach, CLI-side async). Note: a dead-PID holder is reclaimed immediately on the
+  // next capture via the liveness probe below, independent of this TTL — so the TTL
+  // only governs the alive-but-aged (wedged / PID-reuse) case, never a normal worker.
+  private readonly lockTtlMs = 120 * 1000;
 
   private isStaleLock(raw: string): boolean {
     try {

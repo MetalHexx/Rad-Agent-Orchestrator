@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import React, { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { SessionTable } from './session-table';
+import { timeBucketedRate, rowsInWindow, deriveSessions } from '@/lib/observability/sessions';
+import { bucketsForWindow } from '@/lib/observability/time-range';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as url from 'node:url';
@@ -81,6 +83,21 @@ test('row scanline buckets over the shared now-window (grid-anchored) when one i
   assert.match(sessionTableSource, /anchor:\s*rangeEnd\s*!=\s*null\s*\?\s*["']grid["']/, 'scanline uses grid anchoring under the shared window');
 });
 
+test('row scanline matches the Total Rate chart bucket size and window clip (FR-11)', () => {
+  // The scanline must obey the identical window contract as the chart, differing only in row scope
+  // (one session vs all). That means the SAME bucket count and an X-axis clipped to the same window.
+  assert.match(sessionTableSource, /from\s*["']@\/lib\/observability\/time-range["']/, 'imports bucketsForWindow from the time-range helper');
+  assert.match(
+    sessionTableSource,
+    /buckets:\s*nominalWindowMs\s*!=\s*null\s*\?\s*bucketsForWindow\(nominalWindowMs\)\s*:\s*30/,
+    'scanline bucket count tracks the chart (bucketsForWindow(nominalWindowMs)), not a hardcoded 30',
+  );
+  // The `={...}` JSX-attribute form is distinctive to the RateSparkline element (elsewhere
+  // rangeStart/rangeEnd appear only as bare identifiers), so assert each prop is forwarded.
+  assert.match(sessionTableSource, /rangeStart=\{rangeStart\}/, 'forwards rangeStart so the sparkline clips its X-axis like the chart');
+  assert.match(sessionTableSource, /rangeEnd=\{rangeEnd\}/, 'forwards rangeEnd so the sparkline clips its X-axis like the chart');
+});
+
 test('renders with an explicit window without error (live scanline path)', () => {
   const html = renderToStaticMarkup(createElement(SessionTable, {
     sessions,
@@ -89,4 +106,32 @@ test('renders with an explicit window without error (live scanline path)', () =>
     rangeEnd: Date.parse('2026-06-18T11:30:00Z'),
   }));
   assert.ok(html.includes('sess-1111aaaa'), 'rows still render under the windowed scanline path');
+});
+
+test('FR-11 contract: the scanline series is identical to the Total Rate series for a single filtered session', () => {
+  // The behavioral guarantee behind the source wiring above: when narrowed to one session, the
+  // per-row scanline must produce the SAME curve over the SAME x-span as the Total Rate chart.
+  // Both paths funnel through timeBucketedRate; this asserts they agree given the same window.
+  const r = (usageId: string, iso: string, outputTokens: number) =>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ({ sessionId: 's1', usageId, timestamp: iso, inputTokens: 0, outputTokens, cacheReadTokens: 0, cacheCreationTokens: 0 } as any);
+  const rows = [
+    r('a', '2026-06-18T09:10:00.000Z', 2),
+    r('b', '2026-06-18T09:55:00.000Z', 6),
+    r('c', '2026-06-18T10:40:00.000Z', 4),
+  ];
+  const rangeStart = Date.parse('2026-06-18T09:00:00.000Z');
+  const rangeEnd = Date.parse('2026-06-18T11:00:00.000Z');
+  const nominalWindowMs = rangeEnd - rangeStart;
+  const opts = { endMs: rangeEnd, windowMs: nominalWindowMs, buckets: bucketsForWindow(nominalWindowMs), anchor: 'grid' as const };
+
+  const session = deriveSessions(rows)[0]; // the lone filtered session
+
+  // Total Rate path: rows summed across ALL filtered sessions (here just this one).
+  const chartSeries = timeBucketedRate(rowsInWindow([session].flatMap((s) => s.rows), rangeStart, rangeEnd), opts);
+  // Scanline path: the one session's rows, same window.
+  const sparkSeries = timeBucketedRate(rowsInWindow(session.rows, rangeStart, rangeEnd), opts);
+
+  assert.deepEqual(sparkSeries, chartSeries, 'same curve over the same x-span (FR-11)');
+  assert.ok(chartSeries.some((p) => p.value > 0), 'sanity: the parity check actually exercises non-zero buckets');
 });

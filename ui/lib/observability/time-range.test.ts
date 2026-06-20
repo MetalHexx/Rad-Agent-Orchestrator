@@ -1,18 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { QUICK_RANGES, DEFAULT_RANGE_ID, rangeWindow, rangeUtcDates, bucketsForWindow } from './time-range';
-
-test('offers the six quick ranges and defaults to 24h (FR-1)', () => {
-  assert.deepEqual(QUICK_RANGES.map(r => r.id), ['15m', '1h', '6h', '24h', '7d', '14d']);
-  assert.equal(DEFAULT_RANGE_ID, '24h');
-});
-
-test('rangeWindow returns [now-span, now] for a relative range (FR-1, AD-1)', () => {
-  const now = Date.parse('2026-06-18T12:00:00.000Z');
-  const w = rangeWindow('24h', now);
-  assert.equal(w.endMs, now);
-  assert.equal(w.startMs, now - 24 * 60 * 60 * 1000);
-});
+import { rangeUtcDates, bucketsForWindow } from './time-range';
 
 test('rangeUtcDates lists every UTC partition date the window spans (FR-4)', () => {
   const start = Date.parse('2026-06-17T20:00:00.000Z');

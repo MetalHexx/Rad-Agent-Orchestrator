@@ -1,0 +1,32 @@
+// ui/components/time-range/absolute-form.ts
+import type { TimeRange } from '@/lib/time-range/range';
+import { localPartsToUtcMs } from '@/lib/time-range/timezone';
+
+export interface AbsoluteForm {
+  startDate: string; startTime: string;
+  endMode: 'now' | 'specific';
+  endDate: string; endTime: string;
+  floorMs: number;
+  nowMs: number;
+}
+
+const hasParts = (d: string, t: string) => Boolean(d && t);
+
+// The absolute/since form only ever yields a 'since' or 'absolute' range (never
+// 'relative'); the narrowed return type lets validateForm read startMs without
+// re-narrowing, and stays assignable to TimeRange for the onApply consumer.
+export function formToTimeRange(f: AbsoluteForm): Extract<TimeRange, { kind: 'since' | 'absolute' }> | null {
+  if (!hasParts(f.startDate, f.startTime)) return null;
+  const startMs = localPartsToUtcMs(f.startDate, f.startTime);
+  if (f.endMode === 'now') return { kind: 'since', startMs };
+  if (!hasParts(f.endDate, f.endTime)) return null;
+  return { kind: 'absolute', startMs, endMs: localPartsToUtcMs(f.endDate, f.endTime) };
+}
+
+export function validateForm(f: AbsoluteForm): { valid: boolean; hint?: string } {
+  const range = formToTimeRange(f);
+  if (!range) return { valid: false, hint: 'Pick a start date and time.' };
+  const endMs = range.kind === 'absolute' ? range.endMs : f.nowMs;
+  if (endMs <= range.startMs) return { valid: false, hint: 'Start must be before end.' };
+  return { valid: true };
+}

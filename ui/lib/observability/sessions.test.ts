@@ -130,3 +130,35 @@ test('timeBucketedRate grid mode anchors buckets to an absolute clock — shape 
   const w2 = timeBucketedRate(rows, { endMs: Date.parse('2026-06-18T00:11:00.000Z'), windowMs: WINDOW, buckets: 2 }).find(p => p.value > 0);
   assert.notEqual(w1.t, w2.t, 'window mode re-anchors (the old warp); grid mode does not');
 });
+
+test('grid pitch + the spend bucket hold when windowMs is the stable nominal value (regression: per-tick deform)', () => {
+  // Repro of the session-select / refresh deform. Selecting a session pins a live `since` range whose
+  // actual span (rangeEnd - rangeStart) GROWS 5 s each tick while the bucket COUNT stays snapped to a
+  // preset tier. Feeding that growing span in as windowMs drifts the grid `size` (50000→50083→50167)
+  // and re-anchors the absolute grid every tick → the curve warps instead of scrolling. The fix feeds
+  // the STABLE nominal window, so the grid pitch — and each row's absolute bucket `t` — hold.
+  const startMs = Date.parse('2026-06-18T00:00:00.000Z');
+  const BUCKETS = 60;
+  const rows = [row({ usageId: 'a', timestamp: '2026-06-18T00:30:00.000Z', outputTokens: 2 })]; // effective 10
+  const tick1End = startMs + 50 * 60 * 1000; // 00:50:00
+  const tick2End = tick1End + 5000;          // 00:50:05 — one 5 s tick later
+
+  // BUGGY path — windowMs = the live span, which grows each tick: the grid pitch (= size) drifts.
+  const buggy1 = timeBucketedRate(rows, { endMs: tick1End, windowMs: tick1End - startMs, buckets: BUCKETS, anchor: 'grid' });
+  const buggy2 = timeBucketedRate(rows, { endMs: tick2End, windowMs: tick2End - startMs, buckets: BUCKETS, anchor: 'grid' });
+  assert.notEqual(buggy2[1].t - buggy2[0].t, buggy1[1].t - buggy1[0].t,
+    'growing-window path: grid pitch drifts per tick — the root cause of the warp');
+
+  // FIXED path — windowMs = the stable nominal window: pitch is invariant and the spend bucket pins.
+  const NOMINAL = 50 * 60 * 1000;
+  const fixed1 = timeBucketedRate(rows, { endMs: tick1End, windowMs: NOMINAL, buckets: BUCKETS, anchor: 'grid' });
+  const fixed2 = timeBucketedRate(rows, { endMs: tick2End, windowMs: NOMINAL, buckets: BUCKETS, anchor: 'grid' });
+  assert.equal(fixed2[1].t - fixed2[0].t, fixed1[1].t - fixed1[0].t,
+    'stable nominal window: grid pitch is invariant across the tick');
+  const spend1 = fixed1.find(p => p.value > 0);
+  const spend2 = fixed2.find(p => p.value > 0);
+  assert.ok(spend1 && spend2, 'the spend bucket exists in both renders');
+  assert.equal(spend1.t, spend2.t, 'the spend bucket keeps the same absolute t across the tick — no warp');
+  assert.equal(spend1.value, 10);
+  assert.equal(spend2.value, 10);
+});
