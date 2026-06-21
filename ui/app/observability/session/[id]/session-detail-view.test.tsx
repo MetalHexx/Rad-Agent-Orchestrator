@@ -27,3 +27,12 @@ test('detail view always renders its scaffold (header + titled chart), never a s
   assert.ok(html.includes('Token Spend Rate · This Session'), 'the titled chart card renders — not a blank body');
   assert.ok(!html.includes('no activity in this range'), 'the flashy empty-range message is removed');
 });
+
+test('detail header carries a back control to the left of the session title (back-nav)', () => {
+  const html = renderToStaticMarkup(createElement(SessionDetailView, { sessionId: 'abcdef1234567890' }));
+  assert.ok(html.includes('aria-label="Back to all sessions"'), 'back control renders in the header');
+  assert.ok(
+    html.indexOf('Back to all sessions') < html.indexOf('Session abcdef12'),
+    'the back control sits before the title in the header'
+  );
+});

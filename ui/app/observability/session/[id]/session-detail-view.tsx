@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { useObservabilityLive } from "@/hooks/use-observability-live";
 import { SpendRateChart } from "@/components/observability/spend-rate-chart";
 import { ObservabilitySubHeader } from "@/components/observability/observability-sub-header";
+import { BackButton } from "@/components/ui/back-button";
 import { deriveSessions, rowsInWindow, rowsSince } from "@/lib/observability/sessions";
 import { fitToSession } from "@/lib/observability/fit-to-session";
 import { retentionFloorMs } from "@/lib/time-range/range";
@@ -79,6 +80,7 @@ export function SessionDetailView({ sessionId }: { sessionId: string }) {
   return (
     <>
       <ObservabilitySubHeader
+        leading={<BackButton ariaLabel="Back to all sessions" className="-ml-5 -mr-2" />}
         ariaLabel="Session detail page"
         title={scopeTitle}
         subtitle={subtitle}

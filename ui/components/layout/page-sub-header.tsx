@@ -5,17 +5,19 @@ export interface PageSubHeaderProps {
   title?: React.ReactNode;
   subtitle?: React.ReactNode;
   left?: React.ReactNode;     // overrides title/subtitle when provided
+  leading?: React.ReactNode;  // optional control rendered before the title cluster (e.g. a back arrow) — composes with title, unlike `left`
   actions?: React.ReactNode;  // right-region cluster
   ariaLabel?: string;
 }
 
 /** Generic, view-agnostic sub-header band: chrome + left/right region layout only. No domain
  *  knowledge and — unlike AppHeaderShell — no context providers (AD-7, DD-3). */
-export function PageSubHeader({ title, subtitle, left, actions, ariaLabel }: PageSubHeaderProps) {
+export function PageSubHeader({ title, subtitle, left, leading, actions, ariaLabel }: PageSubHeaderProps) {
   return (
     <header aria-label={ariaLabel} className="border-b border-border px-6 py-3">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="flex items-center gap-3 shrink-0">
+          {leading}
           {left ?? (
             <>
               {title != null && <h1 className="text-lg font-semibold">{title}</h1>}

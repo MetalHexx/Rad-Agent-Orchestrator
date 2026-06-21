@@ -19,6 +19,7 @@ export interface ObservabilitySubHeaderProps {
   onRefresh: () => void;
   onHelp: () => void;
   filters?: React.ReactNode;        // slot — All-Sessions passes the two FilterSelects; Detail omits
+  leading?: React.ReactNode;        // slot — Detail passes a BackButton before the title; All-Sessions omits
 }
 
 /** Observability-specific header: composes the generic PageSubHeader, supplying the title and the
@@ -37,6 +38,6 @@ export function ObservabilitySubHeader(props: ObservabilitySubHeaderProps) {
     </>
   );
   return (
-    <PageSubHeader ariaLabel={props.ariaLabel} title={props.title} subtitle={props.subtitle} actions={actions} />
+    <PageSubHeader ariaLabel={props.ariaLabel} title={props.title} subtitle={props.subtitle} leading={props.leading} actions={actions} />
   );
 }
