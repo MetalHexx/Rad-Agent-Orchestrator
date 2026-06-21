@@ -63,9 +63,9 @@ export function SpendRateChart({
     });
   }, []);
 
-  // Fit the Y-axis to the currently visible series (FR-5, FR-3) with a tight, Grafana-style
-  // nice-step ceiling (niceAxis): it hugs the data so lines use the full height, and floors to
-  // integer ticks so an empty/idle window reads 0,1,2,3,4 instead of the duplicate "0 0 1 1 1".
+  // Fit the Y-axis to the currently visible series (FR-5, FR-3) via niceAxis: a tight, Grafana-style
+  // ceiling (the data peak plus a little padding — not a coarse round-up) with nice integer gridlines,
+  // so lines nearly fill the panel and an empty/idle window reads 0,1,2,3,4 instead of "0 0 1 1 1".
   const visibleKeys = series.map((s) => s.key).filter((k) => !hidden.has(k));
   const dataMax = Math.max(0, ...data.flatMap((p) => visibleKeys.map((k) => (p[k] as number) ?? 0)));
   const { max: yMax, ticks: yTicks } = niceAxis(dataMax, AXIS_TICKS);

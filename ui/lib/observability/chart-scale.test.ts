@@ -14,9 +14,15 @@ test('niceAxis fits tightly, stays integer-clean, and never collapses to duplica
   // Grafana/D3-style nice-step axis: hug the data peak (no coarse round-up dead space) while keeping
   // ticks on nice, distinct, integer values — so an empty/idle window reads 0,1,2,3,4, never "0 0 1 1 1".
   const tight = niceAxis(150_000, 5);
-  assert.equal(tight.max, 150_000, 'hugs the peak (no 200k dead space)');
-  assert.ok(tight.max < niceMax([150_000]), 'tighter than the coarse niceMax round-up');
-  assert.ok(tight.max >= 150_000, 'still covers the peak');
+  assert.ok(tight.max >= 150_000, 'covers the peak (no clipping)');
+  assert.ok(tight.max <= 150_000 * 1.1, 'ceiling hugs the peak — just a little padding, not a coarse round-up');
+  assert.ok(tight.max < niceMax([150_000]), 'far tighter than the old niceMax round-up (200k)');
+  assert.ok(tight.ticks.every(Number.isInteger), 'nice integer gridlines');
+  assert.ok(Math.max(...tight.ticks) <= 150_000, 'top gridline sits at/below the peak — no dead space above');
+  // A peak that is NOT a nice multiple must still get a tight, padded ceiling (this was the waste-space bug):
+  const padded = niceAxis(124_000, 5);
+  assert.ok(padded.max >= 124_000 && padded.max <= 124_000 * 1.1, 'ceiling within ~10% of an off-grid peak');
+  assert.ok(Math.max(...padded.ticks) <= 124_000, 'top gridline at/below the peak');
   assert.deepEqual(niceAxis(0, 5), { max: 4, ticks: [0, 1, 2, 3, 4] }, 'empty window → clean integer axis');
   const tiny = niceAxis(2, 5);
   assert.ok(tiny.ticks.every(Number.isInteger), 'tiny ranges use integer ticks');
