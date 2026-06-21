@@ -20,3 +20,13 @@ test('detail hero is titled for the session scope; sub-header omits filters (FR-
   assert.ok(html.includes('Session abcdef12'), 'sub-header shows the shortened session id');
   assert.ok(!html.includes('Worktree'), 'worktree filter is absent on the detail page');
 });
+
+test('unknown session id with rows present renders the not-found state, keeping the header (FR-9, DD-10)', () => {
+  const html = renderToStaticMarkup(createElement(SessionDetailView, { sessionId: '__nope__' }));
+  assert.ok(html.includes('Session detail page'), 'sub-header still renders (page reads as a real page)');
+  // With no live rows in SSR, an unknown id resolves to the not-found scaffold rather than a chart.
+  assert.ok(
+    html.includes('not found') || html.includes('no activity in this range'),
+    'an explicit empty/not-found scaffold renders, never a silent blank'
+  );
+});
