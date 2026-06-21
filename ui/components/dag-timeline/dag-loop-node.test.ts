@@ -40,7 +40,7 @@ function makeIteration(index: number, status: NodeStatus = 'not_started'): Itera
     status,
     nodes: {},
     corrective_tasks: [],
-    commit_hash: null,
+    repos: [],
   };
 }
 

@@ -103,6 +103,7 @@ export function SpendRateChart({
                 />
                 <Legend
                   payload={legendPayload}
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   onClick={(d: any) => toggle(String((d as { dataKey?: string }).dataKey ?? ""))}
                   wrapperStyle={{ cursor: "pointer", fontSize: 11 }}
                 />

@@ -10,7 +10,9 @@ import {
 } from 'recharts';
 import type { ComponentType } from 'react';
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
 export const XAxis = RXAxis as unknown as ComponentType<any>;
 export const YAxis = RYAxis as unknown as ComponentType<any>;
 export const Legend = RLegend as unknown as ComponentType<any>;
 export const Area = RArea as unknown as ComponentType<any>;
+/* eslint-enable @typescript-eslint/no-explicit-any */

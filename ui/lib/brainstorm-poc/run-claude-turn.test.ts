@@ -58,7 +58,7 @@ async function run() {
     const spawnFn = makeFakeSpawn(captured, { result: 'pong', session_id: MINT });
     const out = await runClaudeTurn(
       { message: 'ping', sessionId: MINT, resume: false },
-      { spawnFn: spawnFn as never, env: { ANTHROPIC_API_KEY: 'sk-xxx', PATH: '/x' }, cwd: '/work' },
+      { spawnFn: spawnFn as never, env: { ANTHROPIC_API_KEY: 'sk-xxx', PATH: '/x' } as unknown as NodeJS.ProcessEnv, cwd: '/work' },
     );
     assert.strictEqual(out.reply, 'pong');
     assert.strictEqual(out.sessionId, MINT);
@@ -80,7 +80,7 @@ async function run() {
     const spawnFn = makeFakeSpawn(captured, { result: 'again', session_id: MINT });
     await runClaudeTurn(
       { message: 'more', sessionId: MINT, resume: true },
-      { spawnFn: spawnFn as never, env: {}, cwd: '/work' },
+      { spawnFn: spawnFn as never, env: {} as unknown as NodeJS.ProcessEnv, cwd: '/work' },
     );
     assert.ok(captured.command!.includes(`--resume ${MINT}`));
     assert.ok(!captured.command!.includes('--session-id'));
@@ -91,7 +91,7 @@ async function run() {
     const spawnFn = makeFakeSpawn(captured, { result: 'hijacked', session_id: 'ext' });
     const out = await runClaudeTurn(
       { message: 'who am i', sessionId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee', resume: true },
-      { spawnFn: spawnFn as never, env: {}, cwd: '/work' },
+      { spawnFn: spawnFn as never, env: {} as unknown as NodeJS.ProcessEnv, cwd: '/work' },
     );
     assert.ok(captured.command!.includes('--resume aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'));
     assert.strictEqual(out.reply, 'hijacked');

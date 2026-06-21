@@ -92,7 +92,7 @@ test('rowsSince keeps the live tail so SSE appends newer than rangeEnd are not d
 
 test('a new SSE row surfaces a new session and updates an existing one (FR-9)', () => {
   let map = upsertRows(new Map(), [row({ sessionId: 's1', usageId: 'a', timestamp: '2026-06-18T00:00:00.000Z', outputTokens: 2 })]);
-  let s1 = deriveSessions(rowsSince([...map.values()], 0)).find(s => s.sessionId === 's1');
+  let s1 = deriveSessions(rowsSince([...map.values()], 0)).find(s => s.sessionId === 's1')!;
   assert.equal(s1.spend, 10); // outputTokens 2 → effective 10
   assert.equal(s1.lastMs, Date.parse('2026-06-18T00:00:00.000Z'));
   // SSE delivers a later row for s1 and a first row for a brand-new s2
@@ -101,7 +101,7 @@ test('a new SSE row surfaces a new session and updates an existing one (FR-9)', 
     row({ sessionId: 's2', usageId: 'c', timestamp: '2026-06-18T00:06:00.000Z', outputTokens: 2 }),
   ]);
   const sessions = deriveSessions(rowsSince([...map.values()], 0));
-  s1 = sessions.find(s => s.sessionId === 's1');
+  s1 = sessions.find(s => s.sessionId === 's1')!;
   assert.equal(s1.spend, 30, 'existing row spend folds in the new telemetry');
   assert.equal(s1.lastMs, Date.parse('2026-06-18T00:05:00.000Z'), 'lastMs advances (Activity dot + Duration update)');
   assert.ok(sessions.some(s => s.sessionId === 's2'), 'new session appears');
@@ -126,8 +126,8 @@ test('timeBucketedRate grid mode anchors buckets to an absolute clock — shape 
 
   // Contrast: the default 'window' mode re-anchors to endMs, so the same row lands on a different t
   // when the window moves — that is the distortion grid mode fixes.
-  const w1 = timeBucketedRate(rows, { endMs: Date.parse('2026-06-18T00:10:00.000Z'), windowMs: WINDOW, buckets: 2 }).find(p => p.value > 0);
-  const w2 = timeBucketedRate(rows, { endMs: Date.parse('2026-06-18T00:11:00.000Z'), windowMs: WINDOW, buckets: 2 }).find(p => p.value > 0);
+  const w1 = timeBucketedRate(rows, { endMs: Date.parse('2026-06-18T00:10:00.000Z'), windowMs: WINDOW, buckets: 2 }).find(p => p.value > 0)!;
+  const w2 = timeBucketedRate(rows, { endMs: Date.parse('2026-06-18T00:11:00.000Z'), windowMs: WINDOW, buckets: 2 }).find(p => p.value > 0)!;
   assert.notEqual(w1.t, w2.t, 'window mode re-anchors (the old warp); grid mode does not');
 });
 

@@ -23,7 +23,7 @@ test('repo maps default_branch->defaultBranch, resolves groups, omits no fields 
     assert.equal(repo.defaultBranch, 'main');
     assert.equal(repo.description, 'Checkout svc');
     assert.deepEqual(repo.groups, ['checkout']);
-    assert.equal('default_branch' in (repo as Record<string, unknown>), false);
+    assert.equal('default_branch' in (repo as unknown as Record<string, unknown>), false);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
@@ -31,7 +31,7 @@ test('repo-group maps members and carries no bind field (FR-3)', () => {
   const snap = computeSnapshot(fixture({}));
   const grp = snap.repoGroups.find(g => g.slug === 'checkout')!;
   assert.deepEqual(grp.members, ['checkout-api']);
-  assert.equal('bind' in (grp as Record<string, unknown>), false);
+  assert.equal('bind' in (grp as unknown as Record<string, unknown>), false);
 });
 
 test('bind is bound when path resolves to a directory (FR-4, DD-3)', async () => {
