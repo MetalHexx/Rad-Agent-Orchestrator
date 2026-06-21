@@ -8,3 +8,4 @@ export { LaunchScreen } from "./launch-screen";
 export type { LaunchScreenProps } from "./launch-screen";
 export { START_ACTION_KINDS } from "./start-action-kinds";
 export type { StartActionKind } from "./start-action-kinds";
+export { PageSubHeader } from './page-sub-header';

@@ -12,6 +12,19 @@ export function readViewState(params: URLSearchParams): ViewState {
   };
 }
 
+export interface RangeState { range: TimeRange; }
+
+/** Range-only deep-link codec for the detail page — shares the range primitive, omits filters. */
+export function readRangeState(params: URLSearchParams): RangeState {
+  return { range: decodeRange(params.get('range')) ?? DEFAULT_RANGE };
+}
+
+export function writeRangeState(params: URLSearchParams, s: RangeState): string {
+  const next = new URLSearchParams(params);
+  next.set('range', encodeRange(s.range));
+  return next.toString().replace(/\+/g, '%20');
+}
+
 /** Returns the query string (no leading '?'); omits defaults to keep URLs clean.
  *  Encodes spaces as %20 (not as +) so deep-link URLs are unambiguous in path contexts (AD-8). */
 export function writeViewState(params: URLSearchParams, s: ViewState): string {

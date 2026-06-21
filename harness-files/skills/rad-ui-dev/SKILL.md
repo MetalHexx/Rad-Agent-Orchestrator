@@ -11,10 +11,15 @@ production standalone server from `~/.radorc/ui` via the installed CLI), this is
 **source-repo / dogfood** operation: it runs `next dev` against the working tree, so the repo
 and its `node_modules` must be present (it is not meant for an installed end-user plugin).
 
-Run the launcher in the background from the rad-orc-source `ui/` workspace:
+Run the launcher in the background from the rad-orc-source repo. **Always run `npm install` at the
+repo root first** — a fresh git worktree has no `node_modules` (worktrees don't share the parent
+checkout's install), so without it the lib dist build fails immediately with `'tsc' is not
+recognized` before `next dev` can start. `npm install` is idempotent: once deps are present it's a
+fast no-op (`up to date`), so running it every time is safe.
 
 ```
-npm run dev:live          # auto-wires RADORCH_CLI_PATH + auto-builds the @rad-orchestration/* lib dist, then next dev
+npm install               # at the rad-orc-source root — ensures workspace deps exist (fresh worktrees have none)
+cd ui && npm run dev:live # auto-wires RADORCH_CLI_PATH + auto-builds the @rad-orchestration/* lib dist, then next dev
 ```
 
 For live library editing (rebuild a lib and restart `next dev` whenever its `lib/*/src`

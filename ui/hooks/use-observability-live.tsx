@@ -36,6 +36,11 @@ export function useObservabilityLive(
   const [rows, setRows] = React.useState<Map<string, ObservabilityUsageRow>>(new Map());
   const merge = React.useCallback((incoming: ObservabilityUsageRow[]) => setRows((p) => upsertRows(p, incoming)), []);
 
+  // Latches true once the first backfill resolves (monotonic — later range switches never reset it).
+  // Lets the chart reserve its slot until real data is in hand, then fade it in, instead of painting
+  // a flat, empty axis on mount and popping the data in a frame later.
+  const [ready, setReady] = React.useState(false);
+
   // The set of UTC dates the window spans. The auto-refresh tick advances rangeStart/rangeEnd every
   // interval, but the *dates* only change at UTC-midnight rollover or when the user picks a different
   // range. Keying the fetch on this stable string (not the raw ms) is what stops the per-tick refetch
@@ -58,8 +63,10 @@ export function useObservabilityLive(
   }, [todayKey, mergeToday]);
 
   // initial load + date-set change (range switch / midnight rollover): fetch those dates once.
+  // Latch `ready` after the first backfill settles so the chart can hold its slot until then;
+  // setReady(true) is idempotent on later range switches, so it stays monotonic.
   React.useEffect(() => {
-    void fetchDates(dateKey ? dateKey.split(",") : []).then(merge);
+    void fetchDates(dateKey ? dateKey.split(",") : []).then((r) => { merge(r); setReady(true); });
   }, [dateKey, merge]);
 
   // live: telemetry_rows off the shared connection (AD-1) — the real-time channel.
@@ -97,5 +104,5 @@ export function useObservabilityLive(
     void fetchDay(utcDateString(Date.now())).then(mergeToday);
   }, [manualTick, dateKey, merge, mergeToday]);
 
-  return { rows, todayRows };
+  return { rows, todayRows, ready };
 }

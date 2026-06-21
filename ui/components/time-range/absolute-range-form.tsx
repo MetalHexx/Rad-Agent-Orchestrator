@@ -27,10 +27,7 @@ export function AbsoluteRangeForm({
   onApply: (range: TimeRange) => void;
   onBack: () => void;
 }) {
-  const [form, setForm] = React.useState<Omit<AbsoluteForm, 'floorMs' | 'nowMs'>>({
-    startDate: '', startTime: '00:00', endMode: 'now', endDate: '', endTime: '23:59',
-    ...initialValue,
-  });
+  const [form, setForm] = React.useState<Omit<AbsoluteForm, 'floorMs' | 'nowMs'>>({ ...initialValue });
   const [touched, setTouched] = React.useState(false);
   const full: AbsoluteForm = { ...form, floorMs: minMs, nowMs };
   const { valid, hint } = validateForm(full);
