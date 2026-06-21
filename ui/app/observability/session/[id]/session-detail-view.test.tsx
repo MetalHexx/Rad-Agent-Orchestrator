@@ -36,3 +36,9 @@ test('detail header carries a back control to the left of the session title (bac
     'the back control sits before the title in the header'
   );
 });
+
+test('detail view renders the session summary cards under the hero, guarded on session existence (FR-5, DD-4)', () => {
+  const src = readFileSync(resolve(import.meta.dirname, 'session-detail-view.tsx'), 'utf8');
+  assert.match(src, /import \{ SessionSummaryCards \}/, 'imports the session summary cards');
+  assert.match(src, /\{session && <SessionSummaryCards session=\{session\} \/>\}/, 'cards are guarded on session; not-found renders none');
+});

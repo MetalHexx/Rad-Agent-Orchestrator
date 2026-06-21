@@ -3,6 +3,7 @@ import * as React from "react";
 import dynamic from "next/dynamic";
 import { useObservabilityLive } from "@/hooks/use-observability-live";
 import { SpendRateChart } from "@/components/observability/spend-rate-chart";
+import { SessionSummaryCards } from "@/components/observability/session-summary-cards";
 import { ObservabilitySubHeader } from "@/components/observability/observability-sub-header";
 import { BackButton } from "@/components/ui/back-button";
 import { deriveSessions, rowsInWindow, rowsSince } from "@/lib/observability/sessions";
@@ -99,7 +100,10 @@ export function SessionDetailView({ sessionId }: { sessionId: string }) {
             Session not found (or aged out of the retention window).
           </div>
         ) : (
-          <SpendRateChart data={chart.data} series={chart.series} title="Token Spend Rate · This Session" rangeStart={rangeStart} rangeEnd={rangeEnd} ready={ready} />
+          <>
+            <SpendRateChart data={chart.data} series={chart.series} title="Token Spend Rate · This Session" rangeStart={rangeStart} rangeEnd={rangeEnd} ready={ready} />
+            {session && <SessionSummaryCards session={session} />}
+          </>
         )}
         <HelpPanel open={helpOpen} onOpenChange={setHelpOpen} title="Session detail" content={SESSION_HELP_MD} />
       </main>
