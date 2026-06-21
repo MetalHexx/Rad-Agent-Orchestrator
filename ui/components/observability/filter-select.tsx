@@ -8,7 +8,7 @@ export function FilterSelect({ label, value, options, onChange }: {
   return (
     <label className="inline-flex items-center gap-[var(--space-2)] text-sm text-muted-foreground">
       {label}
-      <Select value={value} onValueChange={onChange}>
+      <Select value={value} onValueChange={(v) => onChange(v ?? "All")}>
         <SelectTrigger>
           <SelectValue />
         </SelectTrigger>
