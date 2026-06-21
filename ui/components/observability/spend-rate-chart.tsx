@@ -101,6 +101,7 @@ export function SpendRateChart({
             </defs>
             <XAxis
               dataKey="t" type="number" domain={[rangeStart, rangeEnd]} scale="time"
+              allowDataOverflow={true}
               tickFormatter={formatTime} ticks={xTicks} interval={0}
               tick={{ fontSize: 10 }} tickLine={false} axisLine={false}
             />

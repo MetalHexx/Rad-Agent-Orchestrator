@@ -65,3 +65,11 @@ test('models the user opted in are not re-hidden by later series updates (FR-4, 
   assert.ok(/seen/i.test(src), 'tracks which non-total keys have already been seen');
   assert.ok(/useRef/.test(src), 'the seen-ledger is a ref so it survives re-renders');
 });
+
+test('spend-rate chart X-axis clips to its explicit domain (FR-1, DD-8)', () => {
+  // The axis must declare the range-bounded domain AND opt into clipping, so snapped
+  // since-range zero-buckets that fall before rangeStart scroll off the left edge
+  // instead of expanding the rendered domain and smooshing the data to the right.
+  assert.match(src, /domain=\{\[rangeStart, rangeEnd\]\}/, 'X-axis keeps the raw-bounds domain');
+  assert.match(src, /allowDataOverflow/, 'X-axis opts into data-overflow clipping');
+});
