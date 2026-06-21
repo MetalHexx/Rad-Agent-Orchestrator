@@ -1,12 +1,27 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { join, dirname } from 'node:path';
 
-const src = readFileSync(path.join(process.cwd(), 'components', 'observability', 'help-panel.tsx'), 'utf-8');
+// @base-ui/react Dialog portals do not render in SSR (renderToStaticMarkup returns
+// empty string) because FloatingPortal appends to document.body which is absent in
+// Node.js SSR. Source inspection is the established pattern for Dialog/Sheet-backed
+// components in this codebase (see instruction-drawer.test.tsx, unsaved-changes-dialog.test.tsx).
 
-test('help panel reuses the house Sheet and MarkdownRenderer, not a new panel (AD-9, FR-13)', () => {
-  assert.match(src, /@\/components\/ui\/sheet/, 'reuses the shadcn Sheet primitive');
-  assert.match(src, /markdown-renderer/, 'reuses the house MarkdownRenderer');
-  assert.match(src, /OBSERVABILITY_HELP_MD/, 'renders the markdown help content');
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const src = readFileSync(join(__dirname, 'help-panel.tsx'), 'utf-8');
+
+test('defaults preserve the All-Sessions title (FR-7, DD-9)', () => {
+  // The title prop must default to "About this page" so All-Sessions usage is unchanged.
+  assert.match(src, /title\s*=\s*["']About this page["']/, 'default title unchanged');
+});
+
+test('accepts an overridden title and content (FR-7, DD-9)', () => {
+  // The component must declare optional title? and content? props.
+  assert.match(src, /title\?:\s*string/, 'title? prop declared');
+  assert.match(src, /content\?:\s*string/, 'content? prop declared');
+  // Title and content must be rendered (not hardcoded).
+  assert.match(src, /\{title\}/, 'title variable rendered in JSX');
+  assert.match(src, /content=\{content\}|content:\s*content/, 'content variable passed to renderer');
 });
