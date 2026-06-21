@@ -27,7 +27,7 @@ export function ObservabilityView() {
   const { range, setRange, window: tw, now, floorMs, effectiveTick, manualTick, refreshNow } = useTimeRangeWindow();
   const { rangeStart, rangeEnd } = tw;
 
-  const { rows, todayRows } = useObservabilityLive({ rangeStart, rangeEnd, manualTick });
+  const { rows, todayRows, ready } = useObservabilityLive({ rangeStart, rangeEnd, manualTick });
 
   const [helpOpen, setHelpOpen] = React.useState(false);
   const [worktree, setWorktree] = React.useState<string>("All");
@@ -97,7 +97,7 @@ export function ObservabilityView() {
         }
       />
       <main id="main-content" className="px-6 py-[var(--space-4)] space-y-[var(--space-4)]">
-        <SpendRateChart data={chart.data} series={chart.series} title="Token Spend Rate" rangeStart={rangeStart} rangeEnd={rangeEnd} filtered={filtered} />
+        <SpendRateChart data={chart.data} series={chart.series} title="Token Spend Rate" rangeStart={rangeStart} rangeEnd={rangeEnd} filtered={filtered} ready={ready} />
         <SummaryCards sessions={filteredSessions} activeNow={activeNow} />
         <SessionTable sessions={filteredSessions} now={now} rangeStart={rangeStart} rangeEnd={rangeEnd} nominalWindowMs={tw.nominalWindowMs} />
         <HelpPanel open={helpOpen} onOpenChange={setHelpOpen} />

@@ -31,7 +31,7 @@ export function SessionDetailView({ sessionId }: { sessionId: string }) {
   const { range, setRange, window: tw, now, floorMs, effectiveTick, manualTick, refreshNow } =
     useTimeRangeWindow(discoveryRange);
   const { rangeStart, rangeEnd } = tw;
-  const { rows } = useObservabilityLive({ rangeStart, rangeEnd, manualTick });
+  const { rows, ready } = useObservabilityLive({ rangeStart, rangeEnd, manualTick });
 
   const [helpOpen, setHelpOpen] = React.useState(false);
 
@@ -72,10 +72,6 @@ export function SessionDetailView({ sessionId }: { sessionId: string }) {
   const allRowCount = rows.size;
   // Not-found: rows exist system-wide but none match this id even at the floor-deep window (FR-9).
   const notFound = !session && allRowCount > 0 && sessionRows.length === 0;
-  // Empty-but-valid: no rows fall in the selected range (FR-10). Fires in SSR (allRowCount === 0)
-  // so that an unknown id shows "no activity" rather than a silent blank chart, and in the browser
-  // for a real session whose rows fall outside the active window.
-  const emptyInRange = !notFound && chartRows.length === 0;
 
   const scopeTitle = `Session ${shortId(sessionId)}`;
   const subtitle = session?.worktree ?? "Single-session token usage";
@@ -101,12 +97,7 @@ export function SessionDetailView({ sessionId }: { sessionId: string }) {
             Session not found (or aged out of the retention window).
           </div>
         ) : (
-          <div className="space-y-[var(--space-2)]">
-            <SpendRateChart data={chart.data} series={chart.series} title="Token Spend Rate · This Session" rangeStart={rangeStart} rangeEnd={rangeEnd} />
-            {emptyInRange && (
-              <p className="text-sm text-muted-foreground">no activity in this range — widen the time range to see data.</p>
-            )}
-          </div>
+          <SpendRateChart data={chart.data} series={chart.series} title="Token Spend Rate · This Session" rangeStart={rangeStart} rangeEnd={rangeEnd} ready={ready} />
         )}
         <HelpPanel open={helpOpen} onOpenChange={setHelpOpen} title="Session detail" content={SESSION_HELP_MD} />
       </main>

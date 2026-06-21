@@ -68,6 +68,15 @@ test('models the user opted in are tracked in a `shown` state, not re-derived fr
   assert.ok(/useState<Set<string>>/.test(src), 'the opt-in set is component state (survives re-renders)');
 });
 
+test('chart holds until data is ready, then fades in — no flat-axis flash on load (smooth-load)', () => {
+  // On first load the hook hasn't backfilled yet; rather than paint a flat default axis and pop
+  // the data in a frame later, the chart reserves its slot while !ready and reveals the populated
+  // chart with a one-shot fade once `ready` flips true.
+  assert.match(src, /ready/, 'accepts/uses a `ready` prop to gate rendering');
+  assert.match(src, /\{\s*ready\s*\?/, 'renders the chart only on the ready branch (reserved placeholder while loading)');
+  assert.match(src, /animate-in fade-in/, 'reveals the ready chart with a fade-in transition');
+});
+
 test('spend-rate chart X-axis clips to its explicit domain (FR-1, DD-8)', () => {
   // The axis must declare the range-bounded domain AND opt into clipping, so snapped
   // since-range zero-buckets that fall before rangeStart scroll off the left edge

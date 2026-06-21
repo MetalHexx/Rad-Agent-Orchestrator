@@ -21,12 +21,9 @@ test('detail hero is titled for the session scope; sub-header omits filters (FR-
   assert.ok(!html.includes('Worktree'), 'worktree filter is absent on the detail page');
 });
 
-test('unknown session id with rows present renders the not-found state, keeping the header (FR-9, DD-10)', () => {
+test('detail view always renders its scaffold (header + titled chart), never a silent blank; the "no activity" flash is gone (FR-9, FR-10, smooth-load)', () => {
   const html = renderToStaticMarkup(createElement(SessionDetailView, { sessionId: '__nope__' }));
-  assert.ok(html.includes('Session detail page'), 'sub-header still renders (page reads as a real page)');
-  // With no live rows in SSR, an unknown id resolves to the not-found scaffold rather than a chart.
-  assert.ok(
-    html.includes('not found') || html.includes('no activity in this range'),
-    'an explicit empty/not-found scaffold renders, never a silent blank'
-  );
+  assert.ok(html.includes('Session detail page'), 'sub-header still renders (reads as a real page)');
+  assert.ok(html.includes('Token Spend Rate · This Session'), 'the titled chart card renders — not a blank body');
+  assert.ok(!html.includes('no activity in this range'), 'the flashy empty-range message is removed');
 });
