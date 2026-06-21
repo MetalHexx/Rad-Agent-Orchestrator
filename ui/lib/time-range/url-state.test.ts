@@ -1,7 +1,7 @@
 // ui/lib/time-range/url-state.test.ts
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readViewState, writeViewState } from './url-state';
+import { readViewState, writeViewState, readRangeState, writeRangeState } from './url-state';
 
 test('round-trips range + filters through a query string (FR-12, AD-8)', () => {
   const state = {
@@ -19,4 +19,24 @@ test('the worktree (a Windows path) is percent-encoded in the query (AD-8)', () 
   });
   assert.match(qs, /worktree=C%3A%5Ca%20b/);
   assert.doesNotMatch(qs, /session=/); // "All" is the default → omitted
+});
+
+test('range-only codec round-trips a relative range (AD-5, FR-8)', () => {
+  const qs = writeRangeState(new URLSearchParams(), { range: { kind: 'relative', preset: '6h' } });
+  const params = new URLSearchParams(qs);
+  assert.equal(params.get('range'), 'rel:6h');
+  assert.equal(readRangeState(params).range.kind, 'relative');
+});
+
+test('range-only write never emits filter keys of its own (AD-5, NFR-2)', () => {
+  const qs = writeRangeState(new URLSearchParams(), { range: { kind: 'relative', preset: '1h' } });
+  const params = new URLSearchParams(qs);
+  assert.equal(params.get('worktree'), null);
+  assert.equal(params.get('session'), null);
+});
+
+test('the range+filters codec still reads filters (AD-5, FR-11)', () => {
+  const vs = readViewState(new URLSearchParams('range=rel:1h&worktree=wt&session=s1'));
+  assert.equal(vs.worktree, 'wt');
+  assert.equal(vs.session, 's1');
 });
