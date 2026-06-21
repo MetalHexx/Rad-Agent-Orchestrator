@@ -9,6 +9,11 @@ export interface ObservabilityUsageRow {
   cacheReadTokens?: number;
   cacheCreationTokens?: number;
   worktree?: string;
+  // Identity fields un-stripped for per-model / -source / -agent attribution (AD-2).
+  model: string;                          // always present on TelemetryRecord
+  source: 'main-agent' | 'subagent';      // always present
+  agentType?: string;                     // optional (present => a subagent row)
+  agentId?: string;                       // optional — flattened from pointers.agentId
 }
 
 export function toObservabilityUsageRow(r: TelemetryRecord): ObservabilityUsageRow {
@@ -18,9 +23,13 @@ export function toObservabilityUsageRow(r: TelemetryRecord): ObservabilityUsageR
     timestamp: r.timestamp,
     inputTokens: r.inputTokens,
     outputTokens: r.outputTokens,
+    model: r.model,
+    source: r.source,
   };
   if (r.cacheReadTokens !== undefined) row.cacheReadTokens = r.cacheReadTokens;
   if (r.cacheCreationTokens !== undefined) row.cacheCreationTokens = r.cacheCreationTokens;
   if (r.worktree !== undefined) row.worktree = r.worktree;
+  if (r.agentType !== undefined) row.agentType = r.agentType;
+  if (r.pointers?.agentId !== undefined) row.agentId = r.pointers.agentId;
   return row;
 }
