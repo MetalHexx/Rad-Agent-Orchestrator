@@ -11,11 +11,11 @@ test('chartData useMemo lists range and effectiveTick in its dependency array (N
   // The chartData memo reads `range` and `effectiveTick` via
   // bucketsForWindow(windowMsForBuckets(range, effectiveTick)); React's exhaustive-deps
   // rule requires every closed-over reactive value to appear in the dependency array.
-  // The data source is `filteredSessions` (not the raw rows map) so the Total Rate chart
-  // honors the worktree/session filters; filteredSessions transitively tracks rows + filters.
+  // The data source is `chartRows` (extracted into its own memo from filteredSessions)
+  // which transitively tracks filtered sessions, rows, and the window bounds.
   assert.match(
     src,
-    /const chartData = React\.useMemo\([\s\S]*?\[\s*filteredSessions,\s*rangeStart,\s*rangeEnd,\s*range,\s*effectiveTick\s*\]\s*\)/,
-    'chartData dependency array must be [filteredSessions, rangeStart, rangeEnd, range, effectiveTick]'
+    /const chartData = React\.useMemo\([\s\S]*?\[\s*chartRows,\s*rangeEnd,\s*range,\s*effectiveTick\s*\]\s*\)/,
+    'chartData dependency array must be [chartRows, rangeEnd, range, effectiveTick]'
   );
 });

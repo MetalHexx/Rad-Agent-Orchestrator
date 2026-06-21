@@ -20,11 +20,11 @@ test('chart window is range-driven and decoupled from the 1s clock; sections reo
   assert.doesNotMatch(src, /timeBucketedRate\(\[\.\.\.rows\.values\(\)\],\s*\{\s*endMs:\s*now\b/, 'chart no longer keyed to the per-second now');
 
   const html = renderToStaticMarkup(createElement(ObservabilityView));
-  const iChart = html.indexOf('Total Rate');
+  const iChart = html.indexOf('Token Spend Rate');
   const iBar = html.indexOf('Worktree');
   const iTable = html.indexOf('Current Rate');
   // SSR order: the Worktree filter lives in the header (rendered first), then the
-  // Total Rate chart and Current Rate table follow in <main>: control bar → chart → table (DD-3).
+  // Token Spend Rate chart and Current Rate table follow in <main>: control bar → chart → table (DD-3).
   assert.ok(iBar > -1 && iBar < iChart && iChart < iTable, 'order is control bar → chart → table (DD-3)');
 });
 
@@ -58,10 +58,27 @@ test('order is cards → chart → controls → table, with the time picker not 
   assert.doesNotMatch(src, /ControlBar|Auto · /, 'old control bar and auto-refresh pill are gone (FR-14)');
 
   const html = renderToStaticMarkup(createElement(ObservabilityView));
-  const iChart = html.indexOf('Total Rate');
+  const iChart = html.indexOf('Token Spend Rate');
   const iBar = html.indexOf('Worktree');
   const iTable = html.indexOf('Current Rate');
-  // SSR order: Worktree (header control) precedes the Total Rate chart and Current Rate
+  // SSR order: Worktree (header control) precedes the Token Spend Rate chart and Current Rate
   // table in <main>, so the rendered sequence is controls → chart → table (DD-2).
   assert.ok(iBar > -1 && iBar < iChart && iChart < iTable, 'order preserved: controls → chart → table (DD-2)');
+});
+
+test('renders SpendRateChart, not the retired TotalRateChart (FR-7)', async () => {
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const src = fs.readFileSync(path.resolve(import.meta.dirname, 'observability-view.tsx'), 'utf8');
+  assert.ok(src.includes('SpendRateChart'), 'uses the shared SpendRateChart');
+  assert.ok(!src.includes('TotalRateChart'), 'TotalRateChart import/usage fully removed');
+});
+
+test('builds per-model chart data via timeBucketedRateByModel with token-colored series (FR-7, NFR-1, DD-4)', async () => {
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const src = fs.readFileSync(path.resolve(import.meta.dirname, 'observability-view.tsx'), 'utf8');
+  assert.ok(src.includes('timeBucketedRateByModel'), 'chart data comes from the per-model bucketer');
+  assert.ok(src.includes('modelColor'), 'model line colors resolved via the house-token util');
+  assert.ok(src.includes('Token Spend Rate'), 'passes the Token Spend Rate title');
 });

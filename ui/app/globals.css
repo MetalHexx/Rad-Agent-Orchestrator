@@ -89,6 +89,16 @@
     --tier-halted: hsl(0, 84%, 45%);
     --tier-not-initialized: hsl(215, 14%, 43%);
 
+    /* ── Model Line Colors (categorical; reuse house hues — TELEMETRY-4.3) ── */
+    --model-red: hsl(0, 84%, 45%);
+    --model-amber: hsl(32, 95%, 34%);
+    --model-green: hsl(142, 71%, 33%);
+    --model-blue: hsl(217, 91%, 45%);
+    --model-purple: hsl(271, 91%, 46%);
+    --model-teal: hsl(180, 70%, 32%);
+    --model-pink: hsl(330, 75%, 48%);
+    --model-grey: hsl(215, 14%, 43%);
+
     /* ── Status Colors (WCAG AA corrected for light mode) ── */
     --status-complete: hsl(142, 71%, 33%);
     --status-in-progress: hsl(217, 91%, 45%);
@@ -201,6 +211,16 @@
     --tier-complete: hsl(142, 71%, 45%);
     --tier-halted: hsl(0, 84%, 60%);
     --tier-not-initialized: hsl(215, 14%, 63%);
+
+    /* ── Model Line Colors (dark) ── */
+    --model-red: hsl(0, 84%, 60%);
+    --model-amber: hsl(38, 92%, 50%);
+    --model-green: hsl(142, 71%, 45%);
+    --model-blue: hsl(217, 91%, 60%);
+    --model-purple: hsl(271, 91%, 65%);
+    --model-teal: hsl(180, 66%, 52%);
+    --model-pink: hsl(330, 80%, 65%);
+    --model-grey: hsl(215, 14%, 63%);
 
     /* ── Status Colors (dark mode — slate adjusted for contrast) ── */
     --status-complete: hsl(142, 71%, 45%);

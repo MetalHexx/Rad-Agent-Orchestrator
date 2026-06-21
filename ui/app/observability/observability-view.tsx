@@ -5,10 +5,11 @@ import dynamic from "next/dynamic";
 import { useObservabilityLive } from "@/hooks/use-observability-live";
 import { ActivityDot } from "@/components/observability/activity-dot";
 import { SummaryCards } from "@/components/observability/summary-cards";
-import { TotalRateChart } from "@/components/observability/total-rate-chart";
+import { SpendRateChart, type SpendRateSeries } from "@/components/observability/spend-rate-chart";
 import { FilterSelect } from "@/components/observability/filter-select";
 import { TimeRangePicker } from "@/components/time-range/time-range-picker";
-import { deriveSessions, timeBucketedRate, rowsInWindow, rowsSince } from "@/lib/observability/sessions";
+import { deriveSessions, timeBucketedRateByModel, rowsInWindow, rowsSince } from "@/lib/observability/sessions";
+import { modelColor } from "@/lib/observability/model-color";
 import { countActiveNow } from "@/lib/observability/live-active";
 import { SessionTable } from "@/components/observability/session-table";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
@@ -179,20 +180,30 @@ export function ObservabilityView() {
   // the grid and warping the curve instead of scrolling it (FR-5, AD-3, NFR-4).
   const nominalWindowMs = windowMsForBuckets(range, effectiveTick);
 
-  // Chart data: anchored to an absolute time grid so the curve's shape stays steady as the window
-  // slides (no per-tick warp); both window length and count come from the nominal range above.
-  // Sourced from `filteredSessions` (the same set behind the cards and table) so the Total Rate
-  // honors the worktree/session filters — narrowed to one session it mirrors that row's sparkline.
+  const chartRows = React.useMemo(
+    () => rowsInWindow(filteredSessions.flatMap((s) => s.rows), rangeStart, rangeEnd),
+    [filteredSessions, rangeStart, rangeEnd]
+  );
+
   const chartData = React.useMemo(
-    () => timeBucketedRate(
-      rowsInWindow(filteredSessions.flatMap((s) => s.rows), rangeStart, rangeEnd),
+    () => timeBucketedRateByModel(
+      chartRows,
       { endMs: rangeEnd, windowMs: nominalWindowMs, buckets: bucketsForWindow(nominalWindowMs), anchor: "grid" }
     ),
-    // nominalWindowMs is fully derived from range + effectiveTick (windowMsForBuckets), so tracking
-    // those sources is equivalent; filteredSessions transitively tracks rows + the active filters.
+    // nominalWindowMs is derived from range + effectiveTick; chartRows tracks rows + filters.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [filteredSessions, rangeStart, rangeEnd, range, effectiveTick]
+    [chartRows, rangeEnd, range, effectiveTick]
   );
+
+  // One line per model present in the window (harness-neutral), plus the blue total. The total
+  // is the existing observability blue (--chart-2); models color from house tokens (NFR-1, NFR-2).
+  const series = React.useMemo<SpendRateSeries[]>(() => {
+    const models = [...new Set(chartRows.map((r) => r.model))].sort();
+    return [
+      { key: "total", label: "All models", cssVar: "--chart-2" },
+      ...models.map((m) => ({ key: m, label: m, cssVar: modelColor(m) })),
+    ];
+  }, [chartRows]);
 
   return (
     <>
@@ -232,7 +243,7 @@ export function ObservabilityView() {
       </header>
       <main id="main-content" className="px-6 py-[var(--space-4)] space-y-[var(--space-4)]">
         <SummaryCards sessions={filteredSessions} activeNow={activeNow} />
-        <TotalRateChart data={chartData} rangeStart={rangeStart} rangeEnd={rangeEnd} filtered={filtered} />
+        <SpendRateChart data={chartData} series={series} title="Token Spend Rate" rangeStart={rangeStart} rangeEnd={rangeEnd} filtered={filtered} />
         <SessionTable sessions={filteredSessions} now={now} rangeStart={rangeStart} rangeEnd={rangeEnd} nominalWindowMs={nominalWindowMs} />
         <HelpPanel open={helpOpen} onOpenChange={setHelpOpen} />
       </main>
