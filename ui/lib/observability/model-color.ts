@@ -2,6 +2,7 @@
 // custom properties in globals.css (--model-*, light + dark). No inline color values here —
 // this module returns token NAMES only; the component renders var(<token>) (NFR-2).
 
+/** @internal Exported only for the `ModelToken` type and unit tests; production code calls `modelColor()`. */
 export const MODEL_TOKENS = [
   "--model-red", "--model-amber", "--model-green", "--model-blue",
   "--model-purple", "--model-teal", "--model-pink", "--model-grey",
@@ -15,7 +16,7 @@ const MODEL_COLOR_MAP: Record<string, ModelToken> = {
   haiku: "--model-green",
 };
 
-/** Resolve a harness-specific model id to a stable slot key (DD-2). */
+/** Resolve a harness-specific model id to a stable slot key (DD-2). @internal — exported for unit tests; production code uses `modelColor()`. */
 export function normalizeModel(raw: string): string {
   const m = raw.toLowerCase();
   if (m.includes("opus")) return "opus";
