@@ -62,6 +62,45 @@ export function rowsSince(rows: ObservabilityUsageRow[], startMs: number): Obser
 
 export interface RatePoint { t: number; value: number; }
 
+// FLAT shape: each model is a TOP-LEVEL key, so a series key maps 1:1 to a recharts `dataKey`
+// (recharts <Line dataKey="opus"> reads a top-level field; a nested map would need accessors) (AD-3).
+export interface ModelRatePoint {
+  t: number;
+  total: number;               // sum across all models — the blue total line (FR-3)
+  [modelKey: string]: number;  // one key per model present this bucket, e.g. point["claude-opus-4-8"]
+}
+
+/**
+ * Per-model variant of timeBucketedRate (FR-6, AD-1). Each bucket carries `total` (sum of every
+ * model's effective tokens, computed once) plus one top-level key per model present. Bucket-boundary
+ * logic mirrors timeBucketedRate exactly (same window/grid anchor, incl. the grid-anchored SSE
+ * smooth-scroll), so the live tail re-buckets per-model lines for free.
+ */
+export function timeBucketedRateByModel(
+  rows: ObservabilityUsageRow[],
+  opts: { endMs: number; windowMs: number; buckets: number; anchor?: "window" | "grid" }
+): ModelRatePoint[] {
+  const { endMs, windowMs, buckets, anchor = "window" } = opts;
+  if (windowMs <= 0) {
+    return Array.from({ length: buckets }, (_, i) => ({ t: endMs + i, total: 0 }));
+  }
+  const startMs = endMs - windowMs;
+  const size = windowMs / buckets;
+  const gridStart = anchor === "grid" ? Math.floor(startMs / size) * size : startMs;
+  const count = anchor === "grid" ? Math.max(1, Math.ceil((endMs - gridStart) / size)) : buckets;
+  const series: ModelRatePoint[] = Array.from({ length: count }, (_, i) => ({ t: gridStart + i * size, total: 0 }));
+  for (const r of rows) {
+    const t = Date.parse(r.timestamp);
+    if (t < startMs || t >= endMs) continue;
+    const idx = Math.min(count - 1, Math.floor((t - gridStart) / size));
+    const e = effectiveTokens(r);
+    const pt = series[idx];
+    pt.total += e;
+    pt[r.model] = (pt[r.model] ?? 0) + e;
+  }
+  return series;
+}
+
 /**
  * Spiky per-bucket effective-spend rate (NOT cumulative) over a rolling window (FR-10, FR-5).
  *
