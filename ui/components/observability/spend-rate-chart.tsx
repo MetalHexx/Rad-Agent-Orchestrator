@@ -2,6 +2,7 @@
 import * as React from "react";
 import { Area, AreaChart, ResponsiveContainer, XAxis, YAxis, Legend } from "recharts";
 import type { ModelRatePoint } from "@/lib/observability/sessions";
+import { DEFAULT_SHOWN_KEYS, visibleSeriesKeys } from "@/lib/observability/spend-rate";
 import { niceAxis } from "@/lib/observability/chart-scale";
 import { humanizeTokens } from "@/lib/observability/format";
 import { FilteredBadge } from "@/components/observability/filtered-badge";
@@ -30,33 +31,15 @@ export function SpendRateChart({
   const animate = !animatedOnce.current;
   React.useEffect(() => { animatedOnce.current = true; }, []);
 
-  // Default total-only (FR-4): seed `hidden` with every NON-total series key, so only the
-  // blue total line paints on first render. The user opts model lines in via the legend.
-  // `seenKeys` is a ledger of every non-total key we have already seeded, so a model the user
-  // later opts in is NOT re-hidden when the next live-tail series update arrives.
-  const seenKeys = React.useRef<Set<string> | null>(null);
-  if (seenKeys.current === null) {
-    seenKeys.current = new Set(series.filter((s) => s.key !== "total").map((s) => s.key));
-  }
-  const [hidden, setHidden] = React.useState<Set<string>>(
-    () => new Set(seenKeys.current ?? [])
-  );
-
-  // FR-7 live-tail: observability-view recomputes `series` on every SSE tick, so a model can
-  // first appear after mount. Seed any never-before-seen non-total key into `hidden` so its line
-  // starts hidden too (FR-4), without disturbing keys the user has already toggled.
-  React.useEffect(() => {
-    const ledger = seenKeys.current ?? new Set<string>();
-    const additions = series
-      .filter((s) => s.key !== "total" && !ledger.has(s.key))
-      .map((s) => s.key);
-    if (additions.length === 0) return;
-    additions.forEach((k) => ledger.add(k));
-    seenKeys.current = ledger;
-    setHidden((prev) => new Set([...prev, ...additions]));
-  }, [series]);
+  // Default total-only (FR-4): track the user's explicit opt-ins in `shown`, seeded with just
+  // the `total` key. A line is visible iff its key is in `shown`, derived synchronously during
+  // render (not patched by a post-paint effect) — so a model series that first appears AFTER
+  // mount (async data load / SSE live-tail) is hidden on its very first frame and never flashes
+  // in before being hidden. Opt-ins survive live-tail ticks because `shown` only changes on a
+  // legend click (FR-7).
+  const [shown, setShown] = React.useState<Set<string>>(() => new Set(DEFAULT_SHOWN_KEYS));
   const toggle = React.useCallback((key: string) => {
-    setHidden((prev) => {
+    setShown((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key); else next.add(key);
       return next;
@@ -66,7 +49,7 @@ export function SpendRateChart({
   // Fit the Y-axis to the currently visible series (FR-5, FR-3) via niceAxis: a tight, Grafana-style
   // ceiling (the data peak plus a little padding — not a coarse round-up) with nice integer gridlines,
   // so lines nearly fill the panel and an empty/idle window reads 0,1,2,3,4 instead of "0 0 1 1 1".
-  const visibleKeys = series.map((s) => s.key).filter((k) => !hidden.has(k));
+  const visibleKeys = visibleSeriesKeys(series, shown);
   const dataMax = Math.max(0, ...data.flatMap((p) => visibleKeys.map((k) => (p[k] as number) ?? 0)));
   const { max: yMax, ticks: yTicks } = niceAxis(dataMax, AXIS_TICKS);
 
@@ -79,7 +62,7 @@ export function SpendRateChart({
   // independent of recharts' auto-derivation from the Line children (DD-3, AD-4).
   const legendPayload = series.map((s) => ({
     value: s.label, dataKey: s.key, type: "line" as const,
-    color: `var(${s.cssVar})`, inactive: hidden.has(s.key),
+    color: `var(${s.cssVar})`, inactive: !shown.has(s.key),
   }));
 
   return (
@@ -119,7 +102,7 @@ export function SpendRateChart({
                 key={s.key} type="monotone" dataKey={s.key} name={s.label}
                 stroke={`var(${s.cssVar})`} strokeWidth={2} dot={false}
                 fill={`url(#spend-fill-${s.key})`}
-                hide={hidden.has(s.key)} isAnimationActive={animate}
+                hide={!shown.has(s.key)} isAnimationActive={animate}
               />
             ))}
           </AreaChart>
