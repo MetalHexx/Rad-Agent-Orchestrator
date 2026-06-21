@@ -69,6 +69,7 @@ Surfaces a project's brainstorming artifacts — `*-BRAINSTORMING.md`, `*-BRAINS
 
 - The workspace symlink resolves against the library's compiled `dist/` (ESM `.js` + `.d.ts`), not raw TypeScript source — Next's webpack resolver handles it correctly.
 - The root `npm install` establishes the workspace symlink before any build step; no deep relative path is needed.
+- Because the dev server reads `dist/` (not src), a lib source change is invisible until its `dist` is rebuilt **and** `next dev` restarts (Fast Refresh doesn't watch external `dist`). `npm run dev:live` rebuilds these libs on startup to avoid that staleness; `dev:live:watch` keeps them fresh on every lib edit.
 - Browser-side code (pages, components, hooks) must still never import from these packages; all `@rad-orchestration/repo-registry` and `@rad-orchestration/telemetry` imports must remain in server-side API routes only.
 
 The general ban on importing another package's `.ts` source remains absolute. Only compiled output consumed through the by-name workspace symlink qualifies for this carve-out.
@@ -164,7 +165,8 @@ Run from the `ui/` directory:
 
 ```
 npm run dev               # Next dev server (live reload) on http://localhost:3000
-npm run dev:live          # same live reload, but auto-wires RADORCH_CLI_PATH (gate/compose routes work)
+npm run dev:live          # same live reload, auto-wires RADORCH_CLI_PATH + auto-builds the @rad-orchestration/* lib dist
+npm run dev:live:watch    # dev:live, plus rebuild a lib + restart next dev when its src changes (--watch-libs)
 npm test                  # node --test across lib/ hooks/ components/ app/
 npm run build             # next build (production; same as build-standalone but no clean step)
 npm run build-standalone  # the build the installer uses; runs the prebuild clean step + next build
@@ -176,6 +178,7 @@ Both give Fast Refresh / hot reload, and replace the heavy build → pack → re
 
 - **`npm run dev`** runs `next dev` with nothing else wired. Read-only surfaces (project browsing, docs, the DAG, observability) work, but any route that shells out to the CLI — **driving gates** and the **action-event compose Preview** — returns HTTP 500 because `RADORCH_CLI_PATH` is unset (`lib/cli-shell.ts`).
 - **`npm run dev:live`** (`scripts/dev-live.mjs`) runs the same `next dev` but auto-points `RADORCH_CLI_PATH` at the locally built CLI (`cli/dist/bin/radorch.js`) — the same env var the production launcher (`radorch ui start`) sets — so the shell-out routes work in dev too. It needs the CLI built first (`cd cli && npm run build`, or `npm run watch` for continuous rebuilds); if the bundle is missing it prints a warning and continues, and the read-only surfaces still work.
+- **`dev:live` also rebuilds the UI's `@rad-orchestration/*` lib `dist/` on startup** (the deps from `package.json`, in the canonical build order `repo-registry → work-graph → telemetry`). This closes the stale-dist footgun: those libs are consumed via the workspace symlink → `dist/` and are externalized (see the carve-out above), so Fast Refresh does **not** watch them — a lib source change that wasn't rebuilt would otherwise serve stale data with no warning. Pass `--skip-libs` to skip the build (fast pure-UI path), or use `dev:live:watch` (`--watch-libs`) to rebuild the changed lib and restart `next dev` automatically whenever a `lib/*/src` file changes.
 
 Run from the repo root to verify the full installer build picks up your UI changes:
 
