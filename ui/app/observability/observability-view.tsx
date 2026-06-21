@@ -97,8 +97,8 @@ export function ObservabilityView() {
         }
       />
       <main id="main-content" className="px-6 py-[var(--space-4)] space-y-[var(--space-4)]">
-        <SummaryCards sessions={filteredSessions} activeNow={activeNow} />
         <SpendRateChart data={chart.data} series={chart.series} title="Token Spend Rate" rangeStart={rangeStart} rangeEnd={rangeEnd} filtered={filtered} />
+        <SummaryCards sessions={filteredSessions} activeNow={activeNow} />
         <SessionTable sessions={filteredSessions} now={now} rangeStart={rangeStart} rangeEnd={rangeEnd} nominalWindowMs={tw.nominalWindowMs} />
         <HelpPanel open={helpOpen} onOpenChange={setHelpOpen} />
       </main>
