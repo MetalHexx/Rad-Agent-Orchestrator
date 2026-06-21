@@ -1,11 +1,11 @@
 ---
 name: rad-test-standard-installer
-description: 'Build, pack, and end-to-end install-test the greenfield standard installer (`rad-orchestration` npm package) against a single harness. Builds via `node harness-installers/standard/build-scripts/build.js`, packs `output/`, runs `npx ./<tarball> --yes --harness <h>`, verifies post-install state via `radorch doctor` and the per-harness manifest sha. Use when asked to "smoke-test the greenfield standard installer", "test the new npm installer install", or "validate the standard installer end-to-end".'
+description: 'Build, pack, and end-to-end install-test the greenfield standard installer (`rad-orc` npm package) against a single harness. Builds via `node harness-installers/standard/build-scripts/build.js`, packs `output/`, runs `npx ./<tarball> --yes --harness <h>`, verifies post-install state via `radorch doctor` and the per-harness manifest sha. Use when asked to "smoke-test the greenfield standard installer", "test the new npm installer install", or "validate the standard installer end-to-end".'
 ---
 
 # rad-test-standard-installer
 
-**Where this fits.** `rad-test-standard-installer` is the greenfield counterpart to `.agents/prompts/rad-test-release.prompt.md` (legacy installer) and mirrors the single-harness smoke-test discipline of `.agents/skills/rad-test-claude-plugin/SKILL.md` (plugin channel). Both the greenfield and legacy channels support `npx rad-orchestration` install for the standard harness targets (Claude Code, GitHub Copilot VS Code, GitHub Copilot CLI), but they use different build chains:
+**Where this fits.** `rad-test-standard-installer` is the greenfield counterpart to `.agents/prompts/rad-test-release.prompt.md` (legacy installer) and mirrors the single-harness smoke-test discipline of `.agents/skills/rad-test-claude-plugin/SKILL.md` (plugin channel). Both the greenfield and legacy channels support `npx rad-orc` install for the standard harness targets (Claude Code, GitHub Copilot VS Code, GitHub Copilot CLI), but they use different build chains:
 
 - `.agents/prompts/rad-test-release.prompt.md` → **legacy** build (`npm run build:installer` at repo root, output at `cli/dist/installers/`)
 - **this skill** → **greenfield** build (`node harness-installers/standard/build-scripts/build.js`, output at `harness-installers/standard/output/`)
@@ -15,7 +15,7 @@ Pick the one matching the channel you want to validate. Single-harness per run k
 ## When to Use This Skill
 
 - Smoke-testing the greenfield standard installer end-to-end before publishing.
-- Verifying that a greenfield build change reaches a real harness install via `npx rad-orchestration`.
+- Verifying that a greenfield build change reaches a real harness install via `npx rad-orc`.
 - Reproducing a user-reported install issue against the current greenfield build.
 
 ## Prerequisites
@@ -112,7 +112,7 @@ cd {repoRoot}\harness-installers\standard
 npm pack
 ```
 
-Capture the resulting tarball filename (matching pattern `rad-orchestration-<version>.tgz`) as `{tarballPath}`. Read `standard/package.json` to confirm the version and note it as `{version}` — you will print it in the handoff message so the user can confirm it after install.
+Capture the resulting tarball filename (matching pattern `rad-orc-<version>.tgz`) as `{tarballPath}`. Read `standard/package.json` to confirm the version and note it as `{version}` — you will print it in the handoff message so the user can confirm it after install.
 
 Expected: `npm pack` exits 0; the tarball file exists at `{tarballPath}`.
 
@@ -124,7 +124,7 @@ Before installing, provide the user with the exact command they must run in thei
 npx file:{tarballPath} --yes --harness {harness}
 ```
 
-The `file:` prefix is required on npm 11+ — without it, `npm exec` treats the raw tarball path as a command name instead of a package spec and silently exits 0. Post-publish users invoke this as `npx rad-orchestration` (no path, no `file:` prefix); the prefix is only for local smoke-testing.
+The `file:` prefix is required on npm 11+ — without it, `npm exec` treats the raw tarball path as a command name instead of a package spec and silently exits 0. Post-publish users invoke this as `npx rad-orc` (no path, no `file:` prefix); the prefix is only for local smoke-testing.
 
 Instruct the user to run this command and report back when the install completes. Do **not** run the install yourself.
 
