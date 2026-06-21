@@ -163,10 +163,11 @@ This repo is a polyglot monorepo with several test runners. Pick the right one:
   ```
   cd ui && npm test
   cd ui && npm run dev               # dev server (port 3000 — kill any prior occupant first)
-  cd ui && npm run dev:live          # dev server + RADORCH_CLI_PATH wired (gate/compose routes work)
+  cd ui && npm run dev:live          # dev server + RADORCH_CLI_PATH wired + auto-builds the @rad-orchestration/* lib dist
+  cd ui && npm run dev:live:watch    # dev:live, plus rebuild a lib + restart next dev on lib/*/src changes
   cd ui && npm run build-and-start   # full production build + start
   ```
-  Use `dev:live` to develop against a live UI with hot reload; it needs the CLI built (`cd cli && npm run build`). See `ui/AGENTS.md` for the full UI module guide.
+  Use `dev:live` to develop against a live UI with hot reload; it needs the CLI built (`cd cli && npm run build`). It rebuilds the UI's `@rad-orchestration/*` lib `dist/` on startup, so a lib source change that wasn't compiled no longer serves stale data through the dev server (Fast Refresh doesn't watch that external `dist`); `dev:live:watch` keeps it fresh on every lib edit, and `--skip-libs` opts out of the startup build. The `/rad-ui-dev` skill wraps this. See `ui/AGENTS.md` for the full UI module guide.
 
 ## Prompt harnesses
 

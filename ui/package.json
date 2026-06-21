@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "dev:live": "node ./scripts/dev-live.mjs",
+    "dev:live:watch": "node ./scripts/dev-live.mjs --watch-libs",
     "build-and-start": "next build && next start",
     "build": "next build",
     "prebuild-standalone": "node ./scripts/clean-standalone.mjs",
