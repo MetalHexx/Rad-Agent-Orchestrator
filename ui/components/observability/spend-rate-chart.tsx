@@ -1,6 +1,6 @@
 "use client";
 import * as React from "react";
-import { Line, LineChart, ResponsiveContainer, XAxis, YAxis, Legend } from "recharts";
+import { Area, AreaChart, ResponsiveContainer, XAxis, YAxis, Legend } from "recharts";
 import type { ModelRatePoint } from "@/lib/observability/sessions";
 import { niceMax } from "@/lib/observability/chart-scale";
 import { humanizeTokens } from "@/lib/observability/format";
@@ -86,7 +86,18 @@ export function SpendRateChart({
       <h2 className="flex items-center gap-2 text-sm font-medium text-foreground mb-2">{title}<FilteredBadge active={filtered} /></h2>
       <div className="h-40">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={data} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
+          <AreaChart data={data} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
+            {/* One gradient per series, keyed to its color token — the original chart's hard
+                line over a soft vertical fade (0.85 → 0.32 → 0), restored across all series. */}
+            <defs>
+              {series.map((s) => (
+                <linearGradient key={s.key} id={`spend-fill-${s.key}`} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={`var(${s.cssVar})`} stopOpacity={0.85} />
+                  <stop offset="55%" stopColor={`var(${s.cssVar})`} stopOpacity={0.32} />
+                  <stop offset="100%" stopColor={`var(${s.cssVar})`} stopOpacity={0} />
+                </linearGradient>
+              ))}
+            </defs>
             <XAxis
               dataKey="t" type="number" domain={[rangeStart, rangeEnd]} scale="time"
               tickFormatter={formatTime} ticks={xTicks} interval={0}
@@ -102,13 +113,14 @@ export function SpendRateChart({
               wrapperStyle={{ cursor: "pointer", fontSize: 11 }}
             />
             {series.map((s) => (
-              <Line
+              <Area
                 key={s.key} type="monotone" dataKey={s.key} name={s.label}
                 stroke={`var(${s.cssVar})`} strokeWidth={2} dot={false}
+                fill={`url(#spend-fill-${s.key})`}
                 hide={hidden.has(s.key)} isAnimationActive={animate}
               />
             ))}
-          </LineChart>
+          </AreaChart>
         </ResponsiveContainer>
       </div>
     </div>

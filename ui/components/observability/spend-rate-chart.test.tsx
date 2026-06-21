@@ -5,16 +5,28 @@ import path from 'node:path';
 
 const src = readFileSync(path.join(process.cwd(), 'components', 'observability', 'spend-rate-chart.tsx'), 'utf-8');
 
-test('is a multi-series LineChart titled from the title prop, with a Legend (FR-1, DD-4)', () => {
-  assert.ok(src.includes('LineChart') && src.includes('<Line'), 'uses a recharts LineChart/Line');
+test('is a multi-series AreaChart titled from the title prop, with a Legend (FR-1, DD-4)', () => {
+  assert.ok(src.includes('AreaChart') && src.includes('<Area'), 'uses a recharts AreaChart/Area');
   assert.ok(src.includes('{title}'), 'renders the title prop, not a hardcoded title');
   assert.ok(!src.includes('Total Rate'), 'old hardcoded "Total Rate" title is gone (DD-4)');
   assert.ok(src.includes('Legend'), 'has a legend (multi-series)');
 });
 
-test('renders one Line per series entry — no hardcoded model list (FR-2, NFR-1)', () => {
-  assert.ok(/series\.map\(/.test(src), 'maps over the series descriptor to render lines');
+test('renders one Area per series entry — no hardcoded model list (FR-2, NFR-1)', () => {
+  assert.ok(/series\.map\(/.test(src), 'maps over the series descriptor to render areas');
   assert.ok(!/dataKey="(opus|sonnet|haiku)"/.test(src), 'no hardcoded model dataKeys');
+});
+
+test('each Area has a hard stroke over a per-series soft-fade gradient fill (regression: blue fade)', () => {
+  // Restores the original AreaChart look: a 2px stroke (hard line) on top of a vertical
+  // linearGradient that fades to transparent — one gradient per series, keyed to its token.
+  assert.ok(src.includes('<defs'), 'defines gradient defs');
+  assert.ok(src.includes('linearGradient'), 'uses a linearGradient fill');
+  assert.ok(src.includes('url(#spend-fill-'), 'each Area fills from its own per-series gradient id');
+  assert.ok(src.includes('strokeWidth={2}'), 'keeps the 2px hard stroke line');
+  assert.ok(/stopOpacity=\{0\.85\}/.test(src), 'top stop is the original 0.85 opacity');
+  assert.ok(/stopOpacity=\{0\.32\}/.test(src), 'mid stop is the original 0.32 opacity');
+  assert.ok(/stopOpacity=\{0\}/.test(src), 'bottom stop fades fully to transparent');
 });
 
 test('default view is total-only — non-total lines start hidden (FR-4)', () => {

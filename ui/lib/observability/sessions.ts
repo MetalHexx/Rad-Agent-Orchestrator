@@ -81,14 +81,19 @@ export function timeBucketedRateByModel(
   opts: { endMs: number; windowMs: number; buckets: number; anchor?: "window" | "grid" }
 ): ModelRatePoint[] {
   const { endMs, windowMs, buckets, anchor = "window" } = opts;
+  // Every model seen anywhere in `rows` gets a 0 in EVERY bucket, so an idle bucket reads 0 rather
+  // than leaving the key absent (undefined). recharts then draws a continuous line that dips to 0
+  // instead of breaking across the gap — matching how `total` is already seeded per bucket (FR-6).
+  const modelKeys = [...new Set(rows.map((r) => r.model))];
+  const zeros = (): Record<string, number> => Object.fromEntries(modelKeys.map((k) => [k, 0]));
   if (windowMs <= 0) {
-    return Array.from({ length: buckets }, (_, i) => ({ t: endMs + i, total: 0 }));
+    return Array.from({ length: buckets }, (_, i) => ({ ...zeros(), t: endMs + i, total: 0 }));
   }
   const startMs = endMs - windowMs;
   const size = windowMs / buckets;
   const gridStart = anchor === "grid" ? Math.floor(startMs / size) * size : startMs;
   const count = anchor === "grid" ? Math.max(1, Math.ceil((endMs - gridStart) / size)) : buckets;
-  const series: ModelRatePoint[] = Array.from({ length: count }, (_, i) => ({ t: gridStart + i * size, total: 0 }));
+  const series: ModelRatePoint[] = Array.from({ length: count }, (_, i) => ({ ...zeros(), t: gridStart + i * size, total: 0 }));
   for (const r of rows) {
     const t = Date.parse(r.timestamp);
     if (t < startMs || t >= endMs) continue;
