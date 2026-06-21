@@ -82,3 +82,14 @@ test('builds per-model chart data via timeBucketedRateByModel with token-colored
   assert.ok(src.includes('modelColor'), 'model line colors resolved via the house-token util');
   assert.ok(src.includes('Token Spend Rate'), 'passes the Token Spend Rate title');
 });
+
+test('view composes the shared sub-header and hooks, not an inline header (AD-7, AD-6, FR-11)', async () => {
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const src = fs.readFileSync(path.resolve(import.meta.dirname, 'observability-view.tsx'), 'utf8');
+  assert.match(src, /ObservabilitySubHeader/, 'renders the shared ObservabilitySubHeader');
+  assert.match(src, /useTimeRangeWindow/, 'drives time/window state via the shared hook');
+  assert.match(src, /useSpendRateChart/, 'builds chart data via the shared hook');
+  assert.match(src, /useUrlViewState/, 'persists URL via the shared codec hook');
+  assert.doesNotMatch(src, /timeBucketedRateByModel/, 'bucketing math no longer lives inline (AD-3 extracted)');
+});
