@@ -2,7 +2,7 @@
 import * as React from "react";
 import { Area, AreaChart, ResponsiveContainer, XAxis, YAxis, Legend } from "recharts";
 import type { ModelRatePoint } from "@/lib/observability/sessions";
-import { niceMax } from "@/lib/observability/chart-scale";
+import { niceAxis } from "@/lib/observability/chart-scale";
 import { humanizeTokens } from "@/lib/observability/format";
 import { FilteredBadge } from "@/components/observability/filtered-badge";
 
@@ -63,16 +63,17 @@ export function SpendRateChart({
     });
   }, []);
 
-  // Y-scale over the visible series only (FR-5, FR-3) — the same explicit niceMax the prior chart
-  // used, so the fixed humanized 5-tick axis is preserved across All Sessions and Session Detail.
+  // Fit the Y-axis to the currently visible series (FR-5, FR-3) with a tight, Grafana-style
+  // nice-step ceiling (niceAxis): it hugs the data so lines use the full height, and floors to
+  // integer ticks so an empty/idle window reads 0,1,2,3,4 instead of the duplicate "0 0 1 1 1".
   const visibleKeys = series.map((s) => s.key).filter((k) => !hidden.has(k));
-  const yMax = niceMax(data.flatMap((p) => visibleKeys.map((k) => (p[k] as number) ?? 0)));
+  const dataMax = Math.max(0, ...data.flatMap((p) => visibleKeys.map((k) => (p[k] as number) ?? 0)));
+  const { max: yMax, ticks: yTicks } = niceAxis(dataMax, AXIS_TICKS);
 
   const xTicks = React.useMemo(
     () => Array.from({ length: AXIS_TICKS }, (_, i) => Math.round(rangeStart + (i * (rangeEnd - rangeStart)) / (AXIS_TICKS - 1))),
     [rangeStart, rangeEnd]
   );
-  const yTicks = Array.from({ length: AXIS_TICKS }, (_, i) => (i * yMax) / (AXIS_TICKS - 1));
 
   // Explicit legend payload so the greyed (inactive) state and token colors are deterministic,
   // independent of recharts' auto-derivation from the Line children (DD-3, AD-4).

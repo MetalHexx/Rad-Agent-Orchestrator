@@ -45,8 +45,10 @@ test('colors come only from series cssVar tokens — no inline hex/oklch/hsl (NF
   assert.ok(!/\b(oklch|hsl)\(/.test(src), 'no inline oklch/hsl colors');
 });
 
-test('Y domain uses the stable niceMax over the visible series only (FR-5, FR-3)', () => {
-  assert.ok(src.includes('niceMax') && /visibleKeys/.test(src), 'niceMax is fed the visible series');
+test('Y axis fits the visible series tightly via niceAxis (FR-5, FR-3)', () => {
+  assert.ok(/niceAxis\(/.test(src), 'uses the niceAxis helper (tight nice-step ceiling + integer fallback)');
+  assert.ok(/visibleKeys/.test(src), 'still fits the visible (un-hidden) series — fit-to-visible, FR-5');
+  assert.ok(!/niceMax\(/.test(src), 'no longer uses the coarse niceMax round-up directly');
 });
 
 test('late-arriving models start hidden too — FR-4 holds under SSE live-tail (FR-4, FR-7)', () => {
