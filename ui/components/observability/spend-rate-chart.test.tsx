@@ -36,3 +36,18 @@ test('colors come only from series cssVar tokens — no inline hex/oklch/hsl (NF
 test('Y domain uses the stable niceMax over the visible series only (FR-5, FR-3)', () => {
   assert.ok(src.includes('niceMax') && /visibleKeys/.test(src), 'niceMax is fed the visible series');
 });
+
+test('late-arriving models start hidden too — FR-4 holds under SSE live-tail (FR-4, FR-7)', () => {
+  // The one-time mount seed is not enough: observability-view recomputes `series` on every
+  // SSE tick, so a model that first appears after mount must also be seeded into `hidden`.
+  assert.ok(/useEffect\(/.test(src), 'reacts to series changes via an effect');
+  assert.ok(/}\s*,\s*\[\s*series\s*\]\s*\)/.test(src), 'the effect is keyed on [series]');
+  assert.ok(/setHidden\(/.test(src), 'the effect seeds newly-arrived keys into the hidden set');
+});
+
+test('models the user opted in are not re-hidden by later series updates (FR-4, FR-7)', () => {
+  // Seeding must key off keys never-before-seen, not "every key not currently hidden", or a
+  // user-shown model would be re-hidden on the next live-tail tick.
+  assert.ok(/seen/i.test(src), 'tracks which non-total keys have already been seen');
+  assert.ok(/useRef/.test(src), 'the seen-ledger is a ref so it survives re-renders');
+});

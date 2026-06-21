@@ -32,9 +32,29 @@ export function SpendRateChart({
 
   // Default total-only (FR-4): seed `hidden` with every NON-total series key, so only the
   // blue total line paints on first render. The user opts model lines in via the legend.
+  // `seenKeys` is a ledger of every non-total key we have already seeded, so a model the user
+  // later opts in is NOT re-hidden when the next live-tail series update arrives.
+  const seenKeys = React.useRef<Set<string> | null>(null);
+  if (seenKeys.current === null) {
+    seenKeys.current = new Set(series.filter((s) => s.key !== "total").map((s) => s.key));
+  }
   const [hidden, setHidden] = React.useState<Set<string>>(
-    () => new Set(series.filter((s) => s.key !== "total").map((s) => s.key))
+    () => new Set(seenKeys.current ?? [])
   );
+
+  // FR-7 live-tail: observability-view recomputes `series` on every SSE tick, so a model can
+  // first appear after mount. Seed any never-before-seen non-total key into `hidden` so its line
+  // starts hidden too (FR-4), without disturbing keys the user has already toggled.
+  React.useEffect(() => {
+    const ledger = seenKeys.current ?? new Set<string>();
+    const additions = series
+      .filter((s) => s.key !== "total" && !ledger.has(s.key))
+      .map((s) => s.key);
+    if (additions.length === 0) return;
+    additions.forEach((k) => ledger.add(k));
+    seenKeys.current = ledger;
+    setHidden((prev) => new Set([...prev, ...additions]));
+  }, [series]);
   const toggle = React.useCallback((key: string) => {
     setHidden((prev) => {
       const next = new Set(prev);
