@@ -81,6 +81,29 @@ jobs:
       - name: Test lib/telemetry
         run: npm test -w @rad-orchestration/telemetry
 
+  ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install dependencies (root workspace)
+        run: npm install
+
+      - name: Build lib/repo-registry (ui dependency)
+        run: npm run build -w @rad-orchestration/repo-registry
+
+      - name: Build lib/telemetry (ui dependency)
+        run: npm run build -w @rad-orchestration/telemetry
+
+      - name: Build UI (next build)
+        working-directory: ui
+        run: npm run build
+
   adapters:
     runs-on: ubuntu-latest
     steps:
