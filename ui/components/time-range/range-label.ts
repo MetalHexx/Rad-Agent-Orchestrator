@@ -2,7 +2,7 @@
 import { format } from 'date-fns';
 import { PRESET_TIERS, type TimeRange } from '@/lib/time-range/range';
 
-const fmt = (ms: number) => format(new Date(ms), 'MMM d, HH:mm');
+const fmt = (ms: number) => format(new Date(ms), 'MMM d, h:mm a');   // was 'MMM d, HH:mm'
 
 export function rangePillLabel(r: TimeRange): string {
   switch (r.kind) {

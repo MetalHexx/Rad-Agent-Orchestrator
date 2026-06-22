@@ -34,3 +34,15 @@ test('filters slot is rendered when supplied (FR-4)', () => {
   }));
   assert.ok(html.includes('WorktreeFilter'), 'filters slot content renders in the cluster');
 });
+
+test('reset button is absent when onResetRange is not supplied', () => {
+  const html = renderToStaticMarkup(createElement(ObservabilitySubHeader, { ...baseProps, msSinceActivity: null }));
+  assert.ok(!html.includes('Fit time range to session'), 'reset button absent when no onResetRange prop');
+});
+
+test('reset button is present when onResetRange handler is passed', () => {
+  const html = renderToStaticMarkup(createElement(ObservabilitySubHeader, {
+    ...baseProps, msSinceActivity: null, onResetRange: () => {},
+  }));
+  assert.ok(html.includes('aria-label="Fit time range to session"'), 'reset button present when onResetRange provided');
+});

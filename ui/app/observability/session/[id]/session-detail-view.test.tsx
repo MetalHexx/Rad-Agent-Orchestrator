@@ -40,5 +40,25 @@ test('detail header carries a back control to the left of the session title (bac
 test('detail view renders the session summary cards under the hero, guarded on session existence (FR-5, DD-4)', () => {
   const src = readFileSync(resolve(import.meta.dirname, 'session-detail-view.tsx'), 'utf8');
   assert.match(src, /import \{ SessionSummaryCards \}/, 'imports the session summary cards');
-  assert.match(src, /\{session && <SessionSummaryCards session=\{session\} \/>\}/, 'cards are guarded on session; not-found renders none');
+  assert.match(src, /\{session && <SessionSummaryCards session=\{windowedSession!\} \/>\}/, 'cards are guarded on session; feeds windowedSession');
+});
+
+test('session-detail-view source: windowed data pipeline (AD-6, FR-5)', () => {
+  const src = readFileSync(resolve(import.meta.dirname, 'session-detail-view.tsx'), 'utf8');
+  assert.match(src, /rowsInWindow\(sessionRows, rangeStart, rangeEnd\)/, 'windowRows derived from rowsInWindow');
+  assert.match(src, /buildSubagentTree\(windowRows\)/, 'subagentTree builds from windowed rows');
+  assert.match(src, /session=\{windowedSession!\}/, 'cards receive windowedSession');
+  assert.match(src, /onResetRange=\{hasDefault \? onResetRange : undefined\}/, 'onResetRange passed to sub-header');
+});
+
+test('session-detail-view source: pin gated on ready and fitToSession called with Date.now() (AD-9)', () => {
+  const src = readFileSync(resolve(import.meta.dirname, 'session-detail-view.tsx'), 'utf8');
+  assert.match(src, /if \(ready && session\)/, 'pin effect gated on ready && session');
+  assert.match(src, /fitToSession\(/, 'fitToSession is called in the pin effect');
+  assert.match(src, /Date\.now\(\)/, 'Date.now() used for nowMs in the pin effect');
+});
+
+test('reset button absent in SSR no-data frame (ready is false on initial render)', () => {
+  const html = renderToStaticMarkup(createElement(SessionDetailView, { sessionId: '__nope__' }));
+  assert.ok(!html.includes('Fit time range to session'), 'reset button absent when hasDefault is false (ready=false in SSR)');
 });

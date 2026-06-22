@@ -65,7 +65,7 @@ export function ObservabilityView() {
     setSession(id);
     if (id !== "All") {
       const s = allSessions.find((x) => x.sessionId === id);
-      if (s) setRange(fitToSession(s.startedMs, retentionFloorMs(Date.now())));
+      if (s) { const nowMs = Date.now(); setRange(fitToSession(s.startedMs, retentionFloorMs(nowMs), nowMs)); }
     }
   }, [allSessions, setRange]);
 

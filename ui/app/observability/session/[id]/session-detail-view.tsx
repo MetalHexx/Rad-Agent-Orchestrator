@@ -10,8 +10,10 @@ import { AgentTree } from '@/components/observability/agent-tree';
 import { buildSubagentTree } from '@/lib/observability/subagent-tree';
 import { sessionWindowCoverage } from '@/lib/observability/window-coverage';
 import { deriveSessions, rowsInWindow, rowsSince } from "@/lib/observability/sessions";
+import type { SessionAgg } from '@/lib/observability/sessions';
 import { fitToSession } from "@/lib/observability/fit-to-session";
 import { retentionFloorMs } from "@/lib/time-range/range";
+import type { TimeRange } from '@/lib/time-range/range';
 import { freshness } from "@/lib/observability/freshness";
 import { readRangeState, writeRangeState, type RangeState } from "@/lib/time-range/url-state";
 import { useTimeRangeWindow } from "@/hooks/use-time-range-window";
@@ -58,28 +60,51 @@ export function SessionDetailView({ sessionId }: { sessionId: string }) {
     [sessionRows, sessionId]
   );
 
-  // Build the breakdown from the SAME rows the cards derive from → windowTotal === Total Spend (AD-6).
-  const subagentTree = React.useMemo(() => buildSubagentTree(sessionRows), [sessionRows]);   // pure, per-tick (FR-8, NFR-1)
+  // Windowed rows and windowed session for cards/tree/chart (AD-6 holds vs the SELECTED window).
+  const windowRows = React.useMemo(
+    () => rowsInWindow(sessionRows, rangeStart, rangeEnd),
+    [sessionRows, rangeStart, rangeEnd]
+  );
+  const windowedSession = React.useMemo<SessionAgg | undefined>(() => {
+    if (!session) return undefined;
+    if (windowRows.length === 0) {
+      return { sessionId, worktree: session.worktree, startedMs: rangeStart, lastMs: rangeStart, spend: 0, rows: [] };
+    }
+    return deriveSessions(windowRows).find((s) => s.sessionId === sessionId)
+      ?? { sessionId, worktree: session.worktree, startedMs: rangeStart, lastMs: rangeStart, spend: 0, rows: [] };
+  }, [session, windowRows, sessionId, rangeStart]);
+
+  // Build the breakdown from windowRows → windowTotal === Total Spend (AD-6 now holds vs the SELECTED window).
+  const subagentTree = React.useMemo(() => buildSubagentTree(windowRows), [windowRows]);
   const coverage = React.useMemo(
     () => sessionWindowCoverage([...rows.values()], sessionId, rangeStart, rangeEnd),
     [rows, sessionId, rangeStart, rangeEnd],
   );
 
-  // Phase 2 — pin: once the session start is known, re-pin to fit-to-session unless the URL
-  // already deep-linked a range. Runs once (AD-9, FR-6).
+  // Phase 2 — pin: once the session start is known and backfill is ready, re-pin to fit-to-session
+  // unless the URL already deep-linked a range. Runs once (AD-9, FR-6).
   const pinned = React.useRef(false);
+  const defaultRange = React.useRef<TimeRange | null>(null);
+  const [hasDefault, setHasDefault] = React.useState(false);
   React.useEffect(() => {
     if (pinned.current || urlHadRange.current) return;
-    if (session) { pinned.current = true; setRange(fitToSession(session.startedMs, retentionFloorMs(Date.now()))); }
-  }, [session, setRange]);
+    if (ready && session) {                       // gate on ready so startedMs is the TRUE earliest event
+      pinned.current = true;
+      const nowMs = Date.now();                   // read once → floor + lead-in agree
+      const fit = fitToSession(session.startedMs, retentionFloorMs(nowMs), nowMs);
+      defaultRange.current = fit;
+      setHasDefault(true);
+      setRange(fit);
+    }
+  }, [ready, session, setRange]);
+
+  const onResetRange = React.useCallback(() => {
+    if (defaultRange.current) setRange(defaultRange.current);
+  }, [setRange]);
 
   const { latestMs, msSinceActivity } = freshness(sessionRows, now);
 
-  const chartRows = React.useMemo(
-    () => rowsInWindow(sessionRows, rangeStart, rangeEnd),
-    [sessionRows, rangeStart, rangeEnd]
-  );
-  const chart = useSpendRateChart(chartRows, tw);
+  const chart = useSpendRateChart(windowRows, tw);
 
   const allRowCount = rows.size;
   // Not-found: rows exist system-wide but none match this id even at the floor-deep window (FR-9).
@@ -103,6 +128,7 @@ export function SessionDetailView({ sessionId }: { sessionId: string }) {
         scopeLabel={scopeTitle}
         onRefresh={refreshNow}
         onHelp={() => setHelpOpen(true)}
+        onResetRange={hasDefault ? onResetRange : undefined}
       />
       <main id="main-content" className="px-6 py-[var(--space-4)] space-y-[var(--space-4)]">
         {notFound ? (
@@ -112,7 +138,7 @@ export function SessionDetailView({ sessionId }: { sessionId: string }) {
         ) : (
           <>
             <SpendRateChart data={chart.data} series={chart.series} title="Token Spend Rate · This Session" rangeStart={rangeStart} rangeEnd={rangeEnd} ready={ready} />
-            {session && <SessionSummaryCards session={session} />}
+            {session && <SessionSummaryCards session={windowedSession!} />}
             {session && (
               <AgentTree tree={subagentTree} title="Agent Breakdown" coverage={coverage} ready={ready} />
             )}
