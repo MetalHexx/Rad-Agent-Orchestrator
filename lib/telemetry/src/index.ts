@@ -9,3 +9,4 @@ export { readUsageForDates, type ReadUsageOptions } from './read/usage-reader.js
 export { toObservabilityUsageRow, type ObservabilityUsageRow } from './read/observability-row.js';
 export { parseTranscript, parseEvents, eventsFromRaw, truncateBody, type ParseContext } from './transcript-parser.js';
 export { buildTree, toSummary } from './transcript-tree.js';
+export { ingestTranscripts, type IngestDeps } from './transcript-ingestor.js';

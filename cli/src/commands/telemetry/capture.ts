@@ -5,7 +5,7 @@ import { readTelemetryEnabled } from './config.js';
 import type { CommandContext } from '../../framework/context.js';
 import {
   ClaudeCodeAdapter, FileCheckpointStore, NdjsonSink, TelemetryCollector,
-  pruneAgedPartitions, type HookEvent,
+  pruneAgedPartitions, ingestTranscripts, type HookEvent,
 } from '@rad-orchestration/telemetry';
 
 export interface CaptureData {
@@ -31,6 +31,7 @@ export async function captureCore(deps: CaptureCoreDeps): Promise<CaptureData> {
       new FileCheckpointStore({ root: telemetryRoot }),
     );
     const res = collector.capture(signal);
+    ingestTranscripts({ root: telemetryRoot, signal, now, log: (m, p) => { void logger.debug(m, p); } });
     const pruned = pruneAgedPartitions({ root: telemetryRoot, maxAgeDays: 14, now }); // FR-6 — capture owns retention
     await logger.info('telemetry_captured', { event: signal.event, sessionId: signal.sessionId, written: res.written, skipped: res.skipped, pruned, locked: res.locked });
     return { enabled: true, sessionId: signal.sessionId, written: res.written, skipped: res.skipped, pruned, locked: res.locked };
