@@ -79,5 +79,21 @@ test('splits node tokens by model, accumulating per model, sorted desc (NFR-8)',
   ]);
 });
 
+import { freezeSubagentOrder } from './subagent-tree';
+
+test('freezeSubagentOrder keeps prior order, appends new groups in spend order (NFR-7)', () => {
+  const mk = (key: string, tokens: number) => ({ key, kind: 'group' as const, label: key, agentType: key, runCount: 1, tokens, models: [], reqs: 1, firstMs: 0, lastMs: 1 });
+  // Frozen order saw [A, B]; current spend order is [C(new,300), B(200), A(100)].
+  const current = [mk('C', 300), mk('B', 200), mk('A', 100)];
+  const result = freezeSubagentOrder(current, ['A', 'B']);
+  assert.deepEqual(result.map((n) => n.key), ['A', 'B', 'C'], 'A,B hold their frozen order; C appended');
+});
+
+test('freezeSubagentOrder with empty frozen list is identity (first turn) (NFR-7)', () => {
+  const mk = (key: string, tokens: number) => ({ key, kind: 'group' as const, label: key, agentType: key, runCount: 1, tokens, models: [], reqs: 1, firstMs: 0, lastMs: 1 });
+  const current = [mk('B', 200), mk('A', 100)];
+  assert.deepEqual(freezeSubagentOrder(current, []).map((n) => n.key), ['B', 'A']);
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

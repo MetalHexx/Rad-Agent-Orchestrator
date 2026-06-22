@@ -98,3 +98,16 @@ export function buildSubagentTree(rows: ObservabilityUsageRow[]): SubagentTree {
   const subagentPct = windowTotal > 0 ? subagentTotal / windowTotal : 0;
   return { windowTotal, main, subagents, subagentTotal, subagentPct };
 }
+
+/**
+ * Reorder current groups to match a previously-frozen key order so rows do not reshuffle
+ * mid-turn; keys not in the frozen list (new agents) append in their current (spend) order (NFR-7, FR-9).
+ */
+export function freezeSubagentOrder(current: AgentTreeNode[], frozenKeys: string[]): AgentTreeNode[] {
+  if (frozenKeys.length === 0) return current;
+  const byKey = new Map(current.map((n) => [n.key, n]));
+  const held = frozenKeys.map((k) => byKey.get(k)).filter((n): n is AgentTreeNode => !!n);
+  const seen = new Set(frozenKeys);
+  const appended = current.filter((n) => !seen.has(n.key));
+  return [...held, ...appended];
+}

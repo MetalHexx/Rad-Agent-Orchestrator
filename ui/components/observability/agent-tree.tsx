@@ -3,6 +3,7 @@ import * as React from 'react';
 import { humanizeTokens } from '@/lib/observability/format';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { SubagentTree, AgentTreeNode } from '@/lib/observability/subagent-tree';
+import { freezeSubagentOrder } from '@/lib/observability/subagent-tree';
 import { AgentRow } from './agent-row';
 import { ModelLegend } from './model-legend';
 
@@ -40,6 +41,15 @@ export function AgentTree({ tree, title = 'Subagent Breakdown', coverage, ready 
     });
   }, []);
 
+  // Freeze row order within a turn; re-snapshot the order when the stream settles (ready rising edge) (NFR-7).
+  const frozenOrder = React.useRef<string[]>([]);
+  const wasReady = React.useRef(false);
+  React.useEffect(() => {
+    if (ready && !wasReady.current) frozenOrder.current = tree.subagents.map((n) => n.key);
+    wasReady.current = ready;
+  }, [ready, tree.subagents]);
+  const orderedSubagents = freezeSubagentOrder(tree.subagents, frozenOrder.current);
+
   if (!ready) {
     return (
       <section className={CARD} aria-busy="true">
@@ -76,7 +86,7 @@ export function AgentTree({ tree, title = 'Subagent Breakdown', coverage, ready 
           </span>
           <span className="flex-1 border-t border-border" />
         </div>
-        {tree.subagents.map((group) => {
+        {orderedSubagents.map((group) => {
           const isGroup = group.runCount > 1;
           const isOpen = expanded.has(group.key);
           return (

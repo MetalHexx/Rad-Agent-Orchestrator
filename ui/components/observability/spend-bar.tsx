@@ -16,7 +16,7 @@ export function SpendBar({ segments, total, scaleMax, className }: SpendBarProps
   const fillPct = scaleMax > 0 ? (total / scaleMax) * 100 : 0;
   return (
     <div className={cn('h-3.5 rounded-md bg-muted overflow-hidden flex', className)} role="presentation">
-      <div className="flex h-full transition-[width] duration-300" style={{ width: `${fillPct}%` }}>
+      <div className="flex h-full transition-[width] duration-300 motion-reduce:transition-none" style={{ width: `${fillPct}%` }}>
         {segments.map((seg) => (
           <div
             key={seg.model}
