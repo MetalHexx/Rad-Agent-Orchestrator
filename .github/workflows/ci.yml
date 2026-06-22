@@ -91,6 +91,9 @@ jobs:
         with:
           node-version: 24
 
+      - name: Guard delivered payload (no dev-only skills/tests leaked)
+        run: node tests/check-delivered-payload.mjs
+
       - name: Install dependencies (root workspace)
         run: npm install
 
