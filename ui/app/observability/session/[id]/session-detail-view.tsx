@@ -6,6 +6,9 @@ import { SpendRateChart } from "@/components/observability/spend-rate-chart";
 import { SessionSummaryCards } from "@/components/observability/session-summary-cards";
 import { ObservabilitySubHeader } from "@/components/observability/observability-sub-header";
 import { BackButton } from "@/components/ui/back-button";
+import { AgentTree } from '@/components/observability/agent-tree';
+import { buildSubagentTree } from '@/lib/observability/subagent-tree';
+import { windowCoverage } from '@/lib/observability/window-coverage';
 import { deriveSessions, rowsInWindow, rowsSince } from "@/lib/observability/sessions";
 import { fitToSession } from "@/lib/observability/fit-to-session";
 import { retentionFloorMs } from "@/lib/time-range/range";
@@ -53,6 +56,13 @@ export function SessionDetailView({ sessionId }: { sessionId: string }) {
   const session = React.useMemo(
     () => deriveSessions(sessionRows).find((s) => s.sessionId === sessionId),
     [sessionRows, sessionId]
+  );
+
+  // Build the breakdown from the SAME rows the cards derive from → windowTotal === Total Spend (AD-6).
+  const subagentTree = React.useMemo(() => buildSubagentTree(sessionRows), [sessionRows]);   // pure, per-tick (FR-8, NFR-1)
+  const coverage = React.useMemo(
+    () => (session ? windowCoverage(session, rangeStart, rangeEnd) : 1),
+    [session, rangeStart, rangeEnd],
   );
 
   // Phase 2 — pin: once the session start is known, re-pin to fit-to-session unless the URL
@@ -103,6 +113,9 @@ export function SessionDetailView({ sessionId }: { sessionId: string }) {
           <>
             <SpendRateChart data={chart.data} series={chart.series} title="Token Spend Rate · This Session" rangeStart={rangeStart} rangeEnd={rangeEnd} ready={ready} />
             {session && <SessionSummaryCards session={session} />}
+            {session && (
+              <AgentTree tree={subagentTree} title="Subagent Breakdown" coverage={coverage} ready={ready} />
+            )}
           </>
         )}
         <HelpPanel open={helpOpen} onOpenChange={setHelpOpen} title="Session detail" content={SESSION_HELP_MD} />
