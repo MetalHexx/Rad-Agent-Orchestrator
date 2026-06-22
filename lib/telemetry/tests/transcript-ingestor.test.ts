@@ -42,3 +42,27 @@ it('SessionEnd writes main.json and a derived index.json tree, and never throws 
   // host-safety: a bogus transcript path must not throw
   expect(() => ingestTranscripts({ root, signal: { ...sig, sessionId: 'sZ', transcriptPath: '/nope.jsonl' }, now: new Date('2026-06-20T00:00:00Z') })).not.toThrow();
 });
+
+it('PostToolUse[Agent] honors an explicit agentTranscriptPath override (AD-2)', () => {
+  const root = tmp(); const home = tmp();
+  const main = path.join(home, 'session-o.jsonl');
+  const override = path.join(home, 'custom', 'override-a3.jsonl');
+  writeTx([{ type: 'user', requestId: 'r', timestamp: 't', message: { role: 'user', content: 'override-marker' } }], override);
+  const sig: HookEvent = { sessionId: 'sO', cwd: '.', kind: 'PostToolUse', event: 'PostToolUse', transcriptPath: main, agentTranscriptPath: override, agentId: 'a3', agentType: 'coder', toolUseId: 'tu_3' };
+  ingestTranscripts({ root, signal: sig, now: new Date('2026-06-20T00:00:00Z') });
+  const t = JSON.parse(fs.readFileSync(path.join(root, 'transcripts', 'sO', 'agent-a3.json'), 'utf8'));
+  expect(t.prompt).toBe('override-marker');
+});
+
+it('Stop writes main.json from the main transcript and no index.json (AD-3, NFR-4)', () => {
+  const root = tmp(); const home = tmp();
+  const main = path.join(home, 'session-s.jsonl');
+  writeTx([{ type: 'assistant', requestId: 'm', timestamp: 't', message: { role: 'assistant', content: 'done' } }], main);
+  const sig: HookEvent = { sessionId: 'sS', cwd: '.', kind: 'Stop', event: 'Stop', transcriptPath: main };
+  ingestTranscripts({ root, signal: sig, now: new Date('2026-06-20T00:00:00Z') });
+  const dir = path.join(root, 'transcripts', 'sS');
+  expect(fs.existsSync(path.join(dir, 'main.json'))).toBe(true);
+  expect(fs.existsSync(path.join(dir, 'index.json'))).toBe(false);
+  const t = JSON.parse(fs.readFileSync(path.join(dir, 'main.json'), 'utf8'));
+  expect(t.role).toBe('main'); expect(t.result).toBe('done');
+});

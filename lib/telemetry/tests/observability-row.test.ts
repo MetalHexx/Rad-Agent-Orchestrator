@@ -33,11 +33,11 @@ it('keeps model + source but omits optional agentType/agentId/cache/worktree whe
 
 import { it as it2, expect as expect2 } from 'vitest';
 
-it2('reads lifted top-level agentId and surfaces toolUseId (FR-6, AD-7)', () => {
+it2('reads lifted top-level agentId (FR-6, AD-7)', () => {
   const row = toObservabilityUsageRow({
     schemaVersion: 2, harness: 'claude-code', usageId: 'u3', sessionId: 's3', timestamp: 't',
     model: 'm', inputTokens: 0, outputTokens: 0, source: 'subagent',
-    agentId: 'a_99', toolUseId: 'tu_7', pointers: { sourceFile: '/x', requestId: 'u3' },
+    agentId: 'a_99', pointers: { sourceFile: '/x', requestId: 'u3' },
   } as never);
   expect2(row.agentId).toBe('a_99');
 });

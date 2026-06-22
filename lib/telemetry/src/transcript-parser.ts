@@ -1,5 +1,5 @@
 import { readJsonl } from './adapter/transcript.js';
-import type { TranscriptEvent, TruncatableBody } from './transcript-model.js';
+import type { TranscriptEvent, TruncatableBody, AgentTranscript } from './transcript-model.js';
 
 const BODY_MAX_BYTES = 16 * 1024;
 const BODY_MAX_LINES = 200;
@@ -57,8 +57,6 @@ export function eventsFromRaw(raw: RawTLine[]): TranscriptEvent[] {
 export function parseEvents(file: string): TranscriptEvent[] {
   return eventsFromRaw(readJsonl(file) as unknown as RawTLine[]);
 }
-
-import type { AgentTranscript } from './transcript-model.js';
 
 export interface ParseContext {
   transcriptId: string; sessionId: string; harness: string;
