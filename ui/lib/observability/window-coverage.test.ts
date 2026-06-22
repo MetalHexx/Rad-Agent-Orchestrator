@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import type { ObservabilityUsageRow } from '@rad-orchestration/telemetry';
 import { deriveSessions } from './sessions';
 import { buildSubagentTree } from './subagent-tree';
-import { windowCoverage } from './window-coverage';
+import { windowCoverage, sessionWindowCoverage } from './window-coverage';
 
 function row(p: Partial<ObservabilityUsageRow>): ObservabilityUsageRow {
   return { sessionId: 's1', usageId: Math.random().toString(36).slice(2), timestamp: '2026-06-21T00:00:00.000Z', inputTokens: 0, outputTokens: 0, model: 'claude-opus-4-8', source: 'main-agent', ...p };
@@ -35,6 +35,22 @@ test('INVARIANT: tree.windowTotal === session.spend over the same rows (AD-6, AD
   const session = deriveSessions(rows).find((s) => s.sessionId === 's1')!;
   const tree = buildSubagentTree(rows);
   assert.equal(tree.windowTotal, session.spend);
+});
+
+test('sessionWindowCoverage uses the unclipped session span so start-truncation is detected (FR-10)', () => {
+  const base = Date.parse('2026-06-21T00:00:00.000Z');
+  // Session truly spans base..base+100ms. Two rows, the first BEFORE the analyzed window start.
+  const rows = [
+    row({ sessionId: 's1', timestamp: new Date(base).toISOString(), outputTokens: 10 }),
+    row({ sessionId: 's1', timestamp: new Date(base + 100).toISOString(), outputTokens: 10 }),
+  ];
+  const rangeStart = base + 50;       // window starts mid-session → ~50% of the span is truncated off the front
+  const rangeEnd = base + 1000;
+  // Correct: computed from the UNCLIPPED rows, coverage drops below 1.
+  assert.ok(sessionWindowCoverage(rows, 's1', rangeStart, rangeEnd) < 0.99, 'unclipped coverage detects start-truncation');
+  // Demonstrates the prior bug: feeding only the windowed rows masks it (the front row is gone, span collapses → ~1).
+  const clipped = rows.filter((r) => Date.parse(r.timestamp) >= rangeStart);
+  assert.equal(sessionWindowCoverage(clipped, 's1', rangeStart, rangeEnd), 1, 'clipped rows mask the truncation');
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

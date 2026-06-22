@@ -8,7 +8,7 @@ import { ObservabilitySubHeader } from "@/components/observability/observability
 import { BackButton } from "@/components/ui/back-button";
 import { AgentTree } from '@/components/observability/agent-tree';
 import { buildSubagentTree } from '@/lib/observability/subagent-tree';
-import { windowCoverage } from '@/lib/observability/window-coverage';
+import { sessionWindowCoverage } from '@/lib/observability/window-coverage';
 import { deriveSessions, rowsInWindow, rowsSince } from "@/lib/observability/sessions";
 import { fitToSession } from "@/lib/observability/fit-to-session";
 import { retentionFloorMs } from "@/lib/time-range/range";
@@ -61,8 +61,8 @@ export function SessionDetailView({ sessionId }: { sessionId: string }) {
   // Build the breakdown from the SAME rows the cards derive from → windowTotal === Total Spend (AD-6).
   const subagentTree = React.useMemo(() => buildSubagentTree(sessionRows), [sessionRows]);   // pure, per-tick (FR-8, NFR-1)
   const coverage = React.useMemo(
-    () => (session ? windowCoverage(session, rangeStart, rangeEnd) : 1),
-    [session, rangeStart, rangeEnd],
+    () => sessionWindowCoverage([...rows.values()], sessionId, rangeStart, rangeEnd),
+    [rows, sessionId, rangeStart, rangeEnd],
   );
 
   // Phase 2 — pin: once the session start is known, re-pin to fit-to-session unless the URL

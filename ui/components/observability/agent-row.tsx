@@ -34,7 +34,7 @@ export function AgentRow({ node, scaleMax, variant, expanded, onToggle }: AgentR
             onClick={onToggle}
             aria-expanded={!!expanded}
             aria-label={`${node.label} — ${expanded ? 'collapse' : 'expand'} runs`}
-            className="inline-flex size-3.5 items-center justify-center text-muted-foreground focus-visible:ring-ring"
+            className="inline-flex size-3.5 items-center justify-center text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             {expanded ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
           </button>
