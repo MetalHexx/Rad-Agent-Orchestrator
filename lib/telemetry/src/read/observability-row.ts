@@ -30,6 +30,8 @@ export function toObservabilityUsageRow(r: TelemetryRecord): ObservabilityUsageR
   if (r.cacheCreationTokens !== undefined) row.cacheCreationTokens = r.cacheCreationTokens;
   if (r.worktree !== undefined) row.worktree = r.worktree;
   if (r.agentType !== undefined) row.agentType = r.agentType;
-  if (r.pointers?.agentId !== undefined) row.agentId = r.pointers.agentId;
+  const legacy = r.pointers as { agentId?: string; toolUseId?: string };
+  const agentId = r.agentId ?? legacy.agentId;
+  if (agentId !== undefined) row.agentId = agentId;
   return row;
 }

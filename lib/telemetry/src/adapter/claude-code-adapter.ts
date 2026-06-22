@@ -81,15 +81,10 @@ export class ClaudeCodeAdapter implements HarnessAdapter {
       outputTokens: u.output_tokens ?? 0,
       cacheReadTokens: u.cache_read_input_tokens,
       cacheCreationTokens: u.cache_creation_input_tokens,
-      agentType,
+      agentType, agentId, toolUseId,
       worktree: worktreeFromCwd(ev.cwd),
       source,
-      pointers: {
-        sourceFile: file,
-        requestId: this.identity(line),
-        agentId,
-        toolUseId,
-      },
+      pointers: { sourceFile: file, requestId: this.identity(line) },
       // operation intentionally omitted — dormant until TELEMETRY-4 (AD-9).
     };
   }

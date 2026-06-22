@@ -30,3 +30,22 @@ it('keeps model + source but omits optional agentType/agentId/cache/worktree whe
   expect('agentType' in row).toBe(false);
   expect('agentId' in row).toBe(false);
 });
+
+import { it as it2, expect as expect2 } from 'vitest';
+
+it2('reads lifted top-level agentId and surfaces toolUseId (FR-6, AD-7)', () => {
+  const row = toObservabilityUsageRow({
+    schemaVersion: 2, harness: 'claude-code', usageId: 'u3', sessionId: 's3', timestamp: 't',
+    model: 'm', inputTokens: 0, outputTokens: 0, source: 'subagent',
+    agentId: 'a_99', toolUseId: 'tu_7', pointers: { sourceFile: '/x', requestId: 'u3' },
+  } as never);
+  expect2(row.agentId).toBe('a_99');
+});
+
+it2('back-compat: still resolves a legacy row carrying agentId only in pointers (AD-6)', () => {
+  const row = toObservabilityUsageRow({
+    usageId: 'u4', sessionId: 's4', timestamp: 't', inputTokens: 0, outputTokens: 0,
+    model: 'm', source: 'subagent', pointers: { sourceFile: '/x', agentId: 'legacy_1' },
+  } as never);
+  expect2(row.agentId).toBe('legacy_1');
+});
