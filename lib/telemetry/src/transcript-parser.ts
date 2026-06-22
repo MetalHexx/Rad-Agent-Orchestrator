@@ -57,3 +57,40 @@ export function eventsFromRaw(raw: RawTLine[]): TranscriptEvent[] {
 export function parseEvents(file: string): TranscriptEvent[] {
   return eventsFromRaw(readJsonl(file) as unknown as RawTLine[]);
 }
+
+import type { AgentTranscript } from './transcript-model.js';
+
+export interface ParseContext {
+  transcriptId: string; sessionId: string; harness: string;
+  role: 'main' | 'subagent'; agentType?: string; label?: string; parentToolUseId?: string;
+}
+
+export function parseTranscript(file: string, ctx: ParseContext): AgentTranscript {
+  const raw = readJsonl(file) as unknown as RawTLine[];
+  const events = eventsFromRaw(raw);
+  const messages = events.filter((e) => e.kind === 'message');
+  const prompt = messages.find((e) => e.role === 'user')?.text;                 // first user line (AD-11)
+  const result = [...messages].reverse().find((e) => e.role === 'assistant')?.text; // last assistant turn (AD-11)
+  const calls = events.filter((e) => e.kind === 'tool_call');
+  const byName: Record<string, number> = {};
+  for (const e of calls) byName[e.tool!.name] = (byName[e.tool!.name] ?? 0) + 1;
+  const errors = events.filter((e) => e.kind === 'tool_result' && e.result?.isError).length;
+  const filesTouched = [...new Set(events.filter((e) => e.kind === 'file_change').map((e) => e.file!.path))];
+  const model = [...new Set(raw.map((r) => r.message?.model).filter((m): m is string => Boolean(m)))];
+  let tin = 0, tout = 0, tcr = 0, tcc = 0;
+  for (const r of raw) {
+    const u = r.message?.usage; if (!u) continue;
+    tin += u.input_tokens ?? 0; tout += u.output_tokens ?? 0;
+    tcr += u.cache_read_input_tokens ?? 0; tcc += u.cache_creation_input_tokens ?? 0;
+  }
+  const stamps = events.map((e) => e.timestamp).filter(Boolean).sort();
+  const startedAt = stamps[0]; const endedAt = stamps[stamps.length - 1];
+  const durationMs = startedAt && endedAt ? Date.parse(endedAt) - Date.parse(startedAt) : undefined;
+  return {
+    transcriptId: ctx.transcriptId, sessionId: ctx.sessionId, harness: ctx.harness, role: ctx.role,
+    agentType: ctx.agentType, label: ctx.label, parentToolUseId: ctx.parentToolUseId,
+    model, startedAt, endedAt, durationMs, prompt, result,
+    tokens: { in: tin, out: tout, cacheRead: tcr, cacheCreate: tcc },
+    toolSummary: { total: calls.length, byName, errors }, filesTouched, events,
+  };
+}
