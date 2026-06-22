@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import React, { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { AgentTree } from './agent-tree';
@@ -48,6 +49,23 @@ const tree = (over: Partial<SubagentTree> = {}): SubagentTree => ({
   const html = renderToStaticMarkup(createElement(AgentTree, { tree: tree(), ready: true, coverage: 0.6 }));
   assert.ok(html.includes('60%') && html.toLowerCase().includes('covers'), 'partial-window note appended (FR-10)');
   console.log('✓ coverage note');
+}
+
+// NFR-8: fixture-session invariant — window total equals main + pooled subagent spend.
+{
+  const t = tree();
+  assert.equal(t.windowTotal, t.main.tokens + t.subagentTotal, 'window total equals session spend (NFR-8)');
+  assert.equal(t.windowTotal, 1000, 'fixture window total is 1000 (NFR-8)');
+  console.log('✓ fixture-session invariant');
+}
+
+// NFR-8: stable-key expand/collapse — expand state is a node.key-keyed Set (source-text invariant; SSR harness cannot drive interaction).
+{
+  const src = readFileSync(new URL('./agent-tree.tsx', import.meta.url), 'utf8');
+  assert.ok(/useState<Set<string>>/.test(src), 'expand state is a Set<string> (NFR-8)');
+  assert.ok(/next\.has\(key\)/.test(src), 'toggle reads membership by key (NFR-8)');
+  assert.ok(/next\.add\(key\)/.test(src) && /next\.delete\(key\)/.test(src), 'toggle mutates the set by node.key (NFR-8)');
+  console.log('✓ stable-key expand/collapse (source invariant)');
 }
 
 console.log('\nAll AgentTree tests passed');
