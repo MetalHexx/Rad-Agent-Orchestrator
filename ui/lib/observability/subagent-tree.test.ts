@@ -67,5 +67,17 @@ test('row-set agnostic: a mixed multi-session set rolls up without error (AD-2)'
   assert.equal(tree.windowTotal, 10);
 });
 
+test('splits node tokens by model, accumulating per model, sorted desc (NFR-8)', () => {
+  const tree = buildSubagentTree([
+    row({ source: 'main-agent', model: 'claude-opus-4-8', outputTokens: 100 }),   // 500 eff → opus
+    row({ source: 'main-agent', model: 'claude-opus-4-8', outputTokens: 100 }),   // 500 eff → opus = 1000
+    row({ source: 'main-agent', model: 'claude-haiku-4-5', outputTokens: 10 }),   // 50 eff  → haiku
+  ]);
+  assert.deepEqual(tree.main.models, [
+    { model: 'opus', tokens: 1000 },
+    { model: 'haiku', tokens: 50 },
+  ]);
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);
