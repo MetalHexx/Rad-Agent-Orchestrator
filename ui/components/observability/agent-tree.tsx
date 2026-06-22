@@ -31,7 +31,7 @@ function leafFrom(group: AgentTreeNode): AgentTreeNode {
 }
 
 // Pure & reusable: owns ONLY expand state; no data fetch, no page/live imports (AD-1).
-export function AgentTree({ tree, title = 'Subagent Breakdown', coverage, ready = true }: AgentTreeProps) {
+export function AgentTree({ tree, title = 'Agent Breakdown', coverage, ready = true }: AgentTreeProps) {
   const [expanded, setExpanded] = React.useState<Set<string>>(() => new Set());
   const toggle = React.useCallback((key: string) => {
     setExpanded((prev) => {

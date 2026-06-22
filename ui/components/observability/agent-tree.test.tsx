@@ -20,8 +20,8 @@ const tree = (over: Partial<SubagentTree> = {}): SubagentTree => ({
 
 // Populated: title in header, main-agent row, the Subagents subtotal divider, card styling, NO tab role (FR-1, FR-5, DD-1).
 {
-  const html = renderToStaticMarkup(createElement(AgentTree, { tree: tree(), title: 'Subagent Breakdown', ready: true }));
-  assert.ok(html.includes('Subagent Breakdown'), 'title prop renders in header (AD-1)');
+  const html = renderToStaticMarkup(createElement(AgentTree, { tree: tree(), title: 'Agent Breakdown', ready: true }));
+  assert.ok(html.includes('Agent Breakdown'), 'title prop renders in header (AD-1)');
   assert.ok(html.includes('main-agent'), 'main-agent row leads (FR-2)');
   assert.ok(html.includes('Subagents'), 'subagents subtotal divider present (FR-5)');
   assert.ok(html.includes('rounded-xl') && html.includes('bg-card') && html.includes('ring-foreground/10'), 'card matches summary-card styling (DD-1)');

@@ -114,7 +114,7 @@ export function SessionDetailView({ sessionId }: { sessionId: string }) {
             <SpendRateChart data={chart.data} series={chart.series} title="Token Spend Rate · This Session" rangeStart={rangeStart} rangeEnd={rangeEnd} ready={ready} />
             {session && <SessionSummaryCards session={session} />}
             {session && (
-              <AgentTree tree={subagentTree} title="Subagent Breakdown" coverage={coverage} ready={ready} />
+              <AgentTree tree={subagentTree} title="Agent Breakdown" coverage={coverage} ready={ready} />
             )}
           </>
         )}
