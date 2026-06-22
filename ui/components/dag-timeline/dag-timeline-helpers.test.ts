@@ -339,8 +339,8 @@ test("pre-seeded iterations — phase_loop node with explode_master_plan complet
     ...forEachPhaseNode,
     status: "not_started" as const,
     iterations: [
-      { index: 0, status: "not_started" as const, nodes: { phase_planning: { kind: "step" as const, status: "completed" as const, doc_path: "phases/MYAPP-PHASE-01-SETUP.md", retries: 0 } }, corrective_tasks: [], commit_hash: null },
-      { index: 1, status: "not_started" as const, nodes: { phase_planning: { kind: "step" as const, status: "completed" as const, doc_path: "phases/MYAPP-PHASE-02-CORE.md", retries: 0 } }, corrective_tasks: [], commit_hash: null },
+      { index: 0, status: "not_started" as const, nodes: { phase_planning: { kind: "step" as const, status: "completed" as const, doc_path: "phases/MYAPP-PHASE-01-SETUP.md", retries: 0 } }, corrective_tasks: [], repos: [] },
+      { index: 1, status: "not_started" as const, nodes: { phase_planning: { kind: "step" as const, status: "completed" as const, doc_path: "phases/MYAPP-PHASE-02-CORE.md", retries: 0 } }, corrective_tasks: [], repos: [] },
     ],
   };
   // Iter 5 mutation intentionally keeps explode_master_plan.doc_path null to avoid a spurious
@@ -372,7 +372,7 @@ test("legacy state.json (no explode_master_plan + no pre-seeded phase_planning c
   const legacyPhaseLoop = {
     ...forEachPhaseNode,
     iterations: [
-      { index: 0, status: "not_started" as const, nodes: {}, corrective_tasks: [] },
+      { index: 0, status: "not_started" as const, nodes: {}, corrective_tasks: [], repos: [] },
     ],
   };
   const legacyNodes = {
@@ -406,8 +406,8 @@ test("phase loop with all completed iterations returns null", () => {
     ...forEachPhaseNode,
     status: "completed",
     iterations: [
-      { index: 0, status: "completed", nodes: {}, corrective_tasks: [] },
-      { index: 1, status: "completed", nodes: {}, corrective_tasks: [] },
+      { index: 0, status: "completed", nodes: {}, corrective_tasks: [], repos: [] },
+      { index: 1, status: "completed", nodes: {}, corrective_tasks: [], repos: [] },
     ],
   });
   assert.strictEqual(result, null);
@@ -425,6 +425,7 @@ test("phase loop with in_progress iteration and doc_path returns parsed phase na
           phase_planning: { kind: "step", status: "in_progress", doc_path: "phases/MY-PROJECT-PHASE-01-CORE-SETUP.md", retries: 0 },
         },
         corrective_tasks: [],
+        repos: [],
       },
     ],
   });
@@ -445,6 +446,7 @@ test("phase loop with in_progress iteration using new shape (iteration.doc_path 
         doc_path: "phases/MY-PROJECT-PHASE-01-CORE-SETUP.md",
         nodes: {},
         corrective_tasks: [],
+        repos: [],
       },
     ],
   });
@@ -465,6 +467,7 @@ test("phase loop with in_progress iteration carrying BOTH iteration.doc_path and
           phase_planning: { kind: "step", status: "completed", doc_path: "phases/MY-PROJECT-PHASE-01-LEGACY-SHAPE.md", retries: 0 },
         },
         corrective_tasks: [],
+        repos: [],
       },
     ],
   });
@@ -483,6 +486,7 @@ test("phase loop with in_progress iteration and null doc_path returns fallback P
           phase_planning: { kind: "step", status: "in_progress", doc_path: null, retries: 0 },
         },
         corrective_tasks: [],
+        repos: [],
       },
     ],
   });
@@ -506,9 +510,9 @@ test("3 iterations (2 completed, 1 in_progress) returns {completed:2, total:3}",
     ...forEachPhaseNode,
     status: "in_progress",
     iterations: [
-      { index: 0, status: "completed", nodes: {}, corrective_tasks: [] },
-      { index: 1, status: "completed", nodes: {}, corrective_tasks: [] },
-      { index: 2, status: "in_progress", nodes: {}, corrective_tasks: [] },
+      { index: 0, status: "completed", nodes: {}, corrective_tasks: [], repos: [] },
+      { index: 1, status: "completed", nodes: {}, corrective_tasks: [], repos: [] },
+      { index: 2, status: "in_progress", nodes: {}, corrective_tasks: [], repos: [] },
     ],
   });
   assert.deepStrictEqual(result, { completed: 2, total: 3 });
@@ -519,8 +523,8 @@ test("all iterations completed returns {completed:N, total:N}", () => {
     ...forEachPhaseNode,
     status: "completed",
     iterations: [
-      { index: 0, status: "completed", nodes: {}, corrective_tasks: [] },
-      { index: 1, status: "completed", nodes: {}, corrective_tasks: [] },
+      { index: 0, status: "completed", nodes: {}, corrective_tasks: [], repos: [] },
+      { index: 1, status: "completed", nodes: {}, corrective_tasks: [], repos: [] },
     ],
   });
   assert.deepStrictEqual(result, { completed: 2, total: 2 });
@@ -531,8 +535,8 @@ test("no completed iterations returns {completed:0, total:N}", () => {
     ...forEachPhaseNode,
     status: "in_progress",
     iterations: [
-      { index: 0, status: "in_progress", nodes: {}, corrective_tasks: [] },
-      { index: 1, status: "not_started", nodes: {}, corrective_tasks: [] },
+      { index: 0, status: "in_progress", nodes: {}, corrective_tasks: [], repos: [] },
+      { index: 1, status: "not_started", nodes: {}, corrective_tasks: [], repos: [] },
     ],
   });
   assert.deepStrictEqual(result, { completed: 0, total: 2 });
@@ -697,7 +701,7 @@ console.log("\nderiveIterationTaskProgress tests\n");
 
 test('returns null when iteration has no task_loop child', () => {
   const iter: IterationEntry = {
-    index: 0, status: 'in_progress', corrective_tasks: [], commit_hash: null,
+    index: 0, status: 'in_progress', corrective_tasks: [], repos: [],
     nodes: { phase_planning: { kind: 'step', status: 'completed', doc_path: null, retries: 0 } },
   };
   assert.strictEqual(deriveIterationTaskProgress(iter), null);
@@ -705,7 +709,7 @@ test('returns null when iteration has no task_loop child', () => {
 
 test('returns { completed: 0, total: 0 } when task_loop has no iterations (FR-8)', () => {
   const iter: IterationEntry = {
-    index: 0, status: 'not_started', corrective_tasks: [], commit_hash: null,
+    index: 0, status: 'not_started', corrective_tasks: [], repos: [],
     nodes: { task_loop: { kind: 'for_each_task', status: 'not_started', iterations: [] } },
   };
   assert.deepStrictEqual(deriveIterationTaskProgress(iter), { completed: 0, total: 0 });
@@ -713,15 +717,15 @@ test('returns { completed: 0, total: 0 } when task_loop has no iterations (FR-8)
 
 test('counts only iterations whose status === "completed" (AD-4, FR-7)', () => {
   const iter: IterationEntry = {
-    index: 0, status: 'in_progress', corrective_tasks: [], commit_hash: null,
+    index: 0, status: 'in_progress', corrective_tasks: [], repos: [],
     nodes: {
       task_loop: {
         kind: 'for_each_task', status: 'in_progress',
         iterations: [
-          { index: 0, status: 'completed', nodes: {}, corrective_tasks: [], commit_hash: null },
-          { index: 1, status: 'completed', nodes: {}, corrective_tasks: [], commit_hash: null },
-          { index: 2, status: 'in_progress', nodes: {}, corrective_tasks: [], commit_hash: null },
-          { index: 3, status: 'not_started', nodes: {}, corrective_tasks: [], commit_hash: null },
+          { index: 0, status: 'completed', nodes: {}, corrective_tasks: [], repos: [] },
+          { index: 1, status: 'completed', nodes: {}, corrective_tasks: [], repos: [] },
+          { index: 2, status: 'in_progress', nodes: {}, corrective_tasks: [], repos: [] },
+          { index: 3, status: 'not_started', nodes: {}, corrective_tasks: [], repos: [] },
         ],
       },
     },
@@ -731,13 +735,13 @@ test('counts only iterations whose status === "completed" (AD-4, FR-7)', () => {
 
 test('keeps reporting full progress after iteration completes (FR-7 — "stays full and visible")', () => {
   const iter: IterationEntry = {
-    index: 0, status: 'completed', corrective_tasks: [], commit_hash: null,
+    index: 0, status: 'completed', corrective_tasks: [], repos: [],
     nodes: {
       task_loop: {
         kind: 'for_each_task', status: 'completed',
         iterations: [
-          { index: 0, status: 'completed', nodes: {}, corrective_tasks: [], commit_hash: null },
-          { index: 1, status: 'completed', nodes: {}, corrective_tasks: [], commit_hash: null },
+          { index: 0, status: 'completed', nodes: {}, corrective_tasks: [], repos: [] },
+          { index: 1, status: 'completed', nodes: {}, corrective_tasks: [], repos: [] },
         ],
       },
     },
@@ -750,31 +754,31 @@ import { deriveIterationBadgeLabel, deriveGateBadgeStatusAndLabel } from './dag-
 console.log("\nderiveIterationBadgeLabel tests\n");
 
 test("FR-2/DD-1 task_executor in_progress → Coding (renamed from Executing)", () => {
-  const iter: IterationEntry = { index: 0, status: 'in_progress', corrective_tasks: [], commit_hash: null,
+  const iter: IterationEntry = { index: 0, status: 'in_progress', corrective_tasks: [], repos: [],
     nodes: { task_executor: { kind: 'step', status: 'in_progress', doc_path: null, retries: 0 } } };
   assert.deepStrictEqual(deriveIterationBadgeLabel(iter, 'for_each_task'), { status: 'in_progress', label: 'Coding' });
 });
 
 test("FR-3 code_review in_progress → Reviewing", () => {
-  const iter: IterationEntry = { index: 0, status: 'in_progress', corrective_tasks: [], commit_hash: null,
+  const iter: IterationEntry = { index: 0, status: 'in_progress', corrective_tasks: [], repos: [],
     nodes: { code_review: { kind: 'step', status: 'in_progress', doc_path: null, retries: 0 } } };
   assert.deepStrictEqual(deriveIterationBadgeLabel(iter, 'for_each_task'), { status: 'in_progress', label: 'Reviewing' });
 });
 
 test("FR-3 commit in_progress → Committing", () => {
-  const iter: IterationEntry = { index: 0, status: 'in_progress', corrective_tasks: [], commit_hash: null,
+  const iter: IterationEntry = { index: 0, status: 'in_progress', corrective_tasks: [], repos: [],
     nodes: { commit: { kind: 'step', status: 'in_progress', doc_path: null, retries: 0 } } };
   assert.deepStrictEqual(deriveIterationBadgeLabel(iter, 'for_each_task'), { status: 'in_progress', label: 'Committing' });
 });
 
 test("FR-3 phase_review in_progress → Reviewing", () => {
-  const iter: IterationEntry = { index: 0, status: 'in_progress', corrective_tasks: [], commit_hash: null,
+  const iter: IterationEntry = { index: 0, status: 'in_progress', corrective_tasks: [], repos: [],
     nodes: { phase_review: { kind: 'step', status: 'in_progress', doc_path: null, retries: 0 } } };
   assert.deepStrictEqual(deriveIterationBadgeLabel(iter, 'for_each_task'), { status: 'in_progress', label: 'Reviewing' });
 });
 
 test("FR-3 task iter inherits its own in-flight substep (Reviewing)", () => {
-  const iter: IterationEntry = { index: 0, status: 'in_progress', corrective_tasks: [], commit_hash: null,
+  const iter: IterationEntry = { index: 0, status: 'in_progress', corrective_tasks: [], repos: [],
     nodes: { code_review: { kind: 'step', status: 'in_progress', doc_path: null, retries: 0 } } };
   assert.deepStrictEqual(
     deriveIterationBadgeLabel(iter, 'for_each_task'),
@@ -783,13 +787,13 @@ test("FR-3 task iter inherits its own in-flight substep (Reviewing)", () => {
 });
 
 test("FR-2 fallback: in_progress with no in-flight substep → Coding (renamed from Executing)", () => {
-  const iter: IterationEntry = { index: 0, status: 'in_progress', corrective_tasks: [], commit_hash: null,
+  const iter: IterationEntry = { index: 0, status: 'in_progress', corrective_tasks: [], repos: [],
     nodes: { task_executor: { kind: 'step', status: 'completed', doc_path: null, retries: 0 } } };
   assert.deepStrictEqual(deriveIterationBadgeLabel(iter, 'for_each_task'), { status: 'in_progress', label: 'Coding' });
 });
 
 test("DD-2 completed iteration → Completed (icon-only label)", () => {
-  const iter: IterationEntry = { index: 0, status: 'completed', corrective_tasks: [], commit_hash: null, nodes: {} };
+  const iter: IterationEntry = { index: 0, status: 'completed', corrective_tasks: [], repos: [], nodes: {} };
   assert.deepStrictEqual(deriveIterationBadgeLabel(iter, 'for_each_task'), { status: 'completed', label: 'Completed' });
 });
 
@@ -1029,13 +1033,13 @@ console.log("\nderiveIterationBadgeLabel — phase-boundary recursion stop (FR-3
 
 test("FR-3/AD-3 phase iter with task_loop in_progress reads 'Executing' regardless of task substep", () => {
   const phaseIter: IterationEntry = {
-    index: 0, status: 'in_progress', corrective_tasks: [], commit_hash: null,
+    index: 0, status: 'in_progress', corrective_tasks: [], repos: [],
     nodes: {
       phase_planning: { kind: 'step', status: 'completed', doc_path: null, retries: 0 },
       task_loop: {
         kind: 'for_each_task', status: 'in_progress',
         iterations: [
-          { index: 0, status: 'in_progress', corrective_tasks: [], commit_hash: null,
+          { index: 0, status: 'in_progress', corrective_tasks: [], repos: [],
             nodes: { code_review: { kind: 'step', status: 'in_progress', doc_path: null, retries: 0 } } },
         ],
       },
@@ -1052,7 +1056,7 @@ test("FR-3/AD-3 phase iter with task_loop in_progress reads 'Executing' regardle
 
 test("FR-11 phase iter with phase_planning in_progress reads 'Executing' (Planning dropped)", () => {
   const phaseIter: IterationEntry = {
-    index: 0, status: 'in_progress', corrective_tasks: [], commit_hash: null,
+    index: 0, status: 'in_progress', corrective_tasks: [], repos: [],
     nodes: {
       phase_planning: { kind: 'step', status: 'in_progress', doc_path: null, retries: 0 },
     },
@@ -1065,7 +1069,7 @@ test("FR-11 phase iter with phase_planning in_progress reads 'Executing' (Planni
 
 test("FR-3 phase iter with phase_review in_progress reads 'Reviewing'", () => {
   const phaseIter: IterationEntry = {
-    index: 0, status: 'in_progress', corrective_tasks: [], commit_hash: null,
+    index: 0, status: 'in_progress', corrective_tasks: [], repos: [],
     nodes: {
       phase_planning: { kind: 'step', status: 'completed', doc_path: null, retries: 0 },
       task_loop: { kind: 'for_each_task', status: 'completed', iterations: [] },
@@ -1080,7 +1084,7 @@ test("FR-3 phase iter with phase_review in_progress reads 'Reviewing'", () => {
 
 test("FR-3 task iter still recurses — code_review substep bubbles up", () => {
   const taskIter: IterationEntry = {
-    index: 0, status: 'in_progress', corrective_tasks: [], commit_hash: null,
+    index: 0, status: 'in_progress', corrective_tasks: [], repos: [],
     nodes: { code_review: { kind: 'step', status: 'in_progress', doc_path: null, retries: 0 } },
   };
   assert.deepStrictEqual(
@@ -1091,7 +1095,7 @@ test("FR-3 task iter still recurses — code_review substep bubbles up", () => {
 
 test("FR-2/DD-1 task iter task_executor in_progress → 'Coding' (renamed from Executing)", () => {
   const taskIter: IterationEntry = {
-    index: 0, status: 'in_progress', corrective_tasks: [], commit_hash: null,
+    index: 0, status: 'in_progress', corrective_tasks: [], repos: [],
     nodes: { task_executor: { kind: 'step', status: 'in_progress', doc_path: null, retries: 0 } },
   };
   assert.deepStrictEqual(
@@ -1102,7 +1106,7 @@ test("FR-2/DD-1 task iter task_executor in_progress → 'Coding' (renamed from E
 
 test("DD-7 phase iter, no in-flight substep, in_progress → 'Executing' (fallback)", () => {
   const phaseIter: IterationEntry = {
-    index: 0, status: 'in_progress', corrective_tasks: [], commit_hash: null,
+    index: 0, status: 'in_progress', corrective_tasks: [], repos: [],
     nodes: {
       phase_planning: { kind: 'step', status: 'completed', doc_path: null, retries: 0 },
     },
@@ -1114,7 +1118,7 @@ test("DD-7 phase iter, no in-flight substep, in_progress → 'Executing' (fallba
 });
 
 test("DD-2 completed phase iter → 'Completed' regardless of parentKind", () => {
-  const phaseIter: IterationEntry = { index: 0, status: 'completed', corrective_tasks: [], commit_hash: null, nodes: {} };
+  const phaseIter: IterationEntry = { index: 0, status: 'completed', corrective_tasks: [], repos: [], nodes: {} };
   assert.deepStrictEqual(
     deriveIterationBadgeLabel(phaseIter, 'for_each_phase'),
     { status: 'completed', label: 'Completed' },
@@ -1129,7 +1133,7 @@ console.log("\nderiveIterationBadgeLabel — UI-IMPROVE-3-FIXES extensions (FR-2
 
 test("FR-2/DD-1 task iter task_executor in_progress reads 'Coding' (renamed from 'Executing')", () => {
   const taskIter: IterationEntry = {
-    index: 0, status: 'in_progress', corrective_tasks: [], commit_hash: null,
+    index: 0, status: 'in_progress', corrective_tasks: [], repos: [],
     nodes: { task_executor: { kind: 'step', status: 'in_progress', doc_path: null, retries: 0 } },
   };
   assert.deepStrictEqual(
@@ -1140,7 +1144,7 @@ test("FR-2/DD-1 task iter task_executor in_progress reads 'Coding' (renamed from
 
 test("FR-2 task iter code_review in_progress still reads 'Reviewing'", () => {
   const taskIter: IterationEntry = {
-    index: 0, status: 'in_progress', corrective_tasks: [], commit_hash: null,
+    index: 0, status: 'in_progress', corrective_tasks: [], repos: [],
     nodes: { code_review: { kind: 'step', status: 'in_progress', doc_path: null, retries: 0 } },
   };
   assert.deepStrictEqual(
@@ -1151,7 +1155,7 @@ test("FR-2 task iter code_review in_progress still reads 'Reviewing'", () => {
 
 test("FR-2 task iter commit in_progress still reads 'Committing'", () => {
   const taskIter: IterationEntry = {
-    index: 0, status: 'in_progress', corrective_tasks: [], commit_hash: null,
+    index: 0, status: 'in_progress', corrective_tasks: [], repos: [],
     nodes: { commit: { kind: 'step', status: 'in_progress', doc_path: null, retries: 0 } },
   };
   assert.deepStrictEqual(
@@ -1163,8 +1167,8 @@ test("FR-2 task iter commit in_progress still reads 'Committing'", () => {
 test("FR-4/DD-3 task iter with an in_progress corrective entry reads 'Correcting'", () => {
   const taskIter: IterationEntry = {
     index: 0, status: 'in_progress', corrective_tasks: [
-      { index: 1, reason: 'r', injected_after: 'code_review', status: 'in_progress', nodes: {}, doc_path: null, commit_hash: null },
-    ], commit_hash: null,
+      { index: 1, reason: 'r', injected_after: 'code_review', status: 'in_progress', nodes: {}, doc_path: null, repos: [] },
+    ], repos: [],
     nodes: { task_executor: { kind: 'step', status: 'completed', doc_path: null, retries: 0 } },
   };
   assert.deepStrictEqual(
@@ -1176,8 +1180,8 @@ test("FR-4/DD-3 task iter with an in_progress corrective entry reads 'Correcting
 test("FR-4 'Correcting' wins over the in-flight substep label when both apply", () => {
   const taskIter: IterationEntry = {
     index: 0, status: 'in_progress', corrective_tasks: [
-      { index: 1, reason: 'r', injected_after: 'code_review', status: 'in_progress', nodes: {}, doc_path: null, commit_hash: null },
-    ], commit_hash: null,
+      { index: 1, reason: 'r', injected_after: 'code_review', status: 'in_progress', nodes: {}, doc_path: null, repos: [] },
+    ], repos: [],
     nodes: { code_review: { kind: 'step', status: 'in_progress', doc_path: null, retries: 0 } },
   };
   assert.deepStrictEqual(
@@ -1189,8 +1193,8 @@ test("FR-4 'Correcting' wins over the in-flight substep label when both apply", 
 test("FR-4 'Correcting' clears once every corrective resolves; iteration on completed reads STATUS_MAP default 'Completed'", () => {
   const taskIter: IterationEntry = {
     index: 0, status: 'completed', corrective_tasks: [
-      { index: 1, reason: 'r', injected_after: 'code_review', status: 'completed', nodes: {}, doc_path: null, commit_hash: null },
-    ], commit_hash: null,
+      { index: 1, reason: 'r', injected_after: 'code_review', status: 'completed', nodes: {}, doc_path: null, repos: [] },
+    ], repos: [],
     nodes: {},
   };
   assert.deepStrictEqual(
@@ -1201,7 +1205,7 @@ test("FR-4 'Correcting' clears once every corrective resolves; iteration on comp
 
 test("FR-6/DD-4 task iter status='failed' reads {status:'failed', label:'Failed'} (terminal)", () => {
   const taskIter: IterationEntry = {
-    index: 0, status: 'failed', corrective_tasks: [], commit_hash: null,
+    index: 0, status: 'failed', corrective_tasks: [], repos: [],
     nodes: { task_executor: { kind: 'step', status: 'failed', doc_path: null, retries: 0 } },
   };
   assert.deepStrictEqual(
@@ -1212,7 +1216,7 @@ test("FR-6/DD-4 task iter status='failed' reads {status:'failed', label:'Failed'
 
 test("FR-6 task iter status='halted' reads {status:'halted', label:'Halted'}", () => {
   const taskIter: IterationEntry = {
-    index: 0, status: 'halted', corrective_tasks: [], commit_hash: null,
+    index: 0, status: 'halted', corrective_tasks: [], repos: [],
     nodes: {},
   };
   assert.deepStrictEqual(
@@ -1223,7 +1227,7 @@ test("FR-6 task iter status='halted' reads {status:'halted', label:'Halted'}", (
 
 test("FR-11/AD-1 phase iter with phase_planning in_progress now reads 'Executing' (Planning dropped)", () => {
   const phaseIter: IterationEntry = {
-    index: 0, status: 'in_progress', corrective_tasks: [], commit_hash: null,
+    index: 0, status: 'in_progress', corrective_tasks: [], repos: [],
     nodes: {
       phase_planning: { kind: 'step', status: 'in_progress', doc_path: null, retries: 0 },
     },
@@ -1236,7 +1240,7 @@ test("FR-11/AD-1 phase iter with phase_planning in_progress now reads 'Executing
 
 test("FR-11 phase iter with phase_review in_progress still reads 'Reviewing'", () => {
   const phaseIter: IterationEntry = {
-    index: 0, status: 'in_progress', corrective_tasks: [], commit_hash: null,
+    index: 0, status: 'in_progress', corrective_tasks: [], repos: [],
     nodes: {
       phase_planning: { kind: 'step', status: 'completed', doc_path: null, retries: 0 },
       task_loop: { kind: 'for_each_task', status: 'completed', iterations: [] },
@@ -1251,7 +1255,7 @@ test("FR-11 phase iter with phase_review in_progress still reads 'Reviewing'", (
 
 test("FR-17 phase iter with task_loop in_progress reads 'Executing' even when no phase_planning child exists (defensive guard removed)", () => {
   const phaseIter: IterationEntry = {
-    index: 0, status: 'in_progress', corrective_tasks: [], commit_hash: null,
+    index: 0, status: 'in_progress', corrective_tasks: [], repos: [],
     nodes: {
       task_loop: { kind: 'for_each_task', status: 'in_progress', iterations: [] },
     },

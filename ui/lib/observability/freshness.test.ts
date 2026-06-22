@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { freshness } from './freshness';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const row = (t: string) => ({ timestamp: t } as any);
 
 test('returns the latest timestamp and elapsed since now (AD-4, FR-5)', () => {

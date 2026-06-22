@@ -5,7 +5,7 @@
 // are reported as SKIPPED so the normal test suite stays fast and reliable.
 import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
-import { execSync } from 'node:child_process';
+import { execSync, type ExecSyncOptions } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -23,9 +23,9 @@ function findFirst(...candidates: string[]): string | null {
 
 before(() => {
   if (!TRACE_GATE) return;
-  execSync('npm run build -w @rad-orchestration/repo-registry', { cwd: repoRoot, stdio: 'inherit', shell: process.platform === 'win32' });
-  execSync('npm run build -w @rad-orchestration/telemetry', { cwd: repoRoot, stdio: 'inherit', shell: process.platform === 'win32' });
-  execSync('npm run build-standalone', { cwd: uiRoot, stdio: 'inherit', shell: process.platform === 'win32' });
+  execSync('npm run build -w @rad-orchestration/repo-registry', { cwd: repoRoot, stdio: 'inherit', shell: process.platform === 'win32' } as unknown as ExecSyncOptions);
+  execSync('npm run build -w @rad-orchestration/telemetry', { cwd: repoRoot, stdio: 'inherit', shell: process.platform === 'win32' } as unknown as ExecSyncOptions);
+  execSync('npm run build-standalone', { cwd: uiRoot, stdio: 'inherit', shell: process.platform === 'win32' } as unknown as ExecSyncOptions);
 });
 
 test('standalone ships the lib dist index plus a sibling dist module', { skip: TRACE_GATE ? false : 'set RADORCH_STANDALONE_TRACE=1 to run the standalone trace gate' }, () => {

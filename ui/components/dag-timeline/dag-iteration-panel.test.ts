@@ -318,7 +318,7 @@ test('phase-scope corrective iteration fixture has corrective_tasks.length === 1
             retries: 0,
           },
         },
-        commit_hash: null,
+        repos: [],
       },
     ],
     nodes: {
@@ -329,7 +329,7 @@ test('phase-scope corrective iteration fixture has corrective_tasks.length === 1
       // phase_review + active corrective" combination.
       phase_review: { kind: 'step', status: 'completed', doc_path: 'reports/PROJ-PHASE-REVIEW-P01.md', retries: 0 },
     },
-    commit_hash: null,
+    repos: [],
   };
 
   assert.strictEqual(phaseCorrectiveIteration.corrective_tasks.length, 1);
@@ -352,7 +352,7 @@ test('phase-scope corrective task nodes contain synthesized pre-completed task_h
       task_handoff: { kind: 'step', status: 'completed', doc_path: 'tasks/PROJ-TASK-P01-PHASE-C1.md', retries: 0 },
       code_review: { kind: 'step', status: 'not_started', doc_path: null, retries: 0 },
     },
-    commit_hash: null,
+    repos: [],
   };
 
   const taskHandoff = corrective.nodes['task_handoff'];
@@ -807,7 +807,7 @@ test('dag-iteration-panel.tsx renders <DAGNodeRow> in the for_each_phase branch 
         retries: 0,
       },
     },
-    commit_hash: null,
+    repos: [],
   };
   const phasePlanning = phaseIterationWithLegacyStep.nodes['phase_planning'];
   assert.ok(phasePlanning !== undefined);

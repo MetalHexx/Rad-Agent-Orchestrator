@@ -57,7 +57,7 @@ function makeLegacyPhaseIteration(index: number): IterationEntry {
     index,
     status: 'completed',
     corrective_tasks: [],
-    commit_hash: null,
+    repos: [],
     nodes: {
       phase_planning: stepState('completed', 'phases/MYPROJ-PHASE-01-SETUP.md'),
       task_loop: {
@@ -68,7 +68,7 @@ function makeLegacyPhaseIteration(index: number): IterationEntry {
             index: 0,
             status: 'completed',
             corrective_tasks: [],
-            commit_hash: 'abc1234',
+            repos: [],
             nodes: {
               task_handoff: stepState('completed', 'tasks/MYPROJ-TASK-P01-T01-AUTH.md'),
               task_executor: stepState('completed'),
@@ -101,7 +101,7 @@ function makePostIter8PhaseIteration(index: number): IterationEntry {
     index,
     status: 'in_progress',
     corrective_tasks: [],
-    commit_hash: null,
+    repos: [],
     nodes: {
       task_loop: {
         kind: 'for_each_task',
@@ -111,7 +111,7 @@ function makePostIter8PhaseIteration(index: number): IterationEntry {
             index: 0,
             status: 'in_progress',
             corrective_tasks: [],
-            commit_hash: null,
+            repos: [],
             nodes: {
               task_executor: stepState('in_progress'),
               commit_gate: { kind: 'conditional', status: 'not_started', branch_taken: null },
@@ -209,7 +209,7 @@ test('(B) forward-compat iteration without phase_planning: iteration-name fallba
   // Code under test reads doc_path via (phaseNode && 'doc_path' in phaseNode)
   // — when the node is absent, fallback label "Phase N" is produced.
   const phaseNode = iteration.nodes['phase_planning'];
-  const docPath = phaseNode && 'doc_path' in phaseNode ? phaseNode.doc_path : null;
+  const docPath = phaseNode && 'doc_path' in phaseNode ? (phaseNode as { doc_path: string | null }).doc_path : null;
   const name = parsePhaseNameFromDocPath(docPath, iteration.index);
   assert.strictEqual(name, 'Phase 1');
 });
@@ -221,7 +221,7 @@ test('(B) forward-compat task iteration without task_handoff: fallback returns "
   const taskIter = taskLoop.iterations[0];
   assert.strictEqual(taskIter.nodes['task_handoff'], undefined);
   const taskNode = taskIter.nodes['task_handoff'];
-  const docPath = taskNode && 'doc_path' in taskNode ? taskNode.doc_path : null;
+  const docPath = taskNode && 'doc_path' in taskNode ? (taskNode as { doc_path: string | null }).doc_path : null;
   const name = parseTaskNameFromDocPath(docPath, taskIter.index);
   assert.strictEqual(name, 'Task 1');
 });
@@ -325,10 +325,10 @@ function makePhaseCorrectiveIteration(index: number): IterationEntry {
           // Scaffolded body node
           code_review: stepState('not_started'),
         },
-        commit_hash: null,
+        repos: [],
       },
     ],
-    commit_hash: null,
+    repos: [],
     nodes: {
       phase_planning: stepState('completed', 'phases/MYPROJ-PHASE-01-SETUP.md'),
       task_loop: {
@@ -339,7 +339,7 @@ function makePhaseCorrectiveIteration(index: number): IterationEntry {
             index: 0,
             status: 'completed',
             corrective_tasks: [],
-            commit_hash: 'abc1234',
+            repos: [],
             nodes: {
               task_handoff: stepState('completed', 'tasks/MYPROJ-TASK-P01-T01-AUTH.md'),
               task_executor: stepState('completed'),

@@ -9,6 +9,7 @@ const win = new TimeWindow({ kind: 'relative', preset: '1h' }, NOW, retentionFlo
 const row = (model: string, t: string) => ({
   sessionId: 's1', usageId: model + t, model, timestamp: t,
   inputTokens: 10, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0,
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 } as any);
 
 test('series is total + one sorted line per model present (AD-3, FR-3, DD-4)', () => {

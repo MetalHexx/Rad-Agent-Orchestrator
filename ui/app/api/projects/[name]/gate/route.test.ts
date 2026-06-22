@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import child_process from 'node:child_process';
+import { NextRequest } from 'next/server';
 import { withHomedir } from '../../../../../lib/test-helpers.js';
 import { POST } from './route.js';
 
@@ -70,7 +71,7 @@ test('gate route shells out to RADORCH_CLI_PATH (FR-14, AD-8)', async (t) => {
   t.after(() => mock.restoreAll());
   const { calls } = stubExecFile(JSON.stringify({ ok: true, data: { action: 'plan_approved' }, exit_code: 0 }));
   await withHomedir(tmpDir, async () => {
-    const req = new Request('http://localhost/api/projects/PROJECT-X/gate', {
+    const req = new NextRequest('http://localhost/api/projects/PROJECT-X/gate', {
       method: 'POST', body: JSON.stringify({ event: 'plan_approved' }),
     });
     const res = await POST(req, { params: Promise.resolve({ name: 'PROJECT-X' }) });
@@ -92,7 +93,7 @@ test('gate route returns 409 when CLI envelope rejects the event (DD-4)', async 
   t.after(() => mock.restoreAll());
   stubExecFile(JSON.stringify({ ok: false, data: { event: 'plan_approved' }, error: { type: 'user_error', message: 'wrong gate' }, exit_code: 1 }), 1);
   await withHomedir(tmpDir, async () => {
-    const req = new Request('http://localhost/api/projects/PROJECT-X/gate', {
+    const req = new NextRequest('http://localhost/api/projects/PROJECT-X/gate', {
       method: 'POST', body: JSON.stringify({ event: 'plan_approved' }),
     });
     const res = await POST(req, { params: Promise.resolve({ name: 'PROJECT-X' }) });
@@ -106,7 +107,7 @@ test('gate route returns 500 when CLI envelope reports a system_error (DD-4)', a
   t.after(() => mock.restoreAll());
   stubExecFile(JSON.stringify({ ok: false, data: { event: 'plan_approved' }, error: { type: 'system_error', message: 'engine crashed' }, exit_code: 1 }), 1);
   await withHomedir(tmpDir, async () => {
-    const req = new Request('http://localhost/api/projects/PROJECT-X/gate', {
+    const req = new NextRequest('http://localhost/api/projects/PROJECT-X/gate', {
       method: 'POST', body: JSON.stringify({ event: 'plan_approved' }),
     });
     const res = await POST(req, { params: Promise.resolve({ name: 'PROJECT-X' }) });
@@ -120,7 +121,7 @@ test('gate route returns 500 when CLI stdout is unparseable (DD-4)', async (t) =
   t.after(() => mock.restoreAll());
   stubExecFile('not json', 1);
   await withHomedir(tmpDir, async () => {
-    const req = new Request('http://localhost/api/projects/PROJECT-X/gate', {
+    const req = new NextRequest('http://localhost/api/projects/PROJECT-X/gate', {
       method: 'POST', body: JSON.stringify({ event: 'plan_approved' }),
     });
     const res = await POST(req, { params: Promise.resolve({ name: 'PROJECT-X' }) });
@@ -131,7 +132,7 @@ test('gate route returns 500 when CLI stdout is unparseable (DD-4)', async (t) =
 test('gate route returns 500 with clear error when RADORCH_CLI_PATH is missing', async () => {
   delete process.env.RADORCH_CLI_PATH;
   await withHomedir(tmpDir, async () => {
-    const req = new Request('http://localhost/api/projects/PROJECT-X/gate', {
+    const req = new NextRequest('http://localhost/api/projects/PROJECT-X/gate', {
       method: 'POST', body: JSON.stringify({ event: 'plan_approved' }),
     });
     const res = await POST(req, { params: Promise.resolve({ name: 'PROJECT-X' }) });

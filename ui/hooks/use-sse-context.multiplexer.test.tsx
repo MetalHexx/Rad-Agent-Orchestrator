@@ -15,7 +15,7 @@ async function test(name: string, fn: () => void) {
 
 async function run() {
   await test('context value exposes a subscribe function (FR-11, AD-4)', () => {
-    assert.strictEqual(typeof (defaultSSEContextValue as Record<string, unknown>).subscribe, 'function',
+    assert.strictEqual(typeof (defaultSSEContextValue as unknown as Record<string, unknown>).subscribe, 'function',
       'default context must expose a no-op subscribe');
   });
   await test('default subscribe returns an unsubscribe function (FR-11, AD-4)', () => {
@@ -30,8 +30,8 @@ async function run() {
     assert.ok(src.includes('onEvent'), 'provider must pass onEvent to fan events to subscribers');
   });
   await test('provider still exposes sseStatus and reconnect (FR-11, FR-13, AD-4)', () => {
-    assert.strictEqual((defaultSSEContextValue as Record<string, unknown>).sseStatus, 'disconnected');
-    assert.strictEqual(typeof (defaultSSEContextValue as Record<string, unknown>).reconnect, 'function');
+    assert.strictEqual((defaultSSEContextValue as unknown as Record<string, unknown>).sseStatus, 'disconnected');
+    assert.strictEqual(typeof (defaultSSEContextValue as unknown as Record<string, unknown>).reconnect, 'function');
   });
   await test('fanOut isolates a throwing subscriber so siblings still receive the event (multiplexer robustness)', () => {
     const calls: string[] = [];

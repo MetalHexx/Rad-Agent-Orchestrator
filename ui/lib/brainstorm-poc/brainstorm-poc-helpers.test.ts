@@ -48,7 +48,7 @@ test('buildChildEnv strips every metered credential and keeps the rest', () => {
     CLAUDE_CODE_USE_VERTEX: '1',
     PATH: '/usr/bin',
     FOO: 'bar',
-  });
+  } as unknown as NodeJS.ProcessEnv);
   assert.strictEqual(env.ANTHROPIC_API_KEY, undefined);
   assert.strictEqual(env.ANTHROPIC_AUTH_TOKEN, undefined);
   assert.strictEqual(env.CLAUDE_CODE_USE_BEDROCK, undefined);
@@ -58,7 +58,7 @@ test('buildChildEnv strips every metered credential and keeps the rest', () => {
 });
 
 test('buildChildEnv does not mutate the parent env', () => {
-  const parent = { ANTHROPIC_API_KEY: 'sk-xxx', ANTHROPIC_AUTH_TOKEN: 'tok' };
+  const parent = { ANTHROPIC_API_KEY: 'sk-xxx', ANTHROPIC_AUTH_TOKEN: 'tok' } as unknown as NodeJS.ProcessEnv;
   buildChildEnv(parent);
   assert.strictEqual(parent.ANTHROPIC_API_KEY, 'sk-xxx');
   assert.strictEqual(parent.ANTHROPIC_AUTH_TOKEN, 'tok');

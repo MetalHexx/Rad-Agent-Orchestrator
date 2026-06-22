@@ -1,6 +1,7 @@
 "use client";
 import * as React from "react";
-import { Area, AreaChart, ResponsiveContainer, XAxis, YAxis, Legend } from "recharts";
+import { AreaChart, ResponsiveContainer } from "recharts";
+import { XAxis, YAxis, Legend, Area } from "@/components/observability/recharts-compat";
 import type { ModelRatePoint } from "@/lib/observability/sessions";
 import { DEFAULT_SHOWN_KEYS, visibleSeriesKeys } from "@/lib/observability/spend-rate";
 import { niceAxis } from "@/lib/observability/chart-scale";
@@ -102,7 +103,8 @@ export function SpendRateChart({
                 />
                 <Legend
                   payload={legendPayload}
-                  onClick={(d) => toggle(String((d as { dataKey?: string }).dataKey ?? ""))}
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  onClick={(d: any) => toggle(String((d as { dataKey?: string }).dataKey ?? ""))}
                   wrapperStyle={{ cursor: "pointer", fontSize: 11 }}
                 />
                 {series.map((s) => (

@@ -11,7 +11,7 @@ import path from 'node:path';
 
 const SCRIPT = path.resolve(__dirname, 'launch-claude-project.js');
 
-function runLauncher(args: string[], env: NodeJS.ProcessEnv = {}): { stdout: string; status: number | null } {
+function runLauncher(args: string[], env: NodeJS.ProcessEnv = {} as unknown as NodeJS.ProcessEnv): { stdout: string; status: number | null } {
   const res = spawnSync(process.execPath, [SCRIPT, ...args], {
     encoding: 'utf-8',
     env: { ...process.env, ...env, LAUNCH_CLAUDE_PROJECT_DRY_RUN: '1' },
@@ -62,7 +62,7 @@ function runLauncher(args: string[], env: NodeJS.ProcessEnv = {}): { stdout: str
 {
   const { stdout, status } = runLauncher(
     ['--workspace-root', process.cwd(), '--prompt', '/rad-brainstorm FOO'],
-    { CLAUDECODE: '1', CLAUDE_CODE_ENTRYPOINT: 'cli', CLAUDE_EFFORT: 'high' },
+    { CLAUDECODE: '1', CLAUDE_CODE_ENTRYPOINT: 'cli', CLAUDE_EFFORT: 'high' } as unknown as NodeJS.ProcessEnv,
   );
   const parsed = JSON.parse(stdout.trim());
   assert.equal(parsed.success, true);
@@ -78,7 +78,7 @@ function runLauncher(args: string[], env: NodeJS.ProcessEnv = {}): { stdout: str
 {
   const { stdout, status } = runLauncher(
     ['--workspace-root', process.cwd(), '--prompt', '/rad-brainstorm FOO'],
-    { LAUNCH_CLAUDE_PROJECT_FORCE_NON_ERROR_THROW: '1' },
+    { LAUNCH_CLAUDE_PROJECT_FORCE_NON_ERROR_THROW: '1' } as unknown as NodeJS.ProcessEnv,
   );
   const parsed = JSON.parse(stdout.trim());
   assert.equal(parsed.success, false);

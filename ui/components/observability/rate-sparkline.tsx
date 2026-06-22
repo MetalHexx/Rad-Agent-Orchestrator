@@ -1,6 +1,7 @@
 "use client";
 import * as React from "react";
-import { Area, AreaChart, ResponsiveContainer, XAxis, YAxis } from "recharts";
+import { AreaChart, ResponsiveContainer } from "recharts";
+import { XAxis, YAxis, Area } from "@/components/observability/recharts-compat";
 import type { RatePoint } from "@/lib/observability/sessions";
 
 interface RateSparklineProps {
