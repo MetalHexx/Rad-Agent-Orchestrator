@@ -21,5 +21,14 @@ export function pruneAgedPartitions(opts: { root: string; maxAgeDays: number; no
       if (m && !liveSessions.has(m[1])) { fs.unlinkSync(path.join(ckptDir, file)); pruned++; }
     }
   }
+  const txDir = path.join(opts.root, 'transcripts');
+  if (fs.existsSync(txDir)) {
+    for (const entry of fs.readdirSync(txDir)) {
+      // Independent of checkpoint deletion (AD-9): any session dir with no surviving
+      // usage partition is an orphan and is removed — durability means surviving worktree
+      // reaping, not permanent archival.
+      if (!liveSessions.has(entry)) { fs.rmSync(path.join(txDir, entry), { recursive: true, force: true }); pruned++; }
+    }
+  }
   return pruned;
 }
