@@ -24,7 +24,7 @@ export interface AgentTreeNode {
 export interface SubagentTree {
   windowTotal: number;               // == Total Spend card by construction (FR-4, AD-6)
   main: AgentTreeNode;
-  subagents: AgentTreeNode[];        // groups, sorted by tokens desc
+  subagents: AgentTreeNode[];        // groups, sorted by first activity (execution order)
   subagentTotal: number;
   subagentPct: number;
 }
@@ -32,6 +32,8 @@ export interface SubagentTree {
 interface Acc { tokens: number; reqs: number; firstMs: number; lastMs: number; models: Map<string, number>; }
 const emptyAcc = (): Acc => ({ tokens: 0, reqs: 0, firstMs: Infinity, lastMs: -Infinity, models: new Map() });
 const finiteOrZero = (n: number): number => (Number.isFinite(n) ? n : 0);
+// Sort key for execution order: a 0 firstMs (no parseable timestamp) sinks to the end.
+const activityRank = (firstMs: number): number => (firstMs > 0 ? firstMs : Number.MAX_SAFE_INTEGER);
 
 function addRow(acc: Acc, row: ObservabilityUsageRow): void {
   const t = effectiveTokens(row);
@@ -80,18 +82,19 @@ export function buildSubagentTree(rows: ObservabilityUsageRow[]): SubagentTree {
       return {
         key: runId === '(unkeyed)' ? `${type}#unkeyed-${i}` : runId,
         kind: 'run' as const,
-        label: `${type} ${i + 1}`,         // first-seen index → stable label (FR-3)
+        label: '',                          // numbered after the activity sort below (FR-3)
         agentType: type, runCount: 1,
         tokens: a.tokens, models: segments(a), reqs: a.reqs,
         firstMs: finiteOrZero(a.firstMs), lastMs: finiteOrZero(a.lastMs),
       };
-    }).sort((a, b) => b.tokens - a.tokens);   // display order by spend (NFR-7)
+    }).sort((a, b) => activityRank(a.firstMs) - activityRank(b.firstMs));   // execution order (first activity)
+    runs.forEach((r, i) => { r.label = `${type} ${i + 1}`; });             // number follows activity order
     return {
       key: type, kind: 'group' as const, label: type, agentType: type,
       runCount: g.runOrder.length, tokens: g.acc.tokens, models: segments(g.acc), reqs: g.acc.reqs,
       firstMs: finiteOrZero(g.acc.firstMs), lastMs: finiteOrZero(g.acc.lastMs), runs,
     };
-  }).sort((a, b) => b.tokens - a.tokens);
+  }).sort((a, b) => activityRank(a.firstMs) - activityRank(b.firstMs));     // execution order (first activity)
 
   const subagentTotal = subagents.reduce((s, n) => s + n.tokens, 0);
   const windowTotal = main.tokens + subagentTotal;

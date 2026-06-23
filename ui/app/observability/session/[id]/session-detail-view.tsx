@@ -7,7 +7,9 @@ import { SessionSummaryCards } from "@/components/observability/session-summary-
 import { ObservabilitySubHeader } from "@/components/observability/observability-sub-header";
 import { BackButton } from "@/components/ui/back-button";
 import { AgentTree } from '@/components/observability/agent-tree';
+import { AgentInspectorModal } from '@/components/observability/agent-inspector-modal';
 import { buildSubagentTree } from '@/lib/observability/subagent-tree';
+import { numberedAgentLabels } from '@/lib/observability/transcript-identity';
 import { sessionWindowCoverage } from '@/lib/observability/window-coverage';
 import { deriveSessions, rowsInWindow, rowsSince } from "@/lib/observability/sessions";
 import type { SessionAgg } from '@/lib/observability/sessions';
@@ -19,6 +21,7 @@ import { readRangeState, writeRangeState, type RangeState } from "@/lib/time-ran
 import { useTimeRangeWindow } from "@/hooks/use-time-range-window";
 import { useSpendRateChart } from "@/hooks/use-spend-rate-chart";
 import { useUrlViewState } from "@/hooks/use-url-view-state";
+import { useSessionAgents } from "@/hooks/use-agent-inspector";
 
 const HelpPanel = dynamic(
   () => import("@/components/observability/help-panel").then((m) => m.HelpPanel),
@@ -76,6 +79,8 @@ export function SessionDetailView({ sessionId }: { sessionId: string }) {
 
   // Build the breakdown from windowRows → windowTotal === Total Spend (AD-6 now holds vs the SELECTED window).
   const subagentTree = React.useMemo(() => buildSubagentTree(windowRows), [windowRows]);
+  // Authoritative numbering (coder 1 / Main Agent) from the table, keyed by transcriptId for the modal.
+  const agentLabels = React.useMemo(() => numberedAgentLabels(subagentTree, sessionId), [subagentTree, sessionId]);
   const coverage = React.useMemo(
     () => sessionWindowCoverage([...rows.values()], sessionId, rangeStart, rangeEnd),
     [rows, sessionId, rangeStart, rangeEnd],
@@ -113,6 +118,11 @@ export function SessionDetailView({ sessionId }: { sessionId: string }) {
   const scopeTitle = `Session ${shortId(sessionId)}`;
   const subtitle = session?.worktree ?? "Single-session token usage";
 
+  // Agent Inspector wiring (FR-3, FR-4, AD-7).
+  const { availableIds } = useSessionAgents(sessionId);
+  const [inspectId, setInspectId] = React.useState<string | null>(null);
+  const [isFullScreen, setIsFullScreen] = React.useState(false);
+
   return (
     <>
       <ObservabilitySubHeader
@@ -140,9 +150,28 @@ export function SessionDetailView({ sessionId }: { sessionId: string }) {
             <SpendRateChart data={chart.data} series={chart.series} title="Token Spend Rate · This Session" rangeStart={rangeStart} rangeEnd={rangeEnd} ready={ready} />
             {session && <SessionSummaryCards session={windowedSession!} />}
             {session && (
-              <AgentTree tree={subagentTree} title="Agent Breakdown" coverage={coverage} ready={ready} />
+              <AgentTree
+                tree={subagentTree}
+                title="Agent Breakdown"
+                coverage={coverage}
+                ready={ready}
+                sessionId={sessionId}
+                availableIds={availableIds}
+                onInspect={setInspectId}
+              />
             )}
           </>
+        )}
+        {inspectId && (
+          <AgentInspectorModal
+            sessionId={sessionId}
+            agentId={inspectId}
+            labels={agentLabels}
+            onSelectAgent={setInspectId}
+            onClose={() => setInspectId(null)}
+            isFullScreen={isFullScreen}
+            onToggleFullScreen={() => setIsFullScreen((v) => !v)}
+          />
         )}
         <HelpPanel open={helpOpen} onOpenChange={setHelpOpen} title="Session detail" content={SESSION_HELP_MD} />
       </main>

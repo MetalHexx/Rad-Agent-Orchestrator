@@ -4,6 +4,7 @@ import { humanizeTokens } from '@/lib/observability/format';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { SubagentTree, AgentTreeNode } from '@/lib/observability/subagent-tree';
 import { freezeSubagentOrder } from '@/lib/observability/subagent-tree';
+import { rowTranscriptId, isInspectable } from '@/lib/observability/transcript-identity';
 import { AgentRow } from './agent-row';
 import { ModelLegend } from './model-legend';
 
@@ -12,6 +13,12 @@ export interface AgentTreeProps {
   title?: string;
   coverage?: number;
   ready?: boolean;
+  /** Session id — used to resolve the main row's transcript id (FR-3, AD-7). */
+  sessionId?: string;
+  /** Set of transcript ids that have available transcripts (FR-4, AD-7). */
+  availableIds?: Set<string>;
+  /** Called with the transcript id when the user clicks the Inspect button (FR-3, AD-7). */
+  onInspect?: (transcriptId: string) => void;
 }
 
 const CARD = 'rounded-xl bg-card ring-1 ring-foreground/10';   // matches summary-card.tsx exactly (DD-1)
@@ -31,7 +38,7 @@ function leafFrom(group: AgentTreeNode): AgentTreeNode {
 }
 
 // Pure & reusable: owns ONLY expand state; no data fetch, no page/live imports (AD-1).
-export function AgentTree({ tree, title = 'Agent Breakdown', coverage, ready = true }: AgentTreeProps) {
+export function AgentTree({ tree, title = 'Agent Breakdown', coverage, ready = true, sessionId, availableIds, onInspect }: AgentTreeProps) {
   const [expanded, setExpanded] = React.useState<Set<string>>(() => new Set());
   const toggle = React.useCallback((key: string) => {
     setExpanded((prev) => {
@@ -49,6 +56,13 @@ export function AgentTree({ tree, title = 'Agent Breakdown', coverage, ready = t
     wasReady.current = ready;
   }, [ready, tree.subagents]);
   const orderedSubagents = freezeSubagentOrder(tree.subagents, frozenOrder.current);
+
+  /** Build an inspect prop for a given transcript id (or null if not inspectable). */
+  function inspectProp(transcriptId: string | null) {
+    if (!onInspect || !transcriptId) return undefined;
+    const available = isInspectable(transcriptId, availableIds ?? new Set());
+    return { available, onInspect: () => onInspect(transcriptId) };
+  }
 
   if (!ready) {
     return (
@@ -72,14 +86,22 @@ export function AgentTree({ tree, title = 'Agent Breakdown', coverage, ready = t
 
   const coverageNote = coverage !== undefined && coverage < 0.99 ? ` · covers ~${Math.round(coverage * 100)}% of this session` : '';
 
+  // Main row transcript id: sessionId (FR-3)
+  const mainTranscriptId = sessionId ? rowTranscriptId(tree.main, 'main', sessionId) : null;
+
   return (
     <section className={CARD}>
       <Header title={title} />
       <p className="px-5 pt-2 text-xs text-muted-foreground">
-        Bars and % show share of spend in the selected window · sorted by spend{coverageNote}
+        Bars and % show share of spend in the selected window · in execution order{coverageNote}
       </p>
       <div className="px-3 pb-3 pt-2">
-        <AgentRow node={tree.main} scaleMax={tree.windowTotal} variant="main" />
+        <AgentRow
+          node={tree.main}
+          scaleMax={tree.windowTotal}
+          variant="main"
+          inspect={inspectProp(mainTranscriptId)}
+        />
         <div className="flex items-center gap-2 px-2 pt-3 pb-1">
           <span className="text-xs uppercase tracking-wide text-muted-foreground">
             Subagents · {humanizeTokens(tree.subagentTotal)} · {Math.round(tree.subagentPct * 100)}%
@@ -89,6 +111,15 @@ export function AgentTree({ tree, title = 'Agent Breakdown', coverage, ready = t
         {orderedSubagents.map((group) => {
           const isGroup = group.runCount > 1;
           const isOpen = expanded.has(group.key);
+
+          // Resolve transcript ids:
+          // - multi-run group → not inspectable (group rows never have inspect buttons, FR-7)
+          // - single-run leaf → resolve from the pre-leafFrom group so we get runs[0].key (AD-6)
+          // - expanded run rows → resolve from the run node itself
+          const leafTranscriptId = !isGroup && sessionId
+            ? rowTranscriptId(group, 'leaf', sessionId)   // pass pre-leafFrom group to get runs[0].key
+            : null;
+
           return (
             <React.Fragment key={group.key}>
               <AgentRow
@@ -97,10 +128,20 @@ export function AgentTree({ tree, title = 'Agent Breakdown', coverage, ready = t
                 variant={isGroup ? 'group' : 'leaf'}
                 expanded={isOpen}
                 onToggle={isGroup ? () => toggle(group.key) : undefined}
+                inspect={!isGroup ? inspectProp(leafTranscriptId) : undefined}
               />
-              {isGroup && isOpen && (group.runs ?? []).map((run) => (
-                <AgentRow key={run.key} node={run} scaleMax={tree.windowTotal} variant="run" />
-              ))}
+              {isGroup && isOpen && (group.runs ?? []).map((run) => {
+                const runTranscriptId = sessionId ? rowTranscriptId(run, 'run', sessionId) : null;
+                return (
+                  <AgentRow
+                    key={run.key}
+                    node={run}
+                    scaleMax={tree.windowTotal}
+                    variant="run"
+                    inspect={inspectProp(runTranscriptId)}
+                  />
+                );
+              })}
             </React.Fragment>
           );
         })}

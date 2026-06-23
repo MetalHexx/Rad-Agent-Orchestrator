@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ChevronLeft, ChevronRight, Maximize2, Trash2, X, FileText, Share2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Trash2, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { copyTextToClipboard } from "@/lib/clipboard";
 import { buildDocDeepLink } from "@/lib/deep-link";
@@ -11,7 +11,7 @@ import { ActivePulse } from "./active-pulse";
 import { BufferedStage } from "./buffered-stage";
 import { ChangeBadge } from "@/components/badges";
 import { cn } from "@/lib/utils";
-import { modalKeyAction } from "@/hooks/use-artifact-modal";
+import { ModalShell } from "@/components/modal/modal-shell";
 import type { Artifact } from "@/lib/artifact-model";
 
 export interface ArtifactViewerModalProps {
@@ -48,19 +48,6 @@ export function ArtifactViewerModal({
   unseen, activePulse, mtimes, dataState = "open",
 }: ArtifactViewerModalProps) {
   const active = artifacts.find((a) => a.fileName === activeFileName);
-
-  React.useEffect(() => {
-    function handleKeyDown(e: KeyboardEvent) {
-      const action = modalKeyAction(e.key);
-      if (action === null) return;
-      e.preventDefault();
-      if (action === 'prev') onPrev();
-      else if (action === 'next') onNext();
-      else if (action === 'close') onClose();
-    }
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [onPrev, onNext, onClose]);
 
   const [shareState, setShareState] = React.useState<'idle' | 'copied' | 'failed'>('idle');
   const shareTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -100,74 +87,22 @@ export function ArtifactViewerModal({
   const friendly = active.title ?? active.label;
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label={`${friendly} — ${active.fileName}`}
-      data-state={dataState}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 supports-backdrop-filter:backdrop-blur-sm artifact-modal-overlay duration-200 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <div
-        data-state={dataState}
-        className={cn(
-          "fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col overflow-hidden bg-card text-card-foreground ring-1 ring-foreground/10 shadow-lg artifact-modal-panel transition-[width,height,max-width,border-radius] duration-200 ease-out data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95",
-          isFullScreen ? "h-screen w-screen max-w-[100vw] rounded-none" : "h-[85vh] w-[90vw] max-w-5xl rounded-xl",
-        )}
-      >
-        <header className="flex items-center gap-2 border-b border-border px-4 py-3">
+    <ModalShell
+      ariaLabel={`${friendly} — ${active.fileName}`}
+      title={
+        <>
           <span className="text-sm font-medium text-foreground">{friendly}</span>
           <span title={active.fileName} className="truncate text-xs text-muted-foreground">{active.fileName}</span>
-          <div className="ml-auto flex items-center gap-1">
-            <Button variant="ghost" size="icon" aria-label="Share / copy link"
-              className="cursor-pointer" onClick={handleShare}>
-              <Share2 className="size-4" aria-hidden="true" />
-            </Button>
-            <Button variant="ghost" size="icon" aria-label="Full screen" className="cursor-pointer" onClick={onToggleFullScreen}>
-              <Maximize2 className="size-4" aria-hidden="true" />
-            </Button>
-            <Button variant="ghost" size="icon" aria-label="Close" className="cursor-pointer" onClick={onClose}>
-              <X className="size-4" aria-hidden="true" />
-            </Button>
-          </div>
-        </header>
-        {shareState !== 'idle' && (
-          <div role="status" aria-live="polite"
-            className="absolute right-4 top-12 z-10 rounded-md border border-border bg-popover px-2.5 py-1.5 text-xs text-popover-foreground shadow-md">
-            {shareState === 'copied' ? 'Link copied' : 'Copy failed'}
-          </div>
-        )}
-
-        <div className="relative flex-1 overflow-hidden bg-muted">
-          <BufferedStage
-            projectName={projectName}
-            artifact={active}
-            markdownContent={markdownContent}
-            markdownContentFileName={markdownContentFileName ?? undefined}
-            activePulse={activePulse?.has(active.fileName) ?? false}
-            liveMtime={mtimes?.[active.fileName] ?? 0}
-          />
-          <div
-            aria-hidden="true"
-            className={cn(
-              "pointer-events-none absolute inset-0",
-              (activePulse?.has(active.fileName) ?? false) && "live-pulse-stage",
-            )}
-          />
-          <button type="button" aria-label="Previous artifact" onClick={onPrev}
-            className="absolute left-2 top-1/2 -translate-y-1/2 cursor-pointer rounded-full bg-background/70 p-2 text-foreground hover:bg-background">
-            <ChevronLeft className="size-5" aria-hidden="true" />
-          </button>
-          <button type="button" aria-label="Next artifact" onClick={onNext}
-            className="absolute right-2 top-1/2 -translate-y-1/2 cursor-pointer rounded-full bg-background/70 p-2 text-foreground hover:bg-background">
-            <ChevronRight className="size-5" aria-hidden="true" />
-          </button>
-          <button type="button" aria-label="Delete artifact" onClick={onRequestDelete}
-            className="absolute bottom-3 right-3 z-10 cursor-pointer rounded-full bg-background/70 p-2 text-muted-foreground hover:bg-background hover:text-destructive">
-            <Trash2 className="size-5" aria-hidden="true" />
-          </button>
-        </div>
-
+        </>
+      }
+      onClose={onClose}
+      onPrev={onPrev}
+      onNext={onNext}
+      onShare={handleShare}
+      isFullScreen={isFullScreen}
+      onToggleFullScreen={onToggleFullScreen}
+      dataState={dataState}
+      footer={
         <footer className="relative border-t border-border px-4 py-3">
           <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-12 bg-gradient-to-r from-card to-transparent" aria-hidden="true" />
           <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-12 bg-gradient-to-l from-card to-transparent" aria-hidden="true" />
@@ -237,7 +172,43 @@ export function ArtifactViewerModal({
           })}
           </div>
         </footer>
+      }
+    >
+      <div className="relative h-full w-full bg-muted">
+        <BufferedStage
+          projectName={projectName}
+          artifact={active}
+          markdownContent={markdownContent}
+          markdownContentFileName={markdownContentFileName ?? undefined}
+          activePulse={activePulse?.has(active.fileName) ?? false}
+          liveMtime={mtimes?.[active.fileName] ?? 0}
+        />
+        <div
+          aria-hidden="true"
+          className={cn(
+            "pointer-events-none absolute inset-0",
+            (activePulse?.has(active.fileName) ?? false) && "live-pulse-stage",
+          )}
+        />
+        <button type="button" aria-label="Previous artifact" onClick={onPrev}
+          className="absolute left-2 top-1/2 -translate-y-1/2 cursor-pointer rounded-full bg-background/70 p-2 text-foreground hover:bg-background">
+          <ChevronLeft className="size-5" aria-hidden="true" />
+        </button>
+        <button type="button" aria-label="Next artifact" onClick={onNext}
+          className="absolute right-2 top-1/2 -translate-y-1/2 cursor-pointer rounded-full bg-background/70 p-2 text-foreground hover:bg-background">
+          <ChevronRight className="size-5" aria-hidden="true" />
+        </button>
+        <button type="button" aria-label="Delete artifact" onClick={onRequestDelete}
+          className="absolute bottom-3 right-3 z-10 cursor-pointer rounded-full bg-background/70 p-2 text-muted-foreground hover:bg-background hover:text-destructive">
+          <Trash2 className="size-5" aria-hidden="true" />
+        </button>
+        {shareState !== 'idle' && (
+          <div role="status" aria-live="polite"
+            className="absolute right-4 top-12 z-10 rounded-md border border-border bg-popover px-2.5 py-1.5 text-xs text-popover-foreground shadow-md">
+            {shareState === 'copied' ? 'Link copied' : 'Copy failed'}
+          </div>
+        )}
       </div>
-    </div>
+    </ModalShell>
   );
 }
