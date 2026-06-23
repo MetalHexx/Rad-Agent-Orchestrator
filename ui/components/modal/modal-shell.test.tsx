@@ -25,6 +25,7 @@ const base = {
   assert.ok(html.includes('FOOT'), 'renders the footer slot when provided');
   assert.ok(html.includes('aria-label="Close"') && html.includes('aria-label="Full screen"'), 'built-in Close + Fullscreen (FR-1)');
   assert.ok(!html.includes('aria-label="Share / copy link"'), 'Share absent when onShare not supplied (AD-1)');
+  assert.ok(html.includes('data-[state=open]:fade-in-0') && html.includes('data-[state=closed]:fade-out-0'), 'panel carries combined fade+zoom animation (NFR-1)');
   console.log('✓ shell: slots + built-ins + a11y');
 }
 

@@ -43,7 +43,7 @@ export function ModalShell({
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div data-state={dataState}
         className={cn(
-          "fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col overflow-hidden bg-card text-card-foreground ring-1 ring-foreground/10 shadow-lg artifact-modal-panel transition-[width,height,max-width,border-radius] duration-200 ease-out data-[state=open]:animate-in data-[state=open]:zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:zoom-out-95",
+          "fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col overflow-hidden bg-card text-card-foreground ring-1 ring-foreground/10 shadow-lg artifact-modal-panel transition-[width,height,max-width,border-radius] duration-200 ease-out data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95",
           isFullScreen ? "h-screen w-screen max-w-[100vw] rounded-none" : "h-[85vh] w-[90vw] max-w-5xl rounded-xl")}>
         <header className="flex items-center gap-2 border-b border-border px-4 py-3">
           {title}
