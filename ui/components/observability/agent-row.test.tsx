@@ -24,7 +24,7 @@ const node = (p: Partial<AgentTreeNode>): AgentTreeNode => ({
 // Main variant: with inspect prop available=true renders the Inspect agent button (FR-3, NFR-6).
 {
   const html = renderToStaticMarkup(createElement(AgentRow, {
-    node: node({ key: 'main', kind: 'main', label: 'main-agent', runCount: 1 }), scaleMax: 200, variant: 'main',
+    node: node({ key: 'main', kind: 'main', label: 'main-agent', runCount: 1 }), scaleMax: 200, variant: 'main', now: 1000,
     inspect: { available: true, onInspect: () => {} },
   }));
   assert.ok(html.includes('main-agent'), 'label rendered');
@@ -56,7 +56,7 @@ const node = (p: Partial<AgentTreeNode>): AgentTreeNode => ({
 // Leaf/run variant: with inspect prop available=true renders the Inspect agent button (FR-4, NFR-6).
 {
   const html = renderToStaticMarkup(createElement(AgentRow, {
-    node: node({ key: 'run-bb', kind: 'run', label: 'Explore 1', runCount: 1 }), scaleMax: 200, variant: 'leaf',
+    node: node({ key: 'run-bb', kind: 'run', label: 'Explore 1', runCount: 1 }), scaleMax: 200, variant: 'leaf', now: 1000,
     inspect: { available: true, onInspect: () => {} },
   }));
   assert.ok(/aria-label="Inspect agent"/.test(html), 'leaf row with available inspect renders the Inspect agent button (FR-4, NFR-6)');
@@ -81,6 +81,18 @@ const node = (p: Partial<AgentTreeNode>): AgentTreeNode => ({
   assert.ok(html.includes('var(--model-red)'), 'dot uses the opus model color (DD-1)');
   assert.ok(html.includes('--activity-dot-glow-color'), 'glow color threaded to the dot (DD-2)');
   console.log('✓ agent dot: model-colored pulse');
+}
+
+// A subagent idle for ~2 min settles (no pulse) — Agent Breakdown uses the short 60s window so a
+// finished subagent no longer reads as "live" while the next one runs (the sequential-looks-parallel bug).
+{
+  const html = renderToStaticMarkup(createElement(AgentRow, {
+    node: node({ kind: 'main', label: 'main-agent', models: [{ model: 'opus', tokens: 100 }], lastMs: 0 }),
+    scaleMax: 200, variant: 'main', now: 120_000,
+  }));
+  assert.ok(!html.includes('activity-dot-pulse'), 'agent dot idle for 2 min does not pulse (settles within 60s)');
+  assert.ok(html.includes('var(--model-red)'), 'settled dot still rests in its opus model color (not grey)');
+  console.log('✓ agent dot: settles after 60s, rests at model color');
 }
 
 console.log('\nAll AgentRow/ModelLegend tests passed');

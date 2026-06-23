@@ -15,7 +15,7 @@ const tree: SubagentTree = {
 // the runId — so the wiring MUST resolve the leaf from the group node to reach 'run-bb'. If it
 // resolves to 'Explore', the leaf is wrongly gated off and this asserts 1 instead of 2 (FR-5, AD-6).
 const html = renderToStaticMarkup(createElement(AgentTree, {
-  tree, ready: true, sessionId: 'sess-1', availableIds: new Set(['sess-1', 'run-bb']), onInspect: () => {},
+  tree, ready: true, now: 1000, sessionId: 'sess-1', availableIds: new Set(['sess-1', 'run-bb']), onInspect: () => {},
 }));
 assert.ok(/aria-label="Inspect agent"/.test(html), 'shows the inspect affordance on available rows (FR-3)');
 assert.ok(!html.includes('TELEMETRY-8'), 'old disabled placeholder seam links are gone (FR-3)');

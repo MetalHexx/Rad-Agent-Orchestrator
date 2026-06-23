@@ -3,6 +3,7 @@ import { ChevronRight, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { modelColor } from '@/lib/observability/model-color';
+import { AGENT_ACTIVE_WINDOW_MS } from '@/lib/observability/activity-dot-color';
 import { humanizeTokens } from '@/lib/observability/format';
 import { formatDuration } from '@/lib/observability/duration-format';
 import type { AgentTreeNode } from '@/lib/observability/subagent-tree';
@@ -45,7 +46,7 @@ export function AgentRow({ node, scaleMax, variant, now, expanded, onToggle, ins
         ) : (
           <span className="inline-block size-3.5" aria-hidden="true" />
         )}
-        <ActivityDot msSinceActivity={now - node.lastMs} color={`var(${modelColor(dominant)})`} className="size-2 shrink-0" />
+        <ActivityDot msSinceActivity={now - node.lastMs} color={`var(${modelColor(dominant)})`} activeWindowMs={AGENT_ACTIVE_WINDOW_MS} className="size-2 shrink-0" />
         <span className={cn('truncate text-sm', variant === 'run' && 'font-mono text-muted-foreground')}>{node.label}</span>
         {variant === 'group' && node.runCount > 1 && <Badge variant="outline" className="ml-1">×{node.runCount}</Badge>}
       </div>

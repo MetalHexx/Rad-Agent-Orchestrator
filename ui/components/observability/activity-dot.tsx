@@ -6,13 +6,16 @@ import { dotRestingColor, isActive } from "@/lib/observability/activity-dot-colo
 export function ActivityDot({
   msSinceActivity,
   color,
+  activeWindowMs,
   className,
 }: {
   msSinceActivity: number;
   color?: string;
+  /** How long after last activity the dot keeps pulsing. Defaults to the 5-min decay window. */
+  activeWindowMs?: number;
   className?: string;
 }) {
-  const active = isActive(msSinceActivity);
+  const active = isActive(msSinceActivity, activeWindowMs);
   const style = {
     backgroundColor: color ?? dotRestingColor(msSinceActivity),
     ...(color ? { "--activity-dot-glow-color": color } : {}),

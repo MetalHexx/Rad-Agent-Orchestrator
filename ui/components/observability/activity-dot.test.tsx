@@ -41,6 +41,15 @@ test('a model-colored dot fills + glows in the provided color, bypassing the lav
   assert.ok(idle.includes('var(--model-red)'), 'idle model dot stays solid in its color (no decay to grey)');
 });
 
+test('activeWindowMs overrides the pulse window; default falls back to the 5-min decay window', () => {
+  // At 90s idle: the default dot still pulses, but a dot on the 60s agent window has settled.
+  const def = renderToStaticMarkup(createElement(ActivityDot, { msSinceActivity: 90_000 }));
+  assert.ok(def.includes('activity-dot-pulse'), 'default window keeps a 90s-idle dot pulsing');
+
+  const scoped = renderToStaticMarkup(createElement(ActivityDot, { msSinceActivity: 90_000, activeWindowMs: 60_000 }));
+  assert.ok(!scoped.includes('activity-dot-pulse'), '60s window settles the pulse for a 90s-idle dot');
+});
+
 test('the glow keyframe is parameterized with a lavender fallback (AD-1, NFR-3)', () => {
   const css = readFileSync(path.join(process.cwd(), 'app', 'globals.css'), 'utf-8');
   assert.match(css, /--activity-dot-glow-color,\s*var\(--live-accent\)/, 'keyframe reads the per-instance color with a lavender fallback');
