@@ -28,3 +28,20 @@ test('the glow keyframe is a pure blurred halo with NO hard ring (DD-7)', () => 
   assert.doesNotMatch(block, /box-shadow:\s*0 0 0 /, 'must NOT use a zero-blur hard-ring spread');
   assert.match(css, /\.activity-dot-pulse[^}]*activity-dot-glow-kf[^;]*infinite/, 'pulse class loops the glow');
 });
+
+test('a model-colored dot fills + glows in the provided color, bypassing the lavender decay (FR-1, AD-2, DD-2)', () => {
+  const fresh = renderToStaticMarkup(createElement(ActivityDot, { msSinceActivity: 0, color: 'var(--model-red)' }));
+  assert.ok(fresh.includes('activity-dot-pulse'), 'active model dot pulses');
+  assert.ok(fresh.includes('var(--model-red)'), 'fill adopts the provided color');
+  assert.ok(fresh.includes('--activity-dot-glow-color'), 'glow color set as a custom property');
+  assert.ok(!fresh.includes('var(--live-accent)'), 'color path does not emit the lavender resting color');
+
+  const idle = renderToStaticMarkup(createElement(ActivityDot, { msSinceActivity: 10 * 60 * 1000, color: 'var(--model-red)' }));
+  assert.ok(!idle.includes('activity-dot-pulse'), 'idle model dot does not pulse');
+  assert.ok(idle.includes('var(--model-red)'), 'idle model dot stays solid in its color (no decay to grey)');
+});
+
+test('the glow keyframe is parameterized with a lavender fallback (AD-1, NFR-3)', () => {
+  const css = readFileSync(path.join(process.cwd(), 'app', 'globals.css'), 'utf-8');
+  assert.match(css, /--activity-dot-glow-color,\s*var\(--live-accent\)/, 'keyframe reads the per-instance color with a lavender fallback');
+});
