@@ -9,6 +9,7 @@ import { BackButton } from "@/components/ui/back-button";
 import { AgentTree } from '@/components/observability/agent-tree';
 import { AgentInspectorModal } from '@/components/observability/agent-inspector-modal';
 import { buildSubagentTree } from '@/lib/observability/subagent-tree';
+import { numberedAgentLabels } from '@/lib/observability/transcript-identity';
 import { sessionWindowCoverage } from '@/lib/observability/window-coverage';
 import { deriveSessions, rowsInWindow, rowsSince } from "@/lib/observability/sessions";
 import type { SessionAgg } from '@/lib/observability/sessions';
@@ -78,6 +79,8 @@ export function SessionDetailView({ sessionId }: { sessionId: string }) {
 
   // Build the breakdown from windowRows → windowTotal === Total Spend (AD-6 now holds vs the SELECTED window).
   const subagentTree = React.useMemo(() => buildSubagentTree(windowRows), [windowRows]);
+  // Authoritative numbering (coder 1 / Main Agent) from the table, keyed by transcriptId for the modal.
+  const agentLabels = React.useMemo(() => numberedAgentLabels(subagentTree, sessionId), [subagentTree, sessionId]);
   const coverage = React.useMemo(
     () => sessionWindowCoverage([...rows.values()], sessionId, rangeStart, rangeEnd),
     [rows, sessionId, rangeStart, rangeEnd],
@@ -163,6 +166,7 @@ export function SessionDetailView({ sessionId }: { sessionId: string }) {
           <AgentInspectorModal
             sessionId={sessionId}
             agentId={inspectId}
+            labels={agentLabels}
             onSelectAgent={setInspectId}
             onClose={() => setInspectId(null)}
             isFullScreen={isFullScreen}

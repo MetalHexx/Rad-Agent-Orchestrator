@@ -3,6 +3,7 @@
 import * as React from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { centerScrollLeft, pageScrollDelta, shouldHijackWheel } from "@/lib/filmstrip-scroll";
 
 // ---------------------------------------------------------------------------
 // AgentNavigatorStrip — horizontally-scrollable row of agent-name chips (FR-14, DD-5, DD-7, NFR-5)
@@ -27,10 +28,34 @@ export interface AgentNavigatorStripProps {
 
 export function AgentNavigatorStrip({ agents, activeId, onSelect }: AgentNavigatorStripProps) {
   const scrollRef = React.useRef<HTMLDivElement>(null);
+  const activeCellRef = React.useRef<HTMLButtonElement>(null);
 
   const scroll = (direction: 'left' | 'right') => {
-    scrollRef.current?.scrollBy({ left: direction === 'left' ? -120 : 120, behavior: 'smooth' });
+    const c = scrollRef.current;
+    if (!c) return;
+    const delta = pageScrollDelta(c.clientWidth);
+    c.scrollBy({ left: direction === 'left' ? -delta : delta, behavior: 'smooth' });
   };
+
+  // Center the active chip when it changes (parity with the artifact filmstrip).
+  React.useEffect(() => {
+    const c = scrollRef.current, cell = activeCellRef.current;
+    if (!c || !cell) return;
+    c.scrollLeft = centerScrollLeft(c.clientWidth, cell.offsetLeft - c.offsetLeft, cell.clientWidth);
+  }, [activeId]);
+
+  // Mouse-wheel → horizontal scroll (non-passive so preventDefault sticks), like the doc modal.
+  React.useEffect(() => {
+    const c = scrollRef.current;
+    if (!c) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!shouldHijackWheel(e.deltaX, e.deltaY, c.scrollWidth, c.clientWidth)) return;
+      e.preventDefault();
+      c.scrollLeft += e.deltaY;
+    };
+    c.addEventListener('wheel', onWheel, { passive: false });
+    return () => c.removeEventListener('wheel', onWheel);
+  }, []);
 
   return (
     <div className="relative flex shrink-0 items-center border-t border-border bg-card">
@@ -56,6 +81,7 @@ export function AgentNavigatorStrip({ agents, activeId, onSelect }: AgentNavigat
           return (
             <button
               key={agent.transcriptId}
+              ref={isActive ? activeCellRef : undefined}
               type="button"
               aria-current={isActive ? "true" : undefined}
               onClick={() => onSelect(agent.transcriptId)}

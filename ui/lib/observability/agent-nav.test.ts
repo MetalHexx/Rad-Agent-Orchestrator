@@ -17,6 +17,19 @@ test('flattenAgentTree yields main first then subagents in tree order (FR-12, FR
   assert.deepEqual(flattenAgentTree(tree).map((a) => a.transcriptId), ['sess', 'a1', 'b1']);
 });
 
+test('main label is Main Agent; subagents sort by startedAt ascending, missing last (FR-12, FR-14)', () => {
+  const tree = [
+    node({ transcriptId: 'sess', role: 'main', label: 'main', file: 'main.json' }),
+    node({ transcriptId: 'late', label: 'coder', startedAt: '2026-06-21T00:00:03.000Z' }),
+    node({ transcriptId: 'nostart', label: 'reviewer' }),                                  // missing startedAt → last
+    node({ transcriptId: 'early', label: 'explore', startedAt: '2026-06-21T00:00:01.000Z' }),
+  ];
+  const flat = flattenAgentTree(tree);
+  assert.deepEqual(flat.map((a) => a.transcriptId), ['sess', 'early', 'late', 'nostart']);
+  assert.equal(flat[0].label, 'Main Agent');                       // main never shows the raw session id
+  assert.equal(flat[1].startedAt, '2026-06-21T00:00:01.000Z');     // startedAt propagated onto NavAgent
+});
+
 test('siblingNav returns neighbor ids, clamped at the ends (FR-15)', () => {
   const list = [{ transcriptId: 'sess' }, { transcriptId: 'a1' }, { transcriptId: 'b1' }] as never;
   assert.deepEqual(siblingNav(list, 'a1'), { prevId: 'sess', nextId: 'b1' });

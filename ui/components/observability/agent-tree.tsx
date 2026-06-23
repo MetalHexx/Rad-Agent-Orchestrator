@@ -93,7 +93,7 @@ export function AgentTree({ tree, title = 'Agent Breakdown', coverage, ready = t
     <section className={CARD}>
       <Header title={title} />
       <p className="px-5 pt-2 text-xs text-muted-foreground">
-        Bars and % show share of spend in the selected window · sorted by spend{coverageNote}
+        Bars and % show share of spend in the selected window · in execution order{coverageNote}
       </p>
       <div className="px-3 pb-3 pt-2">
         <AgentRow

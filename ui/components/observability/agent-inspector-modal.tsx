@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { ModalShell } from "@/components/modal/modal-shell";
 import { FacetTabs } from "./facet-tabs";
 import { AgentNavigatorStrip } from "./agent-navigator-strip";
@@ -14,8 +14,8 @@ import { useAgentInspector, useSessionAgents } from "@/hooks/use-agent-inspector
 // FR-13, FR-14, FR-15, DD-1, DD-2, DD-3, DD-5, DD-6, DD-7, NFR-5, NFR-6)
 //
 // Layout (DD-1):
-//   header = AgentIdentityHeader (bold label + descriptor, DD-2)
-//   body   = FacetTabs + active panel (RawTranscriptView | empty state) + AgentPrevNext (FR-15)
+//   header = AgentIdentityHeader (one-line: bold label + muted descriptor, DD-2)
+//   body   = FacetTabs + active panel (RawTranscriptView | empty state) + content-edge nav chevrons (FR-15)
 //   footer = AgentNavigatorStrip (DD-1)
 //
 // Driven by useSessionAgents + useAgentInspector hooks.
@@ -24,7 +24,9 @@ import { useAgentInspector, useSessionAgents } from "@/hooks/use-agent-inspector
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
-// AgentIdentityHeader — bold label + muted descriptor (DD-2)
+// AgentIdentityHeader — one line: bold label + muted descriptor (DD-2)
+// Both spans are direct children of ModalShell's `flex items-center gap-2`
+// header, so they lay out inline like the artifact viewer's title (item 3).
 // ---------------------------------------------------------------------------
 
 interface AgentIdentityHeaderProps {
@@ -38,50 +40,12 @@ function AgentIdentityHeader({ label, agentType, role, model }: AgentIdentityHea
   const parts = [agentType, role, model].filter(Boolean);
   const descriptor = parts.length > 0 ? parts.join(' · ') : null;
   return (
-    <div className="flex min-w-0 flex-col gap-0.5">
-      <span className="truncate font-semibold text-foreground leading-tight">{label}</span>
+    <>
+      <span className="truncate text-sm font-medium text-foreground">{label}</span>
       {descriptor && (
-        <span className="truncate text-xs text-muted-foreground leading-tight">{descriptor}</span>
+        <span className="truncate text-xs text-muted-foreground">{descriptor}</span>
       )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// AgentPrevNext — edge prev/next chevrons wired to the hook's nav + ←/→ keys (FR-15, DD-6)
-// ---------------------------------------------------------------------------
-
-interface AgentPrevNextProps {
-  prevId: string | null;
-  nextId: string | null;
-  onPrev: () => void;
-  onNext: () => void;
-}
-
-function AgentPrevNext({ prevId, nextId, onPrev, onNext }: AgentPrevNextProps) {
-  return (
-    <div className="flex items-center gap-1">
-      <Button
-        variant="ghost"
-        size="icon"
-        aria-label="Previous agent"
-        disabled={!prevId}
-        onClick={onPrev}
-        className="cursor-pointer"
-      >
-        <ChevronLeft className="size-4" aria-hidden="true" />
-      </Button>
-      <Button
-        variant="ghost"
-        size="icon"
-        aria-label="Next agent"
-        disabled={!nextId}
-        onClick={onNext}
-        className="cursor-pointer"
-      >
-        <ChevronRight className="size-4" aria-hidden="true" />
-      </Button>
-    </div>
+    </>
   );
 }
 
@@ -92,6 +56,9 @@ function AgentPrevNext({ prevId, nextId, onPrev, onNext }: AgentPrevNextProps) {
 export interface AgentInspectorModalProps {
   sessionId: string;
   agentId: string | null;
+  /** transcriptId → display label from the breakdown table (authoritative numbering,
+   *  e.g. 'coder 1', 'Main Agent'). Keeps the modal's title + chips in lockstep with the table. */
+  labels?: Map<string, string>;
   /** Call when the user changes the active agent (chip or prev/next). */
   onSelectAgent: (transcriptId: string) => void;
   onClose: () => void;
@@ -101,7 +68,7 @@ export interface AgentInspectorModalProps {
 }
 
 export function AgentInspectorModal({
-  sessionId, agentId, onSelectAgent, onClose, isFullScreen, onToggleFullScreen, dataState = "open",
+  sessionId, agentId, labels, onSelectAgent, onClose, isFullScreen, onToggleFullScreen, dataState = "open",
 }: AgentInspectorModalProps) {
   const { navList } = useSessionAgents(sessionId);
   const { transcript, justUpdated, activeFacet, setActiveFacet, prevId, nextId } = useAgentInspector(
@@ -119,30 +86,23 @@ export function AgentInspectorModal({
     if (nextId) onSelectAgent(nextId);
   }, [nextId, onSelectAgent]);
 
-  // Agent identity header slot (DD-2)
+  // Agent identity header slot (DD-2). Label comes from the table's authoritative
+  // numbering when available, so the title reads 'Main Agent' / 'coder 1'.
   const titleSlot = (
     <AgentIdentityHeader
-      label={activeAgent?.label ?? agentId ?? 'Agent'}
+      label={labels?.get(agentId ?? '') ?? activeAgent?.label ?? 'Agent'}
       agentType={activeAgent?.agentType}
       role={activeAgent?.role}
       model={activeAgent?.model}
     />
   );
 
-  // Prev/next header actions slot (FR-15, DD-6)
-  const headerActions = (
-    <AgentPrevNext
-      prevId={prevId}
-      nextId={nextId}
-      onPrev={handlePrev}
-      onNext={handleNext}
-    />
-  );
-
-  // Footer: agent navigator strip (DD-1)
+  // Footer: agent navigator strip (DD-1). Chips carry the table's mapped labels;
+  // order stays chronological from navList. Main chip resolves to 'Main Agent'.
+  const chips = navList.map((a) => ({ ...a, label: labels?.get(a.transcriptId) ?? a.label }));
   const footer = (
     <AgentNavigatorStrip
-      agents={navList}
+      agents={chips}
       activeId={agentId}
       onSelect={onSelectAgent}
     />
@@ -152,7 +112,6 @@ export function AgentInspectorModal({
     <ModalShell
       ariaLabel="Agent Inspector"
       title={titleSlot}
-      headerActions={headerActions}
       footer={footer}
       onClose={onClose}
       onPrev={prevId ? handlePrev : undefined}
@@ -193,6 +152,23 @@ export function AgentInspectorModal({
           )}
         </div>
       </div>
+
+      {/* Content-edge nav chevrons (FR-15) — overlay the body's relative container,
+          mirroring the artifact viewer; ends disable. Keyboard ←/→ stays via ModalShell. */}
+      <button type="button" aria-label="Previous agent" onClick={handlePrev} disabled={!prevId}
+        className={cn(
+          "absolute left-2 top-1/2 z-10 -translate-y-1/2 cursor-pointer rounded-full bg-background/70 p-2 text-foreground hover:bg-background",
+          !prevId && "pointer-events-none opacity-40",
+        )}>
+        <ChevronLeft className="size-5" aria-hidden="true" />
+      </button>
+      <button type="button" aria-label="Next agent" onClick={handleNext} disabled={!nextId}
+        className={cn(
+          "absolute right-2 top-1/2 z-10 -translate-y-1/2 cursor-pointer rounded-full bg-background/70 p-2 text-foreground hover:bg-background",
+          !nextId && "pointer-events-none opacity-40",
+        )}>
+        <ChevronRight className="size-5" aria-hidden="true" />
+      </button>
     </ModalShell>
   );
 }

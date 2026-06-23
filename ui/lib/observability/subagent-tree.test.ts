@@ -39,12 +39,31 @@ test('groups subagents by agentType, expands to agentId runs labelled by first-s
   assert.deepEqual(labels, ['coder 1', 'coder 2']);
 });
 
-test('sorts groups and model segments by tokens desc (FR-4)', () => {
+test('orders groups + runs by first activity; numbering follows execution order, not spend (FR-3)', () => {
   const tree = buildSubagentTree([
-    row({ source: 'subagent', agentType: 'small', agentId: 's', outputTokens: 1 }),
-    row({ source: 'subagent', agentType: 'big', agentId: 'b', outputTokens: 100 }),
+    // 'reviewer' is active earliest → its group sorts before 'coder'.
+    row({ source: 'subagent', agentType: 'reviewer', agentId: 'r1', outputTokens: 1, timestamp: '2026-06-21T00:00:01.000Z' }),
+    // coder run c2 spends MORE but starts LATER than c1 → must still number as 'coder 2'.
+    row({ source: 'subagent', agentType: 'coder', agentId: 'c2', outputTokens: 100, timestamp: '2026-06-21T00:00:03.000Z' }),
+    row({ source: 'subagent', agentType: 'coder', agentId: 'c1', outputTokens: 5, timestamp: '2026-06-21T00:00:02.000Z' }),
   ]);
-  assert.deepEqual(tree.subagents.map((g) => g.label), ['big', 'small']);
+  // reviewer (t=1) before coder group (earliest run t=2)
+  assert.deepEqual(tree.subagents.map((g) => g.label), ['reviewer', 'coder']);
+  const coder = tree.subagents.find((g) => g.label === 'coder')!;
+  // c1 (earlier, fewer tokens) is 'coder 1'; c2 (later, more tokens) is 'coder 2'.
+  assert.deepEqual((coder.runs ?? []).map((r) => ({ key: r.key, label: r.label })), [
+    { key: 'c1', label: 'coder 1' },
+    { key: 'c2', label: 'coder 2' },
+  ]);
+});
+
+test('a run with no parseable timestamp sinks to the end of its group (FR-3)', () => {
+  const tree = buildSubagentTree([
+    row({ source: 'subagent', agentType: 'coder', agentId: 'noTs', outputTokens: 9, timestamp: 'not-a-date' }),
+    row({ source: 'subagent', agentType: 'coder', agentId: 'real', outputTokens: 1, timestamp: '2026-06-21T00:00:05.000Z' }),
+  ]);
+  const coder = tree.subagents.find((g) => g.label === 'coder')!;
+  assert.deepEqual((coder.runs ?? []).map((r) => r.key), ['real', 'noTs']);   // dated run first, undated last
 });
 
 test('falls back to (unattributed) when agentType missing, (unkeyed) run key is stable', () => {

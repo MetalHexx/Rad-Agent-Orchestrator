@@ -6,15 +6,33 @@ export interface NavAgent {
   role: 'main' | 'subagent';
   agentType?: string;
   model?: string;
+  startedAt?: string;
 }
 
 export function flattenAgentTree(nodes: AgentNode[]): NavAgent[] {
   const out: NavAgent[] = [];
   const walk = (ns: AgentNode[]) => ns.forEach((n) => {
-    out.push({ transcriptId: n.transcriptId, label: n.label ?? n.agentType ?? n.transcriptId, role: n.role, agentType: n.agentType, model: n.model?.length ? n.model.join(', ') : undefined });
+    out.push({
+      transcriptId: n.transcriptId,
+      label: n.role === 'main' ? 'Main Agent' : (n.label ?? n.agentType ?? n.transcriptId),
+      role: n.role,
+      agentType: n.agentType,
+      model: n.model?.length ? n.model.join(', ') : undefined,
+      startedAt: n.startedAt,
+    });
     if (n.children?.length) walk(n.children);
   });
   walk(nodes);
+  // Strip order = strict chronological: main pinned first, then by startedAt ascending
+  // (missing startedAt sorts last). ISO strings compare chronologically.
+  const startKey = (a: NavAgent) => (a.role === 'main' ? '' : (a.startedAt ?? '￿'));
+  out.sort((a, b) =>
+    a.role === 'main' ? -1
+      : b.role === 'main' ? 1
+      : startKey(a) < startKey(b) ? -1
+      : startKey(a) > startKey(b) ? 1
+      : 0,
+  );
   return out;
 }
 
