@@ -5,12 +5,13 @@ export interface NavAgent {
   label: string;
   role: 'main' | 'subagent';
   agentType?: string;
+  model?: string;
 }
 
 export function flattenAgentTree(nodes: AgentNode[]): NavAgent[] {
   const out: NavAgent[] = [];
   const walk = (ns: AgentNode[]) => ns.forEach((n) => {
-    out.push({ transcriptId: n.transcriptId, label: n.label ?? n.agentType ?? n.transcriptId, role: n.role, agentType: n.agentType });
+    out.push({ transcriptId: n.transcriptId, label: n.label ?? n.agentType ?? n.transcriptId, role: n.role, agentType: n.agentType, model: n.model?.length ? n.model.join(', ') : undefined });
     if (n.children?.length) walk(n.children);
   });
   walk(nodes);
