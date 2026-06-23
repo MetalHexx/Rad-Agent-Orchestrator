@@ -42,6 +42,11 @@ export interface TelemetryChangeNotification {
   payload: { rows: ObservabilityUsageRow[] };
   timestamp: string;
 }
+export interface TranscriptChangeNotification {
+  type: 'transcript_change';
+  payload: { sessionId: string; agentId?: string; kind: 'added' | 'changed' | 'removed' };
+  timestamp: string;
+}
 
 interface RuntimeScheduler { schedule(cb: () => void): unknown; cancel(handle: unknown): void; }
 type MinimalWatcher = { on: (e: string, cb: (p: unknown) => void) => unknown; close: () => Promise<void> };
@@ -62,6 +67,13 @@ interface RuntimeArgs {
   // Optional injected telemetry watcher so a test can drive telemetry events
   // deterministically; production constructs a real chokidar watch.
   makeTelemetryWatcher?: () => MinimalWatcher;
+  // The transcripts directory (~/.radorc/transcripts) watched for per-session
+  // JSON writes. When provided, build() warms a fourth process-level singleton
+  // watch scoped to it (FR-10, AD-2, AD-8).
+  transcriptsRoot?: string;
+  // Optional injected transcript watcher so a test can drive transcript events
+  // deterministically; production constructs a real chokidar watch.
+  makeTranscriptWatcher?: () => MinimalWatcher;
   coalesceWindowMs?: number;
   maxRestarts?: number;
   // Optional injected scheduler so a test can drive coalescing deterministically
@@ -91,6 +103,10 @@ const REGISTRY_TOPIC = 'registry';
 // in. Distinct from all other topics so the hub carries all five without collision
 // (FR-10, AD-5).
 const TELEMETRY_TOPIC = 'telemetry';
+// The single topic every transcript-change notification publishes on;
+// subscribeTranscripts fans it in. Distinct from all other topics so the hub
+// carries all six without collision (FR-10, AD-2, AD-8).
+const TRANSCRIPT_TOPIC = 'transcripts';
 
 function build(args: RuntimeArgs) {
   const hub = createTopicHub({
@@ -102,6 +118,7 @@ function build(args: RuntimeArgs) {
   let watcher: MinimalWatcher | null = null;
   let registryWatcher: MinimalWatcher | null = null;
   let telemetryWatcher: MinimalWatcher | null = null;
+  let transcriptWatcher: MinimalWatcher | null = null;
 
   const emitDegraded = () => {
     const n: DegradedNotification = { type: 'live_degraded', payload: { degraded: true } };
@@ -135,6 +152,16 @@ function build(args: RuntimeArgs) {
   const telemetrySupervisor = createWatcherSupervisor({
     maxRestarts: args.maxRestarts ?? 3,
     start: () => { startTelemetryWatcher(); },
+    onDegraded: emitDegraded,
+  });
+
+  // The transcript watch runs under its OWN supervisor so a transcript-watch
+  // failure restarts the transcript watcher on a SEPARATE restart budget. A
+  // transcript fault never degrades usage liveness (NFR-2, NFR-3, AD-8).
+  // Shares the common degrade emit so a degrade of any surface degrades "live".
+  const transcriptSupervisor = createWatcherSupervisor({
+    maxRestarts: args.maxRestarts ?? 3,
+    start: () => { startTranscriptWatcher(); },
     onDegraded: emitDegraded,
   });
 
@@ -397,6 +424,78 @@ function build(args: RuntimeArgs) {
     hub.publish({ topic: TELEMETRY_TOPIC, kind: 'changed', projectName: '__telemetry__', notif });
   }
 
+  // Parse a transcript file path into { sessionId, agentId? }.
+  // Expected layout: <transcriptsRoot>/<sessionId>/<file>.json
+  // agent-<id>.json → agentId = id; main.json or other → no agentId.
+  // index.json is excluded (directory index, not a transcript file).
+  // Returns null when the path does not match the expected layout.
+  function parseTranscriptPath(root: string, filePath: string): { sessionId: string; agentId?: string } | null {
+    const rel = path.relative(root, filePath);
+    const parts = rel.split(path.sep);
+    if (parts.length < 2) return null;
+    const [sessionId, file] = [parts[0], parts[parts.length - 1]];
+    if (!file.endsWith('.json') || file === 'index.json') return null;
+    const m = /^agent-(.+)\.json$/.exec(file);
+    return { sessionId, agentId: m ? m[1] : undefined };
+  }
+
+  const TRANSCRIPT_KIND = { add: 'added', change: 'changed', unlink: 'removed' } as const;
+
+  // Parse the file path and publish a transcript_change notification on the
+  // dedicated TRANSCRIPT_TOPIC. Non-matching paths (e.g. index.json) are silently
+  // ignored. One parse per event; every subscribeTranscripts listener rides the
+  // same coalesced delivery (NFR-3).
+  function publishTranscriptEvent(kind: keyof typeof TRANSCRIPT_KIND, filePath: string): void {
+    if (!args.transcriptsRoot) return;
+    const id = parseTranscriptPath(args.transcriptsRoot, filePath);
+    if (!id) return;
+    const notif: TranscriptChangeNotification = {
+      type: 'transcript_change',
+      payload: { sessionId: id.sessionId, ...(id.agentId ? { agentId: id.agentId } : {}), kind: TRANSCRIPT_KIND[kind] },
+      timestamp: new Date().toISOString(),
+    };
+    hub.publish({ topic: TRANSCRIPT_TOPIC, kind: 'changed', projectName: '__transcripts__', notif });
+  }
+
+  // Fourth process-level singleton watch scoped to transcriptsRoot, distinct from
+  // the projects, registry, and telemetry watchers (AD-2, AD-8). Only constructed
+  // when transcriptsRoot is provided. Errors route through the dedicated
+  // transcriptSupervisor (its own restart budget — NFR-2, NFR-3) and share the
+  // common degrade emit, so a transcript-watch failure still degrades "live".
+  function startTranscriptWatcher(): void {
+    if (!args.transcriptsRoot) return;
+    // Capture the outgoing watcher so a supervisor restart closes it once the new
+    // one is wired, rather than leaking its fs handles + listeners (parity with
+    // startWatcher's Defect 1). Skipped on the very first start.
+    const previous = transcriptWatcher;
+    let w: MinimalWatcher;
+    if (args.makeTranscriptWatcher) {
+      w = args.makeTranscriptWatcher();
+    } else {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const chokidarMod = require('chokidar');
+      const usePolling = process.env.CHOKIDAR_USEPOLLING === '1';
+      w = chokidarMod.watch(args.transcriptsRoot, {
+        usePolling,
+        ignoreInitial: true,
+      }) as never;
+    }
+    (['add', 'change', 'unlink'] as const).forEach((t) => {
+      w.on(t, (fp: unknown) => publishTranscriptEvent(t, String(fp)));
+    });
+    // Route transcript-watch errors into the transcript supervisor so the transcript
+    // watcher is the thing that gets restarted, on its own budget (NFR-2, NFR-3).
+    w.on('error', (err: unknown) => transcriptSupervisor.reportError(err));
+    // chokidar 'ready' marks a healthy (re)start — reset the transcript budget so
+    // transient errors that each recover do not accumulate into a permanent degrade
+    // (parity with startWatcher's Defect 2).
+    w.on('ready', () => transcriptSupervisor.reportHealthy());
+    transcriptWatcher = w;
+    if (previous) {
+      void previous.close().catch((e) => console.error('[live] transcript watcher close failed:', e));
+    }
+  }
+
   function startWatcher(): void {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const chokidarMod = require('chokidar');
@@ -447,6 +546,9 @@ function build(args: RuntimeArgs) {
   // Start the telemetry watch eagerly (no-op when telemetryRoot is absent),
   // so telemetry rows flow without waiting for a subscriber to connect (FR-10).
   startTelemetryWatcher();
+  // Start the transcript watch eagerly (no-op when transcriptsRoot is absent),
+  // so transcript notifications flow without waiting for a subscriber (FR-10, AD-8).
+  startTranscriptWatcher();
 
   function toNotif(e: ArtifactSemanticEvent): ArtifactChangeNotification {
     return { type: 'artifact_change', payload: { projectName: e.projectName, kind: e.kind }, timestamp: new Date().toISOString() };
@@ -468,7 +570,8 @@ function build(args: RuntimeArgs) {
           !e.topic.startsWith(STATE_TOPIC_PREFIX) &&
           e.topic !== LIFECYCLE_TOPIC &&
           e.topic !== REGISTRY_TOPIC &&
-          e.topic !== TELEMETRY_TOPIC
+          e.topic !== TELEMETRY_TOPIC &&
+          e.topic !== TRANSCRIPT_TOPIC
         )
           listener(toNotif(e));
       });
@@ -506,13 +609,24 @@ function build(args: RuntimeArgs) {
         if (e.topic === TELEMETRY_TOPIC && e.notif) listener(e.notif as TelemetryChangeNotification);
       });
     },
+    subscribeTranscripts(listener: (n: TranscriptChangeNotification) => void): () => void {
+      // Rides the single transcript topic. The parsed notification was built at
+      // publish time and rides the hub event's notif field, so we deliver it
+      // directly after coalescing (a burst collapses under maxQueuePerTopic = 1).
+      // Scoped to TRANSCRIPT_TOPIC so registry/telemetry/artifact events are never
+      // delivered here (AD-2, AD-8).
+      return hub.subscribeAll((e) => {
+        if (e.topic === TRANSCRIPT_TOPIC && e.notif) listener(e.notif as TranscriptChangeNotification);
+      });
+    },
     subscribeDegraded(listener: (n: DegradedNotification) => void): () => void {
       degradedListeners.add(listener);
       return () => degradedListeners.delete(listener);
     },
-    // Tear down all three process-level watchers (projects, registry, telemetry).
-    // The singleton normally stays warm for the process lifetime; teardown exists so
-    // a host that owns the runtime lifecycle can close all fs handles together.
+    // Tear down all four process-level watchers (projects, registry, telemetry,
+    // transcripts). The singleton normally stays warm for the process lifetime;
+    // teardown exists so a host that owns the runtime lifecycle can close all fs
+    // handles together.
     teardown(): void {
       if (watcher) {
         void watcher.close().catch((e) => console.error('[live] watcher close failed:', e));
@@ -525,6 +639,10 @@ function build(args: RuntimeArgs) {
       if (telemetryWatcher) {
         void telemetryWatcher.close().catch((e) => console.error('[live] telemetry watcher close failed:', e));
         telemetryWatcher = null;
+      }
+      if (transcriptWatcher) {
+        void transcriptWatcher.close().catch((e) => console.error('[live] transcript watcher close failed:', e));
+        transcriptWatcher = null;
       }
       // Cancel any pending per-file flush debounces; otherwise their real timers fire
       // ~50 ms after teardown and call flushTelemetryFile on the torn-down runtime
