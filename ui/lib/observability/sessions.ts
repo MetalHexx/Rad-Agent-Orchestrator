@@ -2,6 +2,9 @@ import type { ObservabilityUsageRow } from "@rad-orchestration/telemetry";
 import { effectiveTokens } from "./effective-tokens";
 
 export const DECAY_WINDOW_MS = 5 * 60 * 1000;
+/** Agent Breakdown pulse window — short so the *current* subagent reads as the only live one
+ *  (sequential pipelines were reading as parallel because dots glowed for the full decay window). */
+export const AGENT_ACTIVE_WINDOW_MS = 60 * 1000;
 
 /** Composite merge key — uniqueness is only guaranteed per session (AD-4). */
 export function rowKey(r: Pick<ObservabilityUsageRow, "sessionId" | "usageId">): string {

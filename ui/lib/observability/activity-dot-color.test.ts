@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { dotFreshness, dotRestingColor, isActive, DECAY_WINDOW_MS } from './activity-dot-color';
+import { dotFreshness, dotRestingColor, isActive, DECAY_WINDOW_MS, AGENT_ACTIVE_WINDOW_MS } from './activity-dot-color';
 
 test('freshness is 1 at the instant of activity and 0 at/after the 5-min window (DD-7)', () => {
   assert.equal(dotFreshness(0), 1);
@@ -19,6 +19,17 @@ test('isActive is true within the decay window, false at/after it (FR-12)', () =
   assert.equal(isActive(0), true);
   assert.equal(isActive(DECAY_WINDOW_MS - 1), true);
   assert.equal(isActive(DECAY_WINDOW_MS), false);
+});
+
+test('isActive honors a per-consumer window override; default stays the 5-min decay window', () => {
+  // Agent Breakdown passes the short 60s window so prior subagents settle fast.
+  assert.equal(AGENT_ACTIVE_WINDOW_MS, 60 * 1000);
+  // 90s of silence: still "active" on the default window, but idle on the agent window.
+  assert.equal(isActive(90_000), true, 'default window keeps a 90s-idle dot active');
+  assert.equal(isActive(90_000, AGENT_ACTIVE_WINDOW_MS), false, 'agent window settles a 90s-idle dot');
+  // Boundary of the override window.
+  assert.equal(isActive(AGENT_ACTIVE_WINDOW_MS - 1, AGENT_ACTIVE_WINDOW_MS), true);
+  assert.equal(isActive(AGENT_ACTIVE_WINDOW_MS, AGENT_ACTIVE_WINDOW_MS), false);
 });
 
 test('DECAY_WINDOW_MS is the single canonical export from sessions (FR-2)', async () => {

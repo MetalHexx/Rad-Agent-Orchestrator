@@ -362,8 +362,8 @@
 /* ActivityDot glow: pure blurred halo, NO hard ring (DD-7). blur >> spread so the ring
    never renders at spread-0; symmetric endpoints for a seamless loop. */
 @keyframes activity-dot-glow-kf {
-  0%, 100% { box-shadow: 0 0 6px 1px color-mix(in srgb, var(--live-accent) 35%, transparent); }
-  50%      { box-shadow: 0 0 12px 2px color-mix(in srgb, var(--live-accent) 55%, transparent); }
+  0%, 100% { box-shadow: 0 0 6px 1px color-mix(in srgb, var(--activity-dot-glow-color, var(--live-accent)) 35%, transparent); }
+  50%      { box-shadow: 0 0 12px 2px color-mix(in srgb, var(--activity-dot-glow-color, var(--live-accent)) 55%, transparent); }
 }
 .activity-dot-pulse { animation: activity-dot-glow-kf 1.4s ease-in-out infinite; }
 
@@ -416,7 +416,7 @@
     box-shadow: inset 0 0 26px 4px color-mix(in srgb, var(--live) 25%, transparent);
   }
   /* Static glow fallback so the activity dot remains visible under reduced motion (NFR-6). */
-  .activity-dot-pulse { animation: none; box-shadow: 0 0 8px 2px color-mix(in srgb, var(--live-accent) 45%, transparent); }
+  .activity-dot-pulse { animation: none; box-shadow: 0 0 8px 2px color-mix(in srgb, var(--activity-dot-glow-color, var(--live-accent)) 45%, transparent); }
   /* Neutralize the modal enter/exit + size-morph animations under reduced motion. */
   .artifact-modal-overlay,
   .artifact-modal-panel {

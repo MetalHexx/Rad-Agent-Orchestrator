@@ -1,5 +1,5 @@
 import { DECAY_WINDOW_MS } from "./sessions";
-export { DECAY_WINDOW_MS } from "./sessions";
+export { DECAY_WINDOW_MS, AGENT_ACTIVE_WINDOW_MS } from "./sessions";
 
 export function dotFreshness(msSinceActivity: number): number {
   if (msSinceActivity <= 0) return 1;
@@ -13,6 +13,6 @@ export function dotRestingColor(msSinceActivity: number): string {
   return `color-mix(in srgb, var(--live-accent) ${pct}%, var(--muted-foreground))`;
 }
 
-export function isActive(msSinceActivity: number): boolean {
-  return msSinceActivity < DECAY_WINDOW_MS;
+export function isActive(msSinceActivity: number, windowMs: number = DECAY_WINDOW_MS): boolean {
+  return msSinceActivity < windowMs;
 }

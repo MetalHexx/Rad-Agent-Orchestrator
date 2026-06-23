@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import React, { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { AgentNavigatorStrip } from './agent-navigator-strip';
+import { AgentNavigatorStrip, type AgentChip } from './agent-navigator-strip';
 (globalThis as any).React = React;
 
-const agents = [
+const agents: AgentChip[] = [
   { transcriptId: 'sess', label: 'main', role: 'main' },
   { transcriptId: 'a1', label: 'Coder 1', role: 'subagent' },
   { transcriptId: 'b1', label: 'Explore 1', role: 'subagent' },
