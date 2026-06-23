@@ -11,7 +11,8 @@ export type SSEEventType =
   | 'artifact_change'
   | 'live_degraded'
   | 'registry_change'
-  | 'telemetry_rows';
+  | 'telemetry_rows'
+  | 'transcript_change';
 
 export interface SSEEvent<T extends SSEEventType = SSEEventType> {
   type: T;
@@ -43,6 +44,7 @@ export interface SSEPayloadMap {
   };
   registry_change: Record<string, never>;
   telemetry_rows: { rows: ObservabilityUsageRow[] };
+  transcript_change: { sessionId: string; agentId?: string; kind: 'added' | 'changed' | 'removed' };
 }
 
 /** Single-source-of-truth runtime array of all registered SSE event names.
@@ -58,6 +60,7 @@ export const EVENT_TYPES: SSEEventType[] = [
   'artifact_change',
   'live_degraded',
   'telemetry_rows',
+  'transcript_change',
 ];
 
 /** Connection status for the SSE client hook */

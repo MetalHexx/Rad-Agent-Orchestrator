@@ -76,6 +76,7 @@ export async function GET(request: Request) {
         projectsRoot: absoluteProjectsDir,
         registryRoot: getRegistryRoot(),
         telemetryRoot: path.join(getTelemetryRoot(), 'usage'),
+        transcriptsRoot: path.join(getTelemetryRoot(), 'transcripts'),
       });
       const unsubArtifacts = liveRuntime.subscribeAllArtifactTopics((n) =>
         enqueue(createSSEEvent('artifact_change', n.payload)),
@@ -105,6 +106,9 @@ export async function GET(request: Request) {
           enqueue(createSSEEvent('project_removed', { projectName }));
         }
       });
+      const unsubTranscripts = liveRuntime.subscribeTranscripts((n) =>
+        enqueue(createSSEEvent('transcript_change', n.payload)),
+      );
 
       // ── 4. Cleanup on disconnect ───────────────────────────────────
       function cleanup(): void {
@@ -118,6 +122,7 @@ export async function GET(request: Request) {
         unsubState();
         unsubRegistry();
         unsubLifecycle();
+        unsubTranscripts();
 
         try {
           controller.close();
