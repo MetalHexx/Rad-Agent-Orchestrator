@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 1 as const;
+export const SCHEMA_VERSION = 2 as const;
 
 export type OpKind =
   | 'requirements' | 'master_plan' | 'coding' | 'code_review'
@@ -22,9 +22,11 @@ export interface TelemetryRecord {
   serverToolUse?: Record<string, number>;
   toolCalls?: { total: number; byName?: Record<string, number>; errors?: number };
   agentType?: string;
+  agentId?: string;                      // join key == transcript transcriptId (AD-7)
+  toolUseId?: string;                    // spawn edge == transcript parentToolUseId (AD-7)
   worktree?: string;
   source: 'main-agent' | 'subagent';
-  pointers: { sourceFile: string; requestId?: string; agentId?: string; toolUseId?: string };
+  pointers: { sourceFile: string; requestId?: string };
   operation?: OperationBlock;            // DORMANT until TELEMETRY-4 (AD-9)
   extra?: Record<string, unknown>;
 }

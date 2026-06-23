@@ -13,7 +13,7 @@ export interface ObservabilityUsageRow {
   model: string;                          // always present on TelemetryRecord
   source: 'main-agent' | 'subagent';      // always present
   agentType?: string;                     // optional (present => a subagent row)
-  agentId?: string;                       // optional — flattened from pointers.agentId
+  agentId?: string;                       // optional — lifted top-level field; legacy rows fall back to pointers.agentId
 }
 
 export function toObservabilityUsageRow(r: TelemetryRecord): ObservabilityUsageRow {
@@ -30,6 +30,8 @@ export function toObservabilityUsageRow(r: TelemetryRecord): ObservabilityUsageR
   if (r.cacheCreationTokens !== undefined) row.cacheCreationTokens = r.cacheCreationTokens;
   if (r.worktree !== undefined) row.worktree = r.worktree;
   if (r.agentType !== undefined) row.agentType = r.agentType;
-  if (r.pointers?.agentId !== undefined) row.agentId = r.pointers.agentId;
+  const legacy = r.pointers as { agentId?: string };
+  const agentId = r.agentId ?? legacy.agentId;
+  if (agentId !== undefined) row.agentId = agentId;
   return row;
 }

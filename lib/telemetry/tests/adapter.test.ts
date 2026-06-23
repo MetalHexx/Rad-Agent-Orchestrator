@@ -89,9 +89,9 @@ describe('ClaudeCodeAdapter', () => {
     // SessionEnd carries no inline identity — rows are de-anonymized from the
     // filename (agentId) and the agent-<id>.meta.json sidecar (agentType, toolUseId).
     expect(subRecord.agentType).toBe('coder');
-    expect(subRecord.pointers.agentId).toBe(SUBAGENT_ID);
-    expect(subRecord.pointers.toolUseId).toBe('toolu_sub_a0d327');
-    expect(byId.get('req_sub_2')!.pointers.agentId).toBe(SUBAGENT_ID);
+    expect(subRecord.agentId).toBe(SUBAGENT_ID);
+    expect(subRecord.toolUseId).toBe('toolu_sub_a0d327');
+    expect(byId.get('req_sub_2')!.agentId).toBe(SUBAGENT_ID);
   });
 
   it('SessionEnd still attributes subagent rows by filename when the .meta.json sidecar is missing (FR-3)', () => {
@@ -107,9 +107,9 @@ describe('ClaudeCodeAdapter', () => {
     const records = new ClaudeCodeAdapter().capture(signal, new Set()); // must not throw
     const sub = records.find((r) => r.usageId === 'req_sub_z')!;
     expect(sub.source).toBe('subagent');
-    expect(sub.pointers.agentId).toBe('deadbeef');       // recovered from filename
+    expect(sub.agentId).toBe('deadbeef');                 // recovered from filename
     expect(sub.agentType).toBeUndefined();               // no sidecar ⇒ no type
-    expect(sub.pointers.toolUseId).toBeUndefined();       // no sidecar ⇒ no toolUseId
+    expect(sub.toolUseId).toBeUndefined();                // no sidecar ⇒ no toolUseId
   });
 
   it('PostToolUse with an agentId captures only the subagent transcript — fixture-backed (FR-3, NFR-5)', () => {
@@ -127,8 +127,8 @@ describe('ClaudeCodeAdapter', () => {
     const sub1 = records.find((r) => r.usageId === 'req_sub_1')!;
     expect(sub1.outputTokens).toBe(55);
     expect(sub1.agentType).toBe('coder');                 // subagent rows carry agentType (toRecord)
-    expect(sub1.pointers.agentId).toBe(SUBAGENT_ID);
-    expect(sub1.pointers.toolUseId).toBe('tu_1');
+    expect(sub1.agentId).toBe(SUBAGENT_ID);
+    expect(sub1.toolUseId).toBe('tu_1');
     // Assert against an independent literal suffix (not subagentPathFor, which the
     // adapter's PostToolUse branch itself calls) so the check can actually falsify.
     const expectedSuffix = path.join('fixtures', 'main-session', 'subagents', `agent-${SUBAGENT_ID}.jsonl`);
