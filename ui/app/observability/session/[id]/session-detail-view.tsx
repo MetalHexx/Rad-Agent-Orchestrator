@@ -155,6 +155,7 @@ export function SessionDetailView({ sessionId }: { sessionId: string }) {
                 title="Agent Breakdown"
                 coverage={coverage}
                 ready={ready}
+                now={now}
                 sessionId={sessionId}
                 availableIds={availableIds}
                 onInspect={setInspectId}

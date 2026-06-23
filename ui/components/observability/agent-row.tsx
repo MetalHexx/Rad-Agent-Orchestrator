@@ -8,11 +8,13 @@ import { formatDuration } from '@/lib/observability/duration-format';
 import type { AgentTreeNode } from '@/lib/observability/subagent-tree';
 import { SpendBar } from './spend-bar';
 import { InspectAgentButton } from './inspect-agent-button';
+import { ActivityDot } from './activity-dot';
 
 export interface AgentRowProps {
   node: AgentTreeNode;
   scaleMax: number;
   variant: 'main' | 'group' | 'run' | 'leaf';
+  now: number;
   expanded?: boolean;
   onToggle?: () => void;
   /** When provided and available is true, renders the Inspect agent button (FR-3, AD-7). */
@@ -22,7 +24,7 @@ export interface AgentRowProps {
 // Uniform CSS grid so name·bar·tokens·%·seam align across all depths (DD-3).
 const ROW_GRID = 'grid grid-cols-[200px_minmax(0,1fr)_64px_44px_78px]';
 
-export function AgentRow({ node, scaleMax, variant, expanded, onToggle, inspect }: AgentRowProps) {
+export function AgentRow({ node, scaleMax, variant, now, expanded, onToggle, inspect }: AgentRowProps) {
   const pct = scaleMax > 0 ? (node.tokens / scaleMax) * 100 : 0;
   const dominant = node.models[0]?.model ?? 'other';
   const meta = `${node.reqs} req${node.reqs === 1 ? '' : 's'} · ${formatDuration(Math.max(0, node.lastMs - node.firstMs))}`; // hover meta (FR-11)
@@ -43,7 +45,7 @@ export function AgentRow({ node, scaleMax, variant, expanded, onToggle, inspect 
         ) : (
           <span className="inline-block size-3.5" aria-hidden="true" />
         )}
-        <span className="size-2 rounded-full shrink-0" style={{ background: `var(${modelColor(dominant)})` }} aria-hidden="true" />
+        <ActivityDot msSinceActivity={now - node.lastMs} color={`var(${modelColor(dominant)})`} className="size-2 shrink-0" />
         <span className={cn('truncate text-sm', variant === 'run' && 'font-mono text-muted-foreground')}>{node.label}</span>
         {variant === 'group' && node.runCount > 1 && <Badge variant="outline" className="ml-1">×{node.runCount}</Badge>}
       </div>

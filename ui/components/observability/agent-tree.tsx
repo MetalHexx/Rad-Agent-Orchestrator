@@ -13,6 +13,7 @@ export interface AgentTreeProps {
   title?: string;
   coverage?: number;
   ready?: boolean;
+  now: number;
   /** Session id — used to resolve the main row's transcript id (FR-3, AD-7). */
   sessionId?: string;
   /** Set of transcript ids that have available transcripts (FR-4, AD-7). */
@@ -38,7 +39,7 @@ function leafFrom(group: AgentTreeNode): AgentTreeNode {
 }
 
 // Pure & reusable: owns ONLY expand state; no data fetch, no page/live imports (AD-1).
-export function AgentTree({ tree, title = 'Agent Breakdown', coverage, ready = true, sessionId, availableIds, onInspect }: AgentTreeProps) {
+export function AgentTree({ tree, title = 'Agent Breakdown', coverage, ready = true, now, sessionId, availableIds, onInspect }: AgentTreeProps) {
   const [expanded, setExpanded] = React.useState<Set<string>>(() => new Set());
   const toggle = React.useCallback((key: string) => {
     setExpanded((prev) => {
@@ -100,6 +101,7 @@ export function AgentTree({ tree, title = 'Agent Breakdown', coverage, ready = t
           node={tree.main}
           scaleMax={tree.windowTotal}
           variant="main"
+          now={now}
           inspect={inspectProp(mainTranscriptId)}
         />
         <div className="flex items-center gap-2 px-2 pt-3 pb-1">
@@ -126,6 +128,7 @@ export function AgentTree({ tree, title = 'Agent Breakdown', coverage, ready = t
                 node={isGroup ? group : leafFrom(group)}
                 scaleMax={tree.windowTotal}
                 variant={isGroup ? 'group' : 'leaf'}
+                now={now}
                 expanded={isOpen}
                 onToggle={isGroup ? () => toggle(group.key) : undefined}
                 inspect={!isGroup ? inspectProp(leafTranscriptId) : undefined}
@@ -138,6 +141,7 @@ export function AgentTree({ tree, title = 'Agent Breakdown', coverage, ready = t
                     node={run}
                     scaleMax={tree.windowTotal}
                     variant="run"
+                    now={now}
                     inspect={inspectProp(runTranscriptId)}
                   />
                 );

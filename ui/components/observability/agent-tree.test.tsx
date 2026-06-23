@@ -20,7 +20,7 @@ const tree = (over: Partial<SubagentTree> = {}): SubagentTree => ({
 
 // Populated: title in header, main-agent row, the Subagents subtotal divider, card styling, NO tab role (FR-1, FR-5, DD-1).
 {
-  const html = renderToStaticMarkup(createElement(AgentTree, { tree: tree(), title: 'Agent Breakdown', ready: true }));
+  const html = renderToStaticMarkup(createElement(AgentTree, { tree: tree(), title: 'Agent Breakdown', ready: true, now: 100 }));
   assert.ok(html.includes('Agent Breakdown'), 'title prop renders in header (AD-1)');
   assert.ok(html.includes('main-agent'), 'main-agent row leads (FR-2)');
   assert.ok(html.includes('Subagents'), 'subagents subtotal divider present (FR-5)');
@@ -31,14 +31,14 @@ const tree = (over: Partial<SubagentTree> = {}): SubagentTree => ({
 
 // Empty state when windowTotal === 0 (FR-10).
 {
-  const html = renderToStaticMarkup(createElement(AgentTree, { tree: tree({ windowTotal: 0, subagents: [], subagentTotal: 0, subagentPct: 0, main: { key: 'main', kind: 'main', label: 'main-agent', runCount: 1, tokens: 0, models: [], reqs: 0, firstMs: 0, lastMs: 0 } }), ready: true }));
+  const html = renderToStaticMarkup(createElement(AgentTree, { tree: tree({ windowTotal: 0, subagents: [], subagentTotal: 0, subagentPct: 0, main: { key: 'main', kind: 'main', label: 'main-agent', runCount: 1, tokens: 0, models: [], reqs: 0, firstMs: 0, lastMs: 0 } }), ready: true, now: 100 }));
   assert.ok(html.includes('No agent activity'), 'empty state copy shown (FR-10)');
   console.log('✓ empty state');
 }
 
 // Loading state when !ready → skeletons, no rows (FR-10).
 {
-  const html = renderToStaticMarkup(createElement(AgentTree, { tree: tree(), ready: false }));
+  const html = renderToStaticMarkup(createElement(AgentTree, { tree: tree(), ready: false, now: 100 }));
   assert.ok(html.includes('aria-busy="true"'), 'loading panel marks aria-busy (FR-10, NFR-6)');
   assert.ok(!html.includes('main-agent'), 'no data rows while loading');
   console.log('✓ loading state');
@@ -46,7 +46,7 @@ const tree = (over: Partial<SubagentTree> = {}): SubagentTree => ({
 
 // Coverage note appended to scale hint when coverage < 0.99 (FR-10).
 {
-  const html = renderToStaticMarkup(createElement(AgentTree, { tree: tree(), ready: true, coverage: 0.6 }));
+  const html = renderToStaticMarkup(createElement(AgentTree, { tree: tree(), ready: true, coverage: 0.6, now: 100 }));
   assert.ok(html.includes('60%') && html.toLowerCase().includes('covers'), 'partial-window note appended (FR-10)');
   console.log('✓ coverage note');
 }

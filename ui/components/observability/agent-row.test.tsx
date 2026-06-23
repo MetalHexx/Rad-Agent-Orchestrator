@@ -14,7 +14,7 @@ const node = (p: Partial<AgentTreeNode>): AgentTreeNode => ({
 
 // Group variant: shows ×count badge + an aria-expanded caret button, and carries NO inspect button (FR-7, DD-5, NFR-6).
 {
-  const html = renderToStaticMarkup(createElement(AgentRow, { node: node({}), scaleMax: 200, variant: 'group', expanded: false }));
+  const html = renderToStaticMarkup(createElement(AgentRow, { node: node({}), scaleMax: 200, variant: 'group', expanded: false, now: 1000 }));
   assert.ok(html.includes('×3'), 'group shows ×3 count badge');
   assert.ok(html.includes('aria-expanded'), 'group caret exposes aria-expanded (NFR-6)');
   assert.ok(!html.includes('aria-label="Inspect agent"'), 'group rows carry no inspect button (FR-7)');
@@ -37,7 +37,7 @@ const node = (p: Partial<AgentTreeNode>): AgentTreeNode => ({
 // Main variant without inspect prop: no inspect button rendered.
 {
   const html = renderToStaticMarkup(createElement(AgentRow, {
-    node: node({ key: 'main', kind: 'main', label: 'main-agent', runCount: 1 }), scaleMax: 200, variant: 'main',
+    node: node({ key: 'main', kind: 'main', label: 'main-agent', runCount: 1 }), scaleMax: 200, variant: 'main', now: 1000,
   }));
   assert.ok(!html.includes('aria-label="Inspect agent"'), 'main row without inspect prop renders no inspect button');
   console.log('✓ main row without inspect prop: no button');
@@ -46,7 +46,7 @@ const node = (p: Partial<AgentTreeNode>): AgentTreeNode => ({
 // Run variant: monospace label, indented name cell (DD-3).
 {
   const html = renderToStaticMarkup(createElement(AgentRow, {
-    node: node({ key: 'a1', kind: 'run', label: 'coder 1', runCount: 1 }), scaleMax: 200, variant: 'run',
+    node: node({ key: 'a1', kind: 'run', label: 'coder 1', runCount: 1 }), scaleMax: 200, variant: 'run', now: 1000,
   }));
   assert.ok(html.includes('font-mono'), 'run label is monospace (DD-3)');
   assert.ok(html.includes('pl-6'), 'run name cell is indented (DD-3)');
@@ -69,6 +69,18 @@ const node = (p: Partial<AgentTreeNode>): AgentTreeNode => ({
   assert.ok(html.includes('opus') && html.includes('sonnet') && html.includes('haiku'), 'legend lists models');
   assert.ok(html.includes('var(--model-red)'), 'legend swatch uses model token (NFR-2)');
   console.log('✓ model legend');
+}
+
+// Active agent dot pulses in the model color via ActivityDot (FR-2, DD-1, AD-3).
+{
+  const html = renderToStaticMarkup(createElement(AgentRow, {
+    node: node({ kind: 'main', label: 'main-agent', models: [{ model: 'opus', tokens: 100 }], lastMs: 1000 }),
+    scaleMax: 200, variant: 'main', now: 1000,
+  }));
+  assert.ok(html.includes('activity-dot-pulse'), 'fresh agent dot pulses (FR-2)');
+  assert.ok(html.includes('var(--model-red)'), 'dot uses the opus model color (DD-1)');
+  assert.ok(html.includes('--activity-dot-glow-color'), 'glow color threaded to the dot (DD-2)');
+  console.log('✓ agent dot: model-colored pulse');
 }
 
 console.log('\nAll AgentRow/ModelLegend tests passed');
