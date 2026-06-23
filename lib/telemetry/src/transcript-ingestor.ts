@@ -27,7 +27,10 @@ export function ingestTranscripts(deps: IngestDeps): void {
     if (signal.event === 'PostToolUse') {
       if (!signal.agentId) return;                                   // regular tool — no transcript ingest (AD-2)
       const file = signal.agentTranscriptPath ?? subagentPathFor(signal.transcriptPath, signal.agentId);
-      const t = parseTranscript(file, { transcriptId: signal.agentId, sessionId: signal.sessionId, harness: HARNESS, role: 'subagent', agentType: signal.agentType, parentToolUseId: signal.toolUseId });
+      // Authoritative spawn edge from the .meta.json sidecar (same source as the SessionEnd sweep),
+      // not signal.toolUseId — which on an inner-tool PostToolUse is the agent's OWN tool id (self-loop).
+      const parentToolUseId = readSubagentMeta(file).toolUseId ?? signal.toolUseId;
+      const t = parseTranscript(file, { transcriptId: signal.agentId, sessionId: signal.sessionId, harness: HARNESS, role: 'subagent', agentType: signal.agentType, parentToolUseId });
       writeAgent(root, signal.sessionId, `agent-${signal.agentId}.json`, t);
       return;
     }

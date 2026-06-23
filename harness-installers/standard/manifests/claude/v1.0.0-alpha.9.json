@@ -405,7 +405,7 @@
     {
       "bundlePath": "skills/rad-orchestration/scripts/radorch.mjs",
       "destinationPath": "${HARNESS_ROOT}/skills/rad-orchestration/scripts/radorch.mjs",
-      "sha256": "1c8263836cdb088d784ebea492460f685af45c2139b1449a57f9a0c159973d06"
+      "sha256": "aacf21e9d1e80c48920fdaf2e145bb1a0d01d8c79e074fa38bcafda85601230f"
     },
     {
       "bundlePath": "skills/rad-plan-audit/SKILL.md",

@@ -66,3 +66,28 @@ it('Stop writes main.json from the main transcript and no index.json (AD-3, NFR-
   const t = JSON.parse(fs.readFileSync(path.join(dir, 'main.json'), 'utf8'));
   expect(t.role).toBe('main'); expect(t.result).toBe('done');
 });
+
+it('PostToolUse[Agent] sources parentToolUseId from the .meta.json sidecar, not the inner-tool signal id (self-loop fix)', () => {
+  const root = tmp(); const home = tmp();
+  const main = path.join(home, 'session-m.jsonl');
+  const sub = path.join(home, 'session-m', 'subagents', 'agent-a1.jsonl');
+  writeTx([{ type: 'user', requestId: 'r', timestamp: 't', message: { role: 'user', content: 'go' } }], sub);
+  // sidecar carries the authoritative spawn edge; signal.toolUseId is the agent's OWN inner tool id.
+  fs.writeFileSync(path.join(home, 'session-m', 'subagents', 'agent-a1.meta.json'), JSON.stringify({ agentType: 'coder', description: 'd', toolUseId: 'tu_spawn' }));
+  const sig: HookEvent = { sessionId: 'sM', cwd: '.', kind: 'PostToolUse', event: 'PostToolUse', transcriptPath: main, agentId: 'a1', agentType: 'coder', toolUseId: 'tu_inner' };
+  ingestTranscripts({ root, signal: sig, now: new Date('2026-06-20T00:00:00Z') });
+  const t = JSON.parse(fs.readFileSync(path.join(root, 'transcripts', 'sM', 'agent-a1.json'), 'utf8'));
+  expect(t.parentToolUseId).toBe('tu_spawn');                    // sidecar wins, never the self-id
+});
+
+it('PostToolUse[Agent] falls back to signal.toolUseId when no .meta.json sidecar exists', () => {
+  const root = tmp(); const home = tmp();
+  const main = path.join(home, 'session-n.jsonl');
+  const sub = path.join(home, 'session-n', 'subagents', 'agent-a2.jsonl');
+  writeTx([{ type: 'user', requestId: 'r', timestamp: 't', message: { role: 'user', content: 'go' } }], sub);
+  // no agent-a2.meta.json — fall back to the signal id
+  const sig: HookEvent = { sessionId: 'sN', cwd: '.', kind: 'PostToolUse', event: 'PostToolUse', transcriptPath: main, agentId: 'a2', agentType: 'coder', toolUseId: 'tu_inner' };
+  ingestTranscripts({ root, signal: sig, now: new Date('2026-06-20T00:00:00Z') });
+  const t = JSON.parse(fs.readFileSync(path.join(root, 'transcripts', 'sN', 'agent-a2.json'), 'utf8'));
+  expect(t.parentToolUseId).toBe('tu_inner');                    // signal fallback preserved
+});
