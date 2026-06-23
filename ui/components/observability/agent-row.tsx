@@ -7,7 +7,7 @@ import { humanizeTokens } from '@/lib/observability/format';
 import { formatDuration } from '@/lib/observability/duration-format';
 import type { AgentTreeNode } from '@/lib/observability/subagent-tree';
 import { SpendBar } from './spend-bar';
-import { SeamLinks } from './seam-links';
+import { InspectAgentButton } from './inspect-agent-button';
 
 export interface AgentRowProps {
   node: AgentTreeNode;
@@ -15,12 +15,14 @@ export interface AgentRowProps {
   variant: 'main' | 'group' | 'run' | 'leaf';
   expanded?: boolean;
   onToggle?: () => void;
+  /** When provided and available is true, renders the Inspect agent button (FR-3, AD-7). */
+  inspect?: { available: boolean; onInspect: () => void };
 }
 
 // Uniform CSS grid so name·bar·tokens·%·seam align across all depths (DD-3).
 const ROW_GRID = 'grid grid-cols-[200px_minmax(0,1fr)_64px_44px_78px]';
 
-export function AgentRow({ node, scaleMax, variant, expanded, onToggle }: AgentRowProps) {
+export function AgentRow({ node, scaleMax, variant, expanded, onToggle, inspect }: AgentRowProps) {
   const pct = scaleMax > 0 ? (node.tokens / scaleMax) * 100 : 0;
   const dominant = node.models[0]?.model ?? 'other';
   const meta = `${node.reqs} req${node.reqs === 1 ? '' : 's'} · ${formatDuration(Math.max(0, node.lastMs - node.firstMs))}`; // hover meta (FR-11)
@@ -48,7 +50,13 @@ export function AgentRow({ node, scaleMax, variant, expanded, onToggle }: AgentR
       <SpendBar segments={node.models} total={node.tokens} scaleMax={scaleMax} className="mx-2" />
       <span className="text-right tabular-nums font-semibold text-sm">{humanizeTokens(node.tokens)}</span>
       <span className="text-right tabular-nums text-xs text-muted-foreground">{Math.round(pct)}%</span>
-      <div className="flex justify-end">{showSeam ? <SeamLinks kind={variant === 'main' ? 'main' : 'subagent'} /> : <span aria-hidden="true" />}</div>
+      <div className="flex justify-end">
+        {showSeam && inspect?.available ? (
+          <InspectAgentButton onClick={() => inspect.onInspect()} />
+        ) : (
+          <span aria-hidden="true" />
+        )}
+      </div>
     </div>
   );
 }

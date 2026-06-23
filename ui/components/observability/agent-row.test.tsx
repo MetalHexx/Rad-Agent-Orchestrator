@@ -12,25 +12,35 @@ const node = (p: Partial<AgentTreeNode>): AgentTreeNode => ({
   models: [{ model: 'opus', tokens: 100 }], reqs: 4, firstMs: 0, lastMs: 1000, ...p,
 });
 
-// Group variant: shows ×count badge + an aria-expanded caret button, and carries NO seam links (FR-7, DD-5, NFR-6).
+// Group variant: shows ×count badge + an aria-expanded caret button, and carries NO inspect button (FR-7, DD-5, NFR-6).
 {
   const html = renderToStaticMarkup(createElement(AgentRow, { node: node({}), scaleMax: 200, variant: 'group', expanded: false }));
   assert.ok(html.includes('×3'), 'group shows ×3 count badge');
   assert.ok(html.includes('aria-expanded'), 'group caret exposes aria-expanded (NFR-6)');
-  assert.ok(!html.includes('aria-label="Tool calls'), 'group rows carry no seam links (FR-7)');
-  console.log('✓ group row: badge + caret, no seam links');
+  assert.ok(!html.includes('aria-label="Inspect agent"'), 'group rows carry no inspect button (FR-7)');
+  console.log('✓ group row: badge + caret, no inspect button');
 }
 
-// Main variant: seam links present with descriptive aria-labels; tokens humanized + percent shown (FR-7, FR-11, NFR-6).
+// Main variant: with inspect prop available=true renders the Inspect agent button (FR-3, NFR-6).
+{
+  const html = renderToStaticMarkup(createElement(AgentRow, {
+    node: node({ key: 'main', kind: 'main', label: 'main-agent', runCount: 1 }), scaleMax: 200, variant: 'main',
+    inspect: { available: true, onInspect: () => {} },
+  }));
+  assert.ok(html.includes('main-agent'), 'label rendered');
+  assert.ok(/aria-label="Inspect agent"/.test(html), 'main row with available inspect renders the Inspect agent button (FR-3, NFR-6)');
+  assert.ok(!html.includes('TELEMETRY-8'), 'old disabled placeholder seam links are gone (FR-3)');
+  assert.ok(html.includes('50%'), 'percent = tokens/scaleMax');
+  console.log('✓ main row: inspect button + percent');
+}
+
+// Main variant without inspect prop: no inspect button rendered.
 {
   const html = renderToStaticMarkup(createElement(AgentRow, {
     node: node({ key: 'main', kind: 'main', label: 'main-agent', runCount: 1 }), scaleMax: 200, variant: 'main',
   }));
-  assert.ok(html.includes('main-agent'), 'label rendered');
-  assert.ok(/aria-disabled/.test(html), 'seam links are aria-disabled placeholders (FR-7, NFR-6)');
-  assert.ok(html.includes('TELEMETRY-8'), 'transcript seam names its future iteration (FR-7)');
-  assert.ok(html.includes('50%'), 'percent = tokens/scaleMax');
-  console.log('✓ main row: seam links + percent');
+  assert.ok(!html.includes('aria-label="Inspect agent"'), 'main row without inspect prop renders no inspect button');
+  console.log('✓ main row without inspect prop: no button');
 }
 
 // Run variant: monospace label, indented name cell (DD-3).
@@ -41,6 +51,16 @@ const node = (p: Partial<AgentTreeNode>): AgentTreeNode => ({
   assert.ok(html.includes('font-mono'), 'run label is monospace (DD-3)');
   assert.ok(html.includes('pl-6'), 'run name cell is indented (DD-3)');
   console.log('✓ run row: mono + indent');
+}
+
+// Leaf/run variant: with inspect prop available=true renders the Inspect agent button (FR-4, NFR-6).
+{
+  const html = renderToStaticMarkup(createElement(AgentRow, {
+    node: node({ key: 'run-bb', kind: 'run', label: 'Explore 1', runCount: 1 }), scaleMax: 200, variant: 'leaf',
+    inspect: { available: true, onInspect: () => {} },
+  }));
+  assert.ok(/aria-label="Inspect agent"/.test(html), 'leaf row with available inspect renders the Inspect agent button (FR-4, NFR-6)');
+  console.log('✓ leaf row: inspect button rendered when available');
 }
 
 // Legend states the three models once via house tokens (FR-12, DD-2, NFR-2).
