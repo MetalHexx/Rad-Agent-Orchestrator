@@ -8,6 +8,7 @@ import { FacetTabs } from "./facet-tabs";
 import { AgentNavigatorStrip } from "./agent-navigator-strip";
 import { RawTranscriptView } from "./raw-transcript-view";
 import { OverviewFacet } from "./overview-facet";
+import { TranscriptFacet } from "./transcript-facet";
 import { useAgentInspector, useSessionAgents } from "@/hooks/use-agent-inspector";
 
 // ---------------------------------------------------------------------------
@@ -132,6 +133,8 @@ export function AgentInspectorModal({
             /* Raw transcript view — shown when transcript is present (FR-9) */
             activeFacet === 'overview' ? (
               <OverviewFacet transcript={transcript} />
+            ) : activeFacet === 'transcript' ? (
+              <TranscriptFacet transcript={transcript} justUpdated={justUpdated} />
             ) : activeFacet === 'raw' ? (
               <RawTranscriptView
                 transcript={transcript}
