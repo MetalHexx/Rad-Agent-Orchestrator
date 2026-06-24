@@ -5,6 +5,7 @@ import { Copy, Check } from "lucide-react";
 import type { AgentTranscript } from "@rad-orchestration/telemetry";
 import { tokenizeJson } from "@/lib/observability/pretty-json";
 import { copyTextToClipboard } from "@/lib/clipboard";
+import { JsonTokens } from "./json-block";
 
 // ---------------------------------------------------------------------------
 // RawTranscriptView — prettified, syntax-highlighted JSON view of an AgentTranscript (FR-7)
@@ -65,16 +66,7 @@ export function RawTranscriptView({ transcript, file }: RawTranscriptViewProps) 
 
       {/* Scroll container (NFR-6 — container-agnostic, fills parent) */}
       <div className="min-h-0 flex-1 overflow-auto bg-background p-4">
-        <pre
-          className="text-xs leading-relaxed font-mono whitespace-pre-wrap break-words"
-          aria-label="Raw transcript JSON"
-        >
-          {tokens.map((tok, idx) => (
-            <span key={idx} className={tok.className}>
-              {tok.text}
-            </span>
-          ))}
-        </pre>
+        <JsonTokens tokens={tokens} aria-label="Raw transcript JSON" />
       </div>
     </div>
   );

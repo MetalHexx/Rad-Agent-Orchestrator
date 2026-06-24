@@ -58,14 +58,31 @@ test('error result shows an error badge + red tint; truncation shows a warning b
 
 // --- Revision 2026-06-24: wrapping tool-call args + per-card more/less reveal ---
 
-test('long tool-call args wrap and keep the full path — no mid-string truncation (Issue 1)', () => {
+test('long JSON tool-call args pretty-print and keep the full path — no mid-string truncation (Issue 1)', () => {
   const longPath = 'C:\\Users\\Metal\\.radorc\\worktrees\\TELEMETRY-5.5\\rad-orc-source\\ui\\components\\observability\\BUILD-AND-WIRE-OVERVIEW-FACET.md';
+  // Real tool-call args are valid (properly escaped) JSON, so they now pretty-print.
   const html = card({ seq: 1, timestamp: '2026-06-24T09:00:00.000Z', kind: 'tool_call',
-    tool: { name: 'Read', input: { text: `{"file_path":"${longPath}"}` }, toolUseId: 'toolu_x' } });
+    tool: { name: 'Read', input: { text: JSON.stringify({ file_path: longPath }) }, toolUseId: 'toolu_x' } });
   assert.ok(html.includes('BUILD-AND-WIRE-OVERVIEW-FACET.md'), 'full filename retained');
   assert.ok(!html.includes('…'), 'no horizontal ellipsis cut');
-  assert.ok(html.includes('whitespace-pre-wrap') && html.includes('break-all'), 'args carry wrapping classes');
+  assert.ok(html.includes('whitespace-pre-wrap'), 'pretty body carries wrapping classes');
+  assert.ok(html.includes('text-foreground font-medium'), 'args rendered as formatted JSON (key span)');
   assert.ok(!html.includes('toolu_x'), 'toolUseId never rendered (AD-6)');
+});
+
+test('non-JSON tool-call args render the raw wrapping fallback span (no pretty-print)', () => {
+  const html = card({ seq: 1, timestamp: '2026-06-24T09:00:00.000Z', kind: 'tool_call',
+    tool: { name: 'Grep', input: { text: 'pattern foo' }, toolUseId: 'toolu_x' } });
+  assert.ok(html.includes('pattern foo'), 'raw args rendered');
+  assert.ok(html.includes('whitespace-pre-wrap') && html.includes('break-all'), 'fallback wrapping classes intact');
+});
+
+test('JSON tool-result output pretty-prints instead of the line-number gutter', () => {
+  const html = card({ seq: 2, timestamp: '2026-06-24T09:00:00.000Z', kind: 'tool_result',
+    result: { toolUseId: 'x', output: { text: '{"status":"ok","count":3}' }, isError: false } }, { showToolIO: true });
+  assert.ok(html.includes('text-foreground font-medium'), 'key span present (pretty JSON)');
+  assert.ok(html.includes('status') && html.includes('count'), 'fields rendered');
+  assert.ok(!html.includes('>1<'), 'no line-number gutter for JSON output');
 });
 
 test('a body over 10 lines renders the more/less reveal control (Issue 2)', () => {

@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { eventKindColor, eventKindLabel } from "@/lib/observability/event-kind-color";
 import { formatClock, needsClamp } from "@/lib/observability/transcript-view";
 import { RichText } from "./rich-text";
+import { JsonBlock } from "./json-block";
 
 export interface TranscriptEventCardProps {
   event: TranscriptEvent;
@@ -73,7 +74,11 @@ function EventBody({ event, showToolIO }: { event: TranscriptEvent; showToolIO: 
           <span className="font-bold" style={{ color: "var(--model-teal)" }}>{event.tool?.name}</span>
           {args ? (
             <RevealBody id={revealId} clamp={needsClamp(args, 92)} maxHeightClass="max-h-[15em]">
-              <span className="mt-1 block whitespace-pre-wrap break-all text-muted-foreground">{args}</span>
+              <JsonBlock
+                text={args}
+                className="mt-1"
+                fallback={<span className="mt-1 block whitespace-pre-wrap break-all text-muted-foreground">{args}</span>}
+              />
             </RevealBody>
           ) : null}
         </div>
@@ -88,7 +93,11 @@ function EventBody({ event, showToolIO }: { event: TranscriptEvent; showToolIO: 
           {isError ? <div className="mb-1.5"><ErrorBadge /></div> : null}
           {out ? (
             <RevealBody id={revealId} clamp={needsClamp(out.text, 92)} maxHeightClass="max-h-[16.25em]">
-              <CodeBlock text={out.text} error={isError} />
+              <JsonBlock
+                text={out.text}
+                className="mt-1.5 rounded-lg bg-background px-3 py-2.5"
+                fallback={<CodeBlock text={out.text} error={isError} />}
+              />
             </RevealBody>
           ) : null}
           {/* Truncation badge sits OUTSIDE the reveal — it reflects the data capture

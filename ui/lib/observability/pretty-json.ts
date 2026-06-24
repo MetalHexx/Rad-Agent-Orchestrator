@@ -116,3 +116,22 @@ export function tokenizeJson(value: unknown): JsonToken[] {
 
   return tokens;
 }
+
+/**
+ * String-aware wrapper: parses `text` and tokenizes it ONLY when it is a
+ * structured JSON object/array — the single decision point for "is this content
+ * pretty-printable JSON?" Returns null otherwise so call sites fall back to raw
+ * rendering. A bare scalar (e.g. plain bash output "42" or a quoted string) is
+ * deliberately treated as non-JSON: pretty-printing it adds nothing.
+ */
+export function tryTokenizeJson(text: string): JsonToken[] | null {
+  if (!text) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (parsed === null || typeof parsed !== 'object') return null;
+  return tokenizeJson(parsed);
+}
