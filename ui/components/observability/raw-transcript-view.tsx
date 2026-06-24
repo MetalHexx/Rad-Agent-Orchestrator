@@ -5,24 +5,22 @@ import { Copy, Check } from "lucide-react";
 import type { AgentTranscript } from "@rad-orchestration/telemetry";
 import { tokenizeJson } from "@/lib/observability/pretty-json";
 import { copyTextToClipboard } from "@/lib/clipboard";
-import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
 // RawTranscriptView — prettified, syntax-highlighted JSON view of an AgentTranscript (FR-7)
 //
 // Container-agnostic: renders only a <pre> + toolbar using house tokens (NFR-4, NFR-6).
-// justUpdated triggers a brief house "flash" animation when the live data changes (DD-8).
+// No live-update flash (DD-8): the earlier whole-content animate-pulse dimmed the
+// entire JSON on every SSE tick, so it was removed entirely (no replacement cue).
 // ---------------------------------------------------------------------------
 
 export interface RawTranscriptViewProps {
   transcript: AgentTranscript;
   /** The file name / identifier shown in the toolbar (DD-4). */
   file: string;
-  /** When true, applies a brief flash class to signal a live update (DD-8). */
-  justUpdated?: boolean;
 }
 
-export function RawTranscriptView({ transcript, file, justUpdated }: RawTranscriptViewProps) {
+export function RawTranscriptView({ transcript, file }: RawTranscriptViewProps) {
   const [copyState, setCopyState] = React.useState<'idle' | 'copied' | 'failed'>('idle');
   const copyTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -67,12 +65,8 @@ export function RawTranscriptView({ transcript, file, justUpdated }: RawTranscri
 
       {/* Scroll container (NFR-6 — container-agnostic, fills parent) */}
       <div className="min-h-0 flex-1 overflow-auto bg-background p-4">
-        {/* Flash overlay for live updates — uses house animate-pulse (DD-8) */}
         <pre
-          className={cn(
-            'text-xs leading-relaxed font-mono whitespace-pre-wrap break-words',
-            justUpdated && 'animate-pulse',
-          )}
+          className="text-xs leading-relaxed font-mono whitespace-pre-wrap break-words"
           aria-label="Raw transcript JSON"
         >
           {tokens.map((tok, idx) => (

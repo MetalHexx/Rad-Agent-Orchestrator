@@ -8,6 +8,7 @@ import { FacetTabs } from "./facet-tabs";
 import { AgentNavigatorStrip } from "./agent-navigator-strip";
 import { RawTranscriptView } from "./raw-transcript-view";
 import { OverviewFacet } from "./overview-facet";
+import { TranscriptFacet } from "./transcript-facet";
 import { useAgentInspector, useSessionAgents } from "@/hooks/use-agent-inspector";
 
 // ---------------------------------------------------------------------------
@@ -72,7 +73,7 @@ export function AgentInspectorModal({
   sessionId, agentId, labels, onSelectAgent, onClose, isFullScreen, onToggleFullScreen, dataState = "open",
 }: AgentInspectorModalProps) {
   const { navList } = useSessionAgents(sessionId);
-  const { transcript, justUpdated, activeFacet, setActiveFacet, prevId, nextId } = useAgentInspector(
+  const { transcript, activeFacet, setActiveFacet, prevId, nextId } = useAgentInspector(
     sessionId, agentId, navList,
   );
 
@@ -132,11 +133,12 @@ export function AgentInspectorModal({
             /* Raw transcript view — shown when transcript is present (FR-9) */
             activeFacet === 'overview' ? (
               <OverviewFacet transcript={transcript} />
+            ) : activeFacet === 'transcript' ? (
+              <TranscriptFacet transcript={transcript} />
             ) : activeFacet === 'raw' ? (
               <RawTranscriptView
                 transcript={transcript}
                 file={agentId ?? 'transcript'}
-                justUpdated={justUpdated}
               />
             ) : (
               /* Future facets — not yet implemented */

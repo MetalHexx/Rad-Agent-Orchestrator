@@ -59,7 +59,6 @@ export type InspectorFacet = 'overview' | 'transcript' | 'tools' | 'files' | 'ra
 export interface UseAgentInspectorResult {
   transcript: AgentTranscript | undefined;
   loading: boolean;
-  justUpdated: boolean;
   activeFacet: InspectorFacet;
   setActiveFacet: (f: InspectorFacet) => void;
   prevId: string | null;
@@ -73,8 +72,6 @@ export function useAgentInspector(
 ): UseAgentInspectorResult {
   const [transcript, setTranscript] = React.useState<AgentTranscript | undefined>(undefined);
   const [loading, setLoading] = React.useState(false);
-  const [justUpdated, setJustUpdated] = React.useState(false);
-  const justUpdatedTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const [activeFacet, setActiveFacet] = React.useState<InspectorFacet>('overview');
 
   const fetchTranscript = React.useCallback(() => {
@@ -104,15 +101,9 @@ export function useAgentInspector(
     fetchTranscript();
   }, [fetchTranscript]);
 
-  // Live refresh: revalidate + flash the justUpdated cue on SSE-triggered refetch (NFR-7, DD-8)
-  const liveRefetch = React.useCallback(() => {
-    fetchTranscript();
-    setJustUpdated(true);
-    if (justUpdatedTimer.current) clearTimeout(justUpdatedTimer.current);
-    justUpdatedTimer.current = setTimeout(() => setJustUpdated(false), 2000);
-  }, [fetchTranscript]);
-  React.useEffect(() => () => { if (justUpdatedTimer.current) clearTimeout(justUpdatedTimer.current); }, []);
-  useTranscriptLive(sessionId, liveRefetch);
+  // Live refresh: revalidate the transcript on an SSE-triggered refetch (NFR-7).
+  // No visual "just updated" cue — the old whole-content pulse was removed (DD-8).
+  useTranscriptLive(sessionId, fetchTranscript);
 
   // Sibling navigation derived from navList + activeId (FR-9)
   const { prevId, nextId } = React.useMemo(
@@ -120,5 +111,5 @@ export function useAgentInspector(
     [navList, activeId],
   );
 
-  return { transcript, loading, justUpdated, activeFacet, setActiveFacet, prevId, nextId };
+  return { transcript, loading, activeFacet, setActiveFacet, prevId, nextId };
 }
