@@ -38,5 +38,7 @@ const noop = () => {};
   assert.ok(!source.includes('AgentPrevNext'), 'header prev/next pair removed in favor of content-edge chevrons (item 5)');
   assert.ok(source.includes('labels?.get(a.transcriptId) ?? a.label'), 'strip chips use the table-mapped labels (item 2)');
   assert.ok(source.includes("labels?.get(agentId ?? '')"), 'title uses the table-mapped label (items 2 & 4)');
+  assert.ok(source.includes('import { FilesFacet }'), 'Files facet imported into the inspector (FR-6)');
+  assert.ok(source.includes("activeFacet === 'files'"), 'modal dispatches the Files facet branch (FR-6, AD-5)');
   console.log('✓ agent inspector modal: one-line title, mapped chips, retired header nav');
 }
