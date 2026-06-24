@@ -22,6 +22,8 @@ const badgeVariants = cva(
         link: "text-primary underline-offset-4 hover:underline",
         accent:
           "border-transparent bg-[color:color-mix(in_srgb,var(--live)_15%,transparent)] text-[color:var(--live)]",
+        success:
+          "border-transparent bg-[color:color-mix(in_srgb,var(--model-green)_14%,transparent)] text-[color:var(--model-green)]",
       },
     },
     defaultVariants: {
