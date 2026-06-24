@@ -54,7 +54,7 @@ export function useSessionAgents(sessionId: string | null): UseSessionAgentsResu
 // useAgentInspector — fetch the active transcript + live refresh + nav (FR-9, NFR-6, NFR-7)
 // ---------------------------------------------------------------------------
 
-export type InspectorFacet = 'raw' | 'tools' | 'files';
+export type InspectorFacet = 'overview' | 'transcript' | 'tools' | 'files' | 'raw';
 
 export interface UseAgentInspectorResult {
   transcript: AgentTranscript | undefined;
@@ -75,7 +75,7 @@ export function useAgentInspector(
   const [loading, setLoading] = React.useState(false);
   const [justUpdated, setJustUpdated] = React.useState(false);
   const justUpdatedTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [activeFacet, setActiveFacet] = React.useState<InspectorFacet>('raw');
+  const [activeFacet, setActiveFacet] = React.useState<InspectorFacet>('overview');
 
   const fetchTranscript = React.useCallback(() => {
     if (!sessionId || !activeId) {

@@ -7,6 +7,7 @@ import { ModalShell } from "@/components/modal/modal-shell";
 import { FacetTabs } from "./facet-tabs";
 import { AgentNavigatorStrip } from "./agent-navigator-strip";
 import { RawTranscriptView } from "./raw-transcript-view";
+import { OverviewFacet } from "./overview-facet";
 import { useAgentInspector, useSessionAgents } from "@/hooks/use-agent-inspector";
 
 // ---------------------------------------------------------------------------
@@ -123,13 +124,15 @@ export function AgentInspectorModal({
       {/* Body: facet tab bar + active panel (FR-13, FR-15) */}
       <div className="flex h-full flex-col overflow-hidden">
         {/* Facet tab bar — Raw active; four future facets disabled "soon" (FR-13, DD-3) */}
-        <FacetTabs active={activeFacet === 'raw' ? 'raw' : 'raw'} onSelect={(f) => setActiveFacet(f === 'raw' ? 'raw' : 'raw')} />
+        <FacetTabs active={activeFacet} onSelect={setActiveFacet} />
 
         {/* Active panel */}
         <div className="min-h-0 flex-1 overflow-hidden">
           {transcript != null ? (
             /* Raw transcript view — shown when transcript is present (FR-9) */
-            activeFacet === 'raw' ? (
+            activeFacet === 'overview' ? (
+              <OverviewFacet transcript={transcript} />
+            ) : activeFacet === 'raw' ? (
               <RawTranscriptView
                 transcript={transcript}
                 file={agentId ?? 'transcript'}
