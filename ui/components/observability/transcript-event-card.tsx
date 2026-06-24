@@ -1,9 +1,10 @@
 "use client";
 import * as React from "react";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import type { TranscriptEvent } from "@rad-orchestration/telemetry";
 import { cn } from "@/lib/utils";
 import { eventKindColor, eventKindLabel } from "@/lib/observability/event-kind-color";
-import { formatClock, toolArgPreview } from "@/lib/observability/transcript-view";
+import { formatClock, needsClamp } from "@/lib/observability/transcript-view";
 import { RichText } from "./rich-text";
 
 export interface TranscriptEventCardProps {
@@ -32,13 +33,30 @@ export function TranscriptEventCard({ event, tight = false, showToolIO = true }:
 }
 
 function EventBody({ event, showToolIO }: { event: TranscriptEvent; showToolIO: boolean }) {
+  const revealId = `reveal-${event.seq}`;
   switch (event.kind) {
     case "message":
-      return event.role === "assistant"
-        ? <RichText body={event.text ?? ""} variant="prose" />
-        : <p className="whitespace-pre-wrap text-sm text-foreground">{event.text}</p>;
+      // Assistant prose is rendered via RichText; clamp the source text the same
+      // way when it is long enough (the markdown still renders inside the clamp).
+      if (event.role === "assistant") {
+        const body = event.text ?? "";
+        return (
+          <RevealBody id={revealId} clamp={needsClamp(body, 80)} maxHeightClass="max-h-[12.5rem]">
+            <RichText body={body} variant="prose" />
+          </RevealBody>
+        );
+      }
+      return (
+        <RevealBody id={revealId} clamp={needsClamp(event.text ?? "", 80)} maxHeightClass="max-h-[12.5rem]">
+          <p className="whitespace-pre-wrap text-sm text-foreground">{event.text}</p>
+        </RevealBody>
+      );
     case "thinking":
-      return <p className="whitespace-pre-wrap text-sm italic text-muted-foreground">{event.text}</p>;
+      return (
+        <RevealBody id={revealId} clamp={needsClamp(event.text ?? "", 80)} maxHeightClass="max-h-[12.5rem]">
+          <p className="whitespace-pre-wrap text-sm italic text-muted-foreground">{event.text}</p>
+        </RevealBody>
+      );
     case "file_change":
       return (
         <div className="flex items-center gap-2 font-mono text-xs">
@@ -46,13 +64,21 @@ function EventBody({ event, showToolIO }: { event: TranscriptEvent; showToolIO: 
           <span className="text-foreground">{event.file?.path}</span>
         </div>
       );
-    case "tool_call":
+    case "tool_call": {
+      // Render the FULL args, wrapped — never a single horizontal-truncated line
+      // (Issue 1). Past 10 wrapped rows the more/less clamp applies (Issue 2).
+      const args = event.tool?.input?.text ?? "";
       return (
         <div className="font-mono text-xs">
           <span className="font-bold" style={{ color: "var(--model-teal)" }}>{event.tool?.name}</span>
-          {event.tool?.input?.text ? <span className="text-muted-foreground"> {toolArgPreview(event.tool.input.text)}</span> : null}
+          {args ? (
+            <RevealBody id={revealId} clamp={needsClamp(args, 92)} maxHeightClass="max-h-[15em]">
+              <span className="mt-1 block whitespace-pre-wrap break-all text-muted-foreground">{args}</span>
+            </RevealBody>
+          ) : null}
         </div>
       );
+    }
     case "tool_result": {
       if (!showToolIO) return null;
       const isError = !!event.result?.isError;
@@ -60,7 +86,13 @@ function EventBody({ event, showToolIO }: { event: TranscriptEvent; showToolIO: 
       return (
         <div>
           {isError ? <div className="mb-1.5"><ErrorBadge /></div> : null}
-          {out ? <CodeBlock text={out.text} error={isError} /> : null}
+          {out ? (
+            <RevealBody id={revealId} clamp={needsClamp(out.text, 92)} maxHeightClass="max-h-[16.25em]">
+              <CodeBlock text={out.text} error={isError} />
+            </RevealBody>
+          ) : null}
+          {/* Truncation badge sits OUTSIDE the reveal — it reflects the data capture
+              cap and must persist whether the card is collapsed or expanded. */}
           {out?.truncated ? <div className="mt-1.5"><TruncationBadge fullBytes={out.fullBytes} /></div> : null}
         </div>
       );
@@ -68,6 +100,44 @@ function EventBody({ event, showToolIO }: { event: TranscriptEvent; showToolIO: 
     default:
       return event.text ? <p className="whitespace-pre-wrap text-sm text-muted-foreground">{event.text}</p> : null;
   }
+}
+
+// ---------------------------------------------------------------------------
+// RevealBody — per-card more / less collapse (Revision 2026-06-24).
+// CSS-only and SSR-safe: a hidden peer checkbox toggles the clamp via Tailwind
+// `peer-checked:` sibling variants, so it renders to static HTML, holds zero
+// React state, and is exercisable under renderToStaticMarkup (NFR-5). When the
+// body does not overflow (`clamp` false) the children render bare — no control.
+// `id` is derived from event.seq (deterministic, no Math.random).
+// ---------------------------------------------------------------------------
+function RevealBody({
+  id, clamp, maxHeightClass, children,
+}: { id: string; clamp: boolean; maxHeightClass: string; children: React.ReactNode }) {
+  if (!clamp) return <>{children}</>;
+  // Both <label>s are direct siblings of the peer checkbox so `peer-checked:`
+  // toggles them; "more" shows collapsed, "less" shows expanded.
+  const labelCls =
+    "mt-1.5 inline-flex cursor-pointer select-none items-center gap-1 rounded-md border border-border px-1.5 py-0.5 font-mono text-[10.5px] text-muted-foreground hover:bg-accent hover:text-foreground peer-focus-visible:ring-2 peer-focus-visible:ring-ring";
+  return (
+    <div data-reveal="">
+      <input type="checkbox" id={id} aria-label="Show more" className="peer sr-only" />
+      <div
+        className={cn(
+          maxHeightClass,
+          "overflow-hidden peer-checked:max-h-none",
+          "[mask-image:linear-gradient(to_bottom,black_72%,transparent)] peer-checked:[mask-image:none]",
+        )}
+      >
+        {children}
+      </div>
+      <label htmlFor={id} className={cn(labelCls, "peer-checked:hidden")}>
+        more <ChevronDown className="size-3" aria-hidden="true" />
+      </label>
+      <label htmlFor={id} className={cn(labelCls, "hidden peer-checked:inline-flex")}>
+        less <ChevronUp className="size-3" aria-hidden="true" />
+      </label>
+    </div>
+  );
 }
 
 function CodeBlock({ text, error }: { text: string; error?: boolean }) {

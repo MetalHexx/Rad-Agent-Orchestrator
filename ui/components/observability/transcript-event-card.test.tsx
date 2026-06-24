@@ -55,3 +55,38 @@ test('error result shows an error badge + red tint; truncation shows a warning b
   const trunc = card({ seq: 4, timestamp: '2026-06-24T09:00:00.000Z', kind: 'tool_result', result: { toolUseId: 'x', output: { text: 'partial', truncated: true, fullBytes: 20480 }, isError: false } });
   assert.ok(/truncated/i.test(trunc) && trunc.includes('20 KB'), 'truncation badge with human size');
 });
+
+// --- Revision 2026-06-24: wrapping tool-call args + per-card more/less reveal ---
+
+test('long tool-call args wrap and keep the full path — no mid-string truncation (Issue 1)', () => {
+  const longPath = 'C:\\Users\\Metal\\.radorc\\worktrees\\TELEMETRY-5.5\\rad-orc-source\\ui\\components\\observability\\BUILD-AND-WIRE-OVERVIEW-FACET.md';
+  const html = card({ seq: 1, timestamp: '2026-06-24T09:00:00.000Z', kind: 'tool_call',
+    tool: { name: 'Read', input: { text: `{"file_path":"${longPath}"}` }, toolUseId: 'toolu_x' } });
+  assert.ok(html.includes('BUILD-AND-WIRE-OVERVIEW-FACET.md'), 'full filename retained');
+  assert.ok(!html.includes('…'), 'no horizontal ellipsis cut');
+  assert.ok(html.includes('whitespace-pre-wrap') && html.includes('break-all'), 'args carry wrapping classes');
+  assert.ok(!html.includes('toolu_x'), 'toolUseId never rendered (AD-6)');
+});
+
+test('a body over 10 lines renders the more/less reveal control (Issue 2)', () => {
+  const long = Array.from({ length: 14 }, (_, i) => `thought line ${i}`).join('\n');
+  const html = card({ seq: 2, timestamp: '2026-06-24T09:00:00.000Z', kind: 'thinking', text: long });
+  assert.ok(html.includes('data-reveal'), 'reveal wrapper present');
+  assert.ok(html.includes('type="checkbox"') && html.includes('peer'), 'css-only peer checkbox present');
+  assert.ok(html.includes('more') && html.includes('less'), 'more + less labels present');
+  assert.ok(/max-h-/.test(html), 'clamped body carries a max-height');
+});
+
+test('a body at or under 10 lines renders no reveal control (Issue 2)', () => {
+  const html = card({ seq: 3, timestamp: '2026-06-24T09:00:00.000Z', kind: 'message', role: 'user', text: 'a\nb\nc' });
+  assert.ok(!html.includes('data-reveal') && !html.includes('type="checkbox"'), 'no control on a short card');
+  assert.ok(html.includes('a') && html.includes('b') && html.includes('c'), 'body still rendered bare');
+});
+
+test('a long capped result keeps its truncation badge even with the reveal control (capture-cap honesty)', () => {
+  const long = Array.from({ length: 16 }, (_, i) => `out ${i}`).join('\n');
+  const html = card({ seq: 4, timestamp: '2026-06-24T09:00:00.000Z', kind: 'tool_result',
+    result: { toolUseId: 'x', output: { text: long, truncated: true, fullBytes: 20480 }, isError: false } }, { showToolIO: true });
+  assert.ok(html.includes('data-reveal') && html.includes('type="checkbox"'), 'reveal control on a long result');
+  assert.ok(/truncated/i.test(html) && html.includes('20 KB'), 'truncation badge persists alongside the reveal');
+});

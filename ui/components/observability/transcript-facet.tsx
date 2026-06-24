@@ -7,7 +7,6 @@ import { errorEventSeqs } from "@/lib/observability/transcript-view";
 
 export interface TranscriptFacetProps {
   transcript: AgentTranscript;
-  justUpdated?: boolean;
 }
 
 export function TranscriptFacet({ transcript }: TranscriptFacetProps) {

@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { formatClock, toolArgPreview } from './transcript-view';
 import { visibleEvents, errorEventSeqs, isTightResult, windowEvents } from './transcript-view';
+import { CLAMP_LINES, displayLineCount, needsClamp } from './transcript-view';
 
 test('formatClock extracts HH:MM:SS from an ISO timestamp, SSR-safe (DD-3)', () => {
   assert.equal(formatClock('2026-06-24T13:05:09.123Z'), '13:05:09');
@@ -50,4 +51,26 @@ test('windowEvents bounds the slice and reports the hidden remainder (NFR-1, AD-
   const items = Array.from({ length: 10 }, (_, i) => i);
   assert.deepEqual(windowEvents(items, 4), { shown: [6, 7, 8, 9], hidden: 6 });
   assert.equal(windowEvents(items, Infinity).hidden, 0);
+});
+
+test('displayLineCount counts explicit newlines AND wrapped rows (per-card reveal)', () => {
+  assert.equal(displayLineCount('', 80), 0);
+  assert.equal(displayLineCount('one line', 80), 1);
+  assert.equal(displayLineCount('a\nb\nc', 80), 3);
+  // a single 1000-char line wraps to ceil(1000/80)=13 rows
+  assert.equal(displayLineCount('x'.repeat(1000), 80), 13);
+  // mixed: a 200-char line (3 rows at 80) plus two short lines = 5
+  assert.equal(displayLineCount('y'.repeat(200) + '\nshort\nalso', 80), 5);
+});
+
+test('needsClamp is true only past the 10-line window (per-card reveal)', () => {
+  assert.equal(CLAMP_LINES, 10);
+  // 12 explicit lines → clamp
+  assert.equal(needsClamp(Array.from({ length: 12 }, () => 'l').join('\n'), 88), true);
+  // 3 short lines → no clamp
+  assert.equal(needsClamp('a\nb\nc', 88), false);
+  // one ~1000-char single line wraps past 10 rows → clamp (the args-wrapping path)
+  assert.equal(needsClamp('z'.repeat(1000), 88), true);
+  // empty → no clamp
+  assert.equal(needsClamp('', 88), false);
 });

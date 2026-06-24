@@ -22,6 +22,10 @@ export function TranscriptTimeline({ events, showThinking, showToolIO, query, er
   const visible = visibleEvents(events, { showThinking, query });
   const { shown, hidden } = windowEvents(visible, expanded ? Infinity : DEFAULT_WINDOW);
 
+  // Scroll to the current error ONLY on an explicit jump click (errorCursor change).
+  // `events` is intentionally NOT a dep: each SSE refetch yields a fresh events
+  // reference, and including it re-fired this effect on every live tick, yanking
+  // the scroll back to the error mid-stream. Read events via closure instead.
   React.useEffect(() => {
     const seqs = errorEventSeqs(events);
     if (seqs.length === 0 || errorCursor < 0) return;
@@ -30,7 +34,8 @@ export function TranscriptTimeline({ events, showThinking, showToolIO, query, er
     if (!el) return;
     const reduce = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     el.scrollIntoView({ block: "center", behavior: reduce ? "auto" : "smooth" });
-  }, [errorCursor, events]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [errorCursor]);
 
   return (
     <ScrollArea className="h-full">
