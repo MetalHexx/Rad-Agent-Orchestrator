@@ -32,3 +32,26 @@ test('un-themed system kind still renders a card, never dropped (AD-7)', () => {
   const html = card({ seq: 5, timestamp: '2026-06-24T09:00:00.000Z', kind: 'system', text: 'boot' });
   assert.ok(html.includes('System') && html.includes('var(--model-grey)'), 'system label + neutral border');
 });
+
+test('tool_call shows name + arg preview, never the toolUseId (FR-3, DD-4, AD-6)', () => {
+  const html = card({ seq: 1, timestamp: '2026-06-24T09:00:00.000Z', kind: 'tool_call', tool: { name: 'Grep', input: { text: 'pattern foo' }, toolUseId: 'toolu_secret' } });
+  assert.ok(html.includes('Grep') && html.includes('pattern foo'), 'name + arg preview present');
+  assert.ok(!html.includes('toolu_secret'), 'toolUseId never rendered (AD-6)');
+});
+
+test('tool_result renders a code block w/ line gutter; hidden when Tool I/O off (FR-3, FR-8, DD-6)', () => {
+  const ev = { seq: 2, timestamp: '2026-06-24T09:00:00.000Z', kind: 'tool_result', result: { toolUseId: 'x', output: { text: 'line a\nline b' }, isError: false } };
+  const shown = card(ev, { showToolIO: true });
+  assert.ok(shown.includes('line a') && shown.includes('line b'), 'output lines rendered');
+  assert.ok(shown.includes('>1<') && shown.includes('>2<'), 'line-number gutter present');
+  const hidden = card(ev, { showToolIO: false });
+  assert.ok(!hidden.includes('line a'), 'output body hidden when Tool I/O off (FR-8)');
+  assert.ok(hidden.includes('Result'), 'card header still present (DD-9)');
+});
+
+test('error result shows an error badge + red tint; truncation shows a warning badge (FR-5, DD-10)', () => {
+  const err = card({ seq: 3, timestamp: '2026-06-24T09:00:00.000Z', kind: 'tool_result', result: { toolUseId: 'x', output: { text: 'boom' }, isError: true } });
+  assert.ok(/error/i.test(err) && err.includes('var(--model-red)'), 'error badge + red tint');
+  const trunc = card({ seq: 4, timestamp: '2026-06-24T09:00:00.000Z', kind: 'tool_result', result: { toolUseId: 'x', output: { text: 'partial', truncated: true, fullBytes: 20480 }, isError: false } });
+  assert.ok(/truncated/i.test(trunc) && trunc.includes('20 KB'), 'truncation badge with human size');
+});
