@@ -41,9 +41,21 @@ export class ClaudeCodeAdapter implements HarnessAdapter {
 
   private sourcesFor(ev: HookEvent): { file: string; source: Source; identity?: SubagentIdentity }[] {
     if (ev.event === 'PostToolUse' && ev.agentId) {
-      // PostToolUse carries identity inline on the event — leave identity undefined
-      // so toRecord reads ev.* (the live, per-op-accurate path).
-      return [{ file: ev.agentTranscriptPath ?? subagentPathFor(ev.transcriptPath, ev.agentId), source: 'subagent' }];
+      // PostToolUse usually carries identity inline on the event (the live, per-op-accurate
+      // path). But some payloads arrive with agentId set and agentType/toolUseId empty, which
+      // would write a typeless subagent row. Backfill the gap from the agent-<id>.meta.json
+      // sidecar (the same source SessionEnd uses); ev.* still wins when present.
+      const file = ev.agentTranscriptPath ?? subagentPathFor(ev.transcriptPath, ev.agentId);
+      const meta = (!ev.agentType || !ev.toolUseId) ? readSubagentMeta(file) : {};
+      return [{
+        file,
+        source: 'subagent',
+        identity: {
+          agentId: ev.agentId,
+          agentType: ev.agentType ?? meta.agentType,
+          toolUseId: ev.toolUseId ?? meta.toolUseId,
+        },
+      }];
     }
     if (ev.event === 'SessionEnd') {
       // The session-close backstop has no inline identity; recover it from each

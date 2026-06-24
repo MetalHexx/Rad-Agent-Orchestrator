@@ -25,7 +25,7 @@ interface FacetMeta {
 }
 
 const FACETS: FacetMeta[] = [
-  { id: 'overview',   label: 'Overview',   available: false },
+  { id: 'overview',   label: 'Overview',   available: true  },
   { id: 'transcript', label: 'Transcript', available: false },
   { id: 'tools',      label: 'Tools',      available: false },
   { id: 'files',      label: 'Files',      available: false },

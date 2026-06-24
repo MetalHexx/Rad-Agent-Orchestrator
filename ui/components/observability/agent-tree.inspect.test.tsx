@@ -3,7 +3,7 @@ import React, { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { AgentTree } from './agent-tree';
 import type { SubagentTree } from '@/lib/observability/subagent-tree';
-(globalThis as any).React = React;
+Object.assign(globalThis, { React });
 
 const tree: SubagentTree = {
   windowTotal: 100, subagentTotal: 40, subagentPct: 0.4,

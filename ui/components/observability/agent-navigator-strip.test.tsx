@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import React, { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { AgentNavigatorStrip, type AgentChip } from './agent-navigator-strip';
-(globalThis as any).React = React;
+Object.assign(globalThis, { React });
 
 const agents: AgentChip[] = [
   { transcriptId: 'sess', label: 'main', role: 'main' },

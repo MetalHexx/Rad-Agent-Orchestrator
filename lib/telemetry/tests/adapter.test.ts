@@ -135,6 +135,33 @@ describe('ClaudeCodeAdapter', () => {
     expect(sub1.pointers.sourceFile.endsWith(expectedSuffix)).toBe(true);
   });
 
+  it('PostToolUse backfills agentType/toolUseId from the .meta.json sidecar when the event omits them (FR-3)', () => {
+    // Payload carries agentId but NO inline agentType/toolUseId — without the sidecar
+    // backfill this would write a typeless subagent row (the "unattributed" slice).
+    const signal: HookEvent = {
+      sessionId: 's1', cwd: '.', kind: 'PostToolUse', event: 'PostToolUse',
+      transcriptPath: MAIN_FIXTURE, agentId: SUBAGENT_ID,
+    };
+    const records = new ClaudeCodeAdapter().capture(signal, new Set());
+
+    const sub1 = records.find((r) => r.usageId === 'req_sub_1')!;
+    expect(sub1.source).toBe('subagent');
+    expect(sub1.agentId).toBe(SUBAGENT_ID);
+    expect(sub1.agentType).toBe('coder');                 // recovered from agent-a0d327.meta.json
+    expect(sub1.toolUseId).toBe('toolu_sub_a0d327');      // recovered from the sidecar too
+  });
+
+  it('PostToolUse keeps inline identity when the event supplies it, even if a sidecar exists (FR-3)', () => {
+    // ev.* wins over the sidecar — the sidecar is only a gap-filler.
+    const signal: HookEvent = {
+      sessionId: 's1', cwd: '.', kind: 'PostToolUse', event: 'PostToolUse',
+      transcriptPath: MAIN_FIXTURE, agentId: SUBAGENT_ID, agentType: 'reviewer', toolUseId: 'tu_inline',
+    };
+    const sub1 = new ClaudeCodeAdapter().capture(signal, new Set()).find((r) => r.usageId === 'req_sub_1')!;
+    expect(sub1.agentType).toBe('reviewer');              // inline value, not the sidecar's 'coder'
+    expect(sub1.toolUseId).toBe('tu_inline');
+  });
+
   it('derives the subagent transcript path with OS-correct separators (NFR-6)', () => {
     const main = path.join('C--dev', 'projects', 'slug', 'session-abc.jsonl');
     const expected = path.join('C--dev', 'projects', 'slug', 'session-abc', 'subagents', 'agent-a0d327.jsonl');
