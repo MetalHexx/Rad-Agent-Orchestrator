@@ -9,6 +9,7 @@ import { AgentNavigatorStrip } from "./agent-navigator-strip";
 import { RawTranscriptView } from "./raw-transcript-view";
 import { OverviewFacet } from "./overview-facet";
 import { TranscriptFacet } from "./transcript-facet";
+import { ToolsFacet } from "./tools-facet";
 import { useAgentInspector, useSessionAgents } from "@/hooks/use-agent-inspector";
 
 // ---------------------------------------------------------------------------
@@ -135,6 +136,8 @@ export function AgentInspectorModal({
               <OverviewFacet transcript={transcript} />
             ) : activeFacet === 'transcript' ? (
               <TranscriptFacet transcript={transcript} />
+            ) : activeFacet === 'tools' ? (
+              <ToolsFacet transcript={transcript} />
             ) : activeFacet === 'raw' ? (
               <RawTranscriptView
                 transcript={transcript}
