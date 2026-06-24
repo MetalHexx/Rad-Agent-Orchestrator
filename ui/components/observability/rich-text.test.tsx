@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import React, { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { RichText } from './rich-text';
-(globalThis as any).React = React;
+Object.assign(globalThis, { React });
 
 test('mono variant preserves newlines verbatim with pre-wrap (FR-6, DD-4)', () => {
   const html = renderToStaticMarkup(

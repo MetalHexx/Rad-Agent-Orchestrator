@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path';
 import React, { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { AgentInspectorModal } from './agent-inspector-modal';
-(globalThis as any).React = React;
+Object.assign(globalThis, { React });
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const source = readFileSync(join(__dirname, 'agent-inspector-modal.tsx'), 'utf-8');

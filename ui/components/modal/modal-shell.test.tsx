@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import React, { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { ModalShell } from './modal-shell';
-(globalThis as any).React = React;
+Object.assign(globalThis, { React });
 
 const base = {
   ariaLabel: 'Demo dialog',
@@ -15,7 +15,7 @@ const base = {
 // Slots + built-ins + a11y (FR-1, AD-1, NFR-5)
 {
   const html = renderToStaticMarkup(
-    createElement(ModalShell, { ...base, footer: createElement('span', null, 'FOOT'), children: createElement('div', null, 'BODY') }),
+    createElement(ModalShell, { ...base, footer: createElement('span', null, 'FOOT') }, createElement('div', null, 'BODY')),
   );
   assert.ok(html.includes('role="dialog"') && html.includes('aria-modal="true"'), 'is a labeled modal dialog (NFR-5)');
   assert.ok(html.includes('aria-label="Demo dialog"'), 'carries the caller aria-label');
@@ -31,7 +31,7 @@ const base = {
 // Share appears only when onShare is provided; no hardcoded hex (FR-1, NFR-4)
 {
   const html = renderToStaticMarkup(
-    createElement(ModalShell, { ...base, onShare: () => {}, children: createElement('div', null, 'BODY') }),
+    createElement(ModalShell, { ...base, onShare: () => {} }, createElement('div', null, 'BODY')),
   );
   assert.ok(html.includes('aria-label="Share / copy link"'), 'Share shown when onShare provided (FR-1)');
   assert.ok(!/#[0-9a-fA-F]{6}/.test(html), 'no literal hex colors in shell markup (NFR-4)');

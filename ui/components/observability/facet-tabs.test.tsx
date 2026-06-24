@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import React, { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { FacetTabs } from './facet-tabs';
-(globalThis as any).React = React;
+Object.assign(globalThis, { React });
 
 const html = renderToStaticMarkup(createElement(FacetTabs, { active: 'raw', onSelect: () => {} }));
 assert.ok(['Overview', 'Transcript', 'Tools', 'Files', 'Raw'].every((t) => html.includes(t)), 'all five facets present (FR-13)');

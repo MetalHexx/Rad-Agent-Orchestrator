@@ -4,7 +4,7 @@ import React, { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { AgentTranscript } from '@rad-orchestration/telemetry';
 import { OverviewFacet } from './overview-facet';
-(globalThis as any).React = React;
+Object.assign(globalThis, { React });
 
 const transcript: AgentTranscript = {
   transcriptId: 't1',
