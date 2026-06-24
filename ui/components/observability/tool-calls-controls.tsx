@@ -19,7 +19,7 @@ export function ToolCallsControls(props: ToolCallsControlsProps) {
   return (
     <div className="flex flex-wrap items-center gap-3 border-b border-border px-4 py-2.5">
       <div className="flex items-center gap-2">
-        <Switch id="tools-errors-only" checked={props.errorsOnly} onCheckedChange={props.onErrorsOnly} />
+        <Switch id="tools-errors-only" checked={props.errorsOnly} onCheckedChange={props.onErrorsOnly} className="data-[checked]:bg-[color:var(--chart-2)]" />
         <Label htmlFor="tools-errors-only" className="text-xs">Errors only</Label>
       </div>
       {/* FilterSelect injects its own "All" sentinel item; pass the bare tool names. */}

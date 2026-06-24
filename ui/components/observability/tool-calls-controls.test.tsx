@@ -19,3 +19,10 @@ test('renders the four controls with labels, placeholder, and the showing count 
   assert.ok(html.includes('showing 3 of 7'), 'post-filter count');
   assert.ok(!/#[0-9a-fA-F]{6}/.test(html), 'no literal hex (NFR-3)');
 });
+
+test('errors-only switch uses --chart-2 on-state track (DD-6)', () => {
+  const html = renderToStaticMarkup(
+    createElement(ToolCallsControls, { ...base, shown: 0, total: 0 } as never)
+  );
+  assert.match(html, /data-\[checked\]:bg-\[color:var\(--chart-2\)\]/);
+});
