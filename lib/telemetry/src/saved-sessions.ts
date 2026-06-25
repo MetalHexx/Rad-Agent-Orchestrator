@@ -1,5 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import type { AgentNode } from './transcript-model.js';
+import { readUsageForDates } from './read/usage-reader.js';
+import { listSessionAgents, getAgentTranscript } from './read/transcript-reader.js';
+import { effectiveTokens } from './read/effective-tokens.js';
 
 export interface SavedSessionSnapshot {
   worktree: string | null;
@@ -44,4 +48,54 @@ export function readSavedIndex(root: string): SavedSessionsIndex {
 
 export function isSessionSaved(root: string, sessionId: string): boolean {
   return readSavedIndex(root).sessions.some((s) => s.sessionId === sessionId);
+}
+
+function sessionUsageDates(root: string, sessionId: string): string[] {
+  let files: string[]; try { files = fs.readdirSync(path.join(root, 'usage')); } catch { return []; }
+  const dates = new Set<string>();
+  for (const f of files) {
+    const m = /^usage-(\d{4}-\d{2}-\d{2})-(.+)\.ndjson$/.exec(f);
+    if (m && m[2] === sessionId) dates.add(m[1]);
+  }
+  return [...dates];
+}
+
+function flatten(nodes: AgentNode[]): AgentNode[] {
+  const out: AgentNode[] = [];
+  const walk = (ns: AgentNode[]): void => { for (const n of ns) { out.push(n); walk(n.children); } };
+  walk(nodes); return out;
+}
+
+/** Point-in-time aggregate read from usage NDJSON + transcripts. Not auto-refreshed. (FR-9, AD-10) */
+export function computeSessionSnapshot(root: string, sessionId: string): SavedSessionSnapshot {
+  const records = readUsageForDates({ root, dates: sessionUsageDates(root, sessionId), filter: (r) => r.sessionId === sessionId });
+  let input = 0, output = 0, cacheRead = 0, cacheCreation = 0, totalSpend = 0;
+  let startMs = Infinity, lastMs = -Infinity;
+  let worktree: string | null = null, model: string | null = null;
+  for (const r of records) {
+    input += r.inputTokens; output += r.outputTokens;
+    cacheRead += r.cacheReadTokens ?? 0; cacheCreation += r.cacheCreationTokens ?? 0;
+    totalSpend += effectiveTokens(r);
+    const t = Date.parse(r.timestamp);
+    if (t < startMs) startMs = t;
+    if (t > lastMs) lastMs = t;
+    if (!worktree && r.worktree) worktree = r.worktree;
+    if (!model && r.source === 'main-agent') model = r.model;
+  }
+  let toolCalls = 0, toolErrors = 0, subagents = 0;
+  const files = new Set<string>();
+  for (const n of flatten(listSessionAgents(root, sessionId))) {
+    toolCalls += n.toolSummary.total; toolErrors += n.toolSummary.errors;
+    if (n.role === 'subagent') subagents++;
+    const tx = getAgentTranscript(root, sessionId, n.transcriptId);
+    if (tx) for (const f of tx.filesTouched) files.add(f);
+  }
+  return {
+    worktree, model,
+    startedAt: Number.isFinite(startMs) ? new Date(startMs).toISOString() : '',
+    durationMs: Number.isFinite(startMs) && Number.isFinite(lastMs) ? lastMs - startMs : 0,
+    totalSpend,
+    tokens: { input, output, cacheRead, cacheCreation },
+    toolCalls, toolErrors, subagents, filesTouched: files.size,
+  };
 }
