@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { readSavedIndex } from './saved-sessions.js';
 
 export function pruneAgedPartitions(opts: { root: string; maxAgeDays: number; now: Date }): number {
   const usageDir = path.join(opts.root, 'usage');
@@ -8,12 +9,15 @@ export function pruneAgedPartitions(opts: { root: string; maxAgeDays: number; no
   const cutoff = todayUtc - opts.maxAgeDays * 86_400_000;
   let pruned = 0;
   const liveSessions = new Set<string>();
+  const saved = new Set(readSavedIndex(opts.root).sessions.map((s) => s.sessionId)); // sacred (FR-10, AD-5)
   for (const file of fs.readdirSync(usageDir)) {
     const m = /^usage-(\d{4}-\d{2}-\d{2})-(.+)\.ndjson$/.exec(file);
     if (!m) continue;
+    if (saved.has(m[2])) { liveSessions.add(m[2]); continue; }           // exempt: keep file, mark live
     if (Date.parse(`${m[1]}T00:00:00Z`) < cutoff) { fs.unlinkSync(path.join(usageDir, file)); pruned++; }
     else liveSessions.add(m[2]);
   }
+  for (const id of saved) liveSessions.add(id); // saved sessions keep transcripts/checkpoints even if no live partition (AD-5)
   const ckptDir = path.join(opts.root, 'checkpoints');
   if (fs.existsSync(ckptDir)) {
     for (const file of fs.readdirSync(ckptDir)) {
