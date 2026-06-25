@@ -17,6 +17,7 @@ import { readViewState, writeViewState, type ViewState } from "@/lib/time-range/
 import { useTimeRangeWindow } from "@/hooks/use-time-range-window";
 import { useSpendRateChart } from "@/hooks/use-spend-rate-chart";
 import { useUrlViewState } from "@/hooks/use-url-view-state";
+import { listSaved, saveSession, unsaveSession } from "@/lib/observability/saved-client";
 
 const HelpPanel = dynamic(
   () => import("@/components/observability/help-panel").then((m) => m.HelpPanel),
@@ -30,6 +31,30 @@ export function ObservabilityView() {
   const { rows, todayRows, ready } = useObservabilityLive({ rangeStart, rangeEnd, manualTick });
 
   const [helpOpen, setHelpOpen] = React.useState(false);
+  const [savedIds, setSavedIds] = React.useState<Set<string>>(new Set());
+
+  // Load the saved-session id set once on mount (DD-1).
+  React.useEffect(() => {
+    listSaved().then((saved) => {
+      setSavedIds(new Set(saved.map((s) => s.sessionId)));
+    });
+  }, []);
+
+  const handleToggleSave = React.useCallback(async (sessionId: string) => {
+    const isSaved = savedIds.has(sessionId);
+    // Optimistic update (DD-1)
+    setSavedIds((prev) => {
+      const next = new Set(prev);
+      if (isSaved) next.delete(sessionId); else next.add(sessionId);
+      return next;
+    });
+    if (isSaved) {
+      await unsaveSession(sessionId);
+    } else {
+      await saveSession(sessionId);
+    }
+  }, [savedIds]);
+
   const [worktree, setWorktree] = React.useState<string>("All");
   const [session, setSession] = React.useState<string>("All");
   const filtered = worktree !== "All" || session !== "All";
@@ -99,7 +124,7 @@ export function ObservabilityView() {
       <main id="main-content" className="px-6 py-[var(--space-4)] space-y-[var(--space-4)]">
         <SpendRateChart data={chart.data} series={chart.series} title="Token Spend Rate" rangeStart={rangeStart} rangeEnd={rangeEnd} filtered={filtered} ready={ready} />
         <SummaryCards sessions={filteredSessions} activeNow={activeNow} />
-        <SessionTable sessions={filteredSessions} now={now} rangeStart={rangeStart} rangeEnd={rangeEnd} nominalWindowMs={tw.nominalWindowMs} />
+        <SessionTable sessions={filteredSessions} now={now} rangeStart={rangeStart} rangeEnd={rangeEnd} nominalWindowMs={tw.nominalWindowMs} savedIds={savedIds} onToggleSave={handleToggleSave} />
         <HelpPanel open={helpOpen} onOpenChange={setHelpOpen} />
       </main>
     </>
