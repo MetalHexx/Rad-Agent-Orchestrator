@@ -60,3 +60,14 @@ test('degrades when prompt, result, tools, and duration are absent (FR-7, DD-7)'
   assert.ok(html.includes('No tool calls.'), 'tools empty state');
   assert.ok(html.includes('—'), 'duration renders an em dash when undefined');
 });
+
+test('mounts the raw token breakdown under the scorecard, agent-scoped (FR-5, FR-6, AD-3)', () => {
+  const html = renderToStaticMarkup(createElement(OverviewFacet, { transcript }));
+  for (const label of ['Input', 'Output', 'Cache read', 'Cache create']) {
+    assert.ok(html.includes(label), `${label} cell present`);
+  }
+  assert.ok(html.includes('5.0K') && html.includes('2.0K'), 'agent-scoped raw counts via humanizeTokens');
+  assert.ok(html.includes('Folds into Total Spend 12.0K'), 'note reuses the facet effective spend');
+  const grid = html.indexOf('sm:grid-cols-5'), breakdown = html.indexOf('Cache create');
+  assert.ok(grid !== -1 && breakdown !== -1 && grid < breakdown, 'breakdown sits below the 5-up scorecard');
+});
