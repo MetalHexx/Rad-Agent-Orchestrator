@@ -1,15 +1,31 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { SavedSession } from "@rad-orchestration/telemetry";
 import { ObservabilitySubHeader } from "@/components/observability/observability-sub-header";
 import { ViewSwitcher } from "@/components/observability/view-switcher";
 import { SavedRow } from "@/components/observability/saved-row";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { listSaved } from "@/lib/observability/saved-client";
+import { toggleSelection, selectedCount, canCompare, type SelectionState } from "@/lib/observability/selection";
+
+const EMPTY_SELECTION: SelectionState = { baseline: null, candidate: null };
 
 export function SavedView() {
   const [saved, setSaved] = useState<SavedSession[]>([]);
+  const [selection, setSelection] = useState<SelectionState>(EMPTY_SELECTION);
   const reload = () => listSaved().then(setSaved);
   useEffect(() => { reload(); }, []);
+
+  const handleSelect = useCallback((sessionId: string) => {
+    setSelection((prev) => toggleSelection(prev, sessionId));
+  }, []);
+
+  const clearSelection = useCallback(() => setSelection(EMPTY_SELECTION), []);
+
+  const count = selectedCount(selection);
+  const compareEnabled = canCompare(selection);
+
   return (
     <>
       <ObservabilitySubHeader
@@ -27,10 +43,52 @@ export function SavedView() {
           </div>
         ) : (
           <div className="rounded-xl bg-card ring-1 ring-foreground/10 overflow-x-auto">
-            {saved.map((s) => <SavedRow key={s.sessionId} session={s} />)}
+            {saved.map((s) => {
+              const isBaseline = selection.baseline === s.sessionId;
+              const isCandidate = selection.candidate === s.sessionId;
+              const isSelected = isBaseline || isCandidate;
+              return (
+                <div key={s.sessionId} className="relative">
+                  {isBaseline && (
+                    <span className="absolute left-12 top-1/2 -translate-y-1/2 z-10 pointer-events-none">
+                      <Badge variant="accent">BASELINE</Badge>
+                    </span>
+                  )}
+                  <SavedRow
+                    session={s}
+                    selected={isSelected}
+                    onSelect={() => handleSelect(s.sessionId)}
+                  />
+                </div>
+              );
+            })}
           </div>
         )}
       </main>
+
+      {/* Sticky Compare bar — only visible when at least one row is selected (FR-6) */}
+      {count > 0 && (
+        <div
+          aria-label="Compare bar"
+          className="fixed bottom-0 left-0 right-0 z-50 flex items-center justify-between gap-4 border-t border-[color:var(--live)]/30 bg-card/95 px-6 py-3 backdrop-blur-sm"
+        >
+          <span className="text-sm text-muted-foreground">
+            {count === 1 ? "1 session selected" : `${count} sessions selected`}
+          </span>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="sm" onClick={clearSelection}>
+              Clear
+            </Button>
+            <Button
+              size="sm"
+              disabled={!compareEnabled}
+              className="bg-[color:var(--live)] text-white hover:bg-[color:var(--live)]/90 disabled:opacity-40"
+            >
+              {`Compare (${count}) →`}
+            </Button>
+          </div>
+        </div>
+      )}
     </>
   );
 }
