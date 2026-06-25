@@ -1,0 +1,89 @@
+"use client";
+import * as React from "react";
+import { Star } from "lucide-react";
+import type { SavedSession } from "@rad-orchestration/telemetry";
+import { humanizeTokens } from "@/lib/observability/format";
+import { formatDuration } from "@/lib/observability/duration-format";
+import { cn } from "@/lib/utils";
+
+export interface SavedRowProps {
+  session: SavedSession;
+  selected?: boolean;
+  onSelect?: (sessionId: string, checked: boolean) => void;
+  onUnsave?: (sessionId: string) => void;
+}
+
+/**
+ * Row in the Saved Benchmarks table: [checkbox · star · Title · Saved · Spend · Duration].
+ * Title is shown monospace when it equals the session id (i.e. user has not renamed it).
+ * Spend uses humanizeTokens; Duration uses formatDuration (same helpers as SessionTable).
+ * Selected rows apply the --live accent for highlight (FR-4, DD-3, DD-9).
+ */
+export function SavedRow({ session, selected = false, onSelect, onUnsave }: SavedRowProps) {
+  const { sessionId, title, savedAt, snapshot } = session;
+  const titleIsSid = title === sessionId;
+
+  return (
+    <div
+      role="row"
+      className={cn(
+        "grid grid-cols-[2rem_2rem_1fr_10rem_7rem_6rem] items-center gap-x-3 px-4 py-2 border-b border-border last:border-0 hover:bg-muted/70 transition-colors text-sm",
+        selected && "bg-[color:var(--live)]/10 ring-inset ring-1 ring-[color:var(--live)]/40"
+      )}
+    >
+      {/* Checkbox */}
+      <div role="gridcell" className="flex items-center justify-center">
+        <input
+          type="checkbox"
+          checked={selected}
+          aria-label={`Select ${title}`}
+          onChange={(e) => onSelect?.(sessionId, e.currentTarget.checked)}
+          className="accent-[var(--live)] size-4"
+        />
+      </div>
+
+      {/* Star — always filled because the session is already saved */}
+      <div role="gridcell" className="flex items-center justify-center">
+        <button
+          type="button"
+          aria-label="Remove from saved benchmarks"
+          aria-pressed={true}
+          onClick={() => onUnsave?.(sessionId)}
+          className={cn(
+            "inline-flex items-center justify-center rounded p-0.5 transition-colors",
+            "text-[var(--live)] hover:text-destructive hover:bg-destructive/10"
+          )}
+        >
+          <Star aria-hidden="true" fill="currentColor" className="size-4" />
+        </button>
+      </div>
+
+      {/* Title — mono when still equal to the session id */}
+      <div
+        role="gridcell"
+        className={cn(
+          "truncate",
+          titleIsSid ? "font-mono text-xs text-muted-foreground" : "text-foreground"
+        )}
+        title={title}
+      >
+        {title}
+      </div>
+
+      {/* Saved date */}
+      <div role="gridcell" className="whitespace-nowrap text-xs text-muted-foreground tabular-nums">
+        {new Date(savedAt).toLocaleString()}
+      </div>
+
+      {/* Spend */}
+      <div role="gridcell" className="whitespace-nowrap text-sm font-semibold tabular-nums">
+        {humanizeTokens(snapshot.totalSpend)}
+      </div>
+
+      {/* Duration */}
+      <div role="gridcell" className="whitespace-nowrap text-xs tabular-nums">
+        {formatDuration(snapshot.durationMs)}
+      </div>
+    </div>
+  );
+}
