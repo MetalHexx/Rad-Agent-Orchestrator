@@ -11,12 +11,12 @@ export interface ObservabilitySubHeaderProps {
   title: React.ReactNode;
   subtitle: React.ReactNode;
   ariaLabel: string;
-  msSinceActivity: number | null;   // null → indicator hidden (no system activity on All-Sessions)
-  range: TimeRange;
-  onRangeChange: (r: TimeRange) => void;
-  rangeMin: number;
-  rangeMax: number;
-  scopeLabel: string;
+  msSinceActivity?: number | null;   // null → indicator hidden (no system activity on All-Sessions)
+  range?: TimeRange;
+  onRangeChange?: (r: TimeRange) => void;
+  rangeMin?: number;
+  rangeMax?: number;
+  scopeLabel?: string;
   onRefresh: () => void;
   onHelp: () => void;
   filters?: React.ReactNode;        // slot — All-Sessions passes the two FilterSelects; Detail omits
@@ -31,10 +31,10 @@ export function ObservabilitySubHeader(props: ObservabilitySubHeaderProps) {
   const actions = (
     <>
       {props.msSinceActivity != null && <ActivityIndicator msSinceActivity={props.msSinceActivity} />}
-      <TimeRangePicker
-        value={props.range} onChange={props.onRangeChange}
-        min={props.rangeMin} max={props.rangeMax} scopeLabel={props.scopeLabel}
-      />
+      {props.range && (
+        <TimeRangePicker value={props.range} onChange={props.onRangeChange!}
+          min={props.rangeMin!} max={props.rangeMax!} scopeLabel={props.scopeLabel!} />
+      )}
       {props.onResetRange && (
         <Button variant="outline" size="sm" aria-label="Fit time range to session" onClick={props.onResetRange}>
           <RotateCcw /> Fit to session
