@@ -1,5 +1,5 @@
 import assert from 'node:assert';
-import { listSaved, saveSession, renameSaved, unsaveSession } from './saved-client';
+import { listSaved, fetchIsSaved, saveSession, renameSaved, unsaveSession } from './saved-client';
 
 let passed = 0, failed = 0;
 async function test(name: string, fn: () => Promise<void>) {
@@ -27,6 +27,12 @@ async function run() {
     await saveSession('s1');
     assert.strictEqual(calls[0].method, 'POST');
     assert.deepStrictEqual(JSON.parse(calls[0].body!), { sessionId: 's1' });
+  });
+  await test('fetchIsSaved GETs the session-level saved flag by id (FR-3)', async () => {
+    const calls = stub({ saved: true });
+    const result = await fetchIsSaved('s1');
+    assert.strictEqual(calls[0].url, '/api/observability/saved/s1');
+    assert.strictEqual(result, true);
   });
   await test('renameSaved PATCHes the title; unsave DELETEs (FR-3)', async () => {
     const c1 = stub({ saved: { sessionId: 's1', title: 'X' } });

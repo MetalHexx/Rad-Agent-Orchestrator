@@ -8,8 +8,8 @@ export interface SaveStarButtonProps { saved: boolean; busy?: boolean; onToggle:
 export function SaveStarButton({ saved, busy, onToggle }: SaveStarButtonProps) {
   return (
     <Button
-      variant="ghost"
-      size="icon-xs"
+      variant="outline"
+      size="icon"
       aria-label={saved ? "Remove from saved benchmarks" : "Save benchmark"}
       aria-pressed={saved}
       title={saved ? "Saved benchmark" : "Save benchmark"}

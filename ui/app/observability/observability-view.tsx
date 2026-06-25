@@ -48,10 +48,14 @@ export function ObservabilityView() {
       if (isSaved) next.delete(sessionId); else next.add(sessionId);
       return next;
     });
-    if (isSaved) {
-      await unsaveSession(sessionId);
-    } else {
-      await saveSession(sessionId);
+    const ok = isSaved ? await unsaveSession(sessionId) : await saveSession(sessionId);
+    if (!ok) {
+      // Reconcile: write failed — reverse the optimistic flip (DD-1)
+      setSavedIds((prev) => {
+        const next = new Set(prev);
+        if (isSaved) next.add(sessionId); else next.delete(sessionId);
+        return next;
+      });
     }
   }, [savedIds]);
 
