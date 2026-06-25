@@ -87,3 +87,9 @@ test('handleToggleSave captures write result and reverses optimistic update on f
     'handleToggleSave conditionally reverses the optimistic setSavedIds update on write failure',
   );
 });
+
+test('view switcher is present in the All Sessions sub-header (FR-8, DD-8)', () => {
+  const html = renderToStaticMarkup(createElement(ObservabilityView));
+  assert.ok(html.includes('href="/observability/saved"'), 'saved-tab link target present in the sub-header');
+  assert.ok(html.includes('role="tablist"'), 'switcher tablist role present in the sub-header');
+});

@@ -6,7 +6,7 @@ import { ViewSwitcher } from "@/components/observability/view-switcher";
 import { SavedRow } from "@/components/observability/saved-row";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { listSaved } from "@/lib/observability/saved-client";
+import { listSaved, unsaveSession } from "@/lib/observability/saved-client";
 import { toggleSelection, selectedCount, canCompare, type SelectionState } from "@/lib/observability/selection";
 
 const EMPTY_SELECTION: SelectionState = { baseline: null, candidate: null };
@@ -58,6 +58,10 @@ export function SavedView() {
                     session={s}
                     selected={isSelected}
                     onSelect={() => handleSelect(s.sessionId)}
+                    onRenamed={(updated) =>
+                      setSaved((prev) => prev.map((x) => (x.sessionId === updated.sessionId ? updated : x)))
+                    }
+                    onUnsave={(id) => { unsaveSession(id).then((ok) => { if (ok) reload(); }); }}
                   />
                 </div>
               );

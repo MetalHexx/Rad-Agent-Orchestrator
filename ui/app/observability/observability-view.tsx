@@ -18,6 +18,7 @@ import { useTimeRangeWindow } from "@/hooks/use-time-range-window";
 import { useSpendRateChart } from "@/hooks/use-spend-rate-chart";
 import { useUrlViewState } from "@/hooks/use-url-view-state";
 import { listSaved, saveSession, unsaveSession } from "@/lib/observability/saved-client";
+import { ViewSwitcher } from "@/components/observability/view-switcher";
 
 const HelpPanel = dynamic(
   () => import("@/components/observability/help-panel").then((m) => m.HelpPanel),
@@ -110,6 +111,7 @@ export function ObservabilityView() {
         ariaLabel="All Sessions page"
         title="All Sessions"
         subtitle="System-wide token usage"
+        leading={<ViewSwitcher active="all" savedCount={savedIds.size} />}
         msSinceActivity={latestMs > 0 ? msSinceActivity : null}
         range={range}
         onRangeChange={setRange}
