@@ -24,6 +24,8 @@ import { useTimeRangeWindow } from "@/hooks/use-time-range-window";
 import { useSpendRateChart } from "@/hooks/use-spend-rate-chart";
 import { useUrlViewState } from "@/hooks/use-url-view-state";
 import { useSessionAgents } from "@/hooks/use-agent-inspector";
+import { SaveStarButton } from "@/components/observability/save-star-button";
+import { fetchIsSaved, saveSession, unsaveSession } from "@/lib/observability/saved-client";
 
 const HelpPanel = dynamic(
   () => import("@/components/observability/help-panel").then((m) => m.HelpPanel),
@@ -120,6 +122,17 @@ export function SessionDetailView({ sessionId }: { sessionId: string }) {
   const scopeTitle = `Session ${shortId(sessionId)}`;
   const subtitle = session?.worktree ?? "Single-session token usage";
 
+  // Save star state (FR-1, FR-3, DD-1, DD-2).
+  const [saved, setSaved] = React.useState(false);
+  const [busy, setBusy] = React.useState(false);
+  React.useEffect(() => { fetchIsSaved(sessionId).then(setSaved); }, [sessionId]);
+  const onToggle = async () => {
+    setBusy(true); const next = !saved; setSaved(next);            // optimistic (DD-1)
+    const ok = next ? await saveSession(sessionId) : await unsaveSession(sessionId);
+    if (!ok) setSaved(!next);                                       // reconcile on failure
+    setBusy(false);
+  };
+
   // Agent Inspector wiring (FR-3, FR-4, AD-7).
   const { availableIds } = useSessionAgents(sessionId);
   const [inspectId, setInspectId] = React.useState<string | null>(null);
@@ -141,6 +154,7 @@ export function SessionDetailView({ sessionId }: { sessionId: string }) {
         onRefresh={refreshNow}
         onHelp={() => setHelpOpen(true)}
         onResetRange={hasDefault ? onResetRange : undefined}
+        actions={<SaveStarButton saved={saved} busy={busy} onToggle={onToggle} />}
       />
       <main id="main-content" className="px-6 py-[var(--space-4)] space-y-[var(--space-4)]">
         {notFound ? (

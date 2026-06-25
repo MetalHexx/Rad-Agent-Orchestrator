@@ -46,3 +46,11 @@ test('reset button is present when onResetRange handler is passed', () => {
   }));
   assert.ok(html.includes('aria-label="Fit time range to session"'), 'reset button present when onResetRange provided');
 });
+
+test('renders the actions slot before refresh (FR-3, DD-2)', () => {
+  const html = renderToStaticMarkup(createElement(ObservabilitySubHeader, {
+    ...baseProps, msSinceActivity: null,
+    actions: createElement('button', { 'aria-label': 'Save benchmark' }, 'star'),
+  }));
+  assert.ok(html.includes('aria-label="Save benchmark"'), 'actions slot content renders in the cluster');
+});

@@ -22,6 +22,7 @@ export interface ObservabilitySubHeaderProps {
   filters?: React.ReactNode;        // slot — All-Sessions passes the two FilterSelects; Detail omits
   leading?: React.ReactNode;        // slot — Detail passes a BackButton before the title; All-Sessions omits
   onResetRange?: () => void;
+  actions?: React.ReactNode; // detail-view extras (e.g. the save star), placed before Refresh (DD-2)
 }
 
 /** Observability-specific header: composes the generic PageSubHeader, supplying the title and the
@@ -40,6 +41,7 @@ export function ObservabilitySubHeader(props: ObservabilitySubHeaderProps) {
         </Button>
       )}
       {props.filters}
+      {props.actions}
       <Button variant="outline" size="icon" aria-label="Refresh now" onClick={props.onRefresh}>↻</Button>
       <Button variant="outline" size="icon" aria-label="Help" onClick={props.onHelp}>?</Button>
     </>
