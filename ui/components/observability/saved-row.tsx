@@ -1,16 +1,20 @@
 "use client";
 import * as React from "react";
-import { Star } from "lucide-react";
+import { useState } from "react";
+import { Star, Pencil, Save } from "lucide-react";
 import type { SavedSession } from "@rad-orchestration/telemetry";
 import { humanizeTokens } from "@/lib/observability/format";
 import { formatDuration } from "@/lib/observability/duration-format";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { renameSaved } from "@/lib/observability/saved-client";
 
 export interface SavedRowProps {
   session: SavedSession;
   selected?: boolean;
   onSelect?: (sessionId: string, checked: boolean) => void;
   onUnsave?: (sessionId: string) => void;
+  onRenamed?: (updated: SavedSession) => void;
 }
 
 /**
@@ -19,9 +23,16 @@ export interface SavedRowProps {
  * Spend uses humanizeTokens; Duration uses formatDuration (same helpers as SessionTable).
  * Selected rows apply the --live accent for highlight (FR-4, DD-3, DD-9).
  */
-export function SavedRow({ session, selected = false, onSelect, onUnsave }: SavedRowProps) {
+export function SavedRow({ session, selected = false, onSelect, onUnsave, onRenamed }: SavedRowProps) {
   const { sessionId, title, savedAt, snapshot } = session;
   const titleIsSid = title === sessionId;
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(session.title);
+
+  const commit = async () => {
+    const r = await renameSaved(session.sessionId, draft);
+    if (r) { setEditing(false); onRenamed?.(r); }
+  };
 
   return (
     <div
@@ -58,16 +69,50 @@ export function SavedRow({ session, selected = false, onSelect, onUnsave }: Save
         </button>
       </div>
 
-      {/* Title — mono when still equal to the session id */}
-      <div
-        role="gridcell"
-        className={cn(
-          "truncate",
-          titleIsSid ? "font-mono text-xs text-muted-foreground" : "text-foreground"
+      {/* Title — mono when still equal to the session id; pencil to enter rename mode */}
+      <div role="gridcell" className="flex items-center gap-1 min-w-0">
+        {editing ? (
+          <>
+            <input
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              className="bg-transparent border border-border rounded px-1 font-mono text-sm min-w-0 flex-1"
+              aria-label="Benchmark title"
+            />
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              aria-label="Save title"
+              title="Save"
+              onClick={commit}
+              className="text-muted-foreground hover:text-[var(--chart-2)]"
+            >
+              <Save aria-hidden="true" />
+            </Button>
+          </>
+        ) : (
+          <>
+            <span
+              className={cn(
+                "truncate",
+                titleIsSid ? "font-mono text-xs text-muted-foreground" : "text-foreground"
+              )}
+              title={title}
+            >
+              {title}
+            </span>
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              aria-label="Rename benchmark"
+              title="Rename"
+              onClick={() => { setDraft(session.title); setEditing(true); }}
+              className="text-muted-foreground hover:text-[var(--chart-2)]"
+            >
+              <Pencil aria-hidden="true" />
+            </Button>
+          </>
         )}
-        title={title}
-      >
-        {title}
       </div>
 
       {/* Saved date */}
