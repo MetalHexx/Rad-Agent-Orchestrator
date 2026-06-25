@@ -11,3 +11,5 @@ export { parseTranscript, parseEvents, eventsFromRaw, truncateBody, type ParseCo
 export { buildTree, toSummary } from './transcript-tree.js';
 export { ingestTranscripts, type IngestDeps } from './transcript-ingestor.js';
 export { listSessionAgents, getAgentTranscript } from './read/transcript-reader.js';
+export { readSavedIndex, isSessionSaved, savedIndexPath,
+  type SavedSession, type SavedSessionSnapshot, type SavedSessionsIndex } from './saved-sessions.js';
