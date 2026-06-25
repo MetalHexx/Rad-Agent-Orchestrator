@@ -4,6 +4,7 @@ import type { SavedSession } from "@rad-orchestration/telemetry";
 import { ObservabilitySubHeader } from "@/components/observability/observability-sub-header";
 import { ViewSwitcher } from "@/components/observability/view-switcher";
 import { SavedRow } from "@/components/observability/saved-row";
+import { ComparisonModal } from "@/components/observability/comparison-modal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { listSaved, unsaveSession } from "@/lib/observability/saved-client";
@@ -14,6 +15,7 @@ const EMPTY_SELECTION: SelectionState = { baseline: null, candidate: null };
 export function SavedView() {
   const [saved, setSaved] = useState<SavedSession[]>([]);
   const [selection, setSelection] = useState<SelectionState>(EMPTY_SELECTION);
+  const [compareModal, setCompareModal] = useState<{ baseline: SavedSession; candidate: SavedSession } | null>(null);
   const reload = () => listSaved().then(setSaved);
   useEffect(() => { reload(); }, []);
 
@@ -25,6 +27,15 @@ export function SavedView() {
 
   const count = selectedCount(selection);
   const compareEnabled = canCompare(selection);
+
+  const handleCompare = useCallback(() => {
+    if (!compareEnabled || !selection.baseline || !selection.candidate) return;
+    const baseline = saved.find((s) => s.sessionId === selection.baseline);
+    const candidate = saved.find((s) => s.sessionId === selection.candidate);
+    if (baseline && candidate) {
+      setCompareModal({ baseline, candidate });
+    }
+  }, [compareEnabled, selection, saved]);
 
   return (
     <>
@@ -70,6 +81,15 @@ export function SavedView() {
         )}
       </main>
 
+      {/* Comparison modal — opens when Compare fires with two selected sessions (FR-7) */}
+      {compareModal && (
+        <ComparisonModal
+          baseline={compareModal.baseline}
+          candidate={compareModal.candidate}
+          onClose={() => setCompareModal(null)}
+        />
+      )}
+
       {/* Sticky Compare bar — only visible when at least one row is selected (FR-6) */}
       {count > 0 && (
         <div
@@ -87,6 +107,7 @@ export function SavedView() {
               size="sm"
               disabled={!compareEnabled}
               className="bg-[color:var(--live)] text-white hover:bg-[color:var(--live)]/90 disabled:opacity-40"
+              onClick={handleCompare}
             >
               {`Compare (${count}) →`}
             </Button>
