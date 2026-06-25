@@ -4,6 +4,8 @@ import dynamic from "next/dynamic";
 import { useObservabilityLive } from "@/hooks/use-observability-live";
 import { SpendRateChart } from "@/components/observability/spend-rate-chart";
 import { SessionSummaryCards } from "@/components/observability/session-summary-cards";
+import { TokenBreakdown } from "@/components/observability/token-breakdown";
+import { sumRawTokens } from "@/lib/observability/raw-tokens";
 import { ObservabilitySubHeader } from "@/components/observability/observability-sub-header";
 import { BackButton } from "@/components/ui/back-button";
 import { AgentTree } from '@/components/observability/agent-tree';
@@ -149,6 +151,9 @@ export function SessionDetailView({ sessionId }: { sessionId: string }) {
           <>
             <SpendRateChart data={chart.data} series={chart.series} title="Token Spend Rate · This Session" rangeStart={rangeStart} rangeEnd={rangeEnd} ready={ready} />
             {session && <SessionSummaryCards session={windowedSession!} />}
+            {session && (
+              <TokenBreakdown {...sumRawTokens(windowedSession!.rows)} spend={windowedSession!.spend} />
+            )}
             {session && (
               <AgentTree
                 tree={subagentTree}

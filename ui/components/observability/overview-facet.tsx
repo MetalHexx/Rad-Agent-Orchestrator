@@ -5,6 +5,7 @@ import { RichText } from "./rich-text";
 import { humanizeTokens } from "@/lib/observability/format";
 import { formatDuration } from "@/lib/observability/duration-format";
 import { effectiveTokens } from "@/lib/observability/effective-tokens";
+import { TokenBreakdown } from "./token-breakdown";
 
 const CARD = "rounded-xl bg-card ring-1 ring-foreground/10"; // matches summary-card.tsx + agent-tree.tsx (DD-3)
 
@@ -57,6 +58,13 @@ export function OverviewFacet({ transcript }: OverviewFacetProps) {
           <SummaryCard label="Errors" value={toolSummary.errors} tooltip="Tool calls that returned an error result." />
           <SummaryCard label="Files" value={filesTouched.length} tooltip="Distinct files this agent created or edited." />
         </SummaryCardGrid>
+        <TokenBreakdown
+          input={tokens.in}
+          output={tokens.out}
+          cacheRead={tokens.cacheRead}
+          cacheCreate={tokens.cacheCreate}
+          spend={spend}
+        />
 
         {/* (2) Tools card — chips by descending count + Tools-facet hint (FR-3, DD-5, DD-7) */}
         <section className={CARD}>
