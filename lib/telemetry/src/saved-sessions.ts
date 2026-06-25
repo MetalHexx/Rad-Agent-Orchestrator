@@ -50,6 +50,43 @@ export function isSessionSaved(root: string, sessionId: string): boolean {
   return readSavedIndex(root).sessions.some((s) => s.sessionId === sessionId);
 }
 
+// Atomic write: temp + rename, matching FileCheckpointStore.commit. (AD-3, NFR-1)
+function writeIndex(root: string, index: SavedSessionsIndex): void {
+  const file = savedIndexPath(root);
+  const tmp = `${file}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(index, null, 2), 'utf8');
+  fs.renameSync(tmp, file);
+}
+
+export function saveSession(root: string, input: { sessionId: string; snapshot: SavedSessionSnapshot }): SavedSession {
+  const index = readSavedIndex(root);
+  const savedAt = new Date().toISOString();
+  const existing = index.sessions.find((s) => s.sessionId === input.sessionId);
+  if (existing) { existing.snapshot = input.snapshot; existing.savedAt = savedAt; }
+  const record: SavedSession = existing ?? { sessionId: input.sessionId, title: input.sessionId, savedAt, snapshot: input.snapshot };
+  if (!existing) index.sessions.push(record);
+  index.updatedAt = savedAt;
+  writeIndex(root, index);
+  return record;
+}
+
+export function updateSavedSession(root: string, sessionId: string, patch: { title?: string }): SavedSession {
+  const index = readSavedIndex(root);
+  const record = index.sessions.find((s) => s.sessionId === sessionId);
+  if (!record) throw new Error(`saved session not found: ${sessionId}`);
+  if (typeof patch.title === 'string' && patch.title.trim() !== '') record.title = patch.title.trim();
+  index.updatedAt = new Date().toISOString();
+  writeIndex(root, index);
+  return record;
+}
+
+export function unsaveSession(root: string, sessionId: string): void {
+  const index = readSavedIndex(root);
+  index.sessions = index.sessions.filter((s) => s.sessionId !== sessionId);
+  index.updatedAt = new Date().toISOString();
+  writeIndex(root, index);
+}
+
 function sessionUsageDates(root: string, sessionId: string): string[] {
   let files: string[]; try { files = fs.readdirSync(path.join(root, 'usage')); } catch { return []; }
   const dates = new Set<string>();
