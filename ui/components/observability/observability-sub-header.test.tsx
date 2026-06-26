@@ -1,11 +1,17 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import * as url from 'node:url';
 import React, { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { ActivityIndicator } from './activity-indicator';
 import { ObservabilitySubHeader } from './observability-sub-header';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 (globalThis as any).React = React;
+
+const subHeaderSource = fs.readFileSync(
+  path.join(path.dirname(url.fileURLToPath(import.meta.url)), 'observability-sub-header.tsx'), 'utf8');
 
 const baseProps = {
   ariaLabel: 'Session detail page', title: 'Session abc12345', subtitle: 'wt/path',
@@ -45,4 +51,16 @@ test('reset button is present when onResetRange handler is passed', () => {
     ...baseProps, msSinceActivity: null, onResetRange: () => {},
   }));
   assert.ok(html.includes('aria-label="Fit time range to session"'), 'reset button present when onResetRange provided');
+});
+
+test('renders the actions slot before refresh (FR-3, DD-2)', () => {
+  const html = renderToStaticMarkup(createElement(ObservabilitySubHeader, {
+    ...baseProps, msSinceActivity: null,
+    actions: createElement('button', { 'aria-label': 'Save benchmark' }, 'star'),
+  }));
+  assert.ok(html.includes('aria-label="Save benchmark"'), 'actions slot content renders in the cluster');
+});
+
+test('time-range picker is gated on a provided range so the Saved page can omit it (DD-3, DD-8)', () => {
+  assert.match(subHeaderSource, /props\.range\s*&&[\s\S]{0,120}TimeRangePicker/, 'TimeRangePicker renders only when a range is supplied');
 });

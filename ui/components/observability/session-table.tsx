@@ -16,6 +16,7 @@ import { sessionDuration, timeBucketedRate, rowsInWindow } from "@/lib/observabi
 import { bucketsForWindow } from "@/lib/observability/time-range";
 import type { SessionAgg } from "@/lib/observability/sessions";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
+import { SaveStarButton } from "./save-star-button";
 
 type SortKey = "startedMs" | "lastMs" | "spend" | "worktree" | "sessionId" | "duration";
 type SortDir = "asc" | "desc";
@@ -32,9 +33,13 @@ interface SessionTableProps {
    *  stable value, not the live `rangeEnd - rangeStart`, so the sparkline's grid size is invariant
    *  across ticks (kills the per-tick warp). Falls back to the live span when absent. */
   nominalWindowMs?: number;
+  /** Set of session IDs the user has saved; used to render the leading star column (FR-3, DD-2). */
+  savedIds?: Set<string>;
+  /** Called when the user clicks the star cell; the caller is responsible for optimistic update (DD-1). */
+  onToggleSave?: (sessionId: string) => void;
 }
 
-export function SessionTable({ sessions, now, rangeStart, rangeEnd, nominalWindowMs }: SessionTableProps) {
+export function SessionTable({ sessions, now, rangeStart, rangeEnd, nominalWindowMs, savedIds, onToggleSave }: SessionTableProps) {
   const [sortKey, setSortKey] = React.useState<SortKey>("startedMs");
   const [sortDir, setSortDir] = React.useState<SortDir>("desc");
 
@@ -103,6 +108,7 @@ export function SessionTable({ sessions, now, rangeStart, rangeEnd, nominalWindo
               content/header. NB: the percentage shrink-to-content trick does NOT
               work under table-fixed (a percent width is taken literally → a sliver
               of the table), so metric columns must carry real pixel widths. */}
+          <col style={{ width: "40px" }} />{/* star (DD-2) */}
           <col style={{ width: "60px" }} />{/* Activity */}
           <col style={{ width: "auto" }} />{/* Worktree */}
           <col style={{ width: "auto" }} />{/* Session */}
@@ -113,6 +119,7 @@ export function SessionTable({ sessions, now, rangeStart, rangeEnd, nominalWindo
         </colgroup>
         <TableHeader>
           <TableRow>
+            <TableHead aria-hidden />
             <TableHead className="text-center">Activity</TableHead>
             <SortableHead colKey="worktree">Worktree</SortableHead>
             <SortableHead colKey="sessionId">Session</SortableHead>
@@ -143,6 +150,9 @@ export function SessionTable({ sessions, now, rangeStart, rangeEnd, nominalWindo
                 }
               }}
             >
+              <TableCell onClick={(e) => { e.stopPropagation(); onToggleSave?.(s.sessionId); }}>
+                <SaveStarButton saved={Boolean(savedIds?.has(s.sessionId))} onToggle={() => onToggleSave?.(s.sessionId)} />
+              </TableCell>
               <TableCell className="text-center">
                 <ActivityDot msSinceActivity={now - s.lastMs} />
               </TableCell>

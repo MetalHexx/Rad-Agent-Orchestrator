@@ -71,3 +71,25 @@ test('hero spend-rate chart renders above the summary cards (FR-1, DD-8)', async
   assert.ok(src.indexOf('<SpendRateChart') < src.indexOf('<SummaryCards'),
     'SpendRateChart must appear before SummaryCards in <main> (chart → cards → table)');
 });
+
+test('handleToggleSave captures write result and reverses optimistic update on failure (FR-3, DD-1)', async () => {
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const src = fs.readFileSync(path.resolve(import.meta.dirname, 'observability-view.tsx'), 'utf8');
+  assert.match(
+    src,
+    /const\s+\w+\s*=.*await\s+(unsaveSession|saveSession)\(/,
+    'handleToggleSave captures the write result into a variable',
+  );
+  assert.match(
+    src,
+    /if\s*\(!\w+\)[\s\S]{0,400}setSavedIds/,
+    'handleToggleSave conditionally reverses the optimistic setSavedIds update on write failure',
+  );
+});
+
+test('view switcher is present in the All Sessions sub-header (FR-8, DD-8)', () => {
+  const html = renderToStaticMarkup(createElement(ObservabilityView));
+  assert.ok(html.includes('href="/observability/saved"'), 'saved-tab link target present in the sub-header');
+  assert.ok(html.includes('role="tablist"'), 'switcher tablist role present in the sub-header');
+});

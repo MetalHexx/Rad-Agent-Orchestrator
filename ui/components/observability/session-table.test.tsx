@@ -108,6 +108,15 @@ test('renders with an explicit window without error (live scanline path)', () =>
   assert.ok(html.includes('sess-1111aaaa'), 'rows still render under the windowed scanline path');
 });
 
+test('renders a save-star control per row when savedIds is supplied (FR-3, DD-2)', () => {
+  const html = renderToStaticMarkup(createElement(SessionTable, {
+    sessions, now: Date.parse('2026-06-18T11:30:00Z'),
+    savedIds: new Set(['sess-2222bbbb']), onToggleSave: () => {},
+  }));
+  assert.ok(html.includes('aria-label="Save benchmark"'), 'an unsaved row shows a Save star');
+  assert.ok(html.includes('aria-label="Remove from saved benchmarks"'), 'a saved row shows a filled (Remove) star');
+});
+
 test('FR-11 contract: the scanline series is identical to the Total Rate series for a single filtered session', () => {
   // The behavioral guarantee behind the source wiring above: when narrowed to one session, the
   // per-row scanline must produce the SAME curve over the SAME x-span as the Total Rate chart.

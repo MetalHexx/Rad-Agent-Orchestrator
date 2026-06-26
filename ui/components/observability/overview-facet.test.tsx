@@ -1,5 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import * as url from 'node:url';
 import React, { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { AgentTranscript } from '@rad-orchestration/telemetry';
@@ -67,7 +70,12 @@ test('mounts the raw token breakdown under the scorecard, agent-scoped (FR-5, FR
     assert.ok(html.includes(label), `${label} cell present`);
   }
   assert.ok(html.includes('5.0K') && html.includes('2.0K'), 'agent-scoped raw counts via humanizeTokens');
-  assert.ok(html.includes('Folds into Total Spend 12.0K'), 'note reuses the facet effective spend');
+  // The "fold into Total Spend" note now lives in a hover tooltip (#149), which renderToStaticMarkup
+  // does not emit. Verify the wiring instead: OverviewFacet feeds the one computed effective spend to
+  // both the Total Spend tile and the breakdown, so the breakdown reuses the facet's spend figure.
+  const facetSrc = fs.readFileSync(
+    path.join(path.dirname(url.fileURLToPath(import.meta.url)), 'overview-facet.tsx'), 'utf8');
+  assert.match(facetSrc, /spend=\{spend\}/, 'breakdown receives the facet effective spend (single source of truth)');
   const grid = html.indexOf('sm:grid-cols-5'), breakdown = html.indexOf('Cache create');
   assert.ok(grid !== -1 && breakdown !== -1 && grid < breakdown, 'breakdown sits below the 5-up scorecard');
 });
