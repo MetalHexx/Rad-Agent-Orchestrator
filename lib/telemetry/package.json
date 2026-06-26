@@ -10,6 +10,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./read/effective-tokens": {
+      "types": "./dist/read/effective-tokens.d.ts",
+      "import": "./dist/read/effective-tokens.js",
+      "default": "./dist/read/effective-tokens.js"
     }
   },
   "description": "Dependency-free harness-neutral telemetry capture engine",
