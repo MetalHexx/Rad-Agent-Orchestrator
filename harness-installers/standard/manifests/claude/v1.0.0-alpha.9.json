@@ -115,7 +115,7 @@
     {
       "bundlePath": "action-events/event.final_approved.md",
       "destinationPath": "${RAD_HOME}/action-events/event.final_approved.md",
-      "sha256": "950e6237de2057245371676a9ff75fc7812550195f7cdb1e28836a2811575e39"
+      "sha256": "d5aded00a5ca43a861770b43e820babe6540e440a681a0a03df778b42b41a3a3"
     },
     {
       "bundlePath": "action-events/event.final_rejected.md",
