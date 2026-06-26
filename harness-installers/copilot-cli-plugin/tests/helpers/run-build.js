@@ -11,9 +11,12 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { runBuild as pluginRunBuild } from '../../build-scripts/build.js';
 
 const HARNESS = 'copilot-cli';
+// Repo root, for the optional realRuntimeConfig seed (see runBuild).
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
 
 function stageFixture(root) {
   const agentsDir = path.join(root, 'harness-adapters/output', HARNESS, 'agents');
@@ -84,12 +87,23 @@ function stageFixture(root) {
  * Runs the copilot-cli-plugin installer's `runBuild()` against a synthetic
  * fixture staged under a fresh temp directory.
  *
- * @param {{ cleanup?: boolean }} [opts]
+ * When `realRuntimeConfig` is set, the synthetic runtime-config/ is replaced
+ * with a copy of the repo's real one before building, so callers can verify the
+ * committed manifest catalog against the actual installable _install-source/
+ * payload (see manifest-payload-parity.test.mjs). The build stays isolated in a
+ * tmp dir, so it never races the shared real output/ tree.
+ *
+ * @param {{ cleanup?: boolean, realRuntimeConfig?: boolean }} [opts]
  * @returns {Promise<{ outRoot: string, fixtureRoot: string, cleanup: () => void }>}
  */
 export async function runBuild(opts = {}) {
   const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'copilot-cli-plugin-build-helper-'));
   stageFixture(fixtureRoot);
+  if (opts.realRuntimeConfig) {
+    const rc = path.join(fixtureRoot, 'runtime-config');
+    fs.rmSync(rc, { recursive: true, force: true });
+    fs.cpSync(path.join(REPO_ROOT, 'runtime-config'), rc, { recursive: true });
+  }
   await pluginRunBuild({
     rootDir: fixtureRoot,
     greenfieldRel: '.',

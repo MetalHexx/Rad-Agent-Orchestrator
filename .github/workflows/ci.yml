@@ -130,3 +130,39 @@ jobs:
 
       - name: Smoke build all harnesses against canonical source
         run: node harness-dogfood/build.js --all
+
+  installers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install dependencies (root workspace)
+        run: npm install
+
+      # Standard installer manifests are GENERATED (sha256 per file). Rebuild and
+      # fail if the committed manifests are stale (UI build skipped — it is not in
+      # the manifest, so manifests are byte-identical without it).
+      - name: Standard installer — manifest drift gate
+        run: npm run check:manifest-drift -w harness-installers/standard
+
+      # Installer test suites (never gated before). The plugin suites include the
+      # new manifest-payload-parity test: the plugin manifests are hand-authored
+      # catalogs the build copies verbatim, so a git-diff gate can't see drift —
+      # the parity test builds the real runtime-config and asserts the staged
+      # _install-source/ matches the catalog in both directions.
+      - name: Standard installer tests
+        run: npm test -w harness-installers/standard
+
+      - name: Claude plugin tests
+        run: npm test -w harness-installers/claude-plugin
+
+      - name: Copilot CLI plugin tests
+        run: npm test -w harness-installers/copilot-cli-plugin
+
+      - name: Copilot VS Code plugin tests
+        run: npm test -w harness-installers/copilot-vscode-plugin

@@ -11,9 +11,12 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { runBuild as pluginRunBuild } from '../../build-scripts/build.js';
 
 const HARNESS = 'claude';
+// Repo root, for the optional realRuntimeConfig seed (see runBuild).
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
 
 /** Stage a self-contained synthetic greenfield tree under `root`, matching the
  *  layout expected by `runBuild` with `greenfieldRel: '.'`. Includes
@@ -87,12 +90,23 @@ function stageFixture(root) {
  * Runs the claude-plugin installer's `runBuild()` against a synthetic fixture
  * staged under a fresh temp directory. Returns the per-installer output dir.
  *
- * @param {{ cleanup?: boolean }} [opts]
+ * When `realRuntimeConfig` is set, the synthetic runtime-config/ is replaced
+ * with a copy of the repo's real one before building, so callers can verify the
+ * committed manifest catalog against the actual installable _install-source/
+ * payload (see manifest-payload-parity.test.mjs). The build stays isolated in a
+ * tmp dir, so it never races the shared real output/ tree.
+ *
+ * @param {{ cleanup?: boolean, realRuntimeConfig?: boolean }} [opts]
  * @returns {Promise<{ outRoot: string, fixtureRoot: string, cleanup: () => void }>}
  */
 export async function runBuild(opts = {}) {
   const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-plugin-build-helper-'));
   stageFixture(fixtureRoot);
+  if (opts.realRuntimeConfig) {
+    const rc = path.join(fixtureRoot, 'runtime-config');
+    fs.rmSync(rc, { recursive: true, force: true });
+    fs.cpSync(path.join(REPO_ROOT, 'runtime-config'), rc, { recursive: true });
+  }
   await pluginRunBuild({
     rootDir: fixtureRoot,
     greenfieldRel: '.',

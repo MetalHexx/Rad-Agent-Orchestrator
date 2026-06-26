@@ -127,6 +127,10 @@ function makeFixture(root) {
     path.join(sharedHooksDir, 'session-preamble.mjs'),
     '// session-preamble.mjs shim (fixture)\n',
   );
+  fs.writeFileSync(
+    path.join(sharedHooksDir, 'telemetry-capture.mjs'),
+    '// telemetry-capture.mjs shim (fixture)\n',
+  );
 }
 
 test('build then install produces correct ~/.radorc/ and ~/.<harness>/ shapes for each harness', async () => {

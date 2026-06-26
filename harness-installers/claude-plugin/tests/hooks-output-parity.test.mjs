@@ -3,9 +3,15 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { emitHookBundle } from '../../shared/build-helpers/emit-hook-bundle.js';
 
-const SRC = 'harness-installers/claude-plugin/hooks/hooks.json';
+// Resolve paths relative to this test file, not process.cwd(), so the suite
+// passes under `npm test -w <workspace>` (cwd = workspace dir) as well as a
+// repo-root `node --test` invocation.
+const PLUGIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const REPO_ROOT = path.resolve(PLUGIN_ROOT, '../..');
+const SRC = path.join(PLUGIN_ROOT, 'hooks/hooks.json');
 const load = (p) => JSON.parse(fs.readFileSync(p, 'utf8'));
 
 test('build emits output hooks.json verbatim from source (FR-9, AD-9)', async () => {
@@ -15,9 +21,9 @@ test('build emits output hooks.json verbatim from source (FR-9, AD-9)', async ()
   const target = fs.mkdtempSync(path.join(os.tmpdir(), 'plugin-hooks-out-'));
   try {
     await emitHookBundle({
-      source: path.resolve('harness-installers/claude-plugin/hooks'),
+      source: path.join(PLUGIN_ROOT, 'hooks'),
       target,
-      sharedHooksDir: path.resolve('harness-installers/shared/hooks'),
+      sharedHooksDir: path.join(REPO_ROOT, 'harness-installers/shared/hooks'),
     });
     assert.deepEqual(load(path.join(target, 'hooks.json')), load(SRC));
   } finally {

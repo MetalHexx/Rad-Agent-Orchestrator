@@ -122,6 +122,10 @@ function makeFixture() {
     path.join(sharedHooksDir, 'session-preamble.mjs'),
     '// session-preamble.mjs shim (fixture)\n',
   );
+  fs.writeFileSync(
+    path.join(sharedHooksDir, 'telemetry-capture.mjs'),
+    '// telemetry-capture.mjs shim (fixture)\n',
+  );
 
   return root;
 }
