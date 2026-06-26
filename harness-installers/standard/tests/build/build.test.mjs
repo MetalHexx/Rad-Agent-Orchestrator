@@ -183,20 +183,19 @@ test('runBuild produces output/<harness>/ per harness and shared output/ui/', as
         `output/${h}/ui.tgz must NOT exist (AD-9)`);
     }
 
-    // Token substitution per harness (FR-24, AD-6, AD-16).
-    // Claude → ~/.claude
-    const claudeRoot = path.join(os.homedir(), '.claude');
-    const claudeSkillsRoot = path.join(claudeRoot, 'skills');
+    // Content tokens are DEFERRED to install time (FR-24, AD-6, AD-16).
+    // The build must NOT bake any absolute home path into the prebuilt bundle:
+    // ${SKILLS_ROOT}/${PLUGIN_ROOT} survive as literal tokens in output/ and are
+    // resolved per-user by installManifestFiles. Baking os.homedir() here was a
+    // latent bug (ships the build machine's home to every user + makes the
+    // manifest sha non-reproducible across platforms).
     const orchClaude = fs.readFileSync(path.join(out, 'claude/agents/orchestrator.md'), 'utf8');
-    assert.ok(orchClaude.includes(`${claudeSkillsRoot}/rad-orchestration/SKILL.md`)
-      || orchClaude.includes(`${claudeSkillsRoot}\\rad-orchestration/SKILL.md`)
-      || orchClaude.includes(claudeSkillsRoot),
-      'claude orchestrator.md: ${SKILLS_ROOT} replaced with ~/.claude/skills');
-    assert.ok(orchClaude.includes(claudeRoot),
-      'claude orchestrator.md: ${PLUGIN_ROOT} replaced with ~/.claude');
-    // No bare ${SKILLS_ROOT} or ${PLUGIN_ROOT} should remain.
-    assert.ok(!orchClaude.includes('${SKILLS_ROOT}'), 'claude: no unsubstituted ${SKILLS_ROOT}');
-    assert.ok(!orchClaude.includes('${PLUGIN_ROOT}'), 'claude: no unsubstituted ${PLUGIN_ROOT}');
+    assert.ok(orchClaude.includes('${SKILLS_ROOT}/rad-orchestration/SKILL.md'),
+      'claude orchestrator.md: ${SKILLS_ROOT} preserved as a token (resolved at install)');
+    assert.ok(orchClaude.includes('${PLUGIN_ROOT}'),
+      'claude orchestrator.md: ${PLUGIN_ROOT} preserved as a token (resolved at install)');
+    assert.ok(!orchClaude.includes(os.homedir()),
+      'claude orchestrator.md: build machine home dir must NOT be baked into the bundle');
     // AD-6: no namespacing rewrite — agent body still references bare names.
     assert.ok(orchClaude.includes('**coder**'),
       'claude orchestrator.md: **coder** kept bare (no rad-orc: prefix)');
@@ -205,17 +204,11 @@ test('runBuild produces output/<harness>/ per harness and shared output/ui/', as
     assert.ok(!orchClaude.includes('rad-orc:coder'),
       'claude: no rad-orc:coder namespacing applied (AD-6)');
 
-    // Copilot variants → ~/.copilot
-    const copilotRoot = path.join(os.homedir(), '.copilot');
-    const copilotSkillsRoot = path.join(copilotRoot, 'skills');
     for (const h of ['copilot-vscode', 'copilot-cli']) {
       const orch = fs.readFileSync(path.join(out, h, 'agents', agentFilename(h, 'orchestrator')), 'utf8');
-      assert.ok(orch.includes(copilotSkillsRoot),
-        `${h} orchestrator.md: ${`\${SKILLS_ROOT}`} replaced with ~/.copilot/skills`);
-      assert.ok(orch.includes(copilotRoot),
-        `${h} orchestrator.md: ${`\${PLUGIN_ROOT}`} replaced with ~/.copilot`);
-      assert.ok(!orch.includes('${SKILLS_ROOT}'), `${h}: no unsubstituted ${`\${SKILLS_ROOT}`}`);
-      assert.ok(!orch.includes('${PLUGIN_ROOT}'), `${h}: no unsubstituted ${`\${PLUGIN_ROOT}`}`);
+      assert.ok(orch.includes('${SKILLS_ROOT}'), `${h}: ${`\${SKILLS_ROOT}`} preserved as a token`);
+      assert.ok(orch.includes('${PLUGIN_ROOT}'), `${h}: ${`\${PLUGIN_ROOT}`} preserved as a token`);
+      assert.ok(!orch.includes(os.homedir()), `${h}: build machine home dir must NOT be baked in`);
       assert.ok(orch.includes('**coder**'),
         `${h} orchestrator.md: **coder** kept bare (no rad-orc: prefix)`);
     }

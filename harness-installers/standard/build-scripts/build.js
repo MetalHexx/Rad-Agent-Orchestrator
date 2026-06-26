@@ -8,7 +8,6 @@
 // step (AD-7).
 
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { execSync } from 'node:child_process';
 // Shared build-helpers are dynamic-imported inside runBuild() so esbuild
@@ -29,17 +28,24 @@ function step(name, fn) {
   });
 }
 
-/** Per-harness install-root token map. Both copilot variants share ~/.copilot.
- *  Standard installer does NOT apply agent-namespacing (AD-6) — bare agent names
- *  in canonical content survive to the output/ payload. */
-function tokenMapFor(harness) {
-  const installRoot = harness === 'claude'
-    ? path.join(os.homedir(), '.claude')
-    : path.join(os.homedir(), '.copilot');
-  return {
-    '${SKILLS_ROOT}': path.join(installRoot, 'skills'),
-    '${PLUGIN_ROOT}': installRoot,
-  };
+/** Per-harness build-time token map.
+ *
+ *  Intentionally EMPTY. The content tokens ${PLUGIN_ROOT} / ${SKILLS_ROOT} are
+ *  per-user runtime paths and MUST be resolved at INSTALL time against the
+ *  installing user's home — never baked here. Baking them at build time (the
+ *  old behaviour) was a latent bug: output/ ships PREBUILT, so it embedded the
+ *  build machine's os.homedir() into every skill file (e.g.
+ *  `C:\Users\<builder>\.claude/...`), which is broken for every other user AND
+ *  makes the manifest sha non-reproducible across machines/platforms (Windows
+ *  vs ubuntu CI). The tokens now survive as literal `${...}` in output/ and are
+ *  expanded per-user by installManifestFiles (see
+ *  lib/install/expand-tokens.js → expandContentTokens), mirroring how
+ *  ${HARNESS_ROOT} destination tokens are already deferred to install time.
+ *
+ *  Standard installer also does NOT apply agent-namespacing (AD-6) — bare agent
+ *  names in canonical content survive to the output/ payload. */
+function tokenMapFor() {
+  return {};
 }
 
 /** @param {{ rootDir: string, skipAdapterEngine?: boolean, skipUiRunner?: boolean,
