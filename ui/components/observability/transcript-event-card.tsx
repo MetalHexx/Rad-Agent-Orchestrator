@@ -92,7 +92,7 @@ function EventBody({ event, showToolIO }: { event: TranscriptEvent; showToolIO: 
         <div>
           {isError ? <div className="mb-1.5"><ErrorBadge /></div> : null}
           {out ? (
-            <RevealBody id={revealId} clamp={needsClamp(out.text, 92)} maxHeightClass="max-h-[16.25em]">
+            <RevealBody id={revealId} clamp={needsClamp(out.text, 92)} maxHeightClass="max-h-[16.25em]" fadeTo="after:to-background">
               <JsonBlock
                 text={out.text}
                 className="mt-1.5 rounded-lg bg-background px-3 py-2.5"
@@ -120,8 +120,8 @@ function EventBody({ event, showToolIO }: { event: TranscriptEvent; showToolIO: 
 // `id` is derived from event.seq (deterministic, no Math.random).
 // ---------------------------------------------------------------------------
 function RevealBody({
-  id, clamp, maxHeightClass, children,
-}: { id: string; clamp: boolean; maxHeightClass: string; children: React.ReactNode }) {
+  id, clamp, maxHeightClass, fadeTo = "after:to-card", children,
+}: { id: string; clamp: boolean; maxHeightClass: string; fadeTo?: string; children: React.ReactNode }) {
   if (!clamp) return <>{children}</>;
   // Both <label>s are direct siblings of the peer checkbox so `peer-checked:`
   // toggles them; "more" shows collapsed, "less" shows expanded.
@@ -130,11 +130,19 @@ function RevealBody({
   return (
     <div data-reveal="">
       <input type="checkbox" id={id} aria-label="Show more" className="peer sr-only" />
+      {/* The collapsed fade is a gradient `::after`, NOT a CSS `mask-image`.
+          `mask-image` forced this element onto a GPU mask-compositing layer that
+          failed to repaint when toggled inside the scroll viewport — blanking the
+          whole transcript. A plain gradient overlay paints normally. The `::after`
+          rides on the clamp div (itself a peer sibling), so `peer-checked:after:hidden`
+          drops the fade when expanded. `fadeTo` matches the colour behind the
+          content (card for prose/args, background for tool-result code blocks). */}
       <div
         className={cn(
           maxHeightClass,
-          "overflow-hidden peer-checked:max-h-none",
-          "[mask-image:linear-gradient(to_bottom,black_72%,transparent)] peer-checked:[mask-image:none]",
+          "relative overflow-hidden peer-checked:max-h-none",
+          "after:pointer-events-none after:absolute after:inset-x-0 after:bottom-0 after:h-12 after:bg-gradient-to-b after:from-transparent after:content-[''] peer-checked:after:hidden",
+          fadeTo,
         )}
       >
         {children}

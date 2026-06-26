@@ -37,6 +37,23 @@ export function ModalShell({
     return () => document.removeEventListener('keydown', onKey);
   }, [onPrev, onNext, onClose]);
 
+  // Lock background scroll while the modal is open so the page behind it
+  // cannot scroll and we don't get a second (page-level) scrollbar alongside
+  // the modal's own. Compensate for the removed scrollbar width to avoid a
+  // layout shift when it disappears. Restores the prior values on close.
+  React.useEffect(() => {
+    const { body, documentElement } = document;
+    const prevOverflow = body.style.overflow;
+    const prevPaddingRight = body.style.paddingRight;
+    const scrollbarWidth = window.innerWidth - documentElement.clientWidth;
+    body.style.overflow = "hidden";
+    if (scrollbarWidth > 0) body.style.paddingRight = `${scrollbarWidth}px`;
+    return () => {
+      body.style.overflow = prevOverflow;
+      body.style.paddingRight = prevPaddingRight;
+    };
+  }, []);
+
   return (
     <div role="dialog" aria-modal="true" aria-label={ariaLabel} data-state={dataState}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 supports-backdrop-filter:backdrop-blur-sm artifact-modal-overlay duration-200 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0"
