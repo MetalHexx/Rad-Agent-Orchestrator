@@ -39,6 +39,15 @@ export async function emitCliBundle(opts) {
 
   await build({
     entryPoints: [entryPoint],
+    // Pin the working directory to a fixed base (the cli source's parent) so the
+    // bundle is byte-deterministic. esbuild labels bundled modules with paths
+    // relative to absWorkingDir (default: process.cwd()) — purely cosmetic
+    // `__commonJS`/comment labels, but they end up in the output bytes. Without
+    // this pin, the same source produces different bytes depending on the cwd the
+    // build was invoked from (repo root vs an `npm run -w <workspace>` cwd),
+    // which would make the generated install manifests non-reproducible and
+    // break the manifest-drift gate.
+    absWorkingDir: path.dirname(source),
     bundle: true,
     platform: 'node',
     format: 'esm',

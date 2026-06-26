@@ -18,7 +18,11 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { expandDestinationTokens } from './expand-tokens.js';
+import {
+  expandDestinationTokens,
+  expandContentTokens,
+  isContentExpandable,
+} from './expand-tokens.js';
 import { userDataPaths } from './user-data-paths.js';
 
 /**
@@ -58,7 +62,15 @@ export function installManifestFiles(manifest, bundleRoot, harness, opts = {}) {
     const targetDir = path.dirname(target);
 
     fs.mkdirSync(targetDir, { recursive: true });
-    fs.copyFileSync(source, target);
+    // Skill/agent payload carries ${PLUGIN_ROOT}/${SKILLS_ROOT} content tokens
+    // that the build deliberately leaves unresolved (output/ ships prebuilt, so
+    // the build machine's home must NOT be baked in). Resolve them here against
+    // the installing user's home; everything else is copied byte-verbatim.
+    if (isContentExpandable(entry.bundlePath)) {
+      fs.writeFileSync(target, expandContentTokens(fs.readFileSync(source, 'utf8'), harness));
+    } else {
+      fs.copyFileSync(source, target);
+    }
 
     if (normalized === 'skills/rad-orchestration/scripts/radorch.mjs') {
       try {

@@ -4,15 +4,25 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const OUT = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)), '../output/skills');
+// Guard the rad-execute skill set against the tracked canonical source that the
+// build ships into the payload (copy-skills draws output/skills/ from the
+// adapter output, which the engine generates from harness-files/skills/).
+//
+// We assert against harness-files/skills/ rather than ../output/skills/ because
+// output/ is a gitignored build artifact: it is absent on a fresh checkout (so
+// the suite would fail under CI) and, in the claude suite, is concurrently
+// wiped/rebuilt by build-e2e under `node --test`'s parallel file execution (a
+// race). The copy mechanics that carry the source into the payload are covered
+// by build-orchestrator.test.mjs.
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
+const SKILLS_SRC = path.join(REPO_ROOT, 'harness-files/skills');
 
-test('built payload includes rad-execute skill (FR-19)', () => {
-  assert.ok(fs.existsSync(path.join(OUT, 'rad-execute/SKILL.md')),
-    'output/skills/rad-execute/SKILL.md must be present in the payload');
+test('canonical skill source includes rad-execute (FR-19)', () => {
+  assert.ok(fs.existsSync(path.join(SKILLS_SRC, 'rad-execute/SKILL.md')),
+    'harness-files/skills/rad-execute/SKILL.md must be present (ships into the payload)');
 });
 
-test('built payload excludes retired rad-execute-parallel skill (FR-19, AD-5)', () => {
-  assert.ok(!fs.existsSync(path.join(OUT, 'rad-execute-parallel')),
-    'output/skills/rad-execute-parallel must not be in the payload');
+test('canonical skill source excludes retired rad-execute-parallel skill (FR-19, AD-5)', () => {
+  assert.ok(!fs.existsSync(path.join(SKILLS_SRC, 'rad-execute-parallel')),
+    'harness-files/skills/rad-execute-parallel must not exist (retired)');
 });

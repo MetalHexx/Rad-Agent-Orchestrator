@@ -127,6 +127,10 @@ function makeFixture(root) {
     path.join(sharedHooksDir, 'session-preamble.mjs'),
     '// session-preamble.mjs shim (fixture)\n',
   );
+  fs.writeFileSync(
+    path.join(sharedHooksDir, 'telemetry-capture.mjs'),
+    '// telemetry-capture.mjs shim (fixture)\n',
+  );
 }
 
 test('build then install produces correct ~/.radorc/ and ~/.<harness>/ shapes for each harness', async () => {
@@ -138,10 +142,11 @@ test('build then install produces correct ~/.radorc/ and ~/.<harness>/ shapes fo
   try {
     makeFixture(tmp);
 
-    // Point HOME and USERPROFILE at a fresh tmp home BEFORE invoking runBuild —
-    // the build's expand-tokens step bakes ~/.claude and ~/.copilot absolute
-    // paths into agent content via os.homedir() — and BEFORE installHarness /
-    // hydrateUserData, both of which call userDataPaths() / harnessRoot().
+    // Point HOME and USERPROFILE at a fresh tmp home BEFORE installHarness /
+    // hydrateUserData, both of which call userDataPaths() / harnessRoot() to
+    // resolve the install root AND (now) the ${PLUGIN_ROOT}/${SKILLS_ROOT}
+    // content tokens. The build itself no longer touches os.homedir() — those
+    // tokens are deferred to install time — but the install path does.
     const home = path.join(tmp, 'home');
     fs.mkdirSync(home, { recursive: true });
     process.env.HOME = home;
@@ -157,6 +162,16 @@ test('build then install produces correct ~/.radorc/ and ~/.<harness>/ shapes fo
     });
 
     const outputRoot = path.join(tmp, 'harness-installers/standard/output');
+
+    // Regression guard (cross-platform manifest reproducibility): the PREBUILT
+    // bundle must retain the raw ${SKILLS_ROOT} token and must NOT contain the
+    // build machine's home dir — expansion is the installer's job, below.
+    const bundleSkill = fs.readFileSync(
+      path.join(outputRoot, 'claude/skills/rad-orchestration/SKILL.md'), 'utf8');
+    assert.ok(bundleSkill.includes('${SKILLS_ROOT}'),
+      'bundle SKILL.md retains ${SKILLS_ROOT} token (build must not bake home dir)');
+    assert.ok(!bundleSkill.includes(home),
+      'bundle SKILL.md must not contain the build machine home dir');
 
     // Install each harness against the real output/<h>/ payload. The
     // copilot-cli ↔ copilot-vscode folder mutex is tested separately in P03;
