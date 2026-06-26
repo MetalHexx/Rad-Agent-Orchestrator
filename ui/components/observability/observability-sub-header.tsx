@@ -9,7 +9,7 @@ import type { TimeRange } from '@/lib/time-range/range';
 
 export interface ObservabilitySubHeaderProps {
   title: React.ReactNode;
-  subtitle: React.ReactNode;
+  subtitle?: React.ReactNode;       // optional — the Saved page renders no subtitle
   ariaLabel: string;
   msSinceActivity?: number | null;   // null → indicator hidden (no system activity on All-Sessions)
   range?: TimeRange;
@@ -21,6 +21,7 @@ export interface ObservabilitySubHeaderProps {
   onHelp: () => void;
   filters?: React.ReactNode;        // slot — All-Sessions passes the two FilterSelects; Detail omits
   leading?: React.ReactNode;        // slot — Detail passes a BackButton before the title; All-Sessions omits
+  afterTitle?: React.ReactNode;     // slot — list views pass the ViewSwitcher to sit right of the title
   onResetRange?: () => void;
   actions?: React.ReactNode; // detail-view extras (e.g. the save star), placed before Refresh (DD-2)
 }
@@ -47,6 +48,6 @@ export function ObservabilitySubHeader(props: ObservabilitySubHeaderProps) {
     </>
   );
   return (
-    <PageSubHeader ariaLabel={props.ariaLabel} title={props.title} subtitle={props.subtitle} leading={props.leading} actions={actions} />
+    <PageSubHeader ariaLabel={props.ariaLabel} title={props.title} subtitle={props.subtitle} leading={props.leading} afterTitle={props.afterTitle} actions={actions} />
   );
 }

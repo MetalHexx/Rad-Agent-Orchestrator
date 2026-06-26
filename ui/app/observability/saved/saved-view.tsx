@@ -5,7 +5,6 @@ import { ObservabilitySubHeader } from "@/components/observability/observability
 import { ViewSwitcher } from "@/components/observability/view-switcher";
 import { SavedRow } from "@/components/observability/saved-row";
 import { ComparisonModal } from "@/components/observability/comparison-modal";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { listSaved, unsaveSession } from "@/lib/observability/saved-client";
 import { toggleSelection, selectedCount, canCompare, type SelectionState } from "@/lib/observability/selection";
@@ -40,17 +39,16 @@ export function SavedView() {
   return (
     <>
       <ObservabilitySubHeader
-        title="Saved Benchmarks"
-        subtitle="Sacred runs kept for comparison"
-        ariaLabel="Saved benchmarks"
-        leading={<ViewSwitcher active="saved" savedCount={saved.length} />}
+        title="Saved Sessions"
+        ariaLabel="Saved sessions"
+        afterTitle={<ViewSwitcher active="saved" savedCount={saved.length} />}
         onRefresh={reload}
         onHelp={() => {}}
       />
       <main id="main-content" className="px-6 py-[var(--space-4)] space-y-[var(--space-4)]">
         {saved.length === 0 ? (
           <div className="rounded-xl bg-card ring-1 ring-foreground/10 p-10 text-center text-muted-foreground">
-            No saved benchmarks yet. Star a session to keep it here. {/* DD-9 */}
+            No saved sessions yet. Star a session to keep it here. {/* DD-9 */}
           </div>
         ) : (
           <div className="rounded-xl bg-card ring-1 ring-foreground/10 overflow-x-auto">
@@ -59,22 +57,17 @@ export function SavedView() {
               const isCandidate = selection.candidate === s.sessionId;
               const isSelected = isBaseline || isCandidate;
               return (
-                <div key={s.sessionId} className="relative">
-                  {isBaseline && (
-                    <span className="absolute left-12 top-1/2 -translate-y-1/2 z-10 pointer-events-none">
-                      <Badge variant="accent">BASELINE</Badge>
-                    </span>
-                  )}
-                  <SavedRow
-                    session={s}
-                    selected={isSelected}
-                    onSelect={() => handleSelect(s.sessionId)}
-                    onRenamed={(updated) =>
-                      setSaved((prev) => prev.map((x) => (x.sessionId === updated.sessionId ? updated : x)))
-                    }
-                    onUnsave={(id) => { unsaveSession(id).then((ok) => { if (ok) reload(); }); }}
-                  />
-                </div>
+                <SavedRow
+                  key={s.sessionId}
+                  session={s}
+                  selected={isSelected}
+                  isBaseline={isBaseline}
+                  onSelect={() => handleSelect(s.sessionId)}
+                  onRenamed={(updated) =>
+                    setSaved((prev) => prev.map((x) => (x.sessionId === updated.sessionId ? updated : x)))
+                  }
+                  onUnsave={(id) => { unsaveSession(id).then((ok) => { if (ok) reload(); }); }}
+                />
               );
             })}
           </div>
@@ -94,7 +87,7 @@ export function SavedView() {
       {count > 0 && (
         <div
           aria-label="Compare bar"
-          className="fixed bottom-0 left-0 right-0 z-50 flex items-center justify-between gap-4 border-t border-[color:var(--live)]/30 bg-card/95 px-6 py-3 backdrop-blur-sm"
+          className="fixed bottom-0 left-0 right-0 z-40 flex items-center justify-between gap-4 border-t border-[color:var(--live)]/30 bg-card/95 px-6 py-3 backdrop-blur-sm"
         >
           <span className="text-sm text-muted-foreground">
             {count === 1 ? "1 session selected" : `${count} sessions selected`}

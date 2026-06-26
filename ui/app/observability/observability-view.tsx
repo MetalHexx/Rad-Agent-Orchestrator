@@ -111,7 +111,7 @@ export function ObservabilityView() {
         ariaLabel="All Sessions page"
         title="All Sessions"
         subtitle="System-wide token usage"
-        leading={<ViewSwitcher active="all" savedCount={savedIds.size} />}
+        afterTitle={<ViewSwitcher active="all" savedCount={savedIds.size} />}
         msSinceActivity={latestMs > 0 ? msSinceActivity : null}
         range={range}
         onRangeChange={setRange}

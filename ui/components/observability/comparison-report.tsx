@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import { humanizeTokens } from "@/lib/observability/format";
 import { formatDuration } from "@/lib/observability/duration-format";
 import { computeDelta, METRICS } from "@/lib/observability/comparison";
-import type { Delta } from "@/lib/observability/comparison";
+import type { Delta, MetricSpec } from "@/lib/observability/comparison";
 
 export interface ComparisonReportProps {
   baseline: SavedSession;
@@ -35,10 +35,12 @@ function deltaGlyph(delta: Delta): string {
   return "—";
 }
 
-function formatValue(value: number | string | null): string {
+function formatMetric(spec: MetricSpec, value: number | string | null): string {
   if (value === null) return "—";
   if (typeof value === "string") return value;
-  return String(value);
+  // Token-spend → humanizeTokens, duration → formatDuration (via spec.format); plain counts round
+  // to drop any cache-weighting float cruft. Matches the hero cards and the rest of the app.
+  return spec.format ? spec.format(value) : String(Math.round(value));
 }
 
 // ---------------------------------------------------------------------------
@@ -129,8 +131,8 @@ function MetricsTable({ baseline, candidate }: MetricsTableProps) {
               ? computeDelta(bv as number, cv as number, spec.direction)
               : { pct: null, improved: null };
 
-            const bLabel = formatValue(bv);
-            const cLabel = formatValue(cv);
+            const bLabel = formatMetric(spec, bv);
+            const cLabel = formatMetric(spec, cv);
 
             // For model row: show dash if unchanged
             const unchanged = spec.direction === "neutral" && bv === cv;
@@ -185,13 +187,7 @@ export function ComparisonReport({ baseline, candidate }: ComparisonReportProps)
 
   return (
     <div className="flex flex-col gap-6 p-4">
-      {/* Identity row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <SessionChip session={baseline} isBaseline />
-        <SessionChip session={candidate} />
-      </div>
-
-      {/* Delta hero */}
+      {/* Delta hero — moved to the top of the report */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <DeltaHeroTile
           label="Total Spend"
@@ -211,6 +207,12 @@ export function ComparisonReport({ baseline, candidate }: ComparisonReportProps)
           candidateValue={String(cs.toolErrors)}
           delta={errorsDelta}
         />
+      </div>
+
+      {/* Identity row */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <SessionChip session={baseline} isBaseline />
+        <SessionChip session={candidate} />
       </div>
 
       {/* Full metrics table */}

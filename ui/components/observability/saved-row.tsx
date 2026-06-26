@@ -1,17 +1,20 @@
 "use client";
 import * as React from "react";
 import { useState } from "react";
-import { Star, Pencil, Save } from "lucide-react";
+import { Pencil, Save } from "lucide-react";
 import type { SavedSession } from "@rad-orchestration/telemetry";
 import { humanizeTokens } from "@/lib/observability/format";
 import { formatDuration } from "@/lib/observability/duration-format";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { SaveStarButton } from "@/components/observability/save-star-button";
 import { renameSaved } from "@/lib/observability/saved-client";
 
 export interface SavedRowProps {
   session: SavedSession;
   selected?: boolean;
+  isBaseline?: boolean;
   onSelect?: (sessionId: string, checked: boolean) => void;
   onUnsave?: (sessionId: string) => void;
   onRenamed?: (updated: SavedSession) => void;
@@ -23,7 +26,7 @@ export interface SavedRowProps {
  * Spend uses humanizeTokens; Duration uses formatDuration (same helpers as SessionTable).
  * Selected rows apply the --live accent for highlight (FR-4, DD-3, DD-9).
  */
-export function SavedRow({ session, selected = false, onSelect, onUnsave, onRenamed }: SavedRowProps) {
+export function SavedRow({ session, selected = false, isBaseline = false, onSelect, onUnsave, onRenamed }: SavedRowProps) {
   const { sessionId, title, savedAt, snapshot } = session;
   const titleIsSid = title === sessionId;
   const [editing, setEditing] = useState(false);
@@ -55,22 +58,14 @@ export function SavedRow({ session, selected = false, onSelect, onUnsave, onRena
 
       {/* Star — always filled because the session is already saved */}
       <div role="gridcell" className="flex items-center justify-center">
-        <button
-          type="button"
-          aria-label="Remove from saved benchmarks"
-          aria-pressed={true}
-          onClick={() => onUnsave?.(sessionId)}
-          className={cn(
-            "inline-flex items-center justify-center rounded p-0.5 transition-colors",
-            "text-[var(--live)] hover:text-destructive hover:bg-destructive/10"
-          )}
-        >
-          <Star aria-hidden="true" fill="currentColor" className="size-4" />
-        </button>
+        <SaveStarButton saved onToggle={() => onUnsave?.(sessionId)} />
       </div>
 
       {/* Title — mono when still equal to the session id; pencil to enter rename mode */}
       <div role="gridcell" className="flex items-center gap-1 min-w-0">
+        {isBaseline && (
+          <Badge variant="accent" className="shrink-0">BASELINE</Badge>
+        )}
         {editing ? (
           <>
             <input

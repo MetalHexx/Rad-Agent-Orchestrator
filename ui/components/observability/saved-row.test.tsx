@@ -14,3 +14,10 @@ test('renders the rename (pencil) control on the row (FR-5, DD-4)', () => {
   const html = renderToStaticMarkup(createElement(SavedRow, { session }));
   assert.ok(html.includes('aria-label="Rename benchmark"'), 'pencil rename control present in display mode');
 });
+
+test('renders the BASELINE badge inline (left of the title) only when isBaseline (DD-7)', () => {
+  const plain = renderToStaticMarkup(createElement(SavedRow, { session }));
+  assert.ok(!plain.includes('BASELINE'), 'no badge when the row is not the baseline');
+  const baseline = renderToStaticMarkup(createElement(SavedRow, { session, isBaseline: true }));
+  assert.ok(baseline.includes('BASELINE'), 'badge renders when isBaseline is set');
+});
