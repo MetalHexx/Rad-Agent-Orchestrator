@@ -255,7 +255,7 @@
     {
       "bundlePath": "skills/rad-brainstorm/SKILL.md",
       "destinationPath": "${HARNESS_ROOT}/skills/rad-brainstorm/SKILL.md",
-      "sha256": "6c0cca17a73b51618363a5f0598fb629a53c21542dc1aac8f558908d0a6d7e1e"
+      "sha256": "7c7f6a5fd4c515148890f9ca69abf4f2afa3697d3534b7e9a861d7038abe31c7"
     },
     {
       "bundlePath": "skills/rad-brainstorm/references/collaboration.md",
@@ -265,7 +265,7 @@
     {
       "bundlePath": "skills/rad-brainstorm/references/document-writing.md",
       "destinationPath": "${HARNESS_ROOT}/skills/rad-brainstorm/references/document-writing.md",
-      "sha256": "73483bb312f73cf71e171d058813630de6c78f836df17647bb1d23ea8bb46242"
+      "sha256": "b15a7e0fcece1856a72de965ae85f651cdb7b13e07e6197f0b50cc981780baba"
     },
     {
       "bundlePath": "skills/rad-brainstorm/references/project-memory.md",
