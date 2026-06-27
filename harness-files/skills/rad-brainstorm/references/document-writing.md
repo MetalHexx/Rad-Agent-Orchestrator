@@ -34,7 +34,7 @@ The `## Repo Targets (proposed)` section is **structurally mandatory** — every
 
 ## Link Generated Visuals
 
-If the session produced any visuals or wireframes (`{PROJECT}-BRAINSTORM.html`, `{PROJECT}-WIREFRAME-{SLUG}.html`, or other artifacts in the project root), link them from the **Visual Artifacts** section using relative paths. They're the richest record of the brainstorm — don't leave them stranded as loose files.
+If the session produced any visuals — the brainstorm visual `{PROJECT}-BRAINSTORM.html`, or any wireframes/diagrams `/rad-visual-docs` generated into the project root — link them from the **Visual Artifacts** section using relative paths. They're the richest record of the brainstorm — don't leave them stranded as loose files.
 
 ## Living Document
 

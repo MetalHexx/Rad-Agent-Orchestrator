@@ -33,7 +33,7 @@ If the project has a codebase, a technical diagram **must be grounded in it** �
 - Reflect how the system *actually* works (the real state approach, the real transport, the real entry points) — not an idealized version.
 - Include a small **"grounded in the code"** footnote mapping diagram nodes ↔ real files, so reviewers can trust it.
 
-A quick read/search pass — or a scout subagent — before drawing is worth it. An ungrounded diagram that looks authoritative is worse than no diagram.
+A quick read/search pass before drawing is worth it. An ungrounded diagram that looks authoritative is worse than no diagram.
 
 ## Keep It High-Level
 
@@ -65,14 +65,8 @@ Flow / sequence diagrams — swimlanes, modules-as-boxes, labeled connector arro
 | Cramped layout (reads as broken even when correct) | **Breathing room.** Generous gaps between boxes and lanes; size the canvas large enough; don't cram. |
 | Labels overflowing a narrow side channel, or two parallel paths' labels colliding | Place the label in **open interior space** near the line instead, and keep parallel-path labels apart. |
 
-**Verify by rendering — the biggest lesson**
-
-- **Always render and eyeball the result. Never trust a "no overlaps" self-check.** SVG coordinate math is easy to get subtly wrong; only a real render reveals floating arrows, overlaps, and garbled labels.
-- If a running app serves the artifact, render **through the app** — the dashboard's raw-HTML route (`/api/projects/<name>/raw?path=<file>`) — rather than a `file://` URL (browser tools often block `file://`, and the dashboard is the canonical viewer anyway). Scroll top-to-bottom and check: every connector connects, every label is legible, nothing overlaps.
-- Then **iterate** — fix coordinates, re-render, repeat until clean.
-
 ## How It's Produced
 
-Same delegation model as the other visuals: hand generation to a **subagent** — **forked** (default; inherits the conversation for a faithful diagram) or **fresh** (a short brief for an independent take). Output is a **self-contained HTML** file in the project root, dark house style with the lavender accent, inline CSS, and **no JavaScript for layout** (so it stays sandbox-safe in the in-app viewer).
+Generate the diagram **inline** as a **self-contained HTML** file in the project root, dark house style with the lavender accent, inline CSS, and **no JavaScript for layout** (so it stays sandbox-safe in the in-app viewer).
 
 **Naming:** `{PROJECT}-TECH-DIAGRAM-{SLUG}.html`, where `{SLUG}` is `SCREAMING-CASE` for the diagram's subject or type — e.g. `ARCHITECTURE`, `LOGIN-SEQUENCE`, `DATA-FLOW`, `STATE-MACHINE`. Multiple are allowed, one per slug. They live alongside the brainstorm doc and any wireframes, and surface through the same in-app artifact viewer.
