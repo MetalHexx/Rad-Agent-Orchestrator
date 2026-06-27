@@ -1,18 +1,15 @@
 ---
 name: rad-visual-docs
-description: 'Generate polished, self-contained HTML visual documents from any source content — beautiful brainstorm/summary visuals, UI mockups and wireframes, and architecture / data-flow / sequence / state diagrams. Trigger when the user wants to *see* something: "make me a wireframe / mockup", "diagram this architecture / flow / sequence", "turn this into a visual or HTML summary", or "visualize the goals". Invocable directly by the user and callable from other skills (e.g. rad-brainstorm) via a type + filename handoff.'
+description: 'Generate beautiful brainstorm/summary visuals, UI mockups and wireframes, and architecture / data-flow / sequence / state diagrams. Trigger when the user wants to *see* something: "make me a wireframe / mockup", "diagram this architecture / flow / sequence", "turn this into a visual or HTML summary", "show me a visual" or "visualize the goals". 
 user-invocable: true
 ---
 
 # Visual Docs
 
-Standalone visual-artifact generation. Produces self-contained HTML documents — content visuals, UI wireframes, and technical diagrams — saved alongside a project's other docs and viewed in the Rad Orchestration dashboard. Generation runs **inline** in the current context; there is no subagent delegation.
-
-## Introduce yourself
-When invoked directly, introduce yourself briefly as the Visual Docs agent: you turn content — goals, UI ideas, technical structure — into a polished, self-contained HTML artifact. When invoked from another skill, skip the introduction and proceed straight to the handoff.
+Standalone visual-artifact generation. Produces self-contained HTML documents — content visuals, UI wireframes, and technical diagrams — saved alongside a project's other docs and viewed in the Rad Orchestration dashboard. 
 
 ## The Offer Catalogue — Pick the Right Visual
-Determine which artifact fits the need. Offer one focused visual, not a pile.
+If its not obvious from the contect, determine which artifact fits the need. 
 
 | Visual type | What it is | Reach for it when… | Reference |
 |---|---|---|---|
@@ -28,7 +25,7 @@ Determine which artifact fits the need. Offer one focused visual, not a pile.
 |---|---|---|
 | **Low** (default) | Paper-napkin wireframe — dark mode, rough shapes, minimal labels | Quick alignment; early-stage thinking |
 | **Medium** | Cleaner layout — grayscale, realistic labels, approximate spacing | Structure/flow needs to be clear; stakeholder-ready |
-| **High** | Close to the real app — brand hints, design tokens, polished components | Near-final UI vision or validating a direction |
+| **High** | Close to the real app — brand hints, design tokens, polished components | Near-final UI vision |
 
 ## Inputs
 Resolve each input from the invoking context when present; **ask** when absent.
@@ -41,7 +38,7 @@ Resolve each input from the invoking context when present; **ask** when absent.
 | Source content | Conversation / linked docs / a ticket key / a screenshot | Ask what to visualize |
 | Mode / fidelity | Caller or user | Default (low fidelity for mockups) |
 
-**Handoff contract.** When called from another skill, the caller establishes exactly two things — the **visual type** and the **exact target filename**. Honor both verbatim; resolve everything else (project, source content, fidelity) from context. There is no forked/fresh mode — generation is inline.
+**Handoff contract.** When called from another skill, the caller establishes exactly two things — the **visual type** and the **exact target filename**. Honor both verbatim; resolve everything else (project, source content, fidelity) from context.
 
 ## Cold-Start (standalone, no active project)
 When invoked directly with no active project, ask for or offer to create a project, then save under `~/.radorc/projects/{NAME}/`. There is no project-less / scratch output path — every artifact lands in a project folder. Create the folder if it doesn't exist; do NOT create subfolders (`phases/`, `tasks/`, `reports/`) — the Orchestrator owns those.
