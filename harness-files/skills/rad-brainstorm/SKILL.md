@@ -1,6 +1,6 @@
 ---
 name: rad-brainstorm
-description: 'Brainstorm and refine project goals through collaborative ideation. Use when exploring problem spaces, validating concepts, generating UI mockups, building consensus on what to build, creating the project goals and visuals.  Trigger when the user talks about brainstorming, goal-setting, idea generation, or early-stage project definition.  You can also trigger this skill if they want to generate a mockup, wireframe, architecture or flow diagram, or beautiful html project summary.'
+description: 'Brainstorm and refine project goals through collaborative ideation. Use when exploring problem spaces, validating concepts, building consensus on what to build, and producing the project goals document (BRAINSTORMING.md). Trigger when the user talks about brainstorming, goal-setting, idea generation, or early-stage project definition.'
 user-invocable: true
 ---
 
@@ -50,34 +50,23 @@ If the brainstorm is clearly greenfield with no prior context, skip both steps.
 ## Related Docs
 If the user offers documentation that could help with planning, offer to link it to the "Related Projects" section of the BRAINSTORMING.md.  This could include design docs, images, architecture diagrams, product requirement documents, or any other relevant materials.  The goal is to create a rich context for the project that planners can refer to when they start working on it.
 
-## Making It Visual
-A brainstorm doesn't have to be words on a page.  Whenever the conversation surfaces a visual surface — goals, UI flows, summaries — **proactively offer** to generate a visual companion. Offer rather than impose; if the user declines, follow their lead. Never auto-generate.  When the user wants to *see* their thinking — a visual summary of the goals, a diagram, or a polished recap of the session — offer to generate one: a self-contained HTML companion to the brainstorm.  Follow [make-it-visual.md](./references/make-it-visual.md).
+## Offer Visuals — Hand Off to /rad-visual-docs
+A brainstorm doesn't have to be words on a page. When the conversation surfaces a visual surface — goals worth seeing, a UI flow, a technical structure — **proactively offer** to generate a visual companion, then hand the generation to `/rad-visual-docs`. Offer rather than impose; never auto-generate; follow the user's lead if they decline.
 
-**Name the brainstorm visual exactly `{PROJECT}-BRAINSTORM.html`** — no `-VISUAL` or other suffix, `SCREAMING-CASE` project prefix.  The dashboard keys off this exact name to fill the project's **Brainstorm Visual** slot; a misnamed file still appears (the dashboard surfaces any root `.html`) but lands as a *generic* visual instead of filling that slot.  One brainstorm visual per project — regenerating overwrites it.  Other creative or supporting HTML docs are welcome — give *those* their own descriptive names and reserve `{PROJECT}-BRAINSTORM.html` for the brainstorm visual.
+Use this catalogue to decide what to offer and what to hand off:
 
-## Generating Mockups & Wireframes
-If the project has a UI, UX, or any visual surface, **proactively offer** to mock it up — don't wait for the user to ask.  A wireframe makes an abstract idea concrete and often surfaces details the user hadn't considered yet — exactly the kind of thinking this skill exists to provoke.  Offer rather than impose; follow their lead, and never auto-generate.  Follow [generate-mockup.md](./references/generate-mockup.md), which writes `{PROJECT}-WIREFRAME-{SLUG}.html` (one file per screen — a project may have several) to the project root.
-
-When offering or generating a mockup, use the **fidelity ladder** to match the user's needs:
-
-| Level | What it looks like | When to use |
+| When the conversation… | Offer | Hand off (type + exact filename) |
 |---|---|---|
-| **Low** (default) | Paper-napkin wireframe — dark mode, rough shapes, minimal labels | Quick alignment; early-stage thinking; when the user hasn't specified |
-| **Medium** | Cleaner layout — grayscale, realistic labels, approximate spacing | When structure and flow need to be clear; ready to share with stakeholders |
-| **High** | Close to the real app — brand hints, design tokens, polished components | When presenting a near-final UI vision or validating a specific design direction |
+| reaches goals worth *seeing* — a visual summary or polished recap | an HTML brainstorm visual | type = HTML summary, filename = `{PROJECT}-BRAINSTORM.html` |
+| has a UI / UX / screen / flow | a wireframe / mockup | type = wireframe, filename = `{PROJECT}-WIREFRAME-{SLUG}.html` |
+| turns technical — architecture, data/control flow, state, sequences | an architecture / technical diagram | type = tech diagram, filename = `{PROJECT}-TECH-DIAGRAM-{SLUG}.html` |
 
-**Default to low fidelity** unless the user specifies otherwise.
+**Name the brainstorm visual exactly `{PROJECT}-BRAINSTORM.html`** — no `-VISUAL` or other suffix, `SCREAMING-CASE` prefix. The dashboard keys off this exact name to fill the project's **Brainstorm Visual** slot; a misnamed file still appears but lands as a *generic* visual. One brainstorm visual per project — regenerating overwrites it. This naming knowledge stays here: pass the exact filename across the handoff and `/rad-visual-docs` writes what it's told.
 
-## Visualizing Architecture & Technical Discussions
-When talk turns technical — architecture, data/control flow, state, sequences — **proactively offer a diagram** the moment a technical structure is in play (never auto-generate; follow their lead).  Ground it in the real code (boxes = actual files; verify they exist). A subagent renders it as self-contained HTML → `{PROJECT}-TECH-DIAGRAM-{SLUG}.html`. Flow/sequence diagrams especially: **render and eyeball the result — never trust a self-reported "no overlaps."** Follow [architecture-visuals.md](./references/architecture-visuals.md).
-
-## Delegate Visual Generation to a Subagent
-Always hand visual generation off to a subagent rather than producing it inline — it keeps the brainstorming thread focused and lets the visual work happen in its own context.  Choose the mode deliberately:
-- **Forked subagent (default).** Fork the current context so the subagent inherits the full brainstorming conversation.  Use this when the visual should faithfully reflect what you've aligned on — visualizing the locked goals, or the UI you just agreed on.
-- **Fresh subagent.** Spawn a regular subagent with only a short brief when you want an independent, fresh interpretation — a different take on the same idea, or a divergent design to compare against.  This is a cheap way to put two options in front of the user.
+To generate, invoke `/rad-visual-docs` with just two things — the **visual type** and the **exact target filename**. It resolves the project, the source content, and the fidelity from this conversation's context and runs the generation inline. The mechanics — palettes, the fidelity ladder, per-artifact naming, and opening the result in the dashboard — all live in that skill.
 
 ## Keep the Doc and Visuals in Lockstep
-BRAINSTORMING.md and any visuals or wireframes must always stay in lockstep — both should reflect the current reality of the aligned goals at every moment.  When goals change, update both in the same pass; never let the doc or a visual drift out of date relative to what's been agreed.
+BRAINSTORMING.md and any visuals or wireframes must always stay in lockstep — both should reflect the current reality of the aligned goals at every moment. When goals change, update both in the same pass — re-invoke `/rad-visual-docs` with the same filename to refresh a visual — and never let the doc or a visual drift out of date relative to what's been agreed.
 - A stale visual is worse than no visual — it misrepresents the consensus you've built.
 
 ## View Scribed Docs in the Dashboard
@@ -100,16 +89,14 @@ The Rad Orchestration dashboard is the **canonical viewer** for every artifact t
 | Orienting on existing series / active work | `/rad-project` skill |
 | Finding related project docs | [references/project-memory.md](./references/project-memory.md) |
 | Splitting large projects / continuing a series | [references/project-series.md](./references/project-series.md) |
-| Visual summaries / diagrams | [references/make-it-visual.md](./references/make-it-visual.md) |
-| UI mockups / wireframes | [references/generate-mockup.md](./references/generate-mockup.md) |
-| Architecture / technical diagrams | [references/architecture-visuals.md](./references/architecture-visuals.md) |
+| Generating any visual (summary, mockup, diagram) | `/rad-visual-docs` skill |
 
 ## Loading Instructions
 
 1. **Always read**: `collaboration.md` and `document-writing.md` — these are your core workflow.
 2. **Read when relevant**: `project-memory.md` — when the conversation references past work, related projects, or a known domain. But orient with `/rad-project` first (see *Work-Graph & Project Memory*).
 3. **Read when relevant**: `project-series.md` — when the idea feels too large for a single project, the user mentions phases/stages, *or the user is continuing an existing series*. Pair with `/rad-project` for live orientation.
-4. **Read when relevant**: `make-it-visual.md` / `generate-mockup.md` / `architecture-visuals.md` — when the user wants a visual summary, mockup, wireframe, or an architecture/technical diagram. Hand the generation to a subagent (see *Delegate Visual Generation to a Subagent*).
+4. **Hand off visuals**: when the user wants a visual summary, mockup, wireframe, or architecture/technical diagram, invoke `/rad-visual-docs` (see *Offer Visuals — Hand Off to /rad-visual-docs*). Those generator references live in that skill now, not here.
 
 ## Inputs
 
