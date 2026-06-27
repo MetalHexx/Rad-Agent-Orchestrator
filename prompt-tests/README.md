@@ -12,6 +12,7 @@ The harness sits at the repo root (sibling to `docs/`, `installer/`, `ui/`, `.cl
 |--------|-------------------|
 | [`extra-high-pipeline-e2e/`](./extra-high-pipeline-e2e/) | `extra-high.yml` planning chain end-to-end — Requirements → Master Plan → explosion script. Halts at `plan_approval_gate`. |
 | [`low-pipeline-e2e/`](./low-pipeline-e2e/) | `low.yml` planning chain end-to-end — Requirements → Master Plan → explosion script under `--template low`. Halts at `plan_approval_gate`. |
+| [`rad-plan-benchmark/`](./rad-plan-benchmark/) | **Performance baseline** (not a regression alarm) — drives the real `/rad-plan` skill (menus and all) to `plan_approval_gate`. Captures spend via observability + commits full planning artifacts under versioned `output/run-N/` for cross-refactor comparison. |
 
 ## Running a behavior
 
