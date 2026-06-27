@@ -255,7 +255,7 @@
     {
       "bundlePath": "skills/rad-brainstorm/SKILL.md",
       "destinationPath": "${HARNESS_ROOT}/skills/rad-brainstorm/SKILL.md",
-      "sha256": "ea61289bd93ff55ff058b3bc90e09db50d1c102561a08612874e540680d21d7c"
+      "sha256": "6687856643a39522968a7d95316041dc6b4302b6cbf8723f802056b3462c75a2"
     },
     {
       "bundlePath": "skills/rad-brainstorm/references/collaboration.md",
