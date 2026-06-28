@@ -492,7 +492,7 @@ export default function ProjectsPage() {
               </p>
             </div>
           ) : selected ? (
-            <ArtifactLiveProvider projectName={selectedProject} activeFileName={activeFileName}>
+            <ArtifactLiveProvider projectName={selectedProject} activeFileName={activeFileName} hasTimeline={v5State !== null}>
               <ProjectsPageContent
                 selectedProject={selectedProject}
                 selected={selected}

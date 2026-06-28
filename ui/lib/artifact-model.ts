@@ -13,13 +13,19 @@ export interface Artifact {
 }
 
 /**
- * Planner/pipeline-generated root docs that must NOT surface as artifacts.
+ * Planner/pipeline-generated root docs that must NOT surface as generic artifacts.
  *
  * Markdown selection is a DENYLIST: every root `.md` is surfaced as a generic
  * doc EXCEPT files whose name ends with one of these `${project}-…` suffixes.
  * These are pipeline outputs (requirements, the master plan, the plan audit,
  * the error log) — audit-trail docs, not brainstorming artifacts. Extend this
  * list to hide additional pipeline-generated root docs.
+ *
+ * REQUIREMENTS is a special case: it stays on this denylist (so it never leaks
+ * into the generic "other docs" path), but `deriveArtifacts` surfaces it as a
+ * first-class doc with a locked "Requirements" label when the project has NO
+ * pipeline timeline. Pipelined projects render it in the DAG timeline instead,
+ * so surfacing it here too would duplicate it — see the `hasTimeline` gate below.
  *
  * Note: tasks/phases/reports stay out via the root-only filter (they live in
  * subfolders), so they are intentionally absent here.
@@ -56,9 +62,17 @@ function isPipelineDoc(fileName: string, project: string): boolean {
 export function deriveArtifacts(
   project: string,
   files: string[],
+  /**
+   * True when the project has a pipeline timeline (a parsed v5/v6 state). The
+   * requirements doc is rendered in the DAG timeline for those projects, so it
+   * is suppressed here to avoid showing it twice. Stateless projects (no DAG)
+   * surface it in this list as their only home for the doc.
+   */
+  hasTimeline = false,
 ): Artifact[] {
   const brainstormingMd = `${project}-BRAINSTORMING.md`;
   const brainstormVisual = `${project}-BRAINSTORM.html`;
+  const requirementsMd = `${project}-REQUIREMENTS.md`;
   const wireframeRe = new RegExp(`^${project}-WIREFRAME-(.+)\\.html$`);
 
   const root = files.filter(isRootFile);
@@ -66,6 +80,13 @@ export function deriveArtifacts(
 
   if (root.includes(brainstormingMd)) {
     out.push({ fileName: brainstormingMd, kind: 'markdown', label: 'Brainstorm', title: null, isMarkdown: true });
+  }
+  // REQUIREMENTS surfaces as a first-class doc ONLY when the project has no
+  // pipeline timeline; pipelined projects render it in the DAG timeline (don't
+  // duplicate it here). It stays in PIPELINE_DOC_SUFFIXES so it never leaks into
+  // the generic "other docs" path regardless of this flag.
+  if (!hasTimeline && root.includes(requirementsMd)) {
+    out.push({ fileName: requirementsMd, kind: 'markdown', label: 'Requirements', title: null, isMarkdown: true });
   }
   if (root.includes(brainstormVisual)) {
     out.push({ fileName: brainstormVisual, kind: 'visual', label: 'Brainstorm Visual', title: null, isMarkdown: false });

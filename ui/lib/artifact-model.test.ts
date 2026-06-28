@@ -98,21 +98,40 @@ test('humanizes multi-word generic root .md titles (strips project prefix and .m
   assert.equal(arts[0].isMarkdown, true);
 });
 
-test('excludes planner/pipeline root docs via the denylist (requirements/master-plan/plan-audit/error-log)', () => {
+test('surfaces REQUIREMENTS (no timeline) but still excludes master-plan/plan-audit/error-log via the denylist', () => {
   const files = [
     'DEMO-REQUIREMENTS.md',
     'DEMO-MASTER-PLAN.md',
     'DEMO-PLAN-AUDIT.md',
     'DEMO-ERROR-LOG.md',
   ];
+  // hasTimeline defaults to false: REQUIREMENTS surfaces as its own doc; the
+  // other three pipeline outputs stay hidden.
   const arts = deriveArtifacts(PROJECT, files);
+  assert.deepEqual(arts.map((a) => a.fileName), ['DEMO-REQUIREMENTS.md']);
+  assert.equal(arts[0].label, 'Requirements');
+});
+
+test('surfaces REQUIREMENTS with a locked "Requirements" label when there is no pipeline timeline', () => {
+  const arts = deriveArtifacts(PROJECT, ['DEMO-REQUIREMENTS.md']);
+  assert.equal(arts.length, 1);
+  assert.equal(arts[0].fileName, 'DEMO-REQUIREMENTS.md');
+  assert.equal(arts[0].label, 'Requirements');
+  assert.equal(arts[0].kind, 'markdown');
+  assert.equal(arts[0].isMarkdown, true);
+  assert.equal(arts[0].title, null);
+});
+
+test('suppresses REQUIREMENTS from the list when a pipeline timeline exists (DAG renders it instead)', () => {
+  const arts = deriveArtifacts(PROJECT, ['DEMO-REQUIREMENTS.md'], true);
   assert.deepEqual(arts, []);
 });
 
-test('keeps pipeline denylist excluded while still surfacing a generic root .md (allowlist→denylist flip)', () => {
+test('keeps pipeline denylist excluded while still surfacing REQUIREMENTS + a generic root .md (no timeline)', () => {
   const files = ['DEMO-REQUIREMENTS.md', 'DEMO-MASTER-PLAN.md', 'DEMO-ARCHITECTURE.md'];
   const arts = deriveArtifacts(PROJECT, files);
-  assert.deepEqual(arts.map((a) => a.fileName), ['DEMO-ARCHITECTURE.md']);
+  // markdown first, alphabetical: ARCHITECTURE before REQUIREMENTS; MASTER-PLAN stays hidden.
+  assert.deepEqual(arts.map((a) => a.fileName), ['DEMO-ARCHITECTURE.md', 'DEMO-REQUIREMENTS.md']);
 });
 
 test('excludes subfolder docs (phases/tasks/reports) for both .md and .html', () => {
