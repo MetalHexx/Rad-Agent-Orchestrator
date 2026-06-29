@@ -6,6 +6,7 @@ created: "2026-06-29"
 project-type: side-project
 repos: [RAD-MASTER-BENCH-V2]
 repo-group: null
+requirement_count: 6
 ---
 
 # RAD-MASTER-BENCH-V2 — Requirements

@@ -36,30 +36,37 @@ to see the new skill handle a legacy-format doc (the off-diagonal of a 2×2).
 
 ## What it exercises
 
-The real `/rad-plan` from invocation to the plan-approval halt. Post-PO-1, `/rad-plan`
-**consumes** the seeded Requirements doc and does **not** author one:
+The real planning pipeline, driven **directly** (the runner is a simulated orchestrator —
+it signals `radorch pipeline` events itself rather than invoking `/rad-plan`). The fixture is
+**seeded as the requirements ledger** — the planner never authors requirements — so the run
+isolates the master-document creation step:
 
 ```
-/rad-plan RAD-MASTER-BENCH-V1
-  → require + approve Requirements doc (Step 0 / 0.5)
-    → tier menu → size menu              (operator's choice)
-      → master_plan (@planner) + plan audit
-        → explode master plan (script)
-          → request_plan_approval        ← HALT (do not approve)
+tier menu → size menu                        (operator's choice)
+  → start                                    (engine recommends spawn_requirements — IGNORED)
+    → requirements_completed (seed fixture)  ← the requirements skip; no authoring spend
+      → master_plan (@planner)
+        → explode master plan (subcommand)
+          → request_plan_approval            ← HALT (run plan audit here; do not approve)
 ```
 
 Everything from the Master Plan authoring onward is the measured spend, including the audit
-that runs inside the Master Plan step. There is **no** requirements-authoring spend — that's
-the isolation.
+that runs while parked at the gate. There is **no** requirements-authoring spend — that's the
+isolation.
+
+> Why direct-drive instead of `/rad-plan`: the installed `/rad-plan`+pipeline **authors** a
+> fresh Requirements doc on `start` (it does not consume a pre-staged one), which would
+> overwrite the fixture and add authoring spend. Driving the engine directly and seeding the
+> fixture via `requirements_completed` is what keeps the baseline clean.
 
 ## How to run
 
 1. Open a **fresh** Claude Code session at the repo root. Fresh matters — prior context
    skews the spend you're measuring.
 2. Paste `_runner.md` as the kickoff prompt.
-3. The session stages the fixture, invokes `/rad-plan RAD-MASTER-BENCH-V1`, **approves** the
-   Requirements doc, answers the two menus (your choice of tier/size), and drives to the
-   plan-approval gate.
+3. The session stages the fixture, answers the two menus (your choice of tier/size), then
+   drives the pipeline directly — seeding the fixture as the requirements ledger (no
+   `/rad-plan`, no requirements authoring) — to the plan-approval gate.
 4. It halts **without approving** and prints the observability session URL.
 
 ### Configuration
