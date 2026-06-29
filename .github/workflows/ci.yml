@@ -144,9 +144,12 @@ jobs:
       - name: Install dependencies (root workspace)
         run: npm install
 
-      # Standard installer manifests are GENERATED (sha256 per file). Rebuild and
-      # fail if the committed manifests are stale (UI build skipped — it is not in
-      # the manifest, so manifests are byte-identical without it).
+      # Standard installer manifests are GENERATED path catalogs
+      # ({ bundlePath, destinationPath } per file — no hashes). Rebuild and fail
+      # if the committed manifests are stale; with no per-file hash the gate only
+      # fires when a file is added, removed, renamed, or re-homed (UI build
+      # skipped — it is not in the manifest, so manifests are byte-identical
+      # without it, on any OS).
       - name: Standard installer — manifest drift gate
         run: npm run check:manifest-drift -w harness-installers/standard
 

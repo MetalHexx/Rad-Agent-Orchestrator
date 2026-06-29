@@ -29,7 +29,7 @@ export function manifestPathForVersion(bundleRoot, harness, version) {
  * @param {string} bundleRoot
  * @param {string} harness
  * @param {string} version
- * @returns {{ files: Array<{ bundlePath: string, destinationPath: string, sha256?: string }> }}
+ * @returns {{ files: Array<{ bundlePath: string, destinationPath: string }> }}
  */
 export function loadBundledManifest(bundleRoot, harness, version) {
   const file = manifestPathForVersion(bundleRoot, harness, version);
