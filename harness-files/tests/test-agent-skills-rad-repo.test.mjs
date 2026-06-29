@@ -22,7 +22,7 @@ test('planner.md retains /rad-repo in its Skills section', () => {
 // Every other agent must be free of rad-repo across all of its harness files
 // (.md prompt + .claude/.copilot-cli/.copilot-vscode .yml frontmatter) — a
 // regression guard against the skill creeping back onto a worktree agent.
-const deArmed = ['orchestrator', 'coder', 'coder-junior', 'coder-senior', 'reviewer', 'source-control', 'brainstormer'];
+const deArmed = ['orchestrator', 'coder', 'coder-junior', 'coder-senior', 'reviewer', 'source-control'];
 
 for (const name of deArmed) {
   const files = fs

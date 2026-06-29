@@ -33,13 +33,6 @@ export function coerceNull(value: unknown): unknown {
 }
 
 const VALIDATION_RULES: Record<string, FrontmatterValidationRule[]> = {
-  requirements_completed: [
-    {
-      field: 'requirement_count',
-      validate: (v) => typeof v === 'number' && Number.isInteger(v) && v > 0,
-      expected: 'a positive integer',
-    },
-  ],
   plan_approved: [
     {
       field: 'total_phases',

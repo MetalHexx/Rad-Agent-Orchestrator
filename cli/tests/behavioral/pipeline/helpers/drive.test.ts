@@ -17,14 +17,14 @@ beforeEach(() => { cleanups.push(useRealCatalog()); });
 
 describe('driveToNode helper', () => {
   it('exposes a chain map keyed by every step id in extra-high.yml that the suite asserts on', () => {
-    for (const target of ['requirements', 'master_plan', 'explode_master_plan', 'final_review',
+    for (const target of ['master_plan', 'explode_master_plan', 'final_review',
                           'task_executor', 'commit', 'code_review', 'phase_review', 'final_pr']) {
       expect(EVENT_CHAINS).toHaveProperty(target);
       expect(Array.isArray(EVENT_CHAINS[target as keyof typeof EVENT_CHAINS])).toBe(true);
     }
   });
 
-  it('drives the engine to requirements with a single start signal and returns a result', async () => {
+  it('drives the engine to master_plan with a single start signal and returns a result', async () => {
     const world = buildWorld({
       template: { id: 'extra-high', body: EXTRA_HIGH_BODY },
       state: null,
@@ -32,7 +32,7 @@ describe('driveToNode helper', () => {
       sideFiles: [],
     });
     cleanups.push(world.cleanup);
-    const result = await driveToNode(world, 'requirements');
-    expect(result.action).toBe('spawn_requirements');
+    const result = await driveToNode(world, 'master_plan');
+    expect(result.action).toBe('spawn_master_plan');
   });
 });

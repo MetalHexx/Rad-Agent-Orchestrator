@@ -13,8 +13,9 @@ const cleanups: Array<() => void> = [];
 afterEach(() => { while (cleanups.length) cleanups.pop()!(); });
 beforeEach(() => { cleanups.push(useRealCatalog()); });
 
-// State after requirements_completed: requirements=completed, rest=not_started
-const afterRequirementsCompletedState = {
+// Base post-start planning state — master_plan is the first node; there is no
+// requirements node. After `start`, master_plan is in_progress.
+const postStartPlanningState = {
   $schema: 'orchestration-state-v6',
   project: { name: 'cli-behavioral', created: '2024-01-01T00:00:00.000Z', updated: '2024-01-01T00:00:00.000Z' },
   config: {
@@ -28,7 +29,6 @@ const afterRequirementsCompletedState = {
     status: 'in_progress',
     current_node_path: null,
     nodes: {
-      requirements:       { kind: 'step', status: 'completed', doc_path: null, retries: 0 },
       master_plan:        { kind: 'step', status: 'not_started', doc_path: null, retries: 0 },
       explode_master_plan:{ kind: 'step', status: 'not_started', doc_path: null, retries: 0 },
       plan_approval_gate: { kind: 'gate', status: 'not_started', gate_active: false },
@@ -44,11 +44,11 @@ const afterRequirementsCompletedState = {
 describe('master_plan events (FR-3, FR-7, DD-2, DD-4)', () => {
   it('master_plan_completed marks master_plan node completed and returns action=explode_master_plan', async () => {
     const stateWithMasterPlanInProgress = {
-      ...afterRequirementsCompletedState,
+      ...postStartPlanningState,
       graph: {
-        ...afterRequirementsCompletedState.graph,
+        ...postStartPlanningState.graph,
         nodes: {
-          ...afterRequirementsCompletedState.graph.nodes,
+          ...postStartPlanningState.graph.nodes,
           master_plan: { kind: 'step', status: 'in_progress', doc_path: null, retries: 0 },
         },
       },

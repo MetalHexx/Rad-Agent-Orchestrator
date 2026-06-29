@@ -4,8 +4,8 @@ This skill defines a **document-driven agent orchestration system** built on the
 
 ## How It Works
 
-- **Brainstorm an idea**: Use `rad-brainstorm` skill to collaboratively explore and refine a project idea before starting the pipeline.
-- **Start project planning**: Use the `rad-plan` skill with a project idea. If a `BRAINSTORMING.md` exists, it uses that as input.
+- **Brainstorm an idea**: Use `rad-brainstorm` skill to collaboratively explore and refine a project idea and scribe the Requirements doc (via `rad-create-plans`) before starting the pipeline.
+- **Start project planning**: Use the `rad-plan` skill once a Requirements doc exists. It consumes the approved requirements and builds the Master Plan + audit.
 - **Execute a project plan**: Use the `rad-execute` skill to run the execution pipeline for a project when a plan is ready for execution.
 - **Continue a project**: You can pick up from where a project left off by signaling the `radorch.mjs` script and signal the `start` event.  See the `references/pipeline-guide.md`.
 
@@ -16,7 +16,7 @@ These are your available agents. Each has a specific role in the planning and ex
 
 | Agent | Purpose |
 |-------|---------|
-| `@planner` | Authors the lean Requirements ledger and inlined Master Plan via `rad-create-plans` |
+| `@planner` | Authors the inlined Master Plan via `rad-create-plans` (`master-plan` mode) |
 | `@coder` | Executes coding tasks from self-contained task handoffs |
 | `@coder-junior` | Executes simpler coding tasks with additional guardrails |
 | `@coder-senior` | Executes complex coding tasks with expanded autonomy |

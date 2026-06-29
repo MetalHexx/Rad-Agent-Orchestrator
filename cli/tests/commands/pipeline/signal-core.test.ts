@@ -35,7 +35,7 @@ const pathContext: PathContext = {
 
 describe('pipelineSignal core function', () => {
   it('projects engine result into { action, context, prompt, completion_event, has_custom_instructions } on success (FR-7)', async () => {
-    const { io } = makeStubIO({ action: 'spawn_requirements', context: {} });
+    const { io } = makeStubIO({ action: 'spawn_master_plan', context: {} });
     const r = await pipelineSignal({ event: 'start', projectDir: '/tmp/proj', context: {}, io, pathContext });
     expect(r.ok).toBe(true);
     if (r.ok) {

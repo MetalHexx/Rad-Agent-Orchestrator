@@ -2,13 +2,12 @@
 
 Canonical reference for all pipeline-produced document naming, placement, and frontmatter values.
 
-Covers all documents produced during pipeline execution. Planning documents (Master Plan, Requirements, Brainstorming) and execution documents (Phase Plan, Task Handoff, Code Review, Phase Review). Also covers the action / event catalog files that drive the composer at envelope-build time.
+Covers all documents produced during pipeline execution. Planning documents (Master Plan, Requirements) and execution documents (Phase Plan, Task Handoff, Code Review, Phase Review). Also covers the action / event catalog files that drive the composer at envelope-build time.
 
 ## Filename Patterns & Placement
 
 | Document Type | Subdirectory | Filename Pattern | Example |
 |---|---|---|---|
-| Brainstorming | — (root) | `{NAME}-BRAINSTORMING.md` | `MYAPP-BRAINSTORMING.md` |
 | Master Plan | — (root) | `{NAME}-MASTER-PLAN.md` | `MYAPP-MASTER-PLAN.md` |
 | Requirements | — (root) | `{NAME}-REQUIREMENTS.md` | `MYAPP-REQUIREMENTS.md` |
 | Error Log | — (root) | `{NAME}-ERROR-LOG.md` | `MYAPP-ERROR-LOG.md` |
@@ -54,10 +53,8 @@ The `-C{N}` suffix rule applies to Task Handoffs and task-level Code Reviews. It
 | skills | array | Skill folder names from `${SKILLS_ROOT}/` | Task Handoff |
 | estimated_files | integer | Estimated file count (e.g., `3`) | Task Handoff |
 | tasks | array | List of `{id, title}` objects | Phase Plan |
-| author | string | Agent or script name (e.g., `"planner-agent"`, `"explosion-script"`) | Phase Plan, Phase Review, Code Review, Requirements, Master Plan |
+| author | string | Agent or script name (e.g., `"planner-agent"`, `"explosion-script"`) | Phase Plan, Phase Review, Code Review, Master Plan |
 | created | string | ISO 8601 date-time (e.g., `"2026-01-15T00:00:00.000Z"`) or ISO 8601 date (e.g., `"2026-01-15"`) | Phase Plan, Phase Review, Code Review, Requirements, Master Plan |
-| approved_at | string \| null | ISO 8601 date-time or `null` until a human gate approves the doc | Requirements |
-| requirement_count | integer | Total FR + NFR + AD + DD blocks in the doc body (e.g., `12`) | Requirements |
 | total_phases | integer | Count of `## PNN:` phase headings in the Master Plan body | Master Plan |
 | total_tasks | integer | Count of `### PNN-TMM:` task headings in the Master Plan body | Master Plan |
 | verdict | string | `"approved"` \| `"changes_requested"` \| `"rejected"` | Code Review, Phase Review, Final Review |
@@ -75,7 +72,7 @@ The `-C{N}` suffix rule applies to Task Handoffs and task-level Code Reviews. It
 
 - Task Handoff: `"pending"`
 - Phase Plan: `"active"` | `"complete"` | `"halted"`
-- Requirements: `"draft"` | `"approved"` | `"frozen"`
+- Requirements: `"draft"` | `"approved"`
 - Master Plan: `"draft"` | `"approved"`
 
 ## Placeholder Token Convention

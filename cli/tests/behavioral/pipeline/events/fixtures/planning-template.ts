@@ -4,14 +4,6 @@ export const PLANNING_TEMPLATE_BODY = `template:
   version: "1.0.0"
   description: "Synthetic planning-only template for behavioral tests"
 nodes:
-  - id: requirements
-    kind: step
-    label: "Requirements"
-    action: spawn_requirements
-    events: { completed: requirements_completed }
-    context: { step: requirements }
-    doc_output_field: doc_path
-    depends_on: []
   - id: master_plan
     kind: step
     label: "Master Plan"
@@ -19,7 +11,7 @@ nodes:
     events: { completed: master_plan_completed }
     context: { step: master_plan }
     doc_output_field: doc_path
-    depends_on: [requirements]
+    depends_on: []
   - id: explode_master_plan
     kind: step
     label: "Explode Master Plan"

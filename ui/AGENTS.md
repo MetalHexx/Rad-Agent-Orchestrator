@@ -33,7 +33,7 @@ This runner resolves `.js` extensions to `.ts` files via bundler-style resolutio
 
 ## Feature: brainstorming live visual docs
 
-Surfaces a project's brainstorming artifacts — `*-BRAINSTORMING.md`, `*-BRAINSTORM.html`, and `*-WIREFRAME-*.html` — as live previews on the launch screen, in the DAG view, and in a full-screen modal. How the pieces fit:
+Surfaces a project's brainstorming artifacts — `*-REQUIREMENTS.md`, `*-BRAINSTORM.html`, and `*-WIREFRAME-*.html` — as live previews on the launch screen, in the DAG view, and in a full-screen modal. How the pieces fit:
 
 - **Model** — `lib/artifact-model.ts#deriveArtifacts` (pure) takes the file list and returns **project-root files only**, ordered **markdown first, then html, alphabetical by filename within each type** — a *stable* order that never depends on mtime, so live edits (which bump mtime) don't reorder rows on any surface or shift the modal's active item. `hooks/use-project-artifacts.ts` memoizes it (`useProjectArtifacts`) and exposes `deleteArtifact`.
 - **Raw route** — `app/api/projects/[name]/raw/route.ts` serves a root HTML artifact as `text/html` under a strict CSP, with the usual `..` / within-projectDir guards. Opt-in `?chrome=` injects a `<style>` before `</head>`: `scroll` = thin dark app-matching scrollbars (the modal stage), `hide` = no scrollbars (thumbnails); no param = untouched raw bytes.

@@ -32,9 +32,8 @@ For each candidate, read the single richest document available, in this priority
 
 | Priority | Document | Why |
 |----------|----------|-----|
-| 1 | `{NAME}-REQUIREMENTS.md` | Goals, non-goals, FRs/NFRs, key constraints — densest signal |
+| 1 | `{NAME}-REQUIREMENTS.md` | Goals, non-goals, grouped requirements, key constraints — densest signal |
 | 2 | `{NAME}-MASTER-PLAN.md`   | Phasing + per-task plan, requirement-ID coverage |
-| 3 | `{NAME}-BRAINSTORMING.md` | Early-stage framing, useful for in-progress series |
 | — | `{NAME}-ERROR-LOG.md`     | What went wrong — avoid repeating mistakes |
 
 Stop at the first document that exists for each project. Don't read multiple docs per project unless you need to cross-reference.

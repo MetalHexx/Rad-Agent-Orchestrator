@@ -148,9 +148,9 @@ When the action in `data.prompt` instructs the orchestrator to spawn an agent, p
 4. **Output expectations** — where to save the output document (derive from project naming conventions in `document-conventions.md`).
 
 Example spawn instruction (paraphrased):
-> "Create the requirements for the MYAPP project. If a brainstorming document exists at `~/.radorc/projects/MYAPP/MYAPP-BRAINSTORMING.md`, read that. Save the requirements to `~/.radorc/projects/MYAPP/MYAPP-REQUIREMENTS.md`."
+> "Build the Master Plan for the MYAPP project. Read the approved requirements at `~/.radorc/projects/MYAPP/MYAPP-REQUIREMENTS.md`. Save the plan to `~/.radorc/projects/MYAPP/MYAPP-MASTER-PLAN.md`."
 
-The action's catalog file (e.g., `action.spawn_requirements.md`) carries the canonical spawn-prompt shape; the composer assembles it into `data.prompt`. Read it from the envelope; do not duplicate it here.
+The action's catalog file (e.g., `action.spawn_master_plan.md`) carries the canonical spawn-prompt shape; the composer assembles it into `data.prompt`. Read it from the envelope; do not duplicate it here.
 
 ## Status Reporting
 

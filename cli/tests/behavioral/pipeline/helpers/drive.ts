@@ -42,16 +42,11 @@ const SEED_SOURCE_CONTROL = '__seed_source_control';
 // step. The final processEvent return for the LAST event in the chain is
 // the value returned by driveToNode.
 export const EVENT_CHAINS: Record<string, ChainStep[]> = {
-  requirements: [
-    { event: 'start', context: {} },
-  ],
   master_plan: [
     { event: 'start', context: {} },
-    { event: 'requirements_completed', context: { doc_path: 'REQUIREMENTS.md' } },
   ],
   explode_master_plan: [
     { event: 'start', context: {} },
-    { event: 'requirements_completed', context: { doc_path: 'REQUIREMENTS.md' } },
     { event: 'master_plan_completed', context: { doc_path: 'MASTER-PLAN.md' } },
   ],
   final_review: [
@@ -59,7 +54,6 @@ export const EVENT_CHAINS: Record<string, ChainStep[]> = {
     // iteration is completed through phase_review and phase_gate.
     // source_control seed provides auto_commit=never so commit_gate evaluates cleanly.
     { event: 'start', context: {} },
-    { event: 'requirements_completed', context: { doc_path: 'REQUIREMENTS.md' } },
     { event: 'master_plan_completed', context: { doc_path: 'MASTER-PLAN.md' } },
     { event: 'explosion_completed', context: {} },
     { event: 'plan_approved', context: {} },
@@ -71,7 +65,6 @@ export const EVENT_CHAINS: Record<string, ChainStep[]> = {
   ],
   task_executor: [
     { event: 'start', context: {} },
-    { event: 'requirements_completed', context: { doc_path: 'REQUIREMENTS.md' } },
     { event: 'master_plan_completed', context: { doc_path: 'MASTER-PLAN.md' } },
     { event: 'explosion_completed', context: {} },
     { event: 'plan_approved', context: {} },
@@ -82,7 +75,6 @@ export const EVENT_CHAINS: Record<string, ChainStep[]> = {
   commit: [
     // Reached only when pipeline.source_control.auto_commit !== 'never'.
     { event: 'start', context: {} },
-    { event: 'requirements_completed', context: { doc_path: 'REQUIREMENTS.md' } },
     { event: 'master_plan_completed', context: { doc_path: 'MASTER-PLAN.md' } },
     { event: 'explosion_completed', context: {} },
     { event: 'plan_approved', context: {} },
@@ -93,7 +85,6 @@ export const EVENT_CHAINS: Record<string, ChainStep[]> = {
   code_review: [
     // Seed source_control with auto_commit=never so commit_gate evaluates cleanly.
     { event: 'start', context: {} },
-    { event: 'requirements_completed', context: { doc_path: 'REQUIREMENTS.md' } },
     { event: 'master_plan_completed', context: { doc_path: 'MASTER-PLAN.md' } },
     { event: 'explosion_completed', context: {} },
     { event: 'plan_approved', context: {} },
@@ -104,7 +95,6 @@ export const EVENT_CHAINS: Record<string, ChainStep[]> = {
   phase_review: [
     // Seed source_control with auto_commit=never so commit_gate evaluates cleanly.
     { event: 'start', context: {} },
-    { event: 'requirements_completed', context: { doc_path: 'REQUIREMENTS.md' } },
     { event: 'master_plan_completed', context: { doc_path: 'MASTER-PLAN.md' } },
     { event: 'explosion_completed', context: {} },
     { event: 'plan_approved', context: {} },
@@ -115,7 +105,6 @@ export const EVENT_CHAINS: Record<string, ChainStep[]> = {
   ],
   final_pr: [
     { event: 'start', context: {} },
-    { event: 'requirements_completed', context: { doc_path: 'REQUIREMENTS.md' } },
     { event: 'master_plan_completed', context: { doc_path: 'MASTER-PLAN.md' } },
     { event: 'explosion_completed', context: {} },
     { event: 'plan_approved', context: {} },
@@ -155,7 +144,6 @@ function ensureExtraHighInTemplatesDir(world: World): void {
  * world's temp-dir cleanup.
  *
  * Required files and their minimal frontmatter:
- *   REQUIREMENTS.md   — requirement_count validated by requirements_completed
  *   MASTER-PLAN.md    — total_phases + total_tasks validated by plan_approved;
  *                       also read by the for_each_phase walker to expand iterations
  *   PHASE-1.md        — tasks[] read by the for_each_task walker to expand iterations
@@ -170,13 +158,6 @@ function seedFixtureDocs(projectDir: string): void {
       fs.writeFileSync(filePath, content, 'utf8');
     }
   };
-
-  write('REQUIREMENTS.md', [
-    '---',
-    'requirement_count: 1',
-    '---',
-    'Synthetic requirements document for driveToNode chains.',
-  ].join('\n') + '\n');
 
   // MASTER-PLAN.md: total_phases=1 and total_tasks=1 so the plan_approved
   // pre-read succeeds and the for_each_phase walker expands one iteration.
