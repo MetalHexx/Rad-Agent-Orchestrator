@@ -178,7 +178,6 @@ const mutationRegistry = new Map<string, MutationFn>();
 // (e.g. `doc_path`).
 
 const planningCompletedSteps: Array<[string, string]> = [
-  [EVENTS.REQUIREMENTS_COMPLETED, 'requirements'],
   [EVENTS.MASTER_PLAN_COMPLETED, 'master_plan'],
 ];
 

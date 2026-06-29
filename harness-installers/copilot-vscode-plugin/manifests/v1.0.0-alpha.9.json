@@ -23,7 +23,6 @@
     { "destinationPath": "${RAD_HOME}/action-events/action.spawn_final_reviewer.md", "sourcePath": "_install-source/action-events/action.spawn_final_reviewer.md", "ownership": "installer-owned" },
     { "destinationPath": "${RAD_HOME}/action-events/action.spawn_master_plan.md", "sourcePath": "_install-source/action-events/action.spawn_master_plan.md", "ownership": "installer-owned" },
     { "destinationPath": "${RAD_HOME}/action-events/action.spawn_phase_reviewer.md", "sourcePath": "_install-source/action-events/action.spawn_phase_reviewer.md", "ownership": "installer-owned" },
-    { "destinationPath": "${RAD_HOME}/action-events/action.spawn_requirements.md", "sourcePath": "_install-source/action-events/action.spawn_requirements.md", "ownership": "installer-owned" },
     { "destinationPath": "${RAD_HOME}/action-events/event.code_review_completed.md", "sourcePath": "_install-source/action-events/event.code_review_completed.md", "ownership": "installer-owned" },
     { "destinationPath": "${RAD_HOME}/action-events/event.commit_completed.md", "sourcePath": "_install-source/action-events/event.commit_completed.md", "ownership": "installer-owned" },
     { "destinationPath": "${RAD_HOME}/action-events/event.explosion_completed.md", "sourcePath": "_install-source/action-events/event.explosion_completed.md", "ownership": "installer-owned" },
@@ -41,7 +40,6 @@
     { "destinationPath": "${RAD_HOME}/action-events/event.plan_rejected.md", "sourcePath": "_install-source/action-events/event.plan_rejected.md", "ownership": "installer-owned" },
     { "destinationPath": "${RAD_HOME}/action-events/event.pr_created.md", "sourcePath": "_install-source/action-events/event.pr_created.md", "ownership": "installer-owned" },
     { "destinationPath": "${RAD_HOME}/action-events/event.pr_requested.md", "sourcePath": "_install-source/action-events/event.pr_requested.md", "ownership": "installer-owned" },
-    { "destinationPath": "${RAD_HOME}/action-events/event.requirements_completed.md", "sourcePath": "_install-source/action-events/event.requirements_completed.md", "ownership": "installer-owned" },
     { "destinationPath": "${RAD_HOME}/action-events/event.start.md", "sourcePath": "_install-source/action-events/event.start.md", "ownership": "installer-owned" },
     { "destinationPath": "${RAD_HOME}/action-events/event.task_completed.md", "sourcePath": "_install-source/action-events/event.task_completed.md", "ownership": "installer-owned" },
     { "destinationPath": "${RAD_HOME}/action-events/event.task_gate_approved.md", "sourcePath": "_install-source/action-events/event.task_gate_approved.md", "ownership": "installer-owned" }

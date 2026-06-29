@@ -16,7 +16,6 @@ flowchart TD
 
     subgraph PLAN ["Planning Agents"]
         BRAIN(["Brainstormer"])
-        REQS(["Requirements Author"])
         MP(["Master Plan Author"])
     end
 
@@ -59,7 +58,7 @@ flowchart TD
 
 **Orchestrator** — agent running inside VS Code Copilot; routes pipeline-emitted actions to the right specialized agent or human gate.
 
-**Planning agents** — Brainstormer (optional idea-shaping conversation), Requirements Author, Master Plan Author. These produce the planning artifacts that the explosion script then unfolds into per-phase and per-task handoff documents.
+**Planning agents** — the Brainstormer runs an optional idea-shaping collaboration and hands off to author the Requirements document inline; the Master Plan Author builds the Master Plan from the approved requirements. The Master Plan is what the explosion script unfolds into per-phase and per-task handoff documents.
 
 **Execution agents** — Coder writes code and tests against a task handoff; Reviewer evaluates with one of three review surfaces (code review per task, phase review per phase, final review per project); Source Control owns commits and PR creation.
 
@@ -123,8 +122,6 @@ Task corrective entries append to `taskIter.corrective_tasks`. Phase corrective 
 
 | from-status | from-stage | event | to-status | to-stage |
 |---|---|---|---|---|
-| not_started | requirements | requirements_started | in_progress | requirements |
-| in_progress | requirements | requirements_completed | completed | requirements |
 | not_started | master_plan | master_plan_started | in_progress | master_plan |
 | in_progress | master_plan | master_plan_completed | completed | master_plan |
 | not_started | explode_master_plan | explosion_started | in_progress | explode_master_plan |

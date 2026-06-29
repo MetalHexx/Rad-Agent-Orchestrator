@@ -41,7 +41,6 @@ export const CONDITION_OPERATORS = Object.freeze({
 // ── Next Actions ──────────────────────────────────────────────────────────────
 export const NEXT_ACTIONS = Object.freeze({
   // Planning agent spawns
-  SPAWN_REQUIREMENTS: 'spawn_requirements',
   SPAWN_MASTER_PLAN: 'spawn_master_plan',
 
   // Planning scripts
@@ -77,7 +76,6 @@ export const NEXT_ACTIONS = Object.freeze({
 // because it does not match the `_started` suffix.
 export const EVENTS = Object.freeze({
   // ── Planning step events ──────────────────────────────────────────────
-  REQUIREMENTS_COMPLETED: 'requirements_completed',
   MASTER_PLAN_COMPLETED: 'master_plan_completed',
   EXPLOSION_COMPLETED: 'explosion_completed',
   EXPLOSION_FAILED: 'explosion_failed',

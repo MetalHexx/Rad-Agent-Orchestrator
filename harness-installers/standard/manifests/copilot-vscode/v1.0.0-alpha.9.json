@@ -71,10 +71,6 @@
       "destinationPath": "${RAD_HOME}/action-events/action.spawn_phase_reviewer.md"
     },
     {
-      "bundlePath": "action-events/action.spawn_requirements.md",
-      "destinationPath": "${RAD_HOME}/action-events/action.spawn_requirements.md"
-    },
-    {
       "bundlePath": "action-events/event.code_review_completed.md",
       "destinationPath": "${RAD_HOME}/action-events/event.code_review_completed.md"
     },
@@ -143,10 +139,6 @@
       "destinationPath": "${RAD_HOME}/action-events/event.pr_requested.md"
     },
     {
-      "bundlePath": "action-events/event.requirements_completed.md",
-      "destinationPath": "${RAD_HOME}/action-events/event.requirements_completed.md"
-    },
-    {
       "bundlePath": "action-events/event.start.md",
       "destinationPath": "${RAD_HOME}/action-events/event.start.md"
     },
@@ -157,10 +149,6 @@
     {
       "bundlePath": "action-events/event.task_gate_approved.md",
       "destinationPath": "${RAD_HOME}/action-events/event.task_gate_approved.md"
-    },
-    {
-      "bundlePath": "agents/brainstormer.agent.md",
-      "destinationPath": "${HARNESS_ROOT}/agents/brainstormer.agent.md"
     },
     {
       "bundlePath": "agents/coder-junior.agent.md",
@@ -211,20 +199,12 @@
       "destinationPath": "${HARNESS_ROOT}/skills/rad-brainstorm/references/collaboration.md"
     },
     {
-      "bundlePath": "skills/rad-brainstorm/references/document-writing.md",
-      "destinationPath": "${HARNESS_ROOT}/skills/rad-brainstorm/references/document-writing.md"
-    },
-    {
       "bundlePath": "skills/rad-brainstorm/references/project-memory.md",
       "destinationPath": "${HARNESS_ROOT}/skills/rad-brainstorm/references/project-memory.md"
     },
     {
       "bundlePath": "skills/rad-brainstorm/references/project-series.md",
       "destinationPath": "${HARNESS_ROOT}/skills/rad-brainstorm/references/project-series.md"
-    },
-    {
-      "bundlePath": "skills/rad-brainstorm/templates/BRAINSTORMING.md",
-      "destinationPath": "${HARNESS_ROOT}/skills/rad-brainstorm/templates/BRAINSTORMING.md"
     },
     {
       "bundlePath": "skills/rad-code-review/SKILL.md",

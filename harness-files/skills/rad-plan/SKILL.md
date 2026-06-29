@@ -1,13 +1,12 @@
 ---
 name: rad-plan
-description: "Start the planning pipeline for a new project — produces Requirements + Master Plan"
+description: "Start the planning pipeline for a new project — builds the Master Plan from an approved Requirements doc and runs the audit"
 user-invocable: true
 ---
 
 ## Inputs:
 - `project_name`: $0 — The name of the new project to plan. (e.g., "DAG-PIPELINE-2")
 - `project_template`: $1 — The template to use for planning. (e.g., "extra-high" or a custom template name if one exists)
-- `project_context_prose`: $ARGUMENTS minus $0 and $1 — Optional free prose after the two positional args (e.g., `/rad-plan MYAPP extra-high — build a small CLI that does X`). Fallback project-goals input when no brainstorming doc exists.
 
 ## Initialize
 You are an orchestrator. You'll be using the `rad-orchestration` skill for this project. Read the skill and prepare to use it for running the planning pipeline.
@@ -15,15 +14,32 @@ You are an orchestrator. You'll be using the `rad-orchestration` skill for this 
 ## Workflow:
 I have project goals I'd like to develop into a full scale plan.
 
-## Step 0: Resolve project_dir and project-goals input
+## Step 0: Resolve project_dir and require the Requirements doc
 
 - Set `project_dir = ~/.radorc/projects/{project_name}/`. Create the directory if missing.
-- Resolve the planner's project-goals source by checking, in order:
-  1. `{project_dir}/{project_name}-BRAINSTORMING.md` exists → proceed silently. The planner will read it via the spawn prompt.
-  2. `project_context_prose` is non-empty → proceed silently. Step 4 will inline the prose into the first planner spawn.
-  3. Neither → halt and tell the user: "No brainstorming document at `{path}` and no project description provided. Either run `/rad-brainstorm {project_name}` first (Highly Recommended), or re-run as `/rad-plan {project_name} <template> — < project description>`.  Feel free to provide any additional context, goals or additional documents — the planner will treat it as authoritative input for the Requirements doc."
+- Require an existing Requirements document at `{project_dir}/{project_name}-REQUIREMENTS.md`:
+  - **Present** → proceed to Step 0.5 (requirements approval). `/rad-plan` consumes this doc; it does not produce one.
+  - **Absent** → halt and tell the user: "No requirements document at `{path}`. Run `/rad-brainstorm {project_name}` first to collaborate on goals and scribe the Requirements doc, then re-run `/rad-plan {project_name}`."
 
-**Do NOT ask the user "what do you want to build?" as a clarifying question.** Either the brainstorming doc or `project_context_prose` is the authoritative project-goals input. If neither is present, halt — do not improvise a goals interview and help the user how to plan with Rad Orc.
+**Do NOT ask the user "what do you want to build?" and do NOT author requirements here.** Requirements are produced before the pipeline (via `/rad-brainstorm` → `/rad-create-plans`). If the doc is absent, halt and point the user at `/rad-brainstorm` — do not improvise a goals interview.
+
+## Step 0.5: Approve the Requirements doc
+
+Before choosing a tier or starting the pipeline, present the existing Requirements
+document for a human approve/revise check. This is a **skill step** — it runs
+*before* `state.json` exists, so it is not a pipeline gate and adds no action/event.
+(The existing post-explosion `plan_approval_gate` is a separate, later review of the
+built plan.)
+
+- Show the user the Requirements doc (path + a short summary) and ask whether to
+  **approve** or **revise** (via `AskUserQuestion`).
+- **Revise** → edit the draft in place (following `/rad-create-plans` `requirements`
+  mode), then re-present. Iterate until approved.
+- **Resolve Open Questions before approving.** If the doc has a `## Open Questions`
+  section with unresolved items, address them and update the document.  You can assume the user didn't care to address them, but you should do so. The Master Plan is not scribed while any remain.
+- **Approve** → set the doc's frontmatter `status: approved`, then proceed to Step 1.
+
+Do not build the Master Plan from an unapproved Requirements doc, or one with unresolved Open Questions.
 
 ## Rule: workflow-required user choices
 
@@ -125,7 +141,7 @@ The planner always receives an explicit sizing signal — no deferral option.
 
 ## Step 3: Starting Message
 - Produce a nicely formatted and mildly enthusiastic message confirming the project name, template choice, and task size preference.
-- Tell the user we'll first have a planning agent create formal requirements followed by an execution plan and plan audit.
+- Tell the user the approved Requirements doc will now drive a planning agent that builds the Master Plan, followed by a plan audit.
 
 ## Step 4: Start the Planning Pipeline
 
@@ -138,15 +154,12 @@ node "${PLUGIN_ROOT}/skills/rad-orchestration/scripts/radorch.mjs" pipeline sign
   --template <project_template>
 ```
 
-Parse the JSON envelope and act on `data.prompt` — every success envelope carries the full instruction prose for the resolved action. The first action will be `spawn_requirements`; follow the prose in `data.prompt` exactly and spawn the **planner**.
+Parse the JSON envelope and act on `data.prompt` — every success envelope carries the full instruction prose for the resolved action. The first action will be `spawn_master_plan`; follow the prose in `data.prompt` exactly and spawn the **planner** in `master-plan` mode. The planner reads the approved Requirements doc as the source of the IDs each task satisfies.
 
-**Sizing amendment — every planner spawn (`spawn_requirements` and `spawn_master_plan`).** Append verbatim:
+**Sizing amendment — the `spawn_master_plan` planner spawn.** Append verbatim:
 > "Task size preference: {task_size_preference}. Size all tasks according to that tier per the sizing rubric in the master-plan workflow."
 
 When `task_size_preference` is a `Custom: …` string, the prose flows through verbatim — the planner treats it as authoritative.
-
-**Project-goals amendment — first planner spawn only, when Step 0 resolved via `project_context_prose`** (no brainstorming doc on disk). Append verbatim:
-> "No brainstorming document exists for this project. The user supplied this project description directly: <project_context_prose>. Treat this prose as the authoritative project-goals input for the Requirements ledger."
 
 ## Step 5: Audit the plan
 - Dispatch the `planner` subagent with the `rad-plan-audit` skill (full-audit

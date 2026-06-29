@@ -44,19 +44,11 @@ function mkWorld() {
 }
 
 describe('optimistic in_progress at action-return — top-level steps (FR-5)', () => {
-  it('requirements is in_progress after start', async () => {
-    const w = mkWorld();
-    await driveToNode(w, 'requirements');
-    const s = readPersistedState(w.projectDir);
-    expect(s.graph.nodes.requirements.status).toBe('in_progress');
-  });
-
-  it('master_plan is in_progress after requirements_completed', async () => {
+  it('master_plan is in_progress after start', async () => {
     const w = mkWorld();
     await driveToNode(w, 'master_plan');
     const s = readPersistedState(w.projectDir);
     expect(s.graph.nodes.master_plan.status).toBe('in_progress');
-    expect(s.graph.nodes.requirements.status).toBe('completed');
   });
 
   it('explode_master_plan is in_progress after master_plan_completed', async () => {

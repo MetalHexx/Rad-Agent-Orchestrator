@@ -15,13 +15,13 @@ function makeTmpRepo() {
   return root;
 }
 
-// Minimal runtime input for spawn_requirements — that branch only reads
-// `action`, `walkerContext`, and (transitively) `process.cwd()`. The remaining
-// fields are required structurally on `EnrichmentInput`, so we stub-and-cast
-// rather than fabricate a full `PipelineState`/`OrchestrationConfig`.
+// Minimal runtime input for spawn_master_plan — that branch reads `action`,
+// `walkerContext`, `config.limits`, and (transitively) `process.cwd()`. The
+// remaining fields are required structurally on `EnrichmentInput`, so we
+// stub-and-cast rather than fabricate a full `PipelineState`/`OrchestrationConfig`.
 function makeInput(): EnrichmentInput {
   return {
-    action: 'spawn_requirements',
+    action: 'spawn_master_plan',
     walkerContext: {},
     state: { graph: { nodes: {} }, pipeline: {} } as unknown as EnrichmentInput['state'],
     config: { limits: { max_phases: 10, max_tasks_per_phase: 8 } } as unknown as EnrichmentInput['config'],
@@ -63,7 +63,7 @@ function makeEnrichmentInput(action: string, state: PipelineState): EnrichmentIn
 }
 
 describe('context-enrichment skills block', () => {
-  it('spawn_requirements enrichment emits Repository Skills Available block (no subprocess hop)', () => {
+  it('spawn_master_plan enrichment emits Repository Skills Available block (no subprocess hop)', () => {
     const root = makeTmpRepo();
     const cwd = process.cwd();
     try {
