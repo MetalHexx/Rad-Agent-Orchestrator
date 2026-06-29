@@ -112,6 +112,18 @@ test-run.log
 /prompt-tests/rad-plan-benchmark/output/run-*/*/template.yml
 /prompt-tests/rad-plan-benchmark/output/run-*/*/backups/
 
+# Prompt harness — rad-master-plan-benchmark-v1 / -v2 (master-doc creation step).
+# Same INVERTED pattern as rad-plan-benchmark: the full planning output under each
+# versioned run-N/ folder IS committed (Requirements, Master Plan, audit report, exploded
+# phases/tasks) for cross-run and cross-version (V1 old-ledger vs V2 new-format) diffing.
+# Only pure runtime churn is ignored.
+/prompt-tests/rad-master-plan-benchmark-v1/output/run-*/*/state.json
+/prompt-tests/rad-master-plan-benchmark-v1/output/run-*/*/template.yml
+/prompt-tests/rad-master-plan-benchmark-v1/output/run-*/*/backups/
+/prompt-tests/rad-master-plan-benchmark-v2/output/run-*/*/state.json
+/prompt-tests/rad-master-plan-benchmark-v2/output/run-*/*/template.yml
+/prompt-tests/rad-master-plan-benchmark-v2/output/run-*/*/backups/
+
 # Plugin artifacts
 # NOTE: .claude/ (above) is the gitignored dogfood build output;
 # .claude-plugin/ is the COMMITTED Claude marketplace manifest folder

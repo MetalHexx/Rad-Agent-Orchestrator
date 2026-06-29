@@ -13,6 +13,8 @@ The harness sits at the repo root (sibling to `docs/`, `installer/`, `ui/`, `.cl
 | [`extra-high-pipeline-e2e/`](./extra-high-pipeline-e2e/) | `extra-high.yml` planning chain end-to-end — Requirements → Master Plan → explosion script. Halts at `plan_approval_gate`. |
 | [`low-pipeline-e2e/`](./low-pipeline-e2e/) | `low.yml` planning chain end-to-end — Requirements → Master Plan → explosion script under `--template low`. Halts at `plan_approval_gate`. |
 | [`rad-plan-benchmark/`](./rad-plan-benchmark/) | **Performance baseline** (not a regression alarm) — drives the real `/rad-plan` skill (menus and all) to `plan_approval_gate`. Captures spend via observability + commits full planning artifacts under versioned `output/run-N/` for cross-refactor comparison. |
+| [`rad-master-plan-benchmark-v1/`](./rad-master-plan-benchmark-v1/) | **Performance baseline** for the **master-doc creation step** alone — seeds a pre-built **old FR/NFR/AD/DD ledger** Requirements doc, drives the real `/rad-plan` (post-PO-1: master plan + audit only) to `plan_approval_gate`. The old-world half of the V1/V2 old-vs-new master-plan pair. |
+| [`rad-master-plan-benchmark-v2/`](./rad-master-plan-benchmark-v2/) | Same as V1 but seeds the **new requirement-grouped `R{n}`** Requirements doc — the native input for the post-PLANNING-OVERHAUL-2 master-plan skill. The new-world half of the pair; same `rainbow-hello` concept, so format is the only variable. |
 
 ## Running a behavior
 
