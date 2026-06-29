@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { emitManifest } from '../../build-scripts/emit-manifest.js';
 
-test('emitManifest produces { version, channel, files[] } with sha256 and destinationPath, omits user-data assets', async () => {
+test('emitManifest produces { version, channel, files[] } with bundlePath and destinationPath, omits user-data assets', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'std-mf-'));
   try {
     // Synthetic output/<harness>/ tree.
@@ -33,8 +33,8 @@ test('emitManifest produces { version, channel, files[] } with sha256 and destin
     // destinationPath uses ${HARNESS_ROOT} (per-harness install root) for installable tree.
     const orch = written.files.find((f) => f.bundlePath === 'agents/orchestrator.md');
     assert.strictEqual(orch.destinationPath, '${HARNESS_ROOT}/agents/orchestrator.md');
-    // sha256 present per entry — 64 hex chars (NFR-12 — minimal synthetic content).
-    assert.ok(/^[a-f0-9]{64}$/.test(orch.sha256));
+    // sha-free path catalog — no per-file hash field (entries are { bundlePath, destinationPath }).
+    for (const f of written.files) assert.strictEqual(f.sha256, undefined);
     // No `ownership` field anywhere (AD-3).
     for (const f of written.files) assert.strictEqual(f.ownership, undefined);
   } finally { fs.rmSync(tmp, { recursive: true, force: true }); }

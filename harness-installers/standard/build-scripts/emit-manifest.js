@@ -1,9 +1,10 @@
 // harness-installers/standard/build-scripts/emit-manifest.js —
-// Walks a output/<harness>/ build tree, computes sha256 per file, and writes
+// Walks a output/<harness>/ build tree and writes
 // manifests/<harness>/v<version>.json with the per-harness installable tree
-// only (no user-data assets per AD-3). Atomic write per NFR-3.
+// only (no user-data assets per AD-3). The manifest is a sha-free path catalog
+// ({ bundlePath, destinationPath }); install copies by path and never hashes.
+// Atomic write per NFR-3.
 
-import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -40,12 +41,13 @@ function walkDir(dir, acc = []) {
 /**
  * Emits a per-harness manifest JSON file.
  *
- * Walks `harnessOutputDir`, filters out user-data assets, computes sha256 for
- * each surviving file, and writes:
+ * Walks `harnessOutputDir`, filters out user-data assets, and writes:
  *   `{manifestDir}/v{version}.json`
  *
- * Shape: { version, channel, files: [{ bundlePath, destinationPath, sha256 }] }
+ * Shape: { version, channel, files: [{ bundlePath, destinationPath }] }
  * Files are sorted by bundlePath for stable diffs. No `ownership` field (AD-3).
+ * No per-file hash — the manifest is a path catalog; every field is
+ * platform-stable so the manifest regenerates byte-identically on any OS.
  * Write is atomic via tmp+rename (NFR-3).
  *
  * @param {{ harnessOutputDir: string, harness: string, version: string, manifestDir: string }} opts
@@ -64,8 +66,6 @@ export async function emitManifest({ harnessOutputDir, harness, version, manifes
       continue;
     }
 
-    const buf = fs.readFileSync(absPath);
-    const sha256 = crypto.createHash('sha256').update(buf).digest('hex');
     // User-data assets (e.g. action-events/) install into ${RAD_HOME}/...; all
     // other manifest entries install into the per-harness ${HARNESS_ROOT}/...
     const isUserData = USER_DATA_PREFIXES.some(
@@ -75,7 +75,7 @@ export async function emitManifest({ harnessOutputDir, harness, version, manifes
       ? '${RAD_HOME}/' + bundlePath
       : '${HARNESS_ROOT}/' + bundlePath;
 
-    files.push({ bundlePath, destinationPath, sha256 });
+    files.push({ bundlePath, destinationPath });
   }
 
   // Stable diffs — sort by bundlePath.
