@@ -26,7 +26,7 @@ import {
 import { userDataPaths } from './user-data-paths.js';
 
 /**
- * @param {{ files: Array<{ bundlePath: string, destinationPath: string, sha256?: string }> }} manifest
+ * @param {{ files: Array<{ bundlePath: string, destinationPath: string }> }} manifest
  * @param {string} bundleRoot
  * @param {string} harness
  * @param {{ sharedRoot?: string }} [opts]
