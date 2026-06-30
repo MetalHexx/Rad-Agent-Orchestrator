@@ -1,371 +1,330 @@
-## Role Summary
+# Master Plan Document
 
-You author the Master Plan — a single doc that enumerates every phase and
-every task for the project, inlines the exact code / commands / files each
-task needs, and tags every step with the requirement IDs it satisfies.
+You author the project **Master Plan** — the document that turns the approved
+Requirements into an ordered set of phases and tasks. Each task is a
+**self-contained problem brief**: a human preamble, the files to touch, the change
+as a contract, what *done* looks like, and what to test. The Master Plan is the
+statement of *how* the work breaks down and lands — enough contract for a coder
+agent to execute a task without opening another document, never the finished code
+itself.
 
-A well-written Master Plan is mechanical: a coder agent executing a task
-does not need to open any other document to finish the work. Inlining is not
-copy-paste; it is adaptation — each requirement is restated in the shape the
-task needs, with the ID preserved.
+## Workflow Steps
 
-This workflow does NOT load `references/shared/guidelines.md` or
-`references/shared/self-review.md`. The authoring rules below are the full set.
+1. **Carry the requirements context in.** The approved Requirements doc is the
+   seed — its repos, its `R{n}` requirements, its Technical Specification and
+   Testing Approach. Don't re-derive scope or re-interview the user. Carry the
+   sealed `project-type`, `repos`, and `repo-group` from its frontmatter forward
+   verbatim (see Output Contract).
 
-## Inputs
+2. **Recover from a prior parse failure (retries only).** Read
+   `state.graph.nodes.master_plan.last_parse_error` from `state.json`. If it is
+   `null`, skip this step and author normally. If it is set, a prior attempt
+   failed the explosion parser; the field is structured —
+   `{ line, expected, found, message }`. Read the prior plan at
+   `state.graph.nodes.master_plan.doc_path`, then fix **only** the exact issue at
+   the indicated line — do not re-engineer the plan. Common failures in this
+   shape:
+   - A malformed phase heading: `## P{NN}:` with a missing or single-digit number
+     (it must be zero-padded two digits, e.g. `## P01:`).
+   - A malformed task heading: `### P{NN}-T{MM}:` with a broken id (e.g. `T-1`,
+     `TX`).
+   - A task heading whose phase id doesn't match its enclosing `## P{NN}:`.
+   - A task missing its `**Target repo:**` line.
+   - A task whose `**Target repo:**` names a repo outside the sealed frontmatter
+     `repos:` seal.
 
-| Input | Source | Required? |
-|-------|--------|-----------|
-| Requirements doc | `{PROJECT-DIR}/{NAME}-REQUIREMENTS.md` | Yes — source of every ID you will cite |
-| Orchestrator prompt | Spawn context | Yes — project name, output path, scope bounds |
-| Codebase | Workspace (via Grep/Glob/Read) | Yes — targeted discovery to write exact file paths and commands |
+   Re-emit with the narrow correction; leave the rest intact. The loop has a
+   hardcoded cap of 3 retries — after the cap the pipeline halts for manual help.
+   On retries, stay narrow: fix only what `last_parse_error` flags.
 
-## Authoring principle
+3. **Pick up the tooling.** Read the Requirements doc's `## Required Skills and
+   MCPs` for the repo skills and MCP servers surfaced during requirements
+   authoring. If you need more, list a repo's skill catalog yourself — pass the
+   repo's absolute path as `--repo-root`:
 
-Each step inlines requirement content adapted to the task. You are not
-rendering the Requirements doc — you are translating each ID into the specific
-code change, command, or test the executor will run. The ID stays; the phrasing
-becomes task-local and action-oriented.
-
-## Workflow
-
-### Steps
-
-1. Read the Requirements doc. Build a mental inventory of every FR, NFR, AD,
-   DD ID that must be addressed in the Master Plan. Every ID should land in
-   at least one task. Unaddressed IDs = incomplete plan.
-
-1a. **If a previous attempt failed the explosion script's parser, self-correct
-    before re-drafting.**
-
-    Read `state.graph.nodes.master_plan.last_parse_error` from `state.json`. If
-    it is non-null, a previous attempt at this Master Plan failed the explosion
-    script's parser. The field is structured:
-    `{ line, expected, found, message }`.
-
-    - Read the previous Master Plan at
-      `state.graph.nodes.master_plan.doc_path` to see the prior output.
-    - Fix the SPECIFIC issue identified by the parse error. Do not re-engineer
-      the entire plan; address the formatting failure at the indicated line.
-      Common parse failures:
-        - `## P{NN}:` heading with missing / single-digit phase number.
-        - `### P{NN}-T{MM}:` heading with a malformed id (e.g. `T-X`, `TX`).
-        - Task heading appearing before any phase heading.
-        - Task heading whose phase id does not match its enclosing phase.
-        - Task block missing its `**Target repos:**` line entirely — fix by
-          adding a `**Target repos:** <repo>` line immediately after
-          `**Requirements:**`.
-        - Task block has a `**Target repos:**` line that names zero repos (the
-          value is blank or whitespace only) — fix by supplying at least one
-          registry repo name on that line.
-        - Task block names a repo in `**Target repos:**` that is not in the
-          Master Plan's sealed frontmatter `repos:` set — fix by either
-          changing the target repo to one already in the seal, or extending
-          the frontmatter `repos:` seal to include the new repo (and
-          cross-checking all phase-level `**Target repos:**` union lines).
-      These repo-shape failures arrive through the identical structured
-      `{ line, expected, found, message }` parse-error shape and the same
-      hardcoded retry cap as the heading failures above, so apply the same
-      narrow-fix discipline on retries 3+: address only the exact issue
-      identified by `last_parse_error`; do not re-engineer the plan.
-    - Re-emit the Master Plan with the correction. Other content stays as
-      before unless explicitly impacted by the formatting fix.
-    - The recovery loop has a hardcoded cap of 3 retries. After the cap, the
-      pipeline halts via `rad-log-error` for manual intervention. Do not attempt
-      new approaches on retry 3+; focus narrowly on fixing the exact parse
-      error.
-
-    If `last_parse_error` is null, skip this step and proceed normally.
-
-2. Do targeted codebase discovery. Identify exact file paths you will create
-   or modify, exact commands the test suite accepts, the testing framework in
-   use, and any existing patterns the plan must follow. Grep / Glob / Read —
-   no survey-level exploration.
-
-2a. If your spawn prompt carried a `## Repository Skills Available` section,
-    treat it as a discovery surface alongside Grep/Glob/Read. Scan the JSON
-    array for entries whose `description` matches the work you are about to
-    plan; `Read` each matching entry's absolute `path` directly (no Grep/Glob
-    hunt — the manifest path is authoritative). **Skip entries whose
-    descriptions do not match — do not Read every catalog entry.** The
-    description is the screening surface; reading non-matches wastes tokens.
-    If you encounter a `SKILL.md` via codebase Grep/Glob that is not in the
-    catalog, do not Read it — the manifest is the complete authoritative
-    list and any exclusions are intentional. Each catalog entry carries a
-    `repo` field identifying which registry repository the skill belongs to
-    (FR-18). When inlining a skill's commands, conventions, or code patterns
-    into a task, target the guidance to the task's `**Files for <repo>:**`
-    block for that same repo — this keeps per-repo guidance traceable and
-    prevents cross-repo contamination. Absence of the section means no
-    eligible repo skills exist; proceed normally.
-
-2b. When no brainstorming doc and no Requirements `repos:` set are available,
-    invoke the `/rad-repo` skill to read the registry and infer the affected
-    repos from the orchestrator prompt and codebase discovery.
-    When a Requirements `repos:` restate exists, seal it (refining only with
-    cause) into the Master Plan frontmatter. The seal is derived bottom-up and
-    cross-checked against the body's target repos before saving (see Step 8's
-    structural lint pass). If you're absolutely have no clue which repos to check, 
-    abort the operation and ask for help.
-
-3. Decide the phase and task breakdown. Phases group work by natural seam
-   (layer boundary, independently deliverable slice). Tasks within a phase are
-   the smallest unit a single coder agent will execute end-to-end.
-
-   **Plan size limits.** Your spawn prompt carries a `## Plan Size Limits`
-   section with `max_phases` and `max_tasks_per_phase` (sourced from
-   `orchestration.yml`). The breakdown must not exceed these. If natural
-   seams suggest more phases or more tasks in a phase than the limit
-   allows, consolidate — group more work per task, or fold thin phases
-   together — rather than overflow. The pipeline silently caps any excess
-   at expansion time, so overflow drops tail work without warning. Limits
-   are an outer bound the Phase/Task Size rubric below operates within.
-
-   **Phase/Task Size rubric** — The orchestrator's spawn prompt passes a
-   `Task size preference` (one of `Small`, `Medium`, `Large`, `Extra Large`,
-   or a `Custom: …` prose string). Apply the corresponding scope below.
-
-   | Size | Task scope | Tasks per phase |
-   |---|---|---|
-   | Small | One named, self-contained change — a function, a validator, a constant. Precise enough to title in five words. | 3–5 |
-   | Medium | A vertical slice through one layer: a module, a config section, a CLI command with its tests. | 2–4 |
-   | Large | A full feature slice touching multiple layers or subsystems end-to-end. | 2–3 |
-   | Extra Large | A standalone feature per task — scope that would be a phase at smaller sizes. Phases are thin wrappers. | 1–2 |
-   | Custom | User-supplied prose is the criterion; apply it literally. | Planner judges from natural seams. |
-
-   **Worked examples per size (code domain).**
-
-   - *Small* — "Add a `maxRetries` config field: extend the schema type, add a bounds-validator function (`1–10`), and write test cases covering boundary values." One coherent unit; the title names exactly what ships.
-
-   - *Medium* — "Author a password-reset flow: the `POST /auth/reset-request` endpoint, a signed-token generator, an email dispatch call, and integration tests for the happy path and expired-token case." A vertical slice through one layer; 2–4 such tasks make a phase.
-
-   - *Large* — "Add OAuth login end-to-end: provider redirect handler, callback + session persistence, error-state responses, and an integration test suite covering the full flow." Touches auth, session, and routing layers; 2–3 such tasks make a phase.
-
-   - *Extra Large* — "Build the full billing subsystem: plan-tier schema, Stripe webhook handler, invoice generation, customer portal redirect, and end-to-end smoke tests." Each task is what would be a phase at smaller sizes; 1–2 such tasks make a phase.
-
-   **Edge cases.**
-
-   - When natural seams fight the chosen size: respect the seams. If the
-     requirements force three independent slices but the size says
-     `Extra Large`, author three Extra Large tasks rather than one
-     monolithic task that hides the seams.
-   - When the chosen size produces fewer than 2 phases: that's fine for
-     `Extra Large`. Single-phase plans are explicitly supported.
-   - Phase scope is most meaningful in tiers with phase review
-     (`extra-high`, `medium`). In `high` and `low` (no phase review),
-     phase scope still affects pacing and commit cadence, but does not
-     affect review overhead — do not over-index on phase boundaries
-     in those tiers.
-
-   **Interpreting `Custom` prose.** When the spawn prompt carries a
-   `Task size preference: Custom: <user prose>` string, treat the prose
-   as the authoritative scoping criterion for task scope. Apply
-   natural-seam judgment for phase boundaries within the custom
-   criteria. Do not fall back to a rubric tier silently — the user
-   chose `Custom` precisely to override the rubric.
-
-   The size governs scope per task, not step count within a task. TDD
-   structure (4 RED-GREEN steps) is always required for `code` tasks
-   regardless of size.
-
-4. Author a `## Introduction` section. Under that heading, write one or two
-   short paragraphs (2–3 sentences each) covering what is being built and why,
-   at a glance. No phase-by-phase restatement.
-
-5. For each phase, author a `## PNN: {Title}` section with this shape:
-
-   ```markdown
-   ## P01: {Phase Title}
-   {≤3 sentence phase description.}
-
-   **Requirements:** FR-1, FR-3, AD-2, DD-1
-   **Target repos:** backend, frontend
-
-   **Execution order:**
-       T01 → T02
-          → T03 → T04
-       T05 (depends on T01-T04)
-
-   ### P01-T01: {Task Title}
-   ...
+   ```
+   node "${PLUGIN_ROOT}/skills/rad-orchestration/scripts/radorch.mjs" skill-list --repo-root <absolute-repo-path>
    ```
 
-   - Phase numbers are zero-padded two digits: `P01`, `P02`, ...
-   - Phase title: 3–6 words naming the deliverable. No verb-heavy procedure titles.
-   - Phase description: lead with what the phase delivers as a whole — the capability or system state that exists when all tasks complete. No task enumeration or file lists.
-   - The `**Requirements:**` line on the phase heading lists the union of
-     requirement IDs its tasks address.
-   - The `**Target repos:**` line on the phase heading is the union of the target repos of that phase's tasks, mirroring the placement and plural-form convention of the `**Requirements:**` line. (FR-8, DD-3, AD-4)
-   - The execution-order block is an ASCII dependency tree. Use indentation,
-     `→`, and parenthetical dependency notes. One block per phase.
+   Read a listed skill only when its description matches the work; bake its
+   conventions into the relevant task so the coder carries what it needs and isn't
+   required to read skills or call MCPs to proceed.
 
-6. For each task, author a `### PNN-TMM: {Title}` block with this shape:
+4. **Ground with targeted codebase discovery.** Grep / Glob / Read the exact
+   files, contracts, and modules the tasks will touch, so every `Files` path and
+   every contract you pin is real, not guessed. Read the `CLAUDE.md` / `AGENTS.md`
+   in each area you'll touch. No survey-level exploration.
 
-   ```markdown
-   ### P01-T01: {Task Title}
-   {≤2 sentence task description.}
+5. **Decide the phase and task breakdown.** Phases group work by natural seam and
+   are the integration unit — a phase can span repos (a UI view and its API
+   endpoint are two single-repo tasks under one phase). Tasks are the smallest
+   unit one coder agent executes end-to-end, and each targets exactly one repo.
+   Apply the Phase/Task Size knob and the sizing judgment in the Authoring Guide;
+   let size, not seam count, set how many tasks you write.
 
-   **Task type:** code
-   **Requirements:** FR-1, AD-2
-   **Target repos:** backend, frontend
-   **Files for backend:**
-   - Create: `exact/path/to/new/file.ts`
-   - Test: `tests/exact/path.test.ts`
-   **Files for frontend:**
-   - Modify: `exact/path/to/existing.ts:45-60`
+6. **Author the Introduction.** One or two short paragraphs (2–3 sentences each):
+   what is being built and why, at a glance, in the requirements-preamble voice.
+   No phase-by-phase restatement — the Execution Map is the index.
 
-   - [ ] **Step 1: Write the failing test (FR-1)**
-       (exact test code inline)
-   - [ ] **Step 2: Run test, confirm it fails**
-       Run: `npm test -- login.test.ts`
-       Expected: FAIL — {reason} (FR-1)
-   - [ ] **Step 3: Implement minimal code (FR-1)**
-       (exact implementation inline)
-   - [ ] **Step 4: Run test, confirm pass**
-       Run: `npm test -- login.test.ts`
-       Expected: PASS (FR-1)
-   ```
+7. **Author the Execution Map.** A durable, scannable outline of the whole plan
+   that a human reads before the run. It lives **above** the first phase heading,
+   in the parser's preamble region, so every phase here is a **bold label, never a
+   heading** — `**P01 · {Title}** · repos: … · order: T01→T02` — followed by a task
+   mini-table (`Task · Repo · Complexity · Purpose`). Never write `## Phase`,
+   `## P1`, or any `## P{NN}:` / `### P{NN}-T{MM}:` line in this section; those
+   patterns belong only to the full blocks below (see Heading discipline under
+   Output Contract).
 
-   **Title rule:** 4–7 words, imperative verb + outcome noun. Names what the task establishes, not what files it touches. Example: "Add rate-limit validator" not "Implement rate-limit validator function with allowlist constant and five test cases."
+8. **Author the full phase + task blocks.** Below the Execution Map, write the
+   real anchors the explosion reads: a `## P{NN}: {Title}` per phase with a 1–2
+   line phase outcome, and a `### P{NN}-T{MM}: {Title}` per task carrying its
+   `Task type` / `Complexity` / `Target repo` / `Files` / `The change` /
+   `Done when` / `Testing`. Match the worked block in the Authoring Guide at a
+   contract-rich-middle density. Don't hand-write a phase task table or a
+   `## Execution Notes` section — the explosion generates both.
 
-   **Intro rule:** Lead with the outcome — what this task establishes or enables. No file paths, no step enumeration; those live in the steps below. Two sentences maximum. Example: "Align the prompt-test suite naming with the four-tier vocabulary." not "Rename `prompt-tests/plan-pipeline-e2e/` → `prompt-tests/extra-high-pipeline-e2e/` and update all internal references."
+9. **Self-check.** A quick judgment pass before saving (see the Self-check nudge in
+   the Authoring Guide). The parser enforces structure; you check substance.
 
-7. Task rules:
-   - `**Task type:**` is mandatory on every task. One of: `code` | `doc` |
-     `config` | `infra`.
-   - `**Requirements:**` is mandatory on every task. Lists IDs the task
-     addresses. At least one ID.
-   - `**Target repos:**` is mandatory on every task. A comma-separated list
-     of registry repo names on a single line, placed alongside the
-     `**Requirements:**` line (always plural-form, even for one name). This
-     mirrors the `**Requirements:**` convention so the line stays stable and
-     machine-greppable.
-   - One `**Files for <repo>:**` subsection per named repo is mandatory; the
-     task's `**Target repos:**` names every repo for which a subsection
-     exists, and vice versa. Sub-bullets use `Create:` | `Modify:` | `Test:`
-     | `Delete:` prefixes. There is no flat `**Files:**` block — the per-repo
-     subsection is the only valid file-listing shape, uniform even for a
-     single-repo task.
-   - A single-repo task is visually identical to today's plan except the flat
-     `**Files:**` label becomes `**Files for <repo>:**` and a one-name
-     `**Target repos:**` line is added — keeping single-repo plans legible
-     while making the shape uniform. Single-repo execution is unaffected
-     because the new lines are inert body text the explosion script copies
-     verbatim (it parses only `**Requirements:**`).
-   - For `code` type: exactly 4 steps in the RED-GREEN shape:
-     1. Write the failing test (inline code).
-     2. Run the test, confirm it fails (exact command, expected-fail reason
-        + `(FR-N)` tag).
-     3. Implement the minimal code to pass (inline code).
-     4. Run the test, confirm it passes (exact command + `(FR-N)` tag).
-   - Non-code tasks (`doc`, `config`, `infra`) use an author-chosen step
-     shape. No TDD required, but every step must still reference at least
-     one requirement ID.
-   - Test-quality anti-patterns during `code`-task authoring: no test-only methods in production code; no opaque mocks without documented purpose; no assertions that verify only mock behavior. These hide the test/production gap. Handoffs emitted from this plan inherit these constraints.
-   - No meta tests asserting on test structure (e.g. "this test file has a test for each method in the implementation file") — tests should assert on production behavior, not test structure.
-   - No placeholders. "TBD" / "implement later" / "similar to task N" /
-     "as needed" — all prohibited. If you can't write it exactly, you
-     aren't ready to write the plan.
-   - Every step ends with at least one `(FR-N)` / `(NFR-N)` / `(AD-N)` /
-     `(DD-N)` ID reference (inline in the expected-output line for run
-     steps, inline in the description for write steps). This is the YAGNI
-     gate — a step that doesn't trace to a requirement shouldn't exist.
-
-7a. **Repo nesting invariants (planner self-check).** These are guidance,
-    not machine-enforced — verify them by hand before saving:
-    - Each task's `**Target repos:**` ⊆ the frontmatter `repos:` seal.
-    - Each phase's `**Target repos:**` = the union of its tasks' target repos.
-    - The frontmatter `repos:` seal = the union of all tasks' target repos.
-    The seal is derived bottom-up from the tasks, not declared top-down.
-    Cross-check the frontmatter against the body before saving.
-
-8. Run a structural lint pass on your own authored text before saving:
-   - Every `### {ID}:` task heading matches `### P\d{2}-T\d{2}:`.
-   - Every task block carries a `**Task type:**` line.
-   - Every task block carries a `**Requirements:**` line.
-   - Every step begins with `- [ ] **Step N:`.
-   - No `TBD`, `TODO`, `FIXME`, `implement later`, `similar to` strings
-     appear anywhere in the body.
-   - Every requirement ID cited by any task exists in the Requirements doc.
-   - Every `### P\d{2}-T\d{2}:` task carries a `**Target repos:**` line and at least one matching `**Files for <repo>:**` subsection.
-   - Every `## P\d{2}:` phase carries a `**Target repos:**` union line equal to the union of its tasks' target repos.
-   - The frontmatter `repos:` seal is consistent with the body's target repos: it equals the union of every task's `**Target repos:**` value, and no body target-repos value falls outside the seal.
-
-9. Save to `{PROJECT-DIR}/{NAME}-MASTER-PLAN.md`.
+10. **Save** to `{PROJECT-DIR}/{NAME}-MASTER-PLAN.md`.
 
 ## Output Contract
 
-**Filename**: `{NAME}-MASTER-PLAN.md` at project root.
+**Filename**: `{NAME}-MASTER-PLAN.md` at the project root.
 
-**Frontmatter**:
+**Frontmatter** — the [template](templates/MASTER-PLAN.md) carries the canonical
+block; copy it from there. These mechanical fields are what the rest of the chain
+inherits, so get them right.
 
-Standard project example:
+Standard project:
 
 ```yaml
 ---
 project: "{PROJECT-NAME}"
 type: master_plan
-status: "draft"
+status: draft
 created: "{YYYY-MM-DD}"
 project-type: standard
 repos: [repo-a, repo-b]
 repo-group: repo-group-name
 total_phases: {N}
 total_tasks: {N}
-author: "planner-agent"
 ---
 ```
 
-Side-project example:
+Side-project:
 
 ```yaml
 ---
 project: "{PROJECT-NAME}"
 type: master_plan
-status: "draft"
+status: draft
 created: "{YYYY-MM-DD}"
 project-type: side-project
 repos: ["{PROJECT-NAME}"]
 repo-group: null
 total_phases: {N}
 total_tasks: {N}
-author: "planner-agent"
 ---
 ```
 
-- `status`: `draft` | `approved`. Always `draft` at authoring time.
-- `project-type`: `standard` | `side-project`. Carry the value from the Requirements doc's
-  `project-type` field. Absence means a doc predating this field and is treated as `standard`.
-  For `standard` projects, stamp `project-type: standard` and derive `repos`/`repo-group` from
-  the registry seal (see Step 2b). For `side-project`, stamp `project-type: side-project` and
-  seal `repos: [<project-name>]` with `repo-group: null` — derived from the kind, not a registry
-  lookup. The existing seal-vs-body lint still applies: the single `[<project-name>]` seal must
-  equal the union of all tasks' `**Target repos:**` values in the body.
-- `repos`: for `standard` projects, the **sealed, authoritative** list of registry repo names —
-  the single source of truth the explosion script will read; downstream documents are superseded
-  by this seal. For `side-project`, sealed as `[<project-name>]` — a single entry equal to the
-  project name.
-- `repo-group`: the repo-group scope for `standard` projects; `null` for `side-project`.
-- `total_phases`: count of `## P\d{2}:` headings.
-- `total_tasks`: count of `### P\d{2}-T\d{2}:` headings.
-- `author`: exactly `"planner-agent"`.
+- `status`: `draft` | `approved`. Always `draft` at authoring time; approval
+  happens later in the pipeline.
+- `project-type`, `repos`, `repo-group`: carried forward from the Requirements
+  doc's sealed frontmatter. `standard` maps to one or more registered repos;
+  `side-project` seals `repos: ["{PROJECT-NAME}"]` and `repo-group: null`. The
+  `repos:` array is the **authoritative seal** the explosion reads — every task's
+  `**Target repo:**` must be a member of it.
+- `total_phases`: count of `## P{NN}:` headings. `total_tasks`: count of
+  `### P{NN}-T{MM}:` headings.
+- No `author` field — git carries provenance.
+
+**Heading discipline (the collision guard).** The explosion parser anchors on
+`## P{NN}:` and `### P{NN}-T{MM}:` and treats everything above the first such
+heading as preamble. It throws on any `## P{digit}…`, `### P{digit}…`, or
+`## Phase…` line that is not a well-formed anchor. So the Execution Map, which
+lives in the preamble region, uses **bold phase labels and mini-tables, never
+headings** (Step 7). The real `## P{NN}:` / `### P{NN}-T{MM}:` headings appear only
+below it, opening the full blocks. Zero-pad to two digits: `P01`, `P02`, `P01-T01`.
 
 **Body section order**:
 
-1. `# {PROJECT-NAME} — Master Plan` (H1 title)
-2. `## Introduction` (1–2 paragraphs)
-3. `## P01:`, `## P02:`, ... (one per phase)
-4. `### P01-T01:`, `### P01-T02:`, ... (one per task within each phase)
+1. `# {PROJECT-NAME} — Master Plan`
+2. `## Introduction`
+3. `## Execution Map`
+4. `## P01:` … `### P01-T01:` … (the full phase + task blocks)
 
-## Constraints
+The explosion generates the per-phase task table, the per-task `## Execution Notes`
+section, and the phase docs — don't hand-write them.
 
-- No "Additional Context" / "Appendix" / "Notes" catch-all sections. If it's
-  not in a phase or task, it doesn't belong.
-- No restating requirements verbatim. Inlining = adaptation.
-- No cross-task references by name. If task T02 depends on T01, the
-  dependency lives in the phase's execution-order ASCII tree, not in the task
-  body.
-- No commit step inside tasks. Commit cadence is owned by the source-control
-  step elsewhere in the pipeline. (Logged as an open item — may revisit.)
-- Every task is self-contained: a coder reading only this task plus the
-  Requirements doc has everything needed to finish it.
+## Authoring Guide
+
+A few high-signal nudges that invoke judgment, not a checklist to fill. The craft
+is in how richly you pin each task — start here.
+
+**Authoring density — the contract-rich middle**
+
+This is the call you make on every task, and the one that most shapes whether the
+run lands. Aim for a **contract-rich middle**: distinctly richer than a one-line
+brief, never a finished implementation.
+
+- **Inline the shape, not the body.** Pin the interface — signatures, types,
+  endpoints, data shapes — the load-bearing seams, and the gotchas (especially
+  cross-repo contracts). Add a *small* illustrative snippet where a shape is
+  non-obvious and prose would be clumsier. Never pre-write the full implementation
+  or a complete test file — that's the coder's job, and over-specifying it invents
+  bugs (a pre-written test that contradicts a pre-written impl).
+- **Specificity scales inversely to coder tier.** A `simple` task needs the *most*
+  concrete contract — it routes to the junior agent with the least judgment to fill
+  gaps, so pin the shape tightly. A `complex` task routes to the senior agent and
+  can lean more on its judgment and say less. Calibrate density to the complexity
+  you stamped.
+- **Aim slightly over-specified, never thin.** Snippets are encouraged where they
+  de-risk the change. The one test for "too much": *could a coder paste it verbatim
+  and call the task done?* If yes, you wrote the answer, not a contract — cut back
+  to the shape.
+
+*Shape, not body — a quick before/after:*
+
+- *Too thin:* "Add a retry wrapper around the fetch call."
+- *Too much (the body):* a 40-line function with the full backoff loop, jitter
+  math, and error mapping pasted in.
+- *Contract-rich middle:* "Wrap `fetchPage(url)` in a retry helper —
+  `retry<T>(fn: () => Promise<T>, opts: { tries: number; baseMs: number }): Promise<T>`
+  — exponential backoff (`baseMs * 2^n`), retry only on 5xx and network errors,
+  rethrow 4xx immediately, give up after `tries`. Default `{ tries: 3, baseMs: 200 }`.
+  The seam that bites: a 4xx must *not* be retried."
+
+**Sizing**
+
+One flexible **Phase/Task Size** knob governs how much scope a single task carries.
+It's a posture, not a quota.
+
+- **Size beats seams.** When natural seams suggest more tasks than the chosen size
+  implies, **consolidate — never split.** Seams shape the *ordering* of work, not
+  the *count* of tasks. A coherent change stays one task even if it crosses two
+  modules.
+- **Flexible, not a fixed count.** A bigger project simply yields more tasks at the
+  same scope; nothing is dropped to hit a number. There is no cap on phases or
+  tasks.
+- **Seam judgment.** Prefer natural module/application seams, but don't fragment a
+  coherent change to honor one, nor bundle unrelated work to reach a size. The repo
+  boundary is the safest seam (one repo per task) — inside a monorepo, where that
+  seam isn't available, be extra deliberate about where one task ends and the next
+  begins.
+
+**Complexity**
+
+Every task carries one complexity signal — `simple | standard | complex` — a
+stable, semantic property of the work that the orchestrator maps to a right-sized
+coder agent.
+
+- **Bias toward `simple`.** Most tasks should be `simple` or `standard`. `complex`
+  is rare by design: a plan full of `complex` is a sizing smell — break the work
+  down or consolidate until the complexity reads honest.
+- **Escalation justifies itself.** Reach for `complex` only when the task genuinely
+  demands senior judgment — a subtle algorithm, a tricky cross-cutting refactor, a
+  high-blast-radius seam. If you can't name why it's hard, it isn't `complex`.
+- **Render complexity only.** Write the complexity, never a resolved agent name.
+  The complexity → coder-tier mapping is owned by orchestration policy; naming an
+  agent here would drift out of sync.
+
+**One repo per task**
+
+A task targets exactly one repo, named on a singular `**Target repo:**` line. This
+is authoring policy that keeps each task a clean, independently-executable unit —
+not a parser gate.
+
+- **The phase is the integration unit.** A phase may span repos: a UI view and the
+  API endpoint it calls are two single-repo tasks under one phase, knit together
+  when the phase completes.
+- **Pin cross-repo contracts into both tasks.** When two tasks meet at a seam — an
+  endpoint's request/response shape, a shared event payload — write the agreed
+  contract into *both* briefs, so each codes independently against the same shape
+  and they meet in the middle. Don't make one task reach into the other's repo.
+
+**Testing by judgment**
+
+Each task's `**Testing**` block states what to cover and what to skip — a judgment
+call, never a fixed ceremony.
+
+- **Cover the behavior that matters; skip the brittle.** Test the logic and
+  contracts that carry risk. Avoid tests that break on a reword or only re-assert a
+  mock.
+- **Lean against asserting static content.** Asserting a doc's exact prose is the
+  classic brittle test. Config is a spectrum: config with real behavior or
+  validation can be worth testing; static values usually aren't. Judge case by
+  case.
+- **The task `type` informs, it doesn't dictate.** A `code` task usually warrants
+  tests and a `doc` task usually doesn't — but say what's worth covering, don't
+  apply a rule. Inherit the test levels (unit / integration / e2e) from the
+  Requirements Testing Approach.
+- **Keep the anti-patterns out** of what you ask for: no test-only methods or
+  accessors in production code; no assertions that verify only mock behavior; no
+  meta-tests asserting on test structure; no content-assertion tests on static
+  prose.
+
+**Self-check**
+
+Before saving, a quick judgment pass — not a structural lint (the parser enforces
+shape):
+
+- Every task's `**Target repo:**` is a member of the sealed frontmatter `repos:`.
+- Paired cross-repo tasks pin the *same* contract on both sides.
+- Complexity reads honest — and `complex` is the exception, not the rule.
+- Each brief is contract-rich, not thin: a coder has the shape to land it without
+  opening another doc.
+
+**A worked task block**
+
+A realistic block at the target density — a pinned signature, a named seam, a small
+illustrative snippet, and no full implementation. Match this bar.
+
+````markdown
+### P02-T03: Add cursor-paginated search endpoint
+
+Add the `GET /api/search` endpoint the results view calls: it takes a query and an
+optional cursor and returns a page of matches plus the next cursor, so the client
+can scroll without offset drift. When it lands, the search view can fetch and page
+results against a stable contract.
+
+**Task type:** code
+**Complexity:** standard
+**Target repo:** fake-api
+
+**Files**
+- Create: `src/routes/search.ts` (route handler + request/response types).
+- Read for patterns: `src/routes/feed.ts` (the existing cursor-pagination handler —
+  mirror its cursor encoding and tie-break), `src/db/queries.ts` (`searchArticles`
+  already exists).
+- Wire into: `src/routes/index.ts` (register the route).
+
+**The change**
+- Handler contract, matching the framework's typed-route convention:
+  ```ts
+  // GET /api/search?q=string&cursor=string&limit=number (1–50, default 20)
+  type SearchResponse = {
+    results: ArticleSummary[];   // reuse the shared ArticleSummary type
+    nextCursor: string | null;   // null when this is the last page
+  };
+  ```
+- Decode `cursor` with the existing `decodeCursor()` in `src/db/cursor.ts`; an
+  invalid cursor is a `400`, not a `500`.
+- `q` is required and trimmed; an empty `q` after trim returns `400` with
+  `{ error: "query required" }`.
+- **The seam to get right:** the cursor is an opaque base64 of `{ publishedAt, id }`,
+  and the query pages by that composite key — paging by `publishedAt` alone drops
+  articles that share a timestamp. `feed.ts` already handles the tie-break.
+
+**Done when**
+- `GET /api/search?q=climate` returns a page of matches and a `nextCursor`.
+- Following `nextCursor` returns the next page with no repeats or gaps across a
+  timestamp tie.
+- An empty/whitespace `q`, or a malformed `cursor`, returns `400`.
+
+**Testing**
+- Cover the contract: a happy-path page, a cursor round-trip across a `publishedAt`
+  tie (the seam above), and the two `400` paths.
+- Skip snapshotting full payloads and asserting exact ordering beyond the tie-break
+  — assert the shape and the boundary behavior.
+````

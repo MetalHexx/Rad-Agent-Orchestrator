@@ -1,97 +1,92 @@
 ---
 project: "{PROJECT-NAME}"
 type: master_plan
-status: "draft"
+status: draft
 created: "{YYYY-MM-DD}"
+project-type: standard
 repos: [repo-a, repo-b]
-repo-group: repo-group-name   # optional, provenance only
+repo-group: repo-group-name
 total_phases: {N}
 total_tasks: {N}
-author: "planner-agent"
 ---
 
 # {PROJECT-NAME} — Master Plan
 
 ## Introduction
 
-{Paragraph 1 — 2–3 sentences: what is being built and why, at a glance.}
+{Lean preamble — 1–2 short paragraphs (2–3 sentences each): what is being built and
+why, at a glance, in the requirements-preamble voice. Don't restate the phases below
+— the Execution Map is the index.}
 
-{Paragraph 2 — 2–3 sentences: shape of the work, headline constraints, what successful delivery looks like.}
+## Execution Map
+
+{A scannable, editable outline of the whole plan. Each phase is a **bold label, not a
+heading** — headings are reserved for the full blocks below — followed by a task
+mini-table. A phase may span repos; each task targets one.}
+
+**P01 · {Phase Title}** · repos: {repo-a}, {repo-b} · order: T01→T02
+
+| Task | Repo | Complexity | Purpose |
+|---|---|---|---|
+| T01 | {repo-a} | standard | {one-line purpose} |
+| T02 | {repo-b} | simple | {one-line purpose} |
 
 ## P01: {Phase Title}
 
-{≤3 sentence phase description: what this phase delivers and why it's its own phase.}
+{1–2 line phase outcome: the capability that exists when the phase completes, and
+where the cross-repo seam knits together. No task table here — the explosion
+generates it.}
 
-**Requirements:** FR-1, FR-2, AD-1, DD-1
-**Target repos:** app
+### P01-T01: {Imperative task title, 4–7 words}
 
-**Execution order:**
-    T01 → T02 → T03
-    T04 (depends on T01)
-
-### P01-T01: Add login form component
-
-{≤2 sentence task description — what the task produces.}
+{2–3 sentence human preamble in plain language, for someone skimming the run: the
+goal, and what exists once it lands.}
 
 **Task type:** code
-**Requirements:** FR-1, DD-1
-**Target repos:** app
-**Files for app:**
-- Create: `src/components/LoginForm.tsx`
-- Test: `src/components/__tests__/LoginForm.test.tsx`
+**Complexity:** standard
+**Target repo:** {repo-a}
 
-- [ ] **Step 1: Write the failing test (FR-1)**
-    ```tsx
-    import { render, screen } from '@testing-library/react';
-    import { LoginForm } from '../LoginForm';
+**Files**
+- Create: `{repo-relative/path}` ({what it is}).
+- Read for patterns: `{repo-relative/path}` ({the pattern to mirror, or the gotcha to
+  note}).
 
-    test('renders email and password fields', () => {
-      render(<LoginForm onSubmit={() => {}} />);
-      expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
-      expect(screen.getByLabelText(/password/i)).toBeInTheDocument();
-    });
-    ```
-- [ ] **Step 2: Run test, confirm it fails**
-    Run: `npm test -- LoginForm.test.tsx`
-    Expected: FAIL — `LoginForm` module does not exist yet (FR-1)
-- [ ] **Step 3: Implement minimal code (FR-1, DD-1)**
-    ```tsx
-    import { FormEvent } from 'react';
+**The change**
+- {The contract: the signature / endpoint / type / data shape — pin the shape, not
+  the body. A small illustrative snippet where a shape is non-obvious:}
+  ```ts
+  {a signature or type, not a full implementation}
+  ```
+- {Load-bearing behavior and edge cases.}
+- **The seam to get right:** {the gotcha, or the cross-repo contract this task shares
+  with its paired task — pin the same shape on both sides}.
 
-    type Props = { onSubmit: (email: string, password: string) => void };
+**Done when**
+- {Concrete, observable acceptance — what is true when the task is complete.}
+- {…}
 
-    export function LoginForm({ onSubmit }: Props) {
-      return (
-        <form
-          onSubmit={(e: FormEvent<HTMLFormElement>) => {
-            e.preventDefault();
-            const data = new FormData(e.currentTarget);
-            onSubmit(String(data.get('email')), String(data.get('password')));
-          }}
-        >
-          <label>Email<input name="email" type="email" /></label>
-          <label>Password<input name="password" type="password" /></label>
-          <button type="submit">Sign in</button>
-        </form>
-      );
-    }
-    ```
-- [ ] **Step 4: Run test, confirm pass**
-    Run: `npm test -- LoginForm.test.tsx`
-    Expected: PASS (FR-1, DD-1)
+**Testing**
+- {What's worth covering — the behavior and contracts that carry risk.}
+- {What to skip — the brittle assertions to avoid.}
 
-### P01-T02: Document login flow in README
+### P01-T02: {Imperative task title}
 
-{≤2 sentence task description.}
+{2–3 sentence human preamble.}
 
-**Task type:** doc
-**Requirements:** DD-1
-**Target repos:** app
-**Files for app:**
-- Modify: `README.md:120-160`
+**Task type:** code
+**Complexity:** simple
+**Target repo:** {repo-b}
 
-- [ ] **Step 1: Add the login flow section under "Usage"**
-    Insert a new subsection titled "Logging in" after the existing "Installation" subsection. Content must describe the email + password form introduced in P01-T01 and link to `src/components/LoginForm.tsx`. (DD-1)
-- [ ] **Step 2: Verify the anchor renders**
-    Run: `npx markdown-link-check README.md`
-    Expected: exit 0, no broken anchors (DD-1)
+**Files**
+- Modify: `{repo-relative/path}` ({what changes, with any gotcha annotation}).
+
+**The change**
+- {The contract / shape for this task. Where it consumes the paired task's seam,
+  restate the **same** agreed contract here so this repo codes against it
+  independently.}
+
+**Done when**
+- {Concrete acceptance.}
+
+**Testing**
+- {What to cover; what to skip — by judgment.}

@@ -29,7 +29,7 @@ Every successful `radorch pipeline signal` call returns a JSON envelope of this 
 
 The orchestrator reads `data.prompt` as the sole instruction source for the action. The embedded `Signal:` line is authoritative for the event name and its flags — derive nothing else from this skill.
 
-`data.context` carries the action-specific payload (file paths, phase/task identifiers, configuration). When the prompt references a context field by name (e.g., `handoff_doc`, `repository_skills_block`, `worktree_path`), read that field from `data.context`.
+`data.context` carries the action-specific payload (file paths, phase/task identifiers, configuration). When the prompt references a context field by name (e.g., `handoff_doc`, `worktree_path`), read that field from `data.context`.
 
 ## Pipeline Event Loop
 
@@ -148,9 +148,21 @@ When the action in `data.prompt` instructs the orchestrator to spawn an agent, p
 4. **Output expectations** — where to save the output document (derive from project naming conventions in `document-conventions.md`).
 
 Example spawn instruction (paraphrased):
-> "Build the Master Plan for the MYAPP project. Read the approved requirements at `~/.radorc/projects/MYAPP/MYAPP-REQUIREMENTS.md`. Save the plan to `~/.radorc/projects/MYAPP/MYAPP-MASTER-PLAN.md`."
+> "Execute the next task for the MYAPP project. Read the self-contained Task Handoff at the `handoff_doc` path carried on the envelope and implement it."
 
-The action's catalog file (e.g., `action.spawn_master_plan.md`) carries the canonical spawn-prompt shape; the composer assembles it into `data.prompt`. Read it from the envelope; do not duplicate it here.
+The action's catalog file (e.g., `action.execute_task.md`) carries the canonical spawn-prompt shape; the composer assembles it into `data.prompt`. Read it from the envelope; do not duplicate it here.
+
+### Coder tier selection
+
+For the `execute_task` action, spawn the right-sized coder for the task. The tier is the task's authored complexity, carried on the envelope as `data.context.complexity` (defaults to `standard` when absent):
+
+| `complexity` | subagent |
+|---|---|
+| `simple` | coder-junior |
+| `standard` | coder |
+| `complex` | coder-senior |
+
+Authored plans carry `complexity` as a signal only; the tier is resolved here at spawn time and is never written into the Master Plan or Task Handoff.
 
 ## Status Reporting
 
