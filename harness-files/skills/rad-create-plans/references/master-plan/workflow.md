@@ -1,20 +1,19 @@
 # Master Plan Document
 
 You author the project **Master Plan** — the document that turns the approved
-Requirements into an ordered set of phases and tasks. Each task is a
-**self-contained problem brief**: a human preamble, the files to touch, the change
-as a contract, what *done* looks like, and what to test. The Master Plan is the
-statement of *how* the work breaks down and lands — enough contract for a coder
-agent to execute a task without opening another document, never the finished code
-itself.
+Requirements into an ordered set of phases and tasks.  The Master Plan is the 
+statement of *how* the work breaks down and lands. Each task is a **self-contained**: 
+a human preamble, the files to touch, the change as a contract, what *done* looks 
+like, and what to test — enough contract for a coder agent to execute a task
+ without opening another document, never the finished code itself. 
 
 ## Workflow Steps
 
 1. **Carry the requirements context in.** The approved Requirements doc is the
-   seed — its repos, its `R{n}` requirements, its Technical Specification and
-   Testing Approach. Don't re-derive scope or re-interview the user. Carry the
-   sealed `project-type`, `repos`, and `repo-group` from its frontmatter forward
-   verbatim (see Output Contract).
+   seed — its repos, its `R{n}` requirements, its Technical Specification, Design 
+   requirements and Testing Approach. Don't re-derive scope or re-interview the user. 
+   Carry the sealed `project-type`, `repos`, and `repo-group` from its frontmatter 
+   forward verbatim (see Output Contract).
 
 2. **Recover from a prior parse failure (retries only).** Read
    `state.graph.nodes.master_plan.last_parse_error` from `state.json`. If it is
@@ -53,16 +52,18 @@ itself.
 4. **Ground with targeted codebase discovery.** Grep / Glob / Read the exact
    files, contracts, and modules the tasks will touch, so every `Files` path and
    every contract you pin is real, not guessed. Read the `CLAUDE.md` / `AGENTS.md`
-   in each area you'll touch. No survey-level exploration.
+   in each area you'll touch. These files will contain the coding conventions and 
+   nuances needed to properly author tasks appropriate to the repo.
 
 5. **Decide the phase and task breakdown.** Phases group work by natural seam and
    are the integration unit — a phase can span repos (a UI view and its API
    endpoint are two single-repo tasks under one phase). Tasks are the smallest
    unit one coder agent executes end-to-end, and each targets exactly one repo.
    Apply the Phase/Task Size knob and the sizing judgment in the Authoring Guide;
-   let size, not seam count, set how many tasks you write.
+   let size, not seam count, set how many tasks you write.  Seams are still important -
+   they should influence rationale for work boundaries.
 
-6. **Author the Introduction.** One or two short paragraphs (2–3 sentences each):
+6. **Author the Introduction.** One short paragraph (2–3 sentences):
    what is being built and why, at a glance, in the requirements-preamble voice.
    No phase-by-phase restatement — the Execution Map is the index.
 
@@ -97,6 +98,7 @@ block; copy it from there. These mechanical fields are what the rest of the chai
 inherits, so get them right.
 
 Standard project:
+_A project that spans one or more registered repositories._
 
 ```yaml
 ---
@@ -113,6 +115,7 @@ total_tasks: {N}
 ```
 
 Side-project:
+_Projects that don't pertain to a specific repo.  Usually an experiment or one off project._
 
 ```yaml
 ---
@@ -162,11 +165,13 @@ section, and the phase docs — don't hand-write them.
 A few high-signal nudges that invoke judgment, not a checklist to fill. The craft
 is in how richly you pin each task — start here.
 
-**Authoring density — the contract-rich middle**
+**Authoring density — a contract-rich middleground**
 
 This is the call you make on every task, and the one that most shapes whether the
-run lands. Aim for a **contract-rich middle**: distinctly richer than a one-line
-brief, never a finished implementation.
+run lands. Aim for a **contract-rich middleground**: distinctly richer than a short
+highlevel brief, but distinctly leaner than a full implementation. The goal is to
+give the coder agent enough shape to land the task without opening another doc, 
+never a finished implementation.
 
 - **Inline the shape, not the body.** Pin the interface — signatures, types,
   endpoints, data shapes — the load-bearing seams, and the gotchas (especially
@@ -188,7 +193,7 @@ brief, never a finished implementation.
 
 - *Too thin:* "Add a retry wrapper around the fetch call."
 - *Too much (the body):* a 40-line function with the full backoff loop, jitter
-  math, and error mapping pasted in.
+  math, and error mapping pre-written and pasted in.
 - *Contract-rich middle:* "Wrap `fetchPage(url)` in a retry helper —
   `retry<T>(fn: () => Promise<T>, opts: { tries: number; baseMs: number }): Promise<T>`
   — exponential backoff (`baseMs * 2^n`), retry only on 5xx and network errors,
@@ -203,10 +208,9 @@ It's a posture, not a quota.
 - **Size beats seams.** When natural seams suggest more tasks than the chosen size
   implies, **consolidate — never split.** Seams shape the *ordering* of work, not
   the *count* of tasks. A coherent change stays one task even if it crosses two
-  modules.
+  modules.  Seams are still guidance.
 - **Flexible, not a fixed count.** A bigger project simply yields more tasks at the
-  same scope; nothing is dropped to hit a number. There is no cap on phases or
-  tasks.
+  same scope; nothing is dropped to hit a number. 
 - **Seam judgment.** Prefer natural module/application seams, but don't fragment a
   coherent change to honor one, nor bundle unrelated work to reach a size. The repo
   boundary is the safest seam (one repo per task) — inside a monorepo, where that
@@ -217,7 +221,7 @@ It's a posture, not a quota.
 
 Every task carries one complexity signal — `simple | standard | complex` — a
 stable, semantic property of the work that the orchestrator maps to a right-sized
-coder agent.
+agent.
 
 - **Bias toward `simple`.** Most tasks should be `simple` or `standard`. `complex`
   is rare by design: a plan full of `complex` is a sizing smell — break the work
