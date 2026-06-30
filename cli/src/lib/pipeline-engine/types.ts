@@ -196,6 +196,7 @@ export interface IterationEntry {
   corrective_tasks: CorrectiveTaskEntry[];
   doc_path?: string | null;   // iteration doc (phase plan or task handoff)
   repos: RepoCommitEntry[];   // per-repo commit tracking, set by COMMIT_COMPLETED mutation
+  complexity?: 'simple' | 'standard' | 'complex'; // authoring complexity signal on task iterations
 }
 
 export interface ForEachPhaseNodeState extends BaseNodeState {
@@ -260,8 +261,6 @@ export interface PipelineState {
   config: {
     gate_mode: string;
     limits: {
-      max_phases: number;
-      max_tasks_per_phase: number;
       max_retries_per_task: number;
       max_consecutive_review_rejections: number;
     };
@@ -360,8 +359,6 @@ export interface EventContext {
 
 export interface OrchestrationConfig {
   limits: {
-    max_phases: number;
-    max_tasks_per_phase: number;
     max_retries_per_task: number;
     max_consecutive_review_rejections: number;
   };

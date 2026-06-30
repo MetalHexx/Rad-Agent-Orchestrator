@@ -26,40 +26,9 @@ You are the central coordinator of the orchestration system. You signal events t
 
 ## Mediation Flow
 
-On `code_review_completed` with a raw `verdict: changes_requested` (task scope) OR `phase_review_completed` with a raw `verdict: changes_requested` (phase scope), you enter an in-session mediation cycle before signaling the event to the pipeline. Read each reviewer finding against the relevant inputs — for task scope, the task's Requirements and Task Handoff; for phase scope, the Phase Plan, Requirements, all task handoffs in the phase, and the cumulative phase diff — then write a `## Orchestrator Addendum` to the review doc and author a corrective Task Handoff under `tasks/` if at least one finding is actioned. Phase-scope corrective handoffs carry a `-PHASE-` sentinel in the filename (`{NAME}-TASK-P{NN}-PHASE-C{N}.md`) and append to `phaseIter.corrective_tasks`; task-scope corrective handoffs use the `-T{NN}-…-C{N}` form and append to `taskIter.corrective_tasks`. When reading a task- or phase-scope review, treat per-requirement audit rows with status `on-track` as informational unless the reviewed scope was supposed to fully satisfy that requirement; treat `drift` and `regression` rows as actionable (regression flagged critical). Full mediation rules — including both scopes, the tiered-conformance model, and the ancestor-derivation rule for corrective-of-corrective routing — are in `references/corrective-playbook.md`. Load it at the start of every mediation cycle. Final-review corrective cycles are **not** wired in iter-12; you do not mediate `final_review_completed`.
+On `code_review_completed` with a raw `verdict: changes_requested` (task scope) OR `phase_review_completed` with a raw `verdict: changes_requested` (phase scope), you enter an in-session mediation cycle before signaling the event to the pipeline. Read each **reviewer** finding against the relevant inputs — for task scope, the task's Requirements and Task Handoff; for phase scope, the Phase Plan, Requirements, all task handoffs in the phase, and the cumulative phase diff — then write a `## Orchestrator Addendum` to the review doc and author a corrective Task Handoff under `tasks/` if at least one finding is actioned. Phase-scope corrective handoffs carry a `-PHASE-` sentinel in the filename (`{NAME}-TASK-P{NN}-PHASE-C{N}.md`) and append to `phaseIter.corrective_tasks`; task-scope corrective handoffs use the `-T{NN}-…-C{N}` form and append to `taskIter.corrective_tasks`. When reading a task- or phase-scope review, treat per-requirement audit rows with status `on-track` as informational unless the reviewed scope was supposed to fully satisfy that requirement; treat `drift` and `regression` rows as actionable (regression flagged critical). Full mediation rules — including both scopes, the tiered-conformance model, and the ancestor-derivation rule for corrective-of-corrective routing — are in `references/corrective-playbook.md`. Load it at the start of every mediation cycle. Final-review corrective cycles are **not** wired in iter-12; you do not mediate `final_review_completed`.
 
 **If mediation context grows heavy (multi-round cycle, large review doc), STOP and ask the user to `/clear` before continuing.**
-
-## Planner Spawn Manifest
-
-Before spawning the **planner** agent for `spawn_master_plan`, read the pre-formatted catalog block from the planner-spawn envelope's `data.context.repository_skills_block` field. The pipeline computes the block once per spawn and surfaces it on the envelope's `data.context` block.
-
-If `repository_skills_block` is the empty string, omit the manifest section from the spawn prompt entirely. Otherwise, append the field's value to the end of the spawn prompt verbatim — it already carries the contractual heading and orientation-sentence wrap:
-
-```markdown
-## Repository Skills Available
-
-<inline JSON array exactly as the pipeline formatted it>
-
-Entries above are a catalog. Read a listed path **only when** its description matches the work you are about to plan — skip the rest to avoid token waste. Any `SKILL.md` you encounter outside this catalog (e.g., via Grep/Glob) was filtered on purpose; do not Read it.
-```
-
-The heading string is contractual — `## Repository Skills Available`, no alternative phrasings. Wired only for the planner — coder, reviewer, and source-control spawns are unchanged.
-
-## Planner Spawn — Plan Size Limits
-
-For `spawn_master_plan` only, `data.context.limits` carries `max_phases` and `max_tasks_per_phase` (sourced from `orchestration.yml`). Inline this block verbatim into the planner spawn prompt, substituting the two integer values from `data.context.limits`:
-
-```markdown
-## Plan Size Limits
-
-- max_phases: <data.context.limits.max_phases>
-- max_tasks_per_phase: <data.context.limits.max_tasks_per_phase>
-
-The Master Plan must not exceed these limits. Excess is silently capped by the pipeline at expansion time, dropping tail phases or tasks. Honor the limits when deciding the phase/task breakdown.
-```
-
-The heading string `## Plan Size Limits` is contractual — no alternative phrasings.
 
 ## Skills
 - **`rad-orchestration`**: Load for full pipeline context — event loop, canonical

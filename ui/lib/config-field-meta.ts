@@ -18,23 +18,7 @@ export const CONFIG_FIELDS: FieldMeta[] = [
     controlType: 'readonly',
   },
 
-  // 2–5. Pipeline Limits Section
-  {
-    key: 'limits.max_phases',
-    label: 'Max Phases',
-    tooltip: 'Maximum number of phases a project can have.',
-    section: 'limits',
-    controlType: 'number',
-    min: 1,
-  },
-  {
-    key: 'limits.max_tasks_per_phase',
-    label: 'Max Tasks per Phase',
-    tooltip: 'Maximum number of tasks allowed in a single phase.',
-    section: 'limits',
-    controlType: 'number',
-    min: 1,
-  },
+  // 2–3. Pipeline Limits Section
   {
     key: 'limits.max_retries_per_task',
     label: 'Max Retries per Task',

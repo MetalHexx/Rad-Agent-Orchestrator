@@ -24,9 +24,9 @@ console.log('\nconfig-field-meta tests\n');
 
 // --- CONFIG_FIELDS array ---
 
-test('CONFIG_FIELDS is an array of exactly 12 entries', () => {
+test('CONFIG_FIELDS is an array of exactly 10 entries', () => {
   assert.ok(Array.isArray(CONFIG_FIELDS));
-  assert.strictEqual(CONFIG_FIELDS.length, 12);
+  assert.strictEqual(CONFIG_FIELDS.length, 10);
 });
 
 test('every entry conforms to FieldMeta interface', () => {
@@ -44,9 +44,9 @@ test('every entry conforms to FieldMeta interface', () => {
 
 // --- CONFIG_FIELD_MAP ---
 
-test('CONFIG_FIELD_MAP contains exactly 12 keys matching CONFIG_FIELDS', () => {
+test('CONFIG_FIELD_MAP contains exactly 10 keys matching CONFIG_FIELDS', () => {
   const keys = Object.keys(CONFIG_FIELD_MAP);
-  assert.strictEqual(keys.length, 12);
+  assert.strictEqual(keys.length, 10);
   for (const field of CONFIG_FIELDS) {
     assert.ok(keys.includes(field.key), `missing key in map: ${field.key}`);
   }
@@ -54,12 +54,19 @@ test('CONFIG_FIELD_MAP contains exactly 12 keys matching CONFIG_FIELDS', () => {
 
 // --- Specific field lookups ---
 
-test('limits.max_phases has correct metadata', () => {
-  const f = CONFIG_FIELD_MAP['limits.max_phases'];
+test('limits.max_phases and limits.max_tasks_per_phase are gone', () => {
+  assert.strictEqual(CONFIG_FIELD_MAP['limits.max_phases'], undefined);
+  assert.strictEqual(CONFIG_FIELD_MAP['limits.max_tasks_per_phase'], undefined);
+  assert.strictEqual(CONFIG_FIELDS.find(f => f.key === 'limits.max_phases'), undefined);
+  assert.strictEqual(CONFIG_FIELDS.find(f => f.key === 'limits.max_tasks_per_phase'), undefined);
+});
+
+test('limits.max_retries_per_task has correct metadata', () => {
+  const f = CONFIG_FIELD_MAP['limits.max_retries_per_task'];
   assert.ok(f);
-  assert.strictEqual(f.label, 'Max Phases');
+  assert.strictEqual(f.label, 'Max Retries per Task');
   assert.strictEqual(f.controlType, 'number');
-  assert.strictEqual(f.min, 1);
+  assert.strictEqual(f.min, 0);
 });
 
 
@@ -81,10 +88,8 @@ test('version is readonly with section "version"', () => {
 
 // --- Number field min values ---
 
-test('all four number fields have correct min values', () => {
+test('both number fields have correct min values', () => {
   const expected: Record<string, number> = {
-    'limits.max_phases': 1,
-    'limits.max_tasks_per_phase': 1,
     'limits.max_retries_per_task': 0,
     'limits.max_consecutive_review_rejections': 1,
   };

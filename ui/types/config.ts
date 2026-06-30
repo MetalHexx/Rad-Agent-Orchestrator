@@ -16,8 +16,6 @@ export type SourceControlProvider = 'github';
 export interface OrchestrationConfig {
   version: string;
   limits: {
-    max_phases: number;
-    max_tasks_per_phase: number;
     max_retries_per_task: number;
     max_consecutive_review_rejections: number;
   };
@@ -37,7 +35,7 @@ export interface OrchestrationConfig {
 /** Editor mode */
 export type ConfigEditorMode = 'form' | 'raw';
 
-/** Field-level validation errors — key is dot-path (e.g. "limits.max_phases") */
+/** Field-level validation errors — key is dot-path (e.g. "limits.max_retries_per_task") */
 export type ConfigValidationErrors = Record<string, string>;
 
 /** Save state for the footer */

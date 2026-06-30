@@ -17,7 +17,7 @@ describe('source_control_init retirement (FR-6, AD-2)', () => {
 // ── Shared test fixtures ──────────────────────────────────────────────────────
 
 const cfg = {
-  limits: { max_phases: 10, max_tasks_per_phase: 8, max_retries_per_task: 3, max_consecutive_review_rejections: 3 },
+  limits: { max_retries_per_task: 3, max_consecutive_review_rejections: 3 },
 } as unknown as OrchestrationConfig;
 
 // Minimal template carrying for_each_phase → for_each_task body so the
@@ -58,7 +58,7 @@ function buildTwoRepoState(): PipelineState {
     project: { name: 'test', created: '2026-01-01T00:00:00.000Z', updated: '2026-01-01T00:00:00.000Z' },
     config: {
       gate_mode: 'task',
-      limits: { max_phases: 10, max_tasks_per_phase: 8, max_retries_per_task: 3, max_consecutive_review_rejections: 3 },
+      limits: { max_retries_per_task: 3, max_consecutive_review_rejections: 3 },
       source_control: { auto_commit: 'always', auto_pr: 'never' },
     },
     pipeline: {
@@ -220,7 +220,7 @@ function buildTwoPrRepoState(): PipelineState {
     project: { name: 'test', created: '2026-01-01T00:00:00.000Z', updated: '2026-01-01T00:00:00.000Z' },
     config: {
       gate_mode: 'task',
-      limits: { max_phases: 10, max_tasks_per_phase: 8, max_retries_per_task: 3, max_consecutive_review_rejections: 3 },
+      limits: { max_retries_per_task: 3, max_consecutive_review_rejections: 3 },
       source_control: { auto_commit: 'always', auto_pr: 'always' },
     },
     pipeline: {

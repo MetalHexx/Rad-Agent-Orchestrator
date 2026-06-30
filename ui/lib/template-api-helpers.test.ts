@@ -37,8 +37,6 @@ nodes:
 const MINIMAL_CONFIG: OrchestrationConfig = {
   version: '4',
   limits: {
-    max_phases: 5,
-    max_tasks_per_phase: 10,
     max_retries_per_task: 2,
     max_consecutive_review_rejections: 3,
   },

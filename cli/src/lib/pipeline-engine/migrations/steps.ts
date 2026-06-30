@@ -21,6 +21,15 @@ export function migrateV5ToV6(input: unknown): { $schema: string } & Record<stri
     throw new Error('migrate v5→v6: input does not validate against the archived v5 schema');
   }
   const s = structuredClone(input) as Record<string, unknown>;
+  // Drop the retired plan-size caps: v6 config.limits no longer carries
+  // max_phases / max_tasks_per_phase, and the v6 schema rejects them under
+  // additionalProperties:false.
+  const config = s['config'] as Record<string, unknown> | undefined;
+  const limits = config?.['limits'] as Record<string, unknown> | undefined;
+  if (limits) {
+    delete limits['max_phases'];
+    delete limits['max_tasks_per_phase'];
+  }
   const graph = s['graph'] as Record<string, unknown> | undefined;
   const nodes = graph?.['nodes'] as Record<string, unknown> | undefined;
   const phaseLoop = nodes?.['phase_loop'] as Record<string, unknown> | undefined;

@@ -26,9 +26,10 @@ function composePrompt(action: StartAction, projectName: string): string {
     return `/rad-plan Start planning ${projectName}`;
   }
   if (action === 'execute-plan') {
-    // FR-4 / AD-3: literal slash-prefixed prompt invokes the new
-    // /rad-approve-plan skill with the validated project name.
-    return `/rad-approve-plan ${projectName}`;
+    // Literal slash-prefixed prompt invokes the /rad-execute skill with the
+    // validated project name. Composed server-side so a modified client
+    // cannot launch an arbitrary slash command.
+    return `/rad-execute ${projectName}`;
   }
   return `/rad-brainstorm ${projectName}`;
 }

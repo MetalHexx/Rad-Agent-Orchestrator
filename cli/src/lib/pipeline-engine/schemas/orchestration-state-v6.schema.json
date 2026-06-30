@@ -61,24 +61,10 @@
           "type": "object",
           "additionalProperties": false,
           "required": [
-            "max_phases",
-            "max_tasks_per_phase",
             "max_retries_per_task",
             "max_consecutive_review_rejections"
           ],
           "properties": {
-            "max_phases": {
-              "title": "Max Phases",
-              "description": "Maximum number of phases allowed per pipeline run.",
-              "type": "integer",
-              "minimum": 1
-            },
-            "max_tasks_per_phase": {
-              "title": "Max Tasks Per Phase",
-              "description": "Maximum number of tasks allowed in a single phase.",
-              "type": "integer",
-              "minimum": 1
-            },
             "max_retries_per_task": {
               "title": "Max Retries Per Task",
               "description": "Maximum number of retry attempts per task.",
@@ -413,6 +399,12 @@
               "commit_hash": { "oneOf": [{ "type": "string" }, { "type": "null" }] }
             }
           }
+        },
+        "complexity": {
+          "title": "Task Complexity",
+          "description": "Authoring complexity signal for task iterations (simple|standard|complex). Absent on phase iterations.",
+          "type": "string",
+          "enum": ["simple", "standard", "complex"]
         }
       }
     },

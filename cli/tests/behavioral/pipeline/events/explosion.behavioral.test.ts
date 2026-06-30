@@ -23,7 +23,7 @@ const afterMasterPlanCompletedState = {
   project: { name: 'cli-behavioral', created: '2024-01-01T00:00:00.000Z', updated: '2024-01-01T00:00:00.000Z' },
   config: {
     gate_mode: 'task',
-    limits: { max_phases: 10, max_tasks_per_phase: 8, max_retries_per_task: 3, max_consecutive_review_rejections: 3 },
+    limits: { max_retries_per_task: 3, max_consecutive_review_rejections: 3 },
     source_control: { auto_commit: 'never', auto_pr: 'never' },
   },
   pipeline: { gate_mode: null, source_control: null, current_tier: 'planning', halt_reason: null },
@@ -103,7 +103,7 @@ function seedStateAndPlan(
     project: { name: 'X', created: '2026-05-22T00:00:00.000Z', updated: '2026-05-22T00:00:00.000Z' },
     config: {
       gate_mode: 'task',
-      limits: { max_phases: 10, max_tasks_per_phase: 8, max_retries_per_task: 3, max_consecutive_review_rejections: 3 },
+      limits: { max_retries_per_task: 3, max_consecutive_review_rejections: 3 },
       source_control: { auto_commit: 'never', auto_pr: 'never' },
     },
     pipeline: { gate_mode: null, source_control: null, current_tier: 'planning', halt_reason: null },
@@ -125,9 +125,9 @@ function seedStateAndPlan(
 }
 
 describe('seedIterations — task repos (FR-11, DD-2)', () => {
-  it('seeds task iteration repos from the parsed task repos (FR-11, DD-2)', () => {
+  it('seeds task iteration repos and complexity from the parsed task (FR-11, DD-2)', () => {
     const { projectDir, masterPlanPath } = seedStateAndPlan(
-      '---\nrepos: [backend, shared]\n---\n\n## P01: P\n\n### P01-T01: A\n**Requirements:** FR-1\n**Target repos:** backend, shared\n**Files for backend:**\n- Create: `a.ts`\n**Files for shared:**\n- Create: `b.ts`\n');
+      '---\nrepos: [backend, shared]\n---\n\n## P01: P\n\n### P01-T01: A\nWires backend to shared.\n**Complexity:** complex\n**Target repo:** backend, shared\n**Files for backend:**\n- Create: `a.ts`\n**Files for shared:**\n- Create: `b.ts`\n');
     explodeMasterPlan({ projectDir, masterPlanPath, projectName: 'X', nowIso: '2026-05-22T00:00:00.000Z' });
     const state = JSON.parse(fs.readFileSync(path.join(projectDir, 'state.json'), 'utf8'));
     const taskEntry = state.graph.nodes.phase_loop.iterations[0].nodes.task_loop.iterations[0];
@@ -135,15 +135,25 @@ describe('seedIterations — task repos (FR-11, DD-2)', () => {
       { name: 'backend', commit_hash: null },
       { name: 'shared', commit_hash: null },
     ]);
+    expect(taskEntry.complexity).toBe('complex');
+  });
+
+  it('seeds standard complexity when the task has no Complexity line (FR-11)', () => {
+    const { projectDir, masterPlanPath } = seedStateAndPlan(
+      '---\nrepos: [backend]\n---\n\n## P01: P\n\n### P01-T01: A\nWires backend.\n**Target repo:** backend\n**Files for backend:**\n- Create: `a.ts`\n');
+    explodeMasterPlan({ projectDir, masterPlanPath, projectName: 'X', nowIso: '2026-05-22T00:00:00.000Z' });
+    const state = JSON.parse(fs.readFileSync(path.join(projectDir, 'state.json'), 'utf8'));
+    const taskEntry = state.graph.nodes.phase_loop.iterations[0].nodes.task_loop.iterations[0];
+    expect(taskEntry.complexity).toBe('standard');
   });
 });
 
 describe('seedIterations — phase repos (FR-12, AD-4)', () => {
   it('seeds phase iteration repos as the task union (FR-12, AD-4)', () => {
     const { projectDir, masterPlanPath } = seedStateAndPlan(
-      '---\nrepos: [backend, frontend, shared]\n---\n\n## P01: P\n**Target repos:** shared\n\n' +
-      '### P01-T01: A\n**Requirements:** FR-1\n**Target repos:** backend, shared\n**Files for backend:**\n- Create: `a.ts`\n**Files for shared:**\n- Create: `b.ts`\n\n' +
-      '### P01-T02: B\n**Requirements:** FR-1\n**Target repos:** frontend\n**Files for frontend:**\n- Create: `c.ts`\n');
+      '---\nrepos: [backend, frontend, shared]\n---\n\n## P01: P\n**Target repo:** shared\n\n' +
+      '### P01-T01: A\nWires backend to shared.\n**Complexity:** standard\n**Target repo:** backend, shared\n**Files for backend:**\n- Create: `a.ts`\n**Files for shared:**\n- Create: `b.ts`\n\n' +
+      '### P01-T02: B\nAdds the frontend view.\n**Complexity:** simple\n**Target repo:** frontend\n**Files for frontend:**\n- Create: `c.ts`\n');
     explodeMasterPlan({ projectDir, masterPlanPath, projectName: 'X', nowIso: '2026-05-22T00:00:00.000Z' });
     const state = JSON.parse(fs.readFileSync(path.join(projectDir, 'state.json'), 'utf8'));
     const phaseEntry = state.graph.nodes.phase_loop.iterations[0];

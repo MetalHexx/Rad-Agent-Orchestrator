@@ -1,8 +1,9 @@
 # rad-master-plan-benchmark-v2 — Runner Prompt
 
 > **Token cost.** This drives the **real planning pipeline directly** from a pre-built
-> Requirements doc: one `@planner` Master Plan authoring call **plus the plan audit**. That
-> is real Opus-tier spend per run. Don't loop it without intent.
+> Requirements doc: one **inline Master Plan authoring pass** (driven in this main agent)
+> **plus the plan audit subagent**. That is real Opus-tier spend per run. Don't loop it
+> without intent.
 
 ---
 
@@ -13,19 +14,14 @@ against a fixed, pre-built **Requirements** fixture, to **baseline the speed, to
 efficiency, and output artifacts of the master-document creation step** — Master Plan
 authoring → audit → explosion → plan-approval gate.
 
-**The fixture IS the requirements ledger — the planner never authors requirements.** This is
+**The fixture IS the requirements ledger — requirements are never authored here.** This is
 the whole point of the harness, and it is what isolates the master-doc step. You seed the
-fixture directly: after the `start` event the engine *recommends* `spawn_requirements`, but
-you **ignore that action and never spawn a requirements planner.** Instead you signal
-`requirements_completed --doc-path <fixture>` yourself, which adopts the staged fixture as
-the ledger and advances the pipeline straight into Master Plan scribing. There is **no
-requirements-authoring spend** in this run.
+fixture directly on disk as the project's Requirements doc, and the `start` event resolves
+straight to `spawn_master_plan`, which reads it. There is **no requirements-authoring spend**
+in this run.
 
-> This replaces an earlier design that drove the `/rad-plan` skill and assumed it would
-> *consume* a pre-staged Requirements doc. The installed `/rad-plan`+pipeline does **not** do
-> that — `start` returns `spawn_requirements` (it *authors* a fresh ledger and would
-> overwrite the fixture). So this harness drives the engine directly and skips that step. **Do
-> NOT invoke `/rad-plan` here** — it would author requirements and pollute the baseline.
+> **Do NOT invoke `/rad-plan` here** — this harness drives the engine directly so the run
+> isolates the master-doc step.
 
 This is the **V2** test: the fixture is in the **new requirement-grouped `R{n}`** format —
 the shape the post-PLANNING-OVERHAUL-2 master-plan skill is built around. (Its sibling **V1**
@@ -69,7 +65,7 @@ comparability.
 | `medium` | Phase review + final review (no per-task review). Good balance. |
 | `low` | Final review only. Fast and efficient. |
 
-**Step 2 — Phase/Task Size** (flows into the Master Plan `@planner` spawn). The
+**Step 2 — Phase/Task Size** (flows into the inline Master Plan authoring). The
 `(Recommended)` marker moves with the tier: `extra-high → Small`, `high → Medium`,
 `medium → Large`, `low → Extra Large`.
 
@@ -117,13 +113,6 @@ the staged Requirements fixture included — under this directory.
 > session** capture is independent of project location, so the spend metrics are intact. You
 > compare runs in the observability UI and by diffing the `run-N/` artifact folders.
 
-> **Load-bearing for the requirements skip.** The `requirements_completed` signal validates
-> the `--doc-path` doc: the file must **exist** and its frontmatter must carry a positive
-> integer `requirement_count` (unquoted, so YAML parses it as a number). `--doc-path` is
-> resolved **relative to `--project-dir`**, so passing the bare filename
-> `RAD-MASTER-BENCH-V2-REQUIREMENTS.md` resolves correctly. The V2 fixture ships
-> `requirement_count: 6`.
-
 ## Setup (bootstrap)
 
 1. Choose the run number `N` (lowest free `run-N` under
@@ -140,9 +129,6 @@ the staged Requirements fixture included — under this directory.
    prompt-tests/rad-master-plan-benchmark-v2/fixtures/rainbow-hello/REQUIREMENTS.md
      → output/run-N/RAD-MASTER-BENCH-V2/RAD-MASTER-BENCH-V2-REQUIREMENTS.md
    ```
-4. **Verify the skip will be accepted:** confirm the staged doc's frontmatter has an
-   **unquoted, positive-integer `requirement_count`** (the fixture ships `6`). If it's
-   missing or quoted, the `requirements_completed` signal will be rejected.
 
 Do **not** pre-seed `state.json`, `orchestration.yml`, or `template.yml` — the pipeline
 engine creates those lazily on the first event.
@@ -154,8 +140,7 @@ envelope on stdout and act on `data.action` / `data.prompt`; the embedded `Signa
 `data.prompt` is authoritative for the next event name and its flags. `<DIR>` below =
 `prompt-tests/rad-master-plan-benchmark-v2/output/run-N/RAD-MASTER-BENCH-V2`.
 
-**1. `start`** — with the tier from Step 1. Returns action `spawn_requirements`.
-**Ignore that action — do NOT spawn a requirements planner.**
+**1. `start`** — with the tier from Step 1. Returns action `spawn_master_plan`.
 
 ```
 node ~/.claude/skills/rad-orchestration/scripts/radorch.mjs pipeline signal \
@@ -164,25 +149,17 @@ node ~/.claude/skills/rad-orchestration/scripts/radorch.mjs pipeline signal \
   --template <tier>
 ```
 
-**2. Seed the fixture as the ledger** — signal `requirements_completed` pointing at the
-staged fixture (resolved relative to `--project-dir`). This is the requirements skip.
-Returns action `spawn_master_plan`.
-
-```
-node ~/.claude/skills/rad-orchestration/scripts/radorch.mjs pipeline signal \
-  --event requirements_completed \
-  --project-dir <DIR> \
-  --doc-path RAD-MASTER-BENCH-V2-REQUIREMENTS.md
-```
-
-**3. Master Plan** — follow the `spawn_master_plan` envelope's `data.prompt` and spawn the
-`@planner`. Inline the `repository_skills_block` from `data.context` verbatim (when empty,
-omit it). **Append the sizing amendment verbatim** to the spawn prompt:
+**2. Master Plan** — follow the `spawn_master_plan` envelope's `data.prompt`, but **author the
+Master Plan yourself, inline in this main agent chat**, following `rad-create-plans`
+`master-plan` mode. You already hold the seeded Requirements
+fixture — read it as the source of the requirement substance each task must carry. Use the
+`repository_skills_block` from `data.context` as authoring context (when empty, ignore it).
+**Apply the sizing amendment verbatim** as you author:
 
 > "Task size preference: {size}. Size all tasks according to that tier per the sizing rubric
 > in the master-plan workflow."
 
-(When the size is `Custom: …`, the prose flows through verbatim.) The planner writes
+(When the size is `Custom: …`, the prose flows through verbatim.) Write
 `RAD-MASTER-BENCH-V2-MASTER-PLAN.md`. Confirm it exists, then signal `master_plan_completed`
 (returns action `explode_master_plan`):
 
@@ -193,7 +170,7 @@ node ~/.claude/skills/rad-orchestration/scripts/radorch.mjs pipeline signal \
   --doc-path RAD-MASTER-BENCH-V2-MASTER-PLAN.md
 ```
 
-**4. Explode** — run the explosion **subcommand** (no agent spawn) exactly as the
+**3. Explode** — run the explosion **subcommand** (no agent spawn) exactly as the
 `explode_master_plan` envelope's `data.prompt` specifies; it carries the correct
 `--project-dir`, `--master-plan`, and `--project-name`. Shape:
 
@@ -214,20 +191,19 @@ node ~/.claude/skills/rad-orchestration/scripts/radorch.mjs pipeline signal \
   --project-dir <DIR>
 ```
 
-**5. Audit (while parked at the gate, before approval).** When the pipeline returns
+**4. Audit (while parked at the gate, before approval).** When the pipeline returns
 `request_plan_approval`, run the plan audit before doing anything with the gate:
 
-- Dispatch the `@planner` subagent in `rad-plan-audit` **full-audit** mode. Give it both doc
-  paths (Requirements + Master Plan) and instruct it to follow
-  `~/.claude/skills/rad-plan-audit/references/full-audit.md`. It returns a structured report
-  with frontmatter `verdict: approved` or `verdict: issues_found`. The auditor does **not**
-  edit either doc.
+- Dispatch a **`general-purpose`** subagent to audit the Requirements doc and the Master Plan.
+  Give it both doc paths (Requirements + Master Plan) and instruct it to follow
+  `~/.claude/skills/rad-plan/references/audit.md`. It returns a structured report with
+  frontmatter `verdict: approved` or `verdict: issues_found`. The auditor does **not** edit
+  either doc.
 - If `verdict: approved` → done.
 - If `verdict: issues_found`:
-  1. Dispatch a `@planner` with the audit report path + both doc paths, instructing it to
-     follow `~/.claude/skills/rad-plan-audit/references/corrections-workflow.md`. It applies
-     fixes inline and returns a short actioned/declined summary.
-  2. Re-run the `plan explode` subcommand (step 4) to regenerate `phases/` and `tasks/` from
+  1. **Apply the fixes yourself, inline** in the Master Plan doc — you own it. Action the
+     auditor's findings and note any you decline and why.
+  2. Re-run the `plan explode` subcommand (step 3) to regenerate `phases/` and `tasks/` from
      the corrected Master Plan. It auto-backs-up the pre-correction artifacts into
      `backups/{ISO-timestamp}/`. On exit 2, surface the structured `data.error` and halt.
 - Single pass — no re-audit after corrections. Show the operator the concise audit report,
@@ -271,5 +247,5 @@ Then stop. The full project artifact set on disk under `run-N/` plus the observa
 session **are** the benchmark output — there is nothing to assert.
 
 If anything halted or surfaced unexpectedly (engine error, pipeline `ok: false`, an action
-implying an execution-tier spawn before the gate, or a `requirements_completed` rejection),
-stop and surface it to the operator rather than papering over a broken run.
+implying an execution-tier spawn before the gate), stop and surface it to the operator rather
+than papering over a broken run.

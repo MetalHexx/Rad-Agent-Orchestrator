@@ -12,8 +12,6 @@ version: "1.0"
 package_version: 1.3.1
 default_template: ask
 limits:
-  max_phases: 10
-  max_tasks_per_phase: 8
   max_retries_per_task: 5
   max_consecutive_review_rejections: 3
 human_gates:
@@ -38,14 +36,6 @@ The rad-orchestration package version that wrote this file. Updated automaticall
 ### default_template
 
 Default review-intensity tier the planner proposes when starting a new project. Accepts `ask`, `extra-high`, `high`, `medium`, or `low`. The default `ask` defers the choice to project-creation time. Tier names map to the four templates under `~/.radorc/templates/`.
-
-### limits.max_phases
-
-Upper bound on the number of phases per project. When a plan would exceed this number, the planner consolidates phases. Default `10`; integer.
-
-### limits.max_tasks_per_phase
-
-Upper bound on the number of tasks per phase. When a plan would exceed this number, the planner consolidates tasks. Default `8`; integer.
 
 ### limits.max_retries_per_task
 

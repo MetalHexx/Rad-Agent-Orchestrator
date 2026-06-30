@@ -546,15 +546,12 @@ function walkNodes(
             return null;
           }
 
-          // Cap at configured limit to avoid unbounded expansion
-          const cappedTotal = Math.min(totalValue, config.limits.max_phases);
-
           // Pre-scaffold body nodes on walker-driven expansion. This keeps
           // the non-explosion (default.yml) flow consistent with existing
           // fixture expectations. Explosion-pre-seeded iterations take the
           // walkForEachIterations path, which also scaffolds missing body
           // nodes on first in_progress transition.
-          for (let i = 0; i < cappedTotal; i++) {
+          for (let i = 0; i < totalValue; i++) {
             const iterationNodes: Record<string, NodeState> = {};
             for (const bodyDef of fepDef.body) {
               iterationNodes[bodyDef.id] = scaffoldNodeState(bodyDef);
@@ -620,12 +617,9 @@ function walkNodes(
             continue;
           }
 
-          // Cap at configured limit to avoid unbounded expansion
-          const cappedLength = Math.min(tasksValue.length, config.limits.max_tasks_per_phase);
-
           // Pre-scaffold body nodes on walker-driven expansion. See the
           // equivalent for_each_phase comment above.
-          for (let i = 0; i < cappedLength; i++) {
+          for (let i = 0; i < tasksValue.length; i++) {
             const iterationNodes: Record<string, NodeState> = {};
             for (const bodyDef of fetDef.body) {
               iterationNodes[bodyDef.id] = scaffoldNodeState(bodyDef);

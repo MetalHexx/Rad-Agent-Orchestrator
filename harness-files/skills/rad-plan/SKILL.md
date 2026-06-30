@@ -119,7 +119,7 @@ matching size.
 | `Medium` | A vertical slice through one layer per task: a module, a config section, a CLI command with its tests. 2–4 tasks per phase. |
 | `Large` | A full feature slice touching multiple layers or subsystems end-to-end per task. 2–3 tasks per phase. |
 | `Extra Large` | A standalone feature per task — scope that would be a phase at smaller sizes; phases are thin wrappers. 1–2 tasks per phase, possibly single-phase. |
-| `Custom` | You describe the sizing criterion in your own words; the planner uses your prose as the task-scope target while still applying natural-seam judgment for phase boundaries. |
+| `Custom` | You describe the sizing criterion in your own words; the main agent uses your prose as the task-scope target while still applying natural-seam judgment for phase boundaries. |
 
 The question's framing prose: "How big should each task and phase be?
 Phase/Task Size scales task scope and phase scope together. The
@@ -132,16 +132,16 @@ Store the user's choice as `task_size_preference`. If the user picked
 `AskUserQuestion` collecting free-form prose (the question's `question`
 field: "Describe your sizing criterion in your own words — e.g. 'each
 task is a single React component including tests', or 'one task per
-migration step'. The planner will treat this as the authoritative
+migration step'. The main agent will treat this as the authoritative
 scoping target for task scope while still applying natural-seam judgment
 for phase boundaries."). Store the user's prose verbatim and set
 `task_size_preference = "Custom: " + <prose>`.
 
-The planner always receives an explicit sizing signal — no deferral option.
+The main agent always receives an explicit sizing signal — no deferral option.
 
 ## Step 3: Starting Message
 - Produce a nicely formatted and mildly enthusiastic message confirming the project name, template choice, and task size preference.
-- Tell the user the approved Requirements doc will now drive a planning agent that builds the Master Plan, followed by a plan audit.
+- Tell the user you'll now build the Master Plan from the approved Requirements doc, followed by a plan audit.
 
 ## Step 4: Start the Planning Pipeline
 
@@ -154,29 +154,24 @@ node "${PLUGIN_ROOT}/skills/rad-orchestration/scripts/radorch.mjs" pipeline sign
   --template <project_template>
 ```
 
-Parse the JSON envelope and act on `data.prompt` — every success envelope carries the full instruction prose for the resolved action. The first action will be `spawn_master_plan`; follow the prose in `data.prompt` exactly and spawn the **planner** in `master-plan` mode. The planner reads the approved Requirements doc as the source of the IDs each task satisfies.
+Parse the JSON envelope and act on `data.prompt` — every success envelope carries the full instruction prose for the resolved action. The first action will be `spawn_master_plan`; follow the prose in `data.prompt` exactly and **author the Master Plan yourself, inline**, following `rad-create-plans` `master-plan` mode. You already hold the just-approved Requirements doc — read it as the source of the requirement substance each task must carry. When the Master Plan doc is written, signal `master_plan_completed`.
 
-**Sizing amendment — the `spawn_master_plan` planner spawn.** Append verbatim:
+**Sizing amendment — inline Master Plan authoring.** As you author, apply `task_size_preference` directly — size every task per the sizing rubric in the master-plan workflow:
 > "Task size preference: {task_size_preference}. Size all tasks according to that tier per the sizing rubric in the master-plan workflow."
 
-When `task_size_preference` is a `Custom: …` string, the prose flows through verbatim — the planner treats it as authoritative.
+When `task_size_preference` is a `Custom: …` string, treat the prose as authoritative.
 
 ## Step 5: Audit the plan
-- Dispatch the `planner` subagent with the `rad-plan-audit` skill (full-audit
-  mode) to audit the Requirements doc and the Master Plan. Give the
-  subagent both doc paths and instruct it to follow
-  `${SKILLS_ROOT}/rad-plan-audit/references/full-audit.md`. The subagent
-  returns a structured report with frontmatter `verdict: approved` or
+- Dispatch a **`general-purpose`** subagent to audit the Requirements doc
+  and the Master Plan. Give the subagent both doc paths and instruct it to
+  follow `${SKILLS_ROOT}/rad-plan/references/audit.md`. The subagent returns
+  a structured report with frontmatter `verdict: approved` or
   `verdict: issues_found`. The auditor does NOT edit either planning
   doc — it reports.
 - If `verdict: approved`: proceed to Step 6.
 - If `verdict: issues_found`:
-    1. Dispatch the `planner` agent with the audit report path, the
-       Requirements doc path, and the Master Plan path, instructing it
-       to follow the corrections workflow at
-       `${SKILLS_ROOT}/rad-plan-audit/references/corrections-workflow.md`.
-       The planner applies fixes inline and returns a short summary of
-       actioned and declined findings.
+    1. Apply the fixes yourself, inline, in the Master Plan doc — you own
+       it. Action the auditor's findings and note any you decline and why.
     2. Re-invoke the explosion subcommand to regenerate `phases/` and
        `tasks/` from the corrected Master Plan:
 
@@ -194,8 +189,8 @@ When `task_size_preference` is a `Custom: …` string, the prose flows through v
        (parse failure in the corrected Master Plan), halt and surface
        the structured `data.error` payload (`{ line, expected, found,
        message }`) to the user — do not retry in-skill.
-- Show the user the concise audit report, the planner's corrections
-  summary, and (when re-exploded) the backup directory path.
+- Show the user the concise audit report, a summary of the corrections you
+  applied, and (when re-exploded) the backup directory path.
 - Single pass, no re-audit after corrections.
 
 ## Step 6: Finalize the plan

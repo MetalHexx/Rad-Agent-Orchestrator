@@ -36,7 +36,7 @@ When a producing skill re-authors a document during a corrective cycle, append t
 | Corrective task handoff (phase scope, first) | `MYPROJ-TASK-P01-PHASE-C1.md` |
 | Code review of a phase-scope corrective (first) | `MYPROJ-CODE-REVIEW-P01-PHASE-C1.md` |
 
-The `-C{N}` suffix rule applies to Task Handoffs and task-level Code Reviews. It does NOT apply to Phase Reviews — under Iter 11's single-pass clause, a phase iteration runs `phase_review` exactly once; its corrective cycle is carried entirely by task-level re-reviews of the phase-sentinel Task Handoff (see "Phase-scope sentinel form" below). For Task Handoffs, the corrective handoff is authored by the orchestrator during mediation — not by a coder or planner. Each producing skill's workflow cross-references this section for the shared pattern.
+The `-C{N}` suffix rule applies to Task Handoffs and task-level Code Reviews. It does NOT apply to Phase Reviews — under Iter 11's single-pass clause, a phase iteration runs `phase_review` exactly once; its corrective cycle is carried entirely by task-level re-reviews of the phase-sentinel Task Handoff (see "Phase-scope sentinel form" below). For Task Handoffs, the corrective handoff is authored by the orchestrator during mediation — not by a coder. Each producing skill's workflow cross-references this section for the shared pattern.
 
 **Phase-scope sentinel form.** When the orchestrator mediates a `phase_review` and the effective outcome is `changes_requested`, the authored corrective Task Handoff substitutes the `PHASE` token for the `T{NN}-{TITLE}` segment: `{NAME}-TASK-P{NN}-PHASE-C{N}.md`. The token signals that the corrective applies to phase-scope exit-criteria or cross-task integration — not a single task. The same sentinel carries through to the corresponding task-level code review filename: `{NAME}-CODE-REVIEW-P{NN}-PHASE-C{N}.md`. The corresponding state entry lives under `phaseIter.corrective_tasks[]`, not `taskIter.corrective_tasks[]`.
 
@@ -50,10 +50,11 @@ The `-C{N}` suffix rule applies to Task Handoffs and task-level Code Reviews. It
 | task | integer | Task number, 1-based (e.g., `2`) | Task Handoff, Code Review |
 | title | string | Human-readable title (e.g., `"Setup Auth"`) | Task Handoff, Phase Plan |
 | status | string | Varies by document — see below | Task Handoff, Phase Plan, Requirements, Master Plan |
+| complexity | string | `"simple"` \| `"standard"` \| `"complex"` | Task Handoff |
 | skills | array | Skill folder names from `${SKILLS_ROOT}/` | Task Handoff |
 | estimated_files | integer | Estimated file count (e.g., `3`) | Task Handoff |
 | tasks | array | List of `{id, title}` objects | Phase Plan |
-| author | string | Agent or script name (e.g., `"planner-agent"`, `"explosion-script"`) | Phase Plan, Phase Review, Code Review, Master Plan |
+| author | string | Agent or script name (e.g., `"code-review-agent"`) | Phase Review, Code Review |
 | created | string | ISO 8601 date-time (e.g., `"2026-01-15T00:00:00.000Z"`) or ISO 8601 date (e.g., `"2026-01-15"`) | Phase Plan, Phase Review, Code Review, Requirements, Master Plan |
 | total_phases | integer | Count of `## PNN:` phase headings in the Master Plan body | Master Plan |
 | total_tasks | integer | Count of `### PNN-TMM:` task headings in the Master Plan body | Master Plan |

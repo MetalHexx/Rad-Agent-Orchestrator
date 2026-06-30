@@ -167,10 +167,6 @@
       "destinationPath": "${HARNESS_ROOT}/agents/orchestrator.agent.md"
     },
     {
-      "bundlePath": "agents/planner.agent.md",
-      "destinationPath": "${HARNESS_ROOT}/agents/planner.agent.md"
-    },
-    {
       "bundlePath": "agents/reviewer.agent.md",
       "destinationPath": "${HARNESS_ROOT}/agents/reviewer.agent.md"
     },
@@ -185,10 +181,6 @@
     {
       "bundlePath": "hooks/telemetry-capture.mjs",
       "destinationPath": "${HARNESS_ROOT}/hooks/telemetry-capture.mjs"
-    },
-    {
-      "bundlePath": "skills/rad-approve-plan/SKILL.md",
-      "destinationPath": "${HARNESS_ROOT}/skills/rad-approve-plan/SKILL.md"
     },
     {
       "bundlePath": "skills/rad-brainstorm/SKILL.md",
@@ -295,28 +287,12 @@
       "destinationPath": "${HARNESS_ROOT}/skills/rad-orchestration/scripts/radorch.mjs"
     },
     {
-      "bundlePath": "skills/rad-plan-audit/SKILL.md",
-      "destinationPath": "${HARNESS_ROOT}/skills/rad-plan-audit/SKILL.md"
-    },
-    {
-      "bundlePath": "skills/rad-plan-audit/references/audit-rubric.md",
-      "destinationPath": "${HARNESS_ROOT}/skills/rad-plan-audit/references/audit-rubric.md"
-    },
-    {
-      "bundlePath": "skills/rad-plan-audit/references/corrections-workflow.md",
-      "destinationPath": "${HARNESS_ROOT}/skills/rad-plan-audit/references/corrections-workflow.md"
-    },
-    {
-      "bundlePath": "skills/rad-plan-audit/references/full-audit.md",
-      "destinationPath": "${HARNESS_ROOT}/skills/rad-plan-audit/references/full-audit.md"
-    },
-    {
-      "bundlePath": "skills/rad-plan-audit/references/self-review.md",
-      "destinationPath": "${HARNESS_ROOT}/skills/rad-plan-audit/references/self-review.md"
-    },
-    {
       "bundlePath": "skills/rad-plan/SKILL.md",
       "destinationPath": "${HARNESS_ROOT}/skills/rad-plan/SKILL.md"
+    },
+    {
+      "bundlePath": "skills/rad-plan/references/audit.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-plan/references/audit.md"
     },
     {
       "bundlePath": "skills/rad-project/SKILL.md",

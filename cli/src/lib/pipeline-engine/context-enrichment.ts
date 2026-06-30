@@ -1,6 +1,4 @@
 import { execFileSync } from 'node:child_process';
-import path from 'node:path';
-import { buildSkillManifestPerRepo } from '../skill-manifest.js';
 import { userDataPaths } from '../paths.js';
 import { WorkGraphService } from '@rad-orchestration/work-graph';
 import type {
@@ -43,71 +41,6 @@ export function validateBaseShaChronology(
     }
   }
   return null;
-}
-
-/**
- * Call buildSkillManifestPerRepo to discover and render the spawn-prompt
- * suffix the orchestrator inlines into planner spawns. On any failure,
- * emit a single warn line and return '' — manifest failure must NEVER break
- * the planner spawn.
- *
- * Repos are resolved fresh via `resolveWorktrees(projectId)` (never stored
- * paths — AD-2). Each returned entry carries a `repo` tag (FR-18) so the
- * planner knows which repo offers which skill. Falls back to a single entry
- * derived from `locate(process.cwd())` (or `process.cwd()` directly) when
- * resolveWorktrees fails or returns nothing — this covers the bootstrap window
- * before source-control init runs (AD-6 bootstrap carve-out). For a
- * `rad-orc-source`-only project the manifest is empty because `rad-*` skills
- * are filtered; an empty result is returned as '' (expected).
- *
- * Returns:
- *   - empty string '' when the manifest is `[]` OR when the invocation failed
- *   - the heading + repo-tagged JSON + orientation sentence block when at least
- *     one eligible skill is present
- */
-function buildRepositorySkillsBlock(state: PipelineState): string {
-  let repos: Array<{ name: string; root: string }> = [];
-  try {
-    const paths = userDataPaths();
-    const wgs = new WorkGraphService({ root: paths.root, worktreesDir: paths.worktrees, sideProjectsDir: paths.sideProjects });
-    const projectId = (state as { project?: { name?: string } }).project?.name ?? '';
-    const refs = wgs.resolveWorktrees(projectId);
-    if (refs.length > 0) {
-      repos = refs.map(ref => ({ name: ref.repo, root: ref.path }));
-    }
-  } catch {
-    // resolveWorktrees failure is non-fatal — fall back to single-repo locate
-  }
-  if (repos.length === 0) {
-    // Fallback: single-repo derivation via locate (bootstrap carve-out, AD-6)
-    try {
-      const paths = userDataPaths();
-      const located = new WorkGraphService({ root: paths.root, worktreesDir: paths.worktrees, sideProjectsDir: paths.sideProjects }).locate(process.cwd());
-      if (located.kind === 'worktree' && located.worktree_name && located.repo) {
-        repos = [{ name: located.repo, root: path.join(paths.worktrees, located.worktree_name, located.repo) }];
-      }
-    } catch {
-      // Locate failure is non-fatal — fall back to process.cwd()
-    }
-    if (repos.length === 0) {
-      repos = [{ name: '', root: process.cwd() }];
-    }
-  }
-  let arr;
-  try {
-    arr = buildSkillManifestPerRepo({ repos });
-  } catch (err) {
-    console.warn(
-      `context-enrichment: buildSkillManifestPerRepo failed (${(err as Error).message}); emitting empty repository_skills_block`
-    );
-    return '';
-  }
-  if (!Array.isArray(arr) || arr.length === 0) return '';
-  const json = JSON.stringify(arr, null, 2);
-  return (
-    `\n\n## Repository Skills Available\n\n${json}\n\n` +
-    `Entries above are a catalog. Each entry carries a \`repo\` field identifying which repository the skill belongs to — use it to target repo-specific guidance when inlining skill conventions into tasks. Read a listed path **only when** its description matches the work you are about to plan — skip the rest to avoid token waste. Any \`SKILL.md\` you encounter outside this catalog (e.g., via Grep/Glob) was filtered on purpose; do not Read it.\n`
-  );
 }
 
 export interface EnrichmentInput {
@@ -282,30 +215,10 @@ function buildReposArray(
 export function enrichActionContext(input: EnrichmentInput): Record<string, unknown> {
   const { action, walkerContext, state } = input;
 
-  // Planning spawn enrichment — invoke buildSkillManifest once per planner
-  // spawn and surface the rendered block under `repository_skills_block` so
-  // the orchestrator can inline it verbatim into the spawn prompt. Manifest
-  // failure never breaks the spawn — buildRepositorySkillsBlock returns ''
-  // on any error path. For spawn_master_plan only, also surface the
-  // phase/task limits so the orchestrator can inline a `## Plan Size Limits`
-  // block into the planner prompt without reading state.json or the YAML.
+  // Planning spawn enrichment — map the action to its planner step. The
+  // orchestrator inlines `step` into the spawn prompt directly.
   if (action in PLANNING_SPAWN_STEPS) {
-    const repository_skills_block = buildRepositorySkillsBlock(state);
-    const base = {
-      ...walkerContext,
-      step: PLANNING_SPAWN_STEPS[action],
-      repository_skills_block,
-    };
-    if (action === 'spawn_master_plan') {
-      return {
-        ...base,
-        limits: {
-          max_phases: input.config.limits.max_phases,
-          max_tasks_per_phase: input.config.limits.max_tasks_per_phase,
-        },
-      };
-    }
-    return base;
+    return { ...walkerContext, step: PLANNING_SPAWN_STEPS[action] };
   }
 
   // Phase-level enrichment
@@ -401,6 +314,12 @@ export function enrichActionContext(input: EnrichmentInput): Record<string, unkn
       const phaseLoop = state.graph.nodes['phase_loop'] as ForEachPhaseNodeState | undefined;
       const phaseIter = phaseLoop?.iterations[phaseNumber - 1];
 
+      // Surface the authored complexity signal of the active task iteration so
+      // the coder spawn routes to the correct tier. Defaults to `standard` when
+      // the iteration carries no signal (e.g. phase-scope correctives).
+      const taskLoopForComplexity = phaseIter?.nodes['task_loop'] as ForEachTaskNodeState | undefined;
+      const complexity = taskLoopForComplexity?.iterations[taskNumber - 1]?.complexity ?? 'standard';
+
       // Iter 11 — phase-scope-first. When a phase-scope corrective is active
       // (last entry on phaseIter.corrective_tasks with status `not_started` or
       // `in_progress`), route handoff_doc to that corrective's pre-completed
@@ -417,7 +336,7 @@ export function enrichActionContext(input: EnrichmentInput): Record<string, unkn
         if (typeof phaseCorrectiveDoc === 'string' && phaseCorrectiveDoc.trim().length > 0) {
           // Return the stored path unchanged (not the trimmed copy) so downstream
           // consumers see the value exactly as the mutation wrote it.
-          return { ...base, handoff_doc: phaseCorrectiveDoc, repos };
+          return { ...base, handoff_doc: phaseCorrectiveDoc, repos, complexity };
         }
       }
 
@@ -441,12 +360,12 @@ export function enrichActionContext(input: EnrichmentInput): Record<string, unkn
         if (typeof correctiveDoc === 'string' && correctiveDoc.trim().length > 0) {
           // Return the stored path unchanged (not the trimmed copy) so downstream
           // consumers see the value exactly as the mutation wrote it.
-          return { ...base, handoff_doc: correctiveDoc, repos };
+          return { ...base, handoff_doc: correctiveDoc, repos, complexity };
         }
       }
 
       const handoff_doc = taskIter?.doc_path ?? '';
-      return { ...base, handoff_doc, repos };
+      return { ...base, handoff_doc, repos, complexity };
     }
 
     if (action === 'spawn_code_reviewer') {

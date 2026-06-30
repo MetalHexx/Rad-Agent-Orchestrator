@@ -6,4 +6,4 @@ description: The operator has rejected the Master Plan and the pipeline must rou
 signal_payload: {}
 ---
 
-Signal `plan_rejected` only when the operator explicitly declined the Master Plan. The pipeline routes back to the planner so the plan can be revised.
+Signal `plan_rejected` only when the operator explicitly declined the Master Plan. The pipeline routes back so the plan can be revised.
