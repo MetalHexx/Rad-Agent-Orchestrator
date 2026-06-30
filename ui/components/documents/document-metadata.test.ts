@@ -28,7 +28,7 @@ function test(name: string, fn: () => void) {
 console.log("\nDocumentMetadata frontmatter formatting tests\n");
 
 test("stringifyFrontmatterItem primitive string returns the string", () => {
-  assert.strictEqual(stringifyFrontmatterItem("FR-1"), "FR-1");
+  assert.strictEqual(stringifyFrontmatterItem("simple"), "simple");
 });
 
 test("stringifyFrontmatterItem primitive number returns the stringified number", () => {
@@ -85,8 +85,14 @@ test("formatValue with array of objects returns { items: [...] } (regression: ta
 });
 
 test("formatValue with array of primitives returns { items: [...] }", () => {
-  const result = formatValue("requirement_tags", ["FR-1", "FR-2"]);
-  assert.deepStrictEqual(result.items, ["FR-1", "FR-2"]);
+  const result = formatValue("repos", ["fake-api", "fake-ui"]);
+  assert.deepStrictEqual(result.items, ["fake-api", "fake-ui"]);
+});
+
+test("formatValue renders a task complexity signal as plain text", () => {
+  const result = formatValue("complexity", "simple");
+  assert.strictEqual(result.text, "simple");
+  assert.strictEqual(result.items, undefined);
 });
 
 test("formatValue with empty array returns { items: [] }", () => {

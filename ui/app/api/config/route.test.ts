@@ -19,8 +19,6 @@ import type { OrchestrationConfig } from '@/types/config';
 const VALID_CONFIG: OrchestrationConfig = {
   version: '4',
   limits: {
-    max_phases: 5,
-    max_tasks_per_phase: 10,
     max_retries_per_task: 2,
     max_consecutive_review_rejections: 3,
   },
@@ -37,8 +35,6 @@ const VALID_CONFIG: OrchestrationConfig = {
 
 const VALID_YAML = `version: "4"
 limits:
-  max_phases: 5
-  max_tasks_per_phase: 10
   max_retries_per_task: 2
   max_consecutive_review_rejections: 3
 human_gates:
@@ -134,14 +130,14 @@ async function run() {
   assert.strictEqual(json.success, true);
   assert.ok(json.config, 'Response should contain config');
   assert.strictEqual(json.config.version, VALID_CONFIG.version);
-  assert.strictEqual(json.config.limits.max_phases, VALID_CONFIG.limits.max_phases);
+  assert.strictEqual(json.config.limits.max_retries_per_task, VALID_CONFIG.limits.max_retries_per_task);
 });
 
   // --- Form mode: validation errors ---
   await test('form mode — validation errors return 400 with details', async () => {
   const badConfig = {
     ...VALID_CONFIG,
-    limits: { ...VALID_CONFIG.limits, max_phases: -1 },
+    limits: { ...VALID_CONFIG.limits, max_consecutive_review_rejections: -1 },
   };
   const req = makePutRequest({ mode: 'form', config: badConfig });
   const res = await PUT(req);
@@ -149,7 +145,7 @@ async function run() {
   const json = await res.json();
   assert.strictEqual(json.error, 'Validation failed');
   assert.ok(json.details, 'Response should contain details');
-  assert.ok(json.details['limits.max_phases'], 'Should have max_phases error');
+  assert.ok(json.details['limits.max_consecutive_review_rejections'], 'Should have max_consecutive_review_rejections error');
 });
 
   // --- Form mode: missing config ---
@@ -239,7 +235,7 @@ async function run() {
   // Verify the file was actually written on disk
   const configPath = path.join(tmpDir, '.radorc', 'orchestration.yml');
   const onDisk = await readFile(configPath, 'utf-8');
-  assert.ok(onDisk.includes('max_phases: 5'), 'Written file should contain max_phases: 5');
+  assert.ok(onDisk.includes('max_retries_per_task: 2'), 'Written file should contain max_retries_per_task: 2');
 });
 
   // --- File-system error (write to non-existent dir) ---

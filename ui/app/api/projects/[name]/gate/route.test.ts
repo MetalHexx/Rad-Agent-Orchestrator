@@ -14,7 +14,7 @@ const MINIMAL_V5_STATE = JSON.stringify({
   project: { name: 'PROJECT-X', created: '2026-01-01T00:00:00.000Z', updated: '2026-01-01T00:00:00.000Z' },
   config: {
     gate_mode: 'task',
-    limits: { max_phases: 10, max_tasks_per_phase: 20, max_retries_per_task: 3, max_consecutive_review_rejections: 3 },
+    limits: { max_retries_per_task: 3, max_consecutive_review_rejections: 3 },
     source_control: { auto_commit: 'always', auto_pr: 'never' },
   },
   pipeline: { gate_mode: 'task', source_control: null, current_tier: 'execution', halt_reason: null },

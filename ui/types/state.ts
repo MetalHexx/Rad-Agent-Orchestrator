@@ -37,9 +37,23 @@ export const NODE_ID_FINAL_REVIEW = 'final_review';
 
 // ─── State-embedded Config (snapshot) ────────────────────────────────────────
 
+/**
+ * Legacy v5 state-embedded limits snapshot. Retains the plan-size keys
+ * (`max_phases`, `max_tasks_per_phase`) so legacy v5 state still reads.
+ */
 export interface StateConfigLimits {
   max_phases: number;
   max_tasks_per_phase: number;
+  max_retries_per_task: number;
+  max_consecutive_review_rejections: number;
+}
+
+/**
+ * v6 state-embedded limits snapshot. The plan-size keys (`max_phases`,
+ * `max_tasks_per_phase`) were excised in v6 — only the retry/rejection
+ * limits survive.
+ */
+export interface V6StateConfigLimits {
   max_retries_per_task: number;
   max_consecutive_review_rejections: number;
 }
@@ -211,6 +225,19 @@ export interface V5Config {
   };
 }
 
+/**
+ * v6 config snapshot — identical to {@link V5Config} except `limits` no longer
+ * carries the plan-size keys (see {@link V6StateConfigLimits}).
+ */
+export interface V6Config {
+  gate_mode: V5GateMode;
+  limits: V6StateConfigLimits;
+  source_control: {
+    auto_commit: V5AutoCommit;
+    auto_pr: V5AutoPR;
+  };
+}
+
 export interface V5Pipeline {
   /**
    * Runtime gate mode — narrower than `V5GateMode`. At runtime `'ask'` has
@@ -243,11 +270,15 @@ export interface ProjectStateV5 {
 
 // ─── v6 State Root ───────────────────────────────────────────────────────────
 
-/** v6 state — structurally identical to v5 but discriminated by $schema */
+/**
+ * v6 state — discriminated from v5 by $schema. Structurally identical to v5
+ * except `config` uses {@link V6Config}, whose `limits` drops the plan-size
+ * keys (`max_phases`, `max_tasks_per_phase`).
+ */
 export interface ProjectStateV6 {
   $schema: 'orchestration-state-v6';
   project: ProjectMeta;
-  config: V5Config;
+  config: V6Config;
   pipeline: V5Pipeline;
   graph: GraphState;
 }
