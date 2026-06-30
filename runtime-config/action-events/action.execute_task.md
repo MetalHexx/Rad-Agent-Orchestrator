@@ -2,12 +2,12 @@
 kind: action
 name: execute_task
 title: Execute task
-description: Spawn the coder agent to implement the task described in the pre-seeded handoff document.
+description: Spawn the right-sized coder agent, based on task complexity, to implement the task described in the pre-seeded handoff document.
 category: agent-spawn
 completion_event: task_completed
 ---
 
-Spawn the `rad-orc:coder` agent to execute the task. The handoff document path is carried on the envelope as `handoff_doc` — pass it straight through; it is the coder's sole doc-path input.
+Spawn the right-sized coder agent for this task — choose the tier from the task's complexity, carried on the envelope as `data.context.complexity` (`simple` | `standard` | `complex`). The handoff document path is carried on the envelope as `handoff_doc` — pass it straight through; it is the coder's sole doc-path input.
 
 The envelope also carries `data.context.repos[]` — an array where each entry has `name`, `path`, and `branch`. Inline the `repos[]` array verbatim into the coder spawn prompt. The coder joins each handoff's `**Files for <repo>:**` section against the matching `repos[N].path` to resolve absolute file targets.
 
