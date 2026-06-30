@@ -15,7 +15,7 @@ describe('explodeMasterPlan core', () => {
   it('parses a minimal plan and emits per-phase + per-task files', () => {
     const { projectDir, masterPlanPath } = makeProject();
     fs.writeFileSync(masterPlanPath,
-      '## P01: First\nphase body\n\n### P01-T01: T One\n**Requirements:** FR-1\nt body\n', 'utf8');
+      '## P01: First\nphase body\n\n### P01-T01: T One\nDoes the first thing.\n**Complexity:** simple\nt body\n', 'utf8');
     const result = explodeMasterPlan({
       projectDir, masterPlanPath, projectName: 'X',
       nowIso: '2026-05-22T00:00:00.000Z',
@@ -61,9 +61,9 @@ describe('explosion derives phase repos as task union (FR-2, AD-2)', () => {
     fs.writeFileSync(masterPlanPath,
       '---\nrepos: [backend, frontend, shared]\n---\n\n' +
       '## P01: First\n' +
-      '**Target repos:** shared\n\n' +
-      '### P01-T01: A\n**Requirements:** FR-1\n**Target repos:** backend, shared\n**Files for backend:**\n- Create: `a.ts`\n**Files for shared:**\n- Create: `b.ts`\n\n' +
-      '### P01-T02: B\n**Requirements:** FR-1\n**Target repos:** frontend\n**Files for frontend:**\n- Create: `c.ts`\n', 'utf8');
+      '**Target repo:** shared\n\n' +
+      '### P01-T01: A\nWires backend to shared.\n**Complexity:** standard\n**Target repo:** backend, shared\n**Files for backend:**\n- Create: `a.ts`\n**Files for shared:**\n- Create: `b.ts`\n\n' +
+      '### P01-T02: B\nAdds the frontend view.\n**Complexity:** complex\n**Target repo:** frontend\n**Files for frontend:**\n- Create: `c.ts`\n', 'utf8');
     const result = explodeMasterPlan({
       projectDir, masterPlanPath, projectName: 'X', nowIso: '2026-05-22T00:00:00.000Z',
     });
@@ -83,8 +83,9 @@ describe('explosion lifts task target repos (FR-1, FR-3)', () => {
       '---\n\n' +
       '## P01: First\n\n' +
       '### P01-T01: T One\n' +
-      '**Requirements:** FR-1\n' +
-      '**Target repos:** frontend, backend, frontend\n' +
+      'Connects the API to the app shell.\n' +
+      '**Complexity:** standard\n' +
+      '**Target repo:** frontend, backend, frontend\n' +
       '**Files for backend:**\n' +
       '- Create: `src/api/x.ts`\n' +
       '**Files for frontend:**\n' +
@@ -97,6 +98,10 @@ describe('explosion lifts task target repos (FR-1, FR-3)', () => {
     const fm = raw.match(/^---\r?\n([\s\S]*?)\r?\n---/)![1]!;
     const parsed = parseYaml(fm) as Record<string, unknown>;
     expect(parsed.repos).toEqual(['frontend', 'backend']);
+    // New task shape: no requirement_tags, no author; complexity is surfaced.
+    expect(parsed).not.toHaveProperty('requirement_tags');
+    expect(parsed).not.toHaveProperty('author');
+    expect(parsed.complexity).toBe('standard');
     expect(raw).toContain('**Files for backend:**');
     expect(raw).toContain('- Modify: `app/y.ts`');
   });
@@ -116,26 +121,26 @@ describe('explosion enforces task repo shape (FR-4, FR-5, FR-6)', () => {
     }
     throw new Error('expected ParseError');
   }
-  it('fails on a missing Target repos line (FR-4)', () => {
-    expectParseError(seal + '## P01: P\n\n### P01-T01: A\n**Requirements:** FR-1\nbody only\n');
+  it('fails on a missing Target repo line (FR-4)', () => {
+    expectParseError(seal + '## P01: P\n\n### P01-T01: A\n**Complexity:** simple\nbody only\n');
   });
-  it('fails on a present-but-empty Target repos line (FR-5)', () => {
-    expectParseError(seal + '## P01: P\n\n### P01-T01: A\n**Requirements:** FR-1\n**Target repos:**\n**Files for backend:**\n- Create: `a.ts`\n');
+  it('fails on a present-but-empty Target repo line (FR-5)', () => {
+    expectParseError(seal + '## P01: P\n\n### P01-T01: A\n**Complexity:** simple\n**Target repo:**\n**Files for backend:**\n- Create: `a.ts`\n');
   });
   it('fails on a repo outside the sealed repos (FR-6)', () => {
-    expectParseError(seal + '## P01: P\n\n### P01-T01: A\n**Requirements:** FR-1\n**Target repos:** payments\n**Files for payments:**\n- Create: `a.ts`\n');
+    expectParseError(seal + '## P01: P\n\n### P01-T01: A\n**Complexity:** simple\n**Target repo:** payments\n**Files for payments:**\n- Create: `a.ts`\n');
   });
 });
 
 describe('explosion repo-shape enforcement precision (FR-5, NFR-8)', () => {
   const seal = '---\nrepos: [backend, frontend]\n---\n\n';
 
-  it('classifies a present-but-empty Target repos line as the FR-5 empty-line error', () => {
+  it('classifies a present-but-empty Target repo line as the FR-5 empty-line error', () => {
     const { projectDir, masterPlanPath } = makeProject();
     fs.writeFileSync(masterPlanPath,
       seal +
       '## P01: P\n\n' +
-      '### P01-T01: A\n**Requirements:** FR-1\n**Target repos:**\n' +
+      '### P01-T01: A\n**Complexity:** simple\n**Target repo:**\n' +
       '**Files for backend:**\n- Create: `a.ts`\n', 'utf8');
     try {
       explodeMasterPlan({ projectDir, masterPlanPath, projectName: 'X', nowIso: '2026-05-22T00:00:00.000Z' });
@@ -146,7 +151,7 @@ describe('explosion repo-shape enforcement precision (FR-5, NFR-8)', () => {
       expect(String(detail.found)).toMatch(/empty/i);
       return;
     }
-    throw new Error('expected a ParseError for the present-but-empty Target repos line');
+    throw new Error('expected a ParseError for the present-but-empty Target repo line');
   });
 
   it('reports the offending task heading line in enforcement errors', () => {
@@ -154,7 +159,7 @@ describe('explosion repo-shape enforcement precision (FR-5, NFR-8)', () => {
     const plan =
       seal +
       '## P01: P\n\n' +
-      '### P01-T01: A\n**Requirements:** FR-1\n**Target repos:**\n' +
+      '### P01-T01: A\n**Complexity:** simple\n**Target repo:**\n' +
       '**Files for backend:**\n- Create: `a.ts`\n';
     fs.writeFileSync(masterPlanPath, plan, 'utf8');
     const expectedLine = plan.split('\n').findIndex(l => l.startsWith('### P01-T01:')) + 1;
@@ -165,5 +170,81 @@ describe('explosion repo-shape enforcement precision (FR-5, NFR-8)', () => {
       return;
     }
     throw new Error('expected a ParseError reporting the task heading line');
+  });
+});
+
+describe('explosion stamps task complexity', () => {
+  function complexityOf(plan: string): unknown {
+    const { projectDir, masterPlanPath } = makeProject();
+    fs.writeFileSync(masterPlanPath, plan, 'utf8');
+    const result = explodeMasterPlan({ projectDir, masterPlanPath, projectName: 'X', nowIso: '2026-05-22T00:00:00.000Z' });
+    const raw = fs.readFileSync(result.emittedTaskFiles[0]!, 'utf8');
+    const fm = raw.match(/^---\r?\n([\s\S]*?)\r?\n---/)![1]!;
+    return (parseYaml(fm) as Record<string, unknown>).complexity;
+  }
+
+  it('stamps the authored complexity value', () => {
+    expect(complexityOf('## P01: P\n\n### P01-T01: A\nDoes a thing.\n**Complexity:** complex\n**Target repo:** foo\n')).toBe('complex');
+  });
+
+  it('defaults to standard when the task has no Complexity line', () => {
+    expect(complexityOf('## P01: P\n\n### P01-T01: A\nDoes a thing.\n**Target repo:** foo\n')).toBe('standard');
+  });
+
+  it('defaults to standard on an invalid Complexity value', () => {
+    expect(complexityOf('## P01: P\n\n### P01-T01: A\nDoes a thing.\n**Complexity:** trivial\n**Target repo:** foo\n')).toBe('standard');
+  });
+});
+
+describe('explosion parses a singular Target repo line into a repos array', () => {
+  it('lifts "**Target repo:** foo" to repos: ["foo"]', () => {
+    const { projectDir, masterPlanPath } = makeProject();
+    fs.writeFileSync(masterPlanPath,
+      '## P01: P\n\n### P01-T01: A\nDoes a thing.\n**Complexity:** simple\n**Target repo:** foo\n', 'utf8');
+    const result = explodeMasterPlan({ projectDir, masterPlanPath, projectName: 'X', nowIso: '2026-05-22T00:00:00.000Z' });
+    const raw = fs.readFileSync(result.emittedTaskFiles[0]!, 'utf8');
+    const fm = raw.match(/^---\r?\n([\s\S]*?)\r?\n---/)![1]!;
+    const parsed = parseYaml(fm) as Record<string, unknown>;
+    expect(parsed.repos).toEqual(['foo']);
+  });
+});
+
+describe('explosion renders the new phase/task body shape', () => {
+  it('renders the 4-column phase task table and an Order line; no bullet list; no author', () => {
+    const { projectDir, masterPlanPath } = makeProject();
+    fs.writeFileSync(masterPlanPath,
+      '## P01: First\n\n' +
+      '### P01-T01: A\nWires the API.\n**Complexity:** simple\n**Target repo:** backend\n' +
+      '**Files for backend:**\n- Create: `a.ts`\n\n' +
+      '### P01-T02: B\nAdds the view.\n**Complexity:** complex\n**Target repo:** backend\n' +
+      '**Files for backend:**\n- Create: `b.ts`\n', 'utf8');
+    const result = explodeMasterPlan({ projectDir, masterPlanPath, projectName: 'X', nowIso: '2026-05-22T00:00:00.000Z' });
+    const phaseRaw = fs.readFileSync(result.emittedPhaseFiles[0]!, 'utf8');
+    const phaseFm = phaseRaw.match(/^---\r?\n([\s\S]*?)\r?\n---/)![1]!;
+    expect(parseYaml(phaseFm)).not.toHaveProperty('author');
+    expect(phaseRaw).toContain('| Task | Repo | Complexity | Purpose |');
+    expect(phaseRaw).toContain('| T01 | backend | simple | Wires the API. |');
+    expect(phaseRaw).toContain('| T02 | backend | complex | Adds the view. |');
+    expect(phaseRaw).toContain('**Order:** T01 → T02');
+    expect(phaseRaw).not.toMatch(/- \*\*T01\*\*:/);
+  });
+
+  it('renders an em dash in the Purpose cell when no lead sentence exists', () => {
+    const { projectDir, masterPlanPath } = makeProject();
+    fs.writeFileSync(masterPlanPath,
+      '## P01: First\n\n### P01-T01: A\n**Complexity:** standard\n**Target repo:** backend\n', 'utf8');
+    const result = explodeMasterPlan({ projectDir, masterPlanPath, projectName: 'X', nowIso: '2026-05-22T00:00:00.000Z' });
+    const phaseRaw = fs.readFileSync(result.emittedPhaseFiles[0]!, 'utf8');
+    expect(phaseRaw).toContain('| T01 | backend | standard | — |');
+  });
+
+  it('appends a reserved Execution Notes section to each task body', () => {
+    const { projectDir, masterPlanPath } = makeProject();
+    fs.writeFileSync(masterPlanPath,
+      '## P01: First\n\n### P01-T01: A\nDoes a thing.\n**Complexity:** simple\n**Target repo:** backend\n', 'utf8');
+    const result = explodeMasterPlan({ projectDir, masterPlanPath, projectName: 'X', nowIso: '2026-05-22T00:00:00.000Z' });
+    const taskRaw = fs.readFileSync(result.emittedTaskFiles[0]!, 'utf8');
+    expect(taskRaw).toContain('## Execution Notes');
+    expect(taskRaw).toContain('_(none yet — appended at runtime)_');
   });
 });

@@ -13,9 +13,11 @@ export interface ParsedTask {
   taskIndex: number;
   /** Human-readable title (after the colon). */
   title: string;
-  /** Requirement tags mentioned in the task body (e.g. ["FR-1", "DD-1"]). */
-  requirementTags: string[];
-  /** Target repo names parsed from the task body's "**Target repos:**" line, deduped by first occurrence. */
+  /** Routing signal parsed from the task body's "**Complexity:**" line; defaults to "standard". */
+  complexity: 'simple' | 'standard' | 'complex';
+  /** Lead one-line purpose, taken from the task body, used for the generated phase table. */
+  purpose: string;
+  /** Target repo names parsed from the task body's "**Target repo:**" line, deduped by first occurrence. */
   targetRepos: string[];
   /** Raw lines of the task body, preserved for downstream emission. */
   body: string;
@@ -156,6 +158,7 @@ interface IterationEntry {
   corrective_tasks: unknown[];
   doc_path?: string | null;
   repos: { name: string; commit_hash: string | null }[];
+  complexity?: 'simple' | 'standard' | 'complex';
 }
 
 interface ForEachTaskNodeState {
@@ -271,7 +274,8 @@ export function parseMasterPlan(masterPlanPath: string): ParsedMasterPlan {
   const flushTask = () => {
     if (currentTask !== null) {
       currentTask.body = currentBodyLines.join('\n').trimEnd();
-      currentTask.requirementTags = extractRequirementTags(currentTask.body);
+      currentTask.complexity = extractComplexity(currentTask.body);
+      currentTask.purpose = extractLeadSentence(currentTask.body);
       currentTask.targetRepos = extractTargetRepos(currentTask.body);
       currentPhase!.tasks.push(currentTask);
       currentTask = null;
@@ -376,7 +380,8 @@ export function parseMasterPlan(masterPlanPath: string): ParsedMasterPlan {
         phaseIndex,
         taskIndex,
         title: (title ?? '').trim(),
-        requirementTags: [],
+        complexity: 'standard',
+        purpose: '',
         targetRepos: [],
         body: '',
         startLine: lineNumber,
@@ -403,7 +408,7 @@ export function parseMasterPlan(masterPlanPath: string): ParsedMasterPlan {
 
   // ── Enforce task repo shape ───────────────────────────────────────────────
   // Walk every parsed task and verify:
-  //   FR-4: a "**Target repos:**" line is present
+  //   FR-4: a "**Target repo:**" line is present
   //   FR-5: the line names at least one repo (not empty)
   //   FR-6: every named repo is within the sealed repos: [] in the frontmatter
   // Enforcement is only active when the Master Plan declares a sealed repos list.
@@ -412,19 +417,19 @@ export function parseMasterPlan(masterPlanPath: string): ParsedMasterPlan {
   if (seal.size > 0) {
     for (const phase of phases) {
       for (const task of phase.tasks) {
-        const hasLine = /\*\*Target repos:\*\*/.test(task.body);
+        const hasLine = /\*\*Target repo:\*\*/.test(task.body);
         if (!hasLine) {
           throw new ParseError({
-            line: task.startLine, expected: 'a "**Target repos:**" line on every task',
-            found: `task ${task.id} with no Target repos line`,
-            message: `Task ${task.id} is missing its "**Target repos:**" line`,
+            line: task.startLine, expected: 'a "**Target repo:**" line on every task',
+            found: `task ${task.id} with no Target repo line`,
+            message: `Task ${task.id} is missing its "**Target repo:**" line`,
           });
         }
         if (task.targetRepos.length === 0) {
           throw new ParseError({
-            line: task.startLine, expected: 'at least one repo name on the "**Target repos:**" line',
-            found: `task ${task.id} with an empty Target repos line`,
-            message: `Task ${task.id} has a present-but-empty "**Target repos:**" line`,
+            line: task.startLine, expected: 'at least one repo name on the "**Target repo:**" line',
+            found: `task ${task.id} with an empty Target repo line`,
+            message: `Task ${task.id} has a present-but-empty "**Target repo:**" line`,
           });
         }
         for (const r of task.targetRepos) {
@@ -459,20 +464,32 @@ export function parseMasterPlan(masterPlanPath: string): ParsedMasterPlan {
   };
 }
 
-function extractRequirementTags(body: string): string[] {
-  const tags = new Set<string>();
-  const tagLineMatch = body.match(/\*\*Requirements:\*\*\s*([^\n]+)/);
-  if (tagLineMatch) {
-    const items = (tagLineMatch[1] ?? '').split(/[,\s]+/).map(s => s.trim()).filter(Boolean);
-    for (const item of items) tags.add(item);
+function extractComplexity(body: string): 'simple' | 'standard' | 'complex' {
+  const match = body.match(/\*\*Complexity:\*\*[ \t]*([^\n]*)/);
+  const value = (match?.[1] ?? '').trim().toLowerCase();
+  if (value === 'simple' || value === 'standard' || value === 'complex') {
+    return value;
   }
-  return Array.from(tags);
+  return 'standard';
+}
+
+function extractLeadSentence(body: string): string {
+  for (const raw of body.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (line.length === 0) continue;
+    if (/^\*\*[^*]+:\*\*/.test(line)) continue; // a "**Field:**" line
+    if (/^\s*[-*]\s/.test(raw)) continue;       // a bullet
+    if (/^#/.test(line)) continue;              // a heading
+    if (/^```/.test(line)) continue;            // a fenced-code fence
+    return line;
+  }
+  return '';
 }
 
 function extractTargetRepos(body: string): string[] {
   const repos: string[] = [];
   const seen = new Set<string>();
-  const lineMatch = body.match(/\*\*Target repos:\*\*[ \t]*([^\n]*)/);
+  const lineMatch = body.match(/\*\*Target repo:\*\*[ \t]*([^\n]*)/);
   if (lineMatch) {
     const items = (lineMatch[1] ?? '').split(/[,\s]+/).map(s => s.trim()).filter(Boolean);
     for (const item of items) {
@@ -533,7 +550,6 @@ function buildPhaseFrontmatter(opts: {
     status: 'active',
     tasks: opts.phase.tasks.map(t => ({ id: `T${String(t.taskIndex).padStart(2, '0')}`, title: t.title })),
     repos: unionTaskRepos(opts.phase),
-    author: 'explosion-script',
     created: opts.createdIso,
     type: 'phase_plan',
   };
@@ -550,9 +566,8 @@ function buildTaskFrontmatter(opts: {
     task: opts.task.taskIndex,
     title: opts.task.title,
     status: 'pending',
-    requirement_tags: opts.task.requirementTags,
+    complexity: opts.task.complexity,
     repos: opts.task.targetRepos,
-    author: 'explosion-script',
     created: opts.createdIso,
     type: 'task_handoff',
   };
@@ -573,10 +588,15 @@ function renderPhaseBody(phase: ParsedPhase): string {
   if (phase.tasks.length === 0) {
     sections.push('_(no tasks emitted by explosion script — phase has no task headings in the Master Plan)_');
   } else {
+    sections.push('| Task | Repo | Complexity | Purpose |', '|---|---|---|---|');
     for (const t of phase.tasks) {
-      const tidx = String(t.taskIndex).padStart(2, '0');
-      sections.push(`- **T${tidx}**: ${t.title}`);
+      const tidx = `T${String(t.taskIndex).padStart(2, '0')}`;
+      const repoCell = t.targetRepos.join(', ');
+      const purposeCell = t.purpose.trim().length > 0 ? t.purpose : '—';
+      sections.push(`| ${tidx} | ${repoCell} | ${t.complexity} | ${purposeCell} |`);
     }
+    const order = phase.tasks.map(t => `T${String(t.taskIndex).padStart(2, '0')}`).join(' → ');
+    sections.push('', `**Order:** ${order}`);
   }
   return sections.join('\n');
 }
@@ -591,6 +611,7 @@ function renderTaskBody(task: ParsedTask): string {
   } else {
     sections.push('_(empty body in Master Plan)_');
   }
+  sections.push('', '## Execution Notes', '', '_(none yet — appended at runtime)_');
   return sections.join('\n');
 }
 
@@ -774,6 +795,7 @@ function seedIterations(
         corrective_tasks: [],
         doc_path: taskFile,
         repos: task.targetRepos.map(name => ({ name, commit_hash: null })),
+        complexity: task.complexity,
       });
     }
     const taskLoop: ForEachTaskNodeState = {

@@ -1,30 +1,19 @@
 import { describe, it, expect } from 'vitest';
-import fs from 'node:fs';
 import os from 'node:os';
-import path from 'node:path';
 import { enrichActionContext, resolveActivePhaseIndex, resolveActiveTaskIndex, type EnrichmentInput } from '../../../src/lib/pipeline-engine/context-enrichment.js';
 import { makeV6State } from '../../helpers/state-factory.js';
 import type { PipelineState, OrchestrationConfig } from '../../../src/lib/pipeline-engine/types.js';
 
-function makeTmpRepo() {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pe-'));
-  const skillDir = path.join(root, 'packages/x/skills/demo');
-  fs.mkdirSync(skillDir, { recursive: true });
-  fs.writeFileSync(path.join(skillDir, 'SKILL.md'),
-    '---\nname: demo\ndescription: a demo skill\n---\nbody\n', 'utf8');
-  return root;
-}
-
-// Minimal runtime input for spawn_master_plan — that branch reads `action`,
-// `walkerContext`, `config.limits`, and (transitively) `process.cwd()`. The
-// remaining fields are required structurally on `EnrichmentInput`, so we
-// stub-and-cast rather than fabricate a full `PipelineState`/`OrchestrationConfig`.
+// Minimal runtime input for spawn_master_plan — that branch only reads `action`
+// and `walkerContext` now. The remaining fields are required structurally on
+// `EnrichmentInput`, so we stub-and-cast rather than fabricate a full
+// `PipelineState`/`OrchestrationConfig`.
 function makeInput(): EnrichmentInput {
   return {
     action: 'spawn_master_plan',
     walkerContext: {},
     state: { graph: { nodes: {} }, pipeline: {} } as unknown as EnrichmentInput['state'],
-    config: { limits: { max_phases: 10, max_tasks_per_phase: 8 } } as unknown as EnrichmentInput['config'],
+    config: { limits: {} } as unknown as EnrichmentInput['config'],
     cliContext: {},
   };
 }
@@ -57,32 +46,17 @@ function makeEnrichmentInput(action: string, state: PipelineState): EnrichmentIn
     action,
     walkerContext: {},
     state,
-    config: { limits: { max_phases: 10, max_tasks_per_phase: 8 } } as unknown as EnrichmentInput['config'],
+    config: { limits: {} } as unknown as EnrichmentInput['config'],
     cliContext: {},
   };
 }
 
-describe('context-enrichment skills block', () => {
-  it('spawn_master_plan enrichment emits Repository Skills Available block (no subprocess hop)', () => {
-    const root = makeTmpRepo();
-    const cwd = process.cwd();
-    try {
-      process.chdir(root);
-      const r = enrichActionContext(makeInput());
-      expect(r.repository_skills_block).toMatch(/## Repository Skills Available/);
-      expect(r.repository_skills_block).toMatch(/"name": "demo"/);
-      expect(r.repository_skills_block).toMatch(/Entries above are a catalog\./);
-    } finally { process.chdir(cwd); }
-  });
-
-  it('empty manifest yields empty string', () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pe-empty-'));
-    const cwd = process.cwd();
-    try {
-      process.chdir(root);
-      const r = enrichActionContext(makeInput());
-      expect(r.repository_skills_block).toBe('');
-    } finally { process.chdir(cwd); }
+describe('context-enrichment spawn_master_plan', () => {
+  it('enriches with the planner step only — no limits, no repository_skills_block', () => {
+    const r = enrichActionContext(makeInput());
+    expect(r.step).toBe('master_plan');
+    expect(r).not.toHaveProperty('limits');
+    expect(r).not.toHaveProperty('repository_skills_block');
   });
 });
 
@@ -188,7 +162,7 @@ describe('corrective-aware resolvers (FR-1, FR-2, NFR-1)', () => {
   });
 });
 
-const cfg = { limits: { max_phases: 10, max_tasks_per_phase: 8 } } as unknown as OrchestrationConfig;
+const cfg = { limits: {} } as unknown as OrchestrationConfig;
 
 function commitState(correctiveActive: boolean): PipelineState {
   const taskLoop = {
@@ -306,7 +280,7 @@ describe('spawn_final_reviewer base/head SHA derivation — ≤1 commit short-ci
 });
 
 describe('per-action repos[] enrichment (FR-1, FR-2, FR-3)', () => {
-  const DEFAULT_CONFIG = { limits: { max_phases: 10, max_tasks_per_phase: 8 } } as unknown as OrchestrationConfig;
+  const DEFAULT_CONFIG = { limits: {} } as unknown as OrchestrationConfig;
 
   function buildTwoRepoExecState(): PipelineState {
     const taskRepos = [
@@ -423,7 +397,7 @@ describe('enrichment readers migrate to repos[] (FR-21, FR-22)', () => {
 });
 
 describe('execute_task corrective early-return emits repos[] (FR-1)', () => {
-  const DEFAULT_CONFIG = { limits: { max_phases: 10, max_tasks_per_phase: 8 } } as unknown as OrchestrationConfig;
+  const DEFAULT_CONFIG = { limits: {} } as unknown as OrchestrationConfig;
 
   /**
    * Build a state whose active task loop is under a phase-scope corrective that
@@ -498,7 +472,7 @@ describe('execute_task corrective early-return emits repos[] (FR-1)', () => {
 });
 
 describe('spawn_phase_reviewer per-repo SHA grouping (FR-3)', () => {
-  const DEFAULT_CONFIG = { limits: { max_phases: 10, max_tasks_per_phase: 8 } } as unknown as OrchestrationConfig;
+  const DEFAULT_CONFIG = { limits: {} } as unknown as OrchestrationConfig;
 
   /**
    * Build a two-repo, two-task state for spawn_phase_reviewer.
@@ -592,7 +566,7 @@ describe('spawn_phase_reviewer per-repo SHA grouping (FR-3)', () => {
 });
 
 describe('per-repo chronology and final SHAs (FR-3, FR-4)', () => {
-  const DEFAULT_CONFIG = { limits: { max_phases: 10, max_tasks_per_phase: 8 } } as unknown as OrchestrationConfig;
+  const DEFAULT_CONFIG = { limits: {} } as unknown as OrchestrationConfig;
 
   function buildTwoRepoProjectWithCommits(): PipelineState {
     // api: [a1, a2], ui: [u1, u2] — two phases, each with one task iteration carrying two repos
@@ -690,5 +664,63 @@ describe('per-repo chronology and final SHAs (FR-3, FR-4)', () => {
     const ordinal = new Map([['aaaa1111', 2], ['bbbb2222', 1]]);
     const err = validateBaseShaChronology(['aaaa1111', 'bbbb2222'], ordinal, 'fake-api');
     expect(err).toMatch(/fake-api/);
+  });
+});
+
+describe('execute_task surfaces task complexity to the coder spawn', () => {
+  const DEFAULT_CONFIG = { limits: {} } as unknown as OrchestrationConfig;
+
+  function execStateWithComplexity(complexity?: 'simple' | 'standard' | 'complex'): PipelineState {
+    const taskIter: Record<string, unknown> = {
+      index: 0,
+      status: 'in_progress',
+      doc_path: '/fake/handoff.md',
+      repos: [{ name: 'backend', commit_hash: null }],
+      corrective_tasks: [],
+      nodes: {},
+    };
+    if (complexity !== undefined) taskIter.complexity = complexity;
+    return {
+      graph: {
+        nodes: {
+          phase_loop: {
+            kind: 'for_each_phase',
+            status: 'in_progress',
+            iterations: [
+              {
+                index: 0,
+                status: 'in_progress',
+                doc_path: null,
+                repos: [{ name: 'backend', commit_hash: null }],
+                corrective_tasks: [],
+                nodes: { task_loop: { kind: 'for_each_task', status: 'in_progress', iterations: [taskIter] } },
+              },
+            ],
+          },
+        },
+      },
+      pipeline: {
+        gate_mode: null,
+        current_tier: 'execution',
+        halt_reason: null,
+        source_control: {
+          worktree_name: 'test-project',
+          auto_commit: 'always',
+          auto_pr: 'always',
+          repos: [{ name: 'backend', branch: 'radorch/test', base_branch: 'main', remote_url: null, compare_url: null, pr_url: null }],
+        },
+      },
+      project: { name: 'test-project' },
+    } as unknown as PipelineState;
+  }
+
+  it('reads complexity from the seeded task iteration', () => {
+    const ctx = enrichActionContext({ action: 'execute_task', walkerContext: {}, state: execStateWithComplexity('complex'), config: DEFAULT_CONFIG, cliContext: {} });
+    expect(ctx.complexity).toBe('complex');
+  });
+
+  it('defaults to standard when the task iteration lacks complexity', () => {
+    const ctx = enrichActionContext({ action: 'execute_task', walkerContext: {}, state: execStateWithComplexity(undefined), config: DEFAULT_CONFIG, cliContext: {} });
+    expect(ctx.complexity).toBe('standard');
   });
 });

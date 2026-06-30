@@ -25,7 +25,7 @@ const taskExecutorInProgressState = {
   project: { name: 'cli-behavioral', created: '2024-01-01T00:00:00.000Z', updated: '2024-01-01T00:00:00.000Z' },
   config: {
     gate_mode: 'task',
-    limits: { max_phases: 10, max_tasks_per_phase: 8, max_retries_per_task: 3, max_consecutive_review_rejections: 3 },
+    limits: { max_retries_per_task: 3, max_consecutive_review_rejections: 3 },
     source_control: { auto_commit: 'never', auto_pr: 'never' },
   },
   // Source control is always initialized by the time a task is the frontier;

@@ -31,7 +31,7 @@ export interface World {
 }
 
 const DEFAULT_CONFIG: OrchestrationConfig = {
-  limits: { max_phases: 10, max_tasks_per_phase: 8, max_retries_per_task: 3, max_consecutive_review_rejections: 3 },
+  limits: { max_retries_per_task: 3, max_consecutive_review_rejections: 3 },
   human_gates: { after_planning: true, execution_mode: 'task', after_final_review: true },
   source_control: { auto_commit: 'never', auto_pr: 'never' },
   default_template: 'medium',
@@ -44,7 +44,7 @@ export function buildWorld(spec: WorldSpec): World {
     fs.writeFileSync(path.join(projectDir, 'state.json'), JSON.stringify(spec.state, null, 2), 'utf8');
   }
   // One-level deep merge over OrchestrationConfig's nested objects so callers
-  // can override a single nested key (e.g. { limits: { max_phases: 2 } }) without
+  // can override a single nested key (e.g. { limits: { max_retries_per_task: 2 } }) without
   // having to restate the other required siblings.
   const mergedConfig = {
     ...DEFAULT_CONFIG,

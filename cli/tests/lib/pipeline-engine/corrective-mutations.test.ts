@@ -20,7 +20,7 @@ import type {
 } from '../../../src/lib/pipeline-engine/types.js';
 
 const cfg = {
-  limits: { max_phases: 10, max_tasks_per_phase: 8, max_retries_per_task: 3, max_consecutive_review_rejections: 3 },
+  limits: { max_retries_per_task: 3, max_consecutive_review_rejections: 3 },
 } as unknown as OrchestrationConfig;
 
 // Minimal template carrying for_each_phase → for_each_task with a four-node body

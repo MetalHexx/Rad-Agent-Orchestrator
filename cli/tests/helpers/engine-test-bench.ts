@@ -109,8 +109,6 @@ export interface MakeTestIOOpts {
 
 const DEFAULT_CONFIG: OrchestrationConfig = {
   limits: {
-    max_phases: 10,
-    max_tasks_per_phase: 8,
     max_retries_per_task: 3,
     max_consecutive_review_rejections: 3,
   },

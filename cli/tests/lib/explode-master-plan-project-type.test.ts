@@ -16,7 +16,7 @@ function seedState(dir: string): void {
 function writeMp(dir: string, projectType: string | null): string {
   const fm = projectType === null ? '' : `project-type: ${projectType}\n`;
   const mp = `---\nproject: "X"\nrepos: [X]\n${fm}total_phases: 1\ntotal_tasks: 1\n---\n\n` +
-    `## P01: Phase One\n**Target repos:** X\n\n### P01-T01: Do thing\n**Target repos:** X\n**Requirements:** FR-1\n`;
+    `## P01: Phase One\n**Target repo:** X\n\n### P01-T01: Do thing\nDoes the thing.\n**Complexity:** standard\n**Target repo:** X\n`;
   const p = path.join(dir, 'mp.md');
   fs.writeFileSync(p, mp);
   return p;
