@@ -74,14 +74,6 @@ describe('optimistic in_progress at action-return — loop-internal steps (FR-6)
     expect(s.graph.nodes.phase_loop.iterations[0].nodes.task_loop.iterations[0].nodes.task_executor.status).toBe('in_progress');
   });
 
-  it('commit is in_progress when auto_commit is enabled', async () => {
-    const w = mkWorld();
-    await driveToNode(w, 'commit');
-    const s = readPersistedState(w.projectDir);
-    const taskIter = s.graph.nodes.phase_loop.iterations[0].nodes.task_loop.iterations[0];
-    expect(taskIter.nodes.commit.status).toBe('in_progress');
-  });
-
   it('code_review is in_progress after task_completed', async () => {
     const w = mkWorld();
     await driveToNode(w, 'code_review');

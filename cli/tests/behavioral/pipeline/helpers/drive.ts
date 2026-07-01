@@ -52,7 +52,7 @@ export const EVENT_CHAINS: Record<string, ChainStep[]> = {
   final_review: [
     // Reached after plan approval, gate-mode set, and a single phase + task
     // iteration is completed through phase_review and phase_gate.
-    // source_control seed provides auto_commit=never so commit_gate evaluates cleanly.
+    // source_control seed provides auto_commit=never so no commit happens on task_completed.
     { event: 'start', context: {} },
     { event: 'master_plan_completed', context: { doc_path: 'MASTER-PLAN.md' } },
     { event: 'explosion_completed', context: {} },
@@ -69,21 +69,11 @@ export const EVENT_CHAINS: Record<string, ChainStep[]> = {
     { event: 'explosion_completed', context: {} },
     { event: 'plan_approved', context: {} },
     { event: 'gate_mode_set', context: { gate_mode: 'autonomous' } },
-    // Seed source_control with auto_commit=never so commit_gate evaluates cleanly.
+    // Seed source_control with auto_commit=never so no commit happens on task_completed.
     { event: SEED_SOURCE_CONTROL, context: { auto_commit: 'never', auto_pr: 'never', branch: 'feature/test', base_branch: 'main' } },
   ],
-  commit: [
-    // Reached only when pipeline.source_control.auto_commit !== 'never'.
-    { event: 'start', context: {} },
-    { event: 'master_plan_completed', context: { doc_path: 'MASTER-PLAN.md' } },
-    { event: 'explosion_completed', context: {} },
-    { event: 'plan_approved', context: {} },
-    { event: 'gate_mode_set', context: { gate_mode: 'autonomous' } },
-    { event: SEED_SOURCE_CONTROL, context: { auto_commit: 'always', auto_pr: 'never', branch: 'feature/test', base_branch: 'main' } },
-    { event: 'task_completed', context: { verdict: 'approved' } },
-  ],
   code_review: [
-    // Seed source_control with auto_commit=never so commit_gate evaluates cleanly.
+    // Seed source_control with auto_commit=never so no commit happens on task_completed.
     { event: 'start', context: {} },
     { event: 'master_plan_completed', context: { doc_path: 'MASTER-PLAN.md' } },
     { event: 'explosion_completed', context: {} },
@@ -93,7 +83,7 @@ export const EVENT_CHAINS: Record<string, ChainStep[]> = {
     { event: 'task_completed', context: { verdict: 'approved' } },
   ],
   phase_review: [
-    // Seed source_control with auto_commit=never so commit_gate evaluates cleanly.
+    // Seed source_control with auto_commit=never so no commit happens on task_completed.
     { event: 'start', context: {} },
     { event: 'master_plan_completed', context: { doc_path: 'MASTER-PLAN.md' } },
     { event: 'explosion_completed', context: {} },

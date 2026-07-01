@@ -16,21 +16,13 @@ describe('radorch program wiring', () => {
     expect(stdout).not.toMatch(/radorch where/);
   }, 30_000);
 
-  it('exposes git commit and git pr subcommands at three help depths', async () => {
-    const node = (args: string[]) => execP('node', ['dist/bin/radorch.js', ...args], {
+  it('no longer exposes a git noun in root help (git doer subcommands removed)', async () => {
+    // The `git commit` / `git pr` doers were removed — the coder commits its own
+    // work and the orchestrator opens PRs directly, so no `git` noun remains.
+    const { stdout: rootHelp } = await execP('node', ['dist/bin/radorch.js', '--help'], {
       cwd: repoRoot, env: { ...process.env, RADORCH_NO_LOG: '1' },
     });
-    const { stdout: rootHelp } = await node(['--help']);
-    expect(rootHelp).toMatch(/\bgit\b/);
-    const { stdout: gitHelp } = await node(['git', '--help']);
-    expect(gitHelp).toMatch(/commit\s+Commit changes in the worktree and push to origin when a\s+remote is configured/);
-    expect(gitHelp).toMatch(/pr\s+Open a GitHub pull request for the worktree branch/);
-    const { stdout: commitHelp } = await node(['git', 'commit', '--help']);
-    expect(commitHelp).toMatch(/--worktree-path/);
-    expect(commitHelp).toMatch(/--message/);
-    const { stdout: prHelp } = await node(['git', 'pr', '--help']);
-    expect(prHelp).toMatch(/--body-file/);
-    expect(prHelp).toMatch(/Optional absolute path to a markdown file/);
+    expect(rootHelp).not.toMatch(/^\s*git\b/m);
   }, 30_000);
 
   it('exposes project noun in root help (context and find retired)', async () => {

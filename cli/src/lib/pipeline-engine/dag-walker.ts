@@ -180,11 +180,10 @@ function walkForEachIterations(
     // (which renders by insertion order) sees a consistent layout whether
     // the iteration was pre-seeded, partially seeded, or fully scaffolded
     // here. Existing node states are preserved verbatim; missing ones are
-    // scaffolded fresh. Any extra keys present in iteration.nodes but not
-    // in the template body (e.g., `commit` — scaffolded by walkNodes into
-    // the parent iteration's nodes when a conditional branch is taken at
-    // `commit_gate`) are preserved AFTER the body defs so their in-flight
-    // state is not clobbered on re-entry.
+    // scaffolded fresh. Any extra keys present in iteration.nodes but not in
+    // the template body — e.g. a node scaffolded by walkNodes into the parent
+    // iteration's nodes when a conditional branch is taken — are preserved
+    // AFTER the body defs so their in-flight state is not clobbered on re-entry.
     const orderedNodes: Record<string, NodeState> = {};
     for (const bodyDef of fepDef.body) {
       orderedNodes[bodyDef.id] = iteration.nodes[bodyDef.id] ?? scaffoldNodeState(bodyDef);

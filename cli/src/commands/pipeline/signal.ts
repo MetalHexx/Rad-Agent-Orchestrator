@@ -87,7 +87,7 @@ export const pipelineSignalCommand = defineCommand({
   name: 'pipeline-signal',
   description: 'Signal a pipeline event and apply the resulting state mutations',
   args: {
-    event: { description: 'Pipeline event name (start, master_plan_started, plan_approved, gate_approved, task_completed, commit_completed, pr_created, phase_review_completed, final_review_completed, explosion_failed, …)', required: true },
+    event: { description: 'Pipeline event name (start, master_plan_started, plan_approved, gate_approved, task_completed, pr_created, phase_review_completed, final_review_completed, explosion_failed, …)', required: true },
     'project-dir': { description: 'Absolute path to the project directory whose state.json the event mutates', required: true },
   },
   flags: {
@@ -99,9 +99,9 @@ export const pipelineSignalCommand = defineCommand({
     verdict: { description: 'Review verdict: approved | changes_requested | rejected', type: 'string' },
     branch: { description: 'Working branch name for source-control events', type: 'string' },
     reason: { description: 'Free-text rejection reason for gate_rejected and review failures', type: 'string' },
-    'commit-hash': { description: 'Commit hash recorded on commit_completed', type: 'string' },
-    pushed: { description: 'Push outcome flag carried on commit_completed', type: 'string' },
-    'compare-url': { description: 'Compare URL recorded on commit_completed', type: 'string' },
+    'commit-hash': { description: 'Commit hash recorded on task_completed', type: 'string' },
+    pushed: { description: 'Push outcome flag carried on task_completed', type: 'string' },
+    'compare-url': { description: 'Compare URL recorded on task_completed', type: 'string' },
     'pr-url': { description: 'PR URL recorded on pr_created', type: 'string' },
     template: { description: 'Pipeline template id (extra-high | high | medium | low) for the start event', type: 'string' },
     step: { description: 'Internal step identifier carried by *_started events from the v5 DAG walker', type: 'string' },

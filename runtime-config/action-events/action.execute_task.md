@@ -2,7 +2,7 @@
 kind: action
 name: execute_task
 title: Execute task
-description: Spawn the right-sized coder agent, based on task complexity, to implement the task described in the pre-seeded handoff document.
+description: Spawn the right-sized coder agent, based on task complexity, to implement the task described in the pre-seeded handoff document — and, when directed, commit its work.
 category: agent-spawn
 completion_event: task_completed
 ---
@@ -11,6 +11,8 @@ Spawn the right-sized coder agent for this task — choose the tier from the tas
 
 The envelope also carries `data.context.repos[]` — an array where each entry has `name`, `path`, and `branch`. Inline the `repos[]` array verbatim into the coder spawn prompt. The coder joins each handoff's `**Files for <repo>:**` section against the matching `repos[N].path` to resolve absolute file targets.
 
+The envelope carries `data.context.should_commit`. When `true`, instruct the coder to commit its work after implementation — and push when the repo has a remote. When `false`, the coder leaves its changes uncommitted (the reviewer diffs the working tree). Pass the directive into the coder's spawn prompt; do not commit yourself.
+
 Do not surface Requirements, Master Plan, or any other upstream doc to the coder. The handoff is self-contained.
 
-The agent's output is source code, tests, and an optional `## Execution Notes` appendix appended to the handoff body. No doc path needs to be extracted.
+The coder's output is source code, tests, and an optional `## Execution Notes` appendix appended to the handoff body. When it committed, it also reports a per-repo result `[{ name, committed, commitHash, pushed }]` and the branch it committed on — relay both onto the `task_completed` signal so the hash is recorded (see the `task_completed` event). No doc path needs to be extracted.

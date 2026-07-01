@@ -21,7 +21,7 @@ const cfg = {
 } as unknown as OrchestrationConfig;
 
 // Minimal template carrying for_each_phase → for_each_task body so the
-// commit_completed mutation can navigate iterations.
+// task_completed mutation can navigate iterations.
 const tmpl = {
   id: 't', version: '1', description: '',
   nodes: [
@@ -33,7 +33,6 @@ const tmpl = {
           body: [
             { id: 'task_gate', kind: 'gate' },
             { id: 'task_executor', kind: 'step' },
-            { id: 'commit', kind: 'step' },
             { id: 'code_review', kind: 'step' },
           ],
         },
@@ -49,8 +48,9 @@ const gate = (status: string, active = false) => ({ kind: 'gate', status, gate_a
 
 /**
  * Builds a minimal PipelineState with one phase, one task, and a task iteration
- * seeded with repos: [{name:'fake-api'},{name:'fake-ui'}]. The commit node is
- * in_progress so commit_completed can land.
+ * seeded with repos: [{name:'fake-api'},{name:'fake-ui'}]. task_executor is
+ * in_progress and source_control.auto_commit is 'always', so task_completed both
+ * completes the executor and records the folded per-repo commit hashes.
  */
 function buildTwoRepoState(): PipelineState {
   return {
@@ -63,14 +63,22 @@ function buildTwoRepoState(): PipelineState {
     },
     pipeline: {
       gate_mode: 'task',
-      source_control: null,
+      source_control: {
+        worktree_name: 'test',
+        auto_commit: 'always',
+        auto_pr: 'never',
+        repos: [
+          { name: 'fake-api', branch: 'radorch/test', base_branch: 'main', remote_url: null, compare_url: null, pr_url: null },
+          { name: 'fake-ui', branch: 'radorch/test', base_branch: 'main', remote_url: null, compare_url: null, pr_url: null },
+        ],
+      },
       current_tier: 'execution',
       halt_reason: null,
     },
     graph: {
       template_id: 't',
       status: 'in_progress',
-      current_node_path: 'phase_loop[0].task_loop[0].commit',
+      current_node_path: 'phase_loop[0].task_loop[0].task_executor',
       nodes: {
         phase_loop: {
           kind: 'for_each_phase',
@@ -98,8 +106,7 @@ function buildTwoRepoState(): PipelineState {
                       corrective_tasks: [],
                       nodes: {
                         task_gate:     gate('completed', true),
-                        task_executor: step('completed'),
-                        commit:        step('in_progress'),
+                        task_executor: step('in_progress'),
                         code_review:   step('not_started'),
                       },
                     } as IterationEntry,
@@ -129,25 +136,28 @@ function taskIteration(state: PipelineState, phase: number, task: number): Itera
 // ── processEvent-based helpers (uses getMutation directly for isolation) ──────
 
 /**
- * Drives a two-repo state through commit_completed via getMutation (no IOAdapter).
+ * Drives a two-repo state through task_completed via getMutation (no IOAdapter).
  * Returns the post-mutation state.
  */
-function applyCommitCompleted(
+function applyTaskCompleted(
   state: PipelineState,
   ctx: Record<string, unknown>,
 ): PipelineState {
-  const fn = getMutation('commit_completed');
-  if (!fn) throw new Error('commit_completed mutation not registered');
+  const fn = getMutation('task_completed');
+  if (!fn) throw new Error('task_completed mutation not registered');
   const { state: next } = fn(state, ctx as never, cfg, tmpl);
   return next;
 }
 
-// ── commit_completed by-name tests ────────────────────────────────────────────
+// ── task_completed per-repo hash recording (commit fold, R3) ──────────────────
+// The commit hash recording folded out of the retired commit_completed mutation
+// into task_completed: the same event that completes task_executor now records
+// the coder's per-repo commit result relayed on `context.repos`.
 
-describe('commit_completed per-repo by-name mutation (FR-7, AD-4)', () => {
-  it('commit_completed writes each hash to the matching repo by name (FR-7, AD-4)', () => {
+describe('task_completed per-repo hash recording (commit fold)', () => {
+  it('completes task_executor and writes each hash to the matching repo by name', () => {
     const state = buildTwoRepoState();
-    const next = applyCommitCompleted(state, {
+    const next = applyTaskCompleted(state, {
       phase: 1, task: 1,
       repos: [
         { name: 'fake-ui', committed: true, commitHash: 'uihash1', pushed: true },
@@ -155,13 +165,14 @@ describe('commit_completed per-repo by-name mutation (FR-7, AD-4)', () => {
       ],
     });
     const ti = taskIteration(next, 1, 1);
+    expect(ti.nodes.task_executor.status).toBe('completed');
     expect(ti.repos.find(r => r.name === 'fake-api')!.commit_hash).toBe('apihash1');
     expect(ti.repos.find(r => r.name === 'fake-ui')!.commit_hash).toBe('uihash1');
   });
 
-  it('a committed:false skip does not reject the signal (FR-7)', () => {
+  it('a committed:false skip does not reject the signal', () => {
     const state = buildTwoRepoState();
-    expect(() => applyCommitCompleted(state, {
+    expect(() => applyTaskCompleted(state, {
       phase: 1, task: 1,
       repos: [
         { name: 'fake-api', committed: true, commitHash: 'apihash1', pushed: true },
@@ -173,9 +184,9 @@ describe('commit_completed per-repo by-name mutation (FR-7, AD-4)', () => {
   it('rejects a malformed row: commitHash present but committed:false (relay dropped the flag)', () => {
     const state = buildTwoRepoState();
     // A real commit whose `committed` flag was dropped in relay must fail loud,
-    // not silently skip (the MR-5-TEST footgun). The CLI guarantees
+    // not silently skip. A well-formed commit report guarantees
     // committed:false ⇒ commitHash:null, so this only fires on a mis-relayed payload.
-    expect(() => applyCommitCompleted(state, {
+    expect(() => applyTaskCompleted(state, {
       phase: 1, task: 1,
       repos: [
         { name: 'fake-api', committed: false, commitHash: 'apihash1', pushed: false },
@@ -188,23 +199,98 @@ describe('commit_completed per-repo by-name mutation (FR-7, AD-4)', () => {
     // committed:true ⇒ commitHash must be present. A null hash here would silently
     // record nothing, collapsing the reviewer's diff scope. Symmetric with the
     // committed:false-with-hash guard — fail loud on the mis-relay.
-    expect(() => applyCommitCompleted(state, {
+    expect(() => applyTaskCompleted(state, {
       phase: 1, task: 1,
       repos: [
         { name: 'fake-api', committed: true, commitHash: null, pushed: true },
       ],
-    })).toThrow(/commit_completed refused.*commit hash/is);
+    })).toThrow(/task_completed refused.*commit hash/is);
+  });
+});
+
+describe('task_completed empty-payload gate (commit fold — R3 inverted precondition)', () => {
+  it('rejects a missing/empty repos[] payload when commit is enabled (auto_commit != never)', () => {
+    const state = buildTwoRepoState(); // auto_commit: 'always'
+    // With commit on, the coder always relays a per-repo array (even committed:false
+    // rows for a "nothing changed" task). An empty/absent payload is a relay bug.
+    expect(() => applyTaskCompleted(state, { phase: 1, task: 1, repos: [] }))
+      .toThrow(/task_completed refused.*repos\[\]/is);
+    expect(() => applyTaskCompleted(state, { phase: 1, task: 1 }))
+      .toThrow(/task_completed refused.*repos\[\]/is);
   });
 
-  it('rejects a missing/empty repos[] payload (would complete recording zero hashes)', () => {
+  it('accepts an empty/absent payload when commit is off (auto_commit=never) and still completes the task', () => {
     const state = buildTwoRepoState();
-    // An empty array — or an absent repos key — must not silently complete the
-    // commit node. The legitimate clean-skip case is a non-empty array of
-    // committed:false rows, not an empty array.
-    expect(() => applyCommitCompleted(state, { phase: 1, task: 1, repos: [] }))
-      .toThrow(/commit_completed refused.*repos\[\]/is);
-    expect(() => applyCommitCompleted(state, { phase: 1, task: 1 }))
-      .toThrow(/commit_completed refused.*repos\[\]/is);
+    state.pipeline.source_control!.auto_commit = 'never';
+    let next!: PipelineState;
+    expect(() => { next = applyTaskCompleted(state, { phase: 1, task: 1 }); }).not.toThrow();
+    const ti = taskIteration(next, 1, 1);
+    expect(ti.nodes.task_executor.status).toBe('completed');
+    // No commit was expected, so no hash is recorded.
+    expect(ti.repos.every(r => r.commit_hash === null)).toBe(true);
+  });
+});
+
+describe('task_completed hash immutability (commit fold — R3 security catch-net)', () => {
+  function seedFinalizedApiHash(): PipelineState {
+    const state = buildTwoRepoState();
+    taskIteration(state, 1, 1).repos.find(r => r.name === 'fake-api')!.commit_hash = '64f9c236';
+    return state;
+  }
+
+  it('rejects a different-hash overwrite of a finalized entry and leaves the hash unchanged', () => {
+    const state = seedFinalizedApiHash();
+    expect(() => applyTaskCompleted(state, {
+      phase: 1, task: 1,
+      repos: [{ name: 'fake-api', committed: true, commitHash: '1436cd63', pushed: true }],
+    })).toThrow(/immutable|overwrite|already recorded|finalized/i);
+    // The durable hash on the original state is untouched by the rejected attempt.
+    expect(taskIteration(state, 1, 1).repos.find(r => r.name === 'fake-api')!.commit_hash).toBe('64f9c236');
+  });
+
+  it('allows an idempotent retry writing the same hash', () => {
+    const state = seedFinalizedApiHash();
+    const next = applyTaskCompleted(state, {
+      phase: 1, task: 1,
+      repos: [{ name: 'fake-api', committed: true, commitHash: '64f9c236', pushed: true }],
+    });
+    expect(taskIteration(next, 1, 1).repos.find(r => r.name === 'fake-api')!.commit_hash).toBe('64f9c236');
+  });
+
+  it('allows the first write when the existing hash is null', () => {
+    const next = applyTaskCompleted(buildTwoRepoState(), {
+      phase: 1, task: 1,
+      repos: [{ name: 'fake-api', committed: true, commitHash: 'abc1234', pushed: true }],
+    });
+    expect(taskIteration(next, 1, 1).repos.find(r => r.name === 'fake-api')!.commit_hash).toBe('abc1234');
+  });
+});
+
+describe('task_completed on-branch record-time guard (commit fold — R3 security)', () => {
+  it('records when the reported branch matches the intended task branch', () => {
+    const next = applyTaskCompleted(buildTwoRepoState(), {
+      phase: 1, task: 1, branch: 'radorch/test',
+      repos: [{ name: 'fake-api', committed: true, commitHash: 'onbr123', pushed: true }],
+    });
+    expect(taskIteration(next, 1, 1).repos.find(r => r.name === 'fake-api')!.commit_hash).toBe('onbr123');
+  });
+
+  it('refuses a commit reported off the intended branch and records nothing', () => {
+    const state = buildTwoRepoState();
+    expect(() => applyTaskCompleted(state, {
+      phase: 1, task: 1, branch: 'radorch/wrong',
+      repos: [{ name: 'fake-api', committed: true, commitHash: 'offbr99', pushed: true }],
+    })).toThrow(/task_completed refused.*off the intended branch/is);
+    // Nothing recorded on the original state — the rejection is atomic.
+    expect(taskIteration(state, 1, 1).repos.find(r => r.name === 'fake-api')!.commit_hash).toBeNull();
+  });
+
+  it('is a no-op when the signal carries no branch (the coder-step check is the primary gate)', () => {
+    const next = applyTaskCompleted(buildTwoRepoState(), {
+      phase: 1, task: 1,
+      repos: [{ name: 'fake-api', committed: true, commitHash: 'nobr123', pushed: true }],
+    });
+    expect(taskIteration(next, 1, 1).repos.find(r => r.name === 'fake-api')!.commit_hash).toBe('nobr123');
   });
 });
 
