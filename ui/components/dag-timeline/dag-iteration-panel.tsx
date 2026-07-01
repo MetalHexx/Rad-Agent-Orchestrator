@@ -151,7 +151,7 @@ export function DAGIterationPanel({
     // task spine — aligning them with the phase header and bounding the spine
     // line to task-like content.
     const renderableEntries = Object.entries(iteration.nodes).filter(([childNodeId, childNode]) =>
-      shouldRenderTimelineRow(childNodeId, childNode as CompatibleNodeState, { commitHash: null, prUrl: null })
+      shouldRenderTimelineRow(childNodeId, childNode as CompatibleNodeState)
     );
     const loopIndex = renderableEntries.findIndex(([, n]) => isLoopNode(n));
     const preLoopEntries  = loopIndex === -1 ? renderableEntries : renderableEntries.slice(0, loopIndex);

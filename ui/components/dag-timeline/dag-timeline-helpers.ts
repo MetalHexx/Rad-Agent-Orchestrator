@@ -3,11 +3,6 @@ import { STATUS_MAP } from './node-status-map';
 
 export type CompatibleNodeState = StepNodeState | GateNodeState | ConditionalNodeState | ParallelNodeState;
 
-export interface RowVisibilityContext {
-  prUrl: string | null;
-  commitHash: string | null;
-}
-
 /**
  * Hide rows that add no signal beyond what the project header already
  * surfaces (auto_commit / auto_pr / gate_mode badges). Hiding a gate
@@ -17,7 +12,6 @@ export interface RowVisibilityContext {
 export function shouldRenderTimelineRow(
   nodeId: string,
   node: CompatibleNodeState,
-  ctx: RowVisibilityContext,
 ): boolean {
   if (nodeId === 'pr_gate') return false;
 
