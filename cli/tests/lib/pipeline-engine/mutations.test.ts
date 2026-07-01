@@ -229,6 +229,27 @@ describe('task_completed empty-payload gate (commit fold — R3 inverted precond
     // No commit was expected, so no hash is recorded.
     expect(ti.repos.every(r => r.commit_hash === null)).toBe(true);
   });
+
+  it('rejects a non-empty repos[] payload when commit is off (auto_commit=never) — mirror of the empty-on gate', () => {
+    const state = buildTwoRepoState();
+    state.pipeline.source_control!.auto_commit = 'never';
+    // Commit is off, so the task must carry no payload. A non-empty repos[] here is a
+    // relay bug — recording it would silently attach a commit the policy said to skip.
+    expect(() => applyTaskCompleted(state, {
+      phase: 1, task: 1,
+      repos: [{ name: 'fake-api', committed: true, commitHash: 'abc1234', pushed: false }],
+    })).toThrow(/task_completed refused.*repos\[\]/is);
+  });
+
+  it('rejects a non-empty repos[] payload when source_control is unset (commit off)', () => {
+    const state = buildTwoRepoState();
+    // No source-control seal at all ⇒ commit is off. Same contract: no payload allowed.
+    state.pipeline.source_control = null;
+    expect(() => applyTaskCompleted(state, {
+      phase: 1, task: 1,
+      repos: [{ name: 'fake-api', committed: true, commitHash: 'abc1234', pushed: false }],
+    })).toThrow(/task_completed refused/i);
+  });
 });
 
 describe('task_completed hash immutability (commit fold — R3 security catch-net)', () => {

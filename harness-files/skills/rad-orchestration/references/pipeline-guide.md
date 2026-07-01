@@ -54,9 +54,9 @@ node "${PLUGIN_ROOT}/skills/rad-orchestration/scripts/radorch.mjs" pipeline sign
   [--doc-path <path>] \
   [--branch <name>] [--base-branch <name>] [--worktree-path <path>] \
   [--auto-commit <always|never>] [--auto-pr <always|never>] \
-  [--remote-url <url>] [--compare-url <url>] \
+  [--remote-url <url>] \
   [--gate-type <type>] [--reason <text>] [--gate-mode <mode>] \
-  [--commit-hash <hash>] [--pushed <true|false>] [--pr-url <url>] \
+  [--pr-url <url>] \
   [--repos '<json>'] \
   [--parse-error <json>]
 ```

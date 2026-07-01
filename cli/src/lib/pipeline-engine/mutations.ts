@@ -635,6 +635,21 @@ mutationRegistry.set(EVENTS.TASK_COMPLETED, (state, context, _config, _template)
       );
     }
 
+    // Mirror of the guard above (R3 / contract). When commit is off — source_control
+    // is unset, or auto_commit=never — the coder is directed to leave its work
+    // uncommitted, so the task carries NO per-repo payload (see event.task_completed
+    // and action.execute_task). A non-empty repos[] in no-commit mode is a relay bug:
+    // recording hashes that should not exist would silently attach a commit to a task
+    // the policy said not to commit. Refuse it loudly instead of masking the mis-relay.
+    if (!commitExpected && signalRepos.length > 0) {
+      throw new Error(
+        `task_completed refused: commit is disabled (source_control is unset or ` +
+        `auto_commit=never) but a per-repo result payload was relayed (repos[] is non-empty). ` +
+        `In no-commit mode the signal must carry no --repos payload; refusing to record commit ` +
+        `hashes for a task that was not directed to commit.`
+      );
+    }
+
     if (signalRepos.length > 0) {
       // Record-time on-branch catch-net (R3 / Security) — refuse a commit
       // reported off its intended task branch before it is recorded.
