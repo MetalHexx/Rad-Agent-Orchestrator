@@ -149,10 +149,10 @@ function applyTaskCompleted(
   return next;
 }
 
-// ── task_completed per-repo hash recording (commit fold, R3) ──────────────────
-// The commit hash recording folded out of the retired commit_completed mutation
-// into task_completed: the same event that completes task_executor now records
-// the coder's per-repo commit result relayed on `context.repos`.
+// ── task_completed per-repo hash recording ───────────────────────────────────
+// task_completed completes task_executor and records the coder's per-repo commit
+// result (relayed on `context.repos`): each committed repo's hash is written to
+// the matching iteration entry by name, refused when off-branch or already final.
 
 describe('task_completed per-repo hash recording (commit fold)', () => {
   it('completes task_executor and writes each hash to the matching repo by name', () => {

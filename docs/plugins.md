@@ -12,7 +12,7 @@ Restart your session. After restart, the slash-command surface is populated and 
 ## What ships in the plugin
 
 - Every `rad-*` skill (brainstorm, plan, execute, review, source-control, UI lifecycle, dashboard control)
-- Every orchestration agent (orchestrator, planner, coder, coder-junior, coder-senior, reviewer, source-control)
+- Every orchestration agent (orchestrator, coder, coder-junior, coder-senior, reviewer)
 - The dashboard UI (Next.js standalone server)
 - The pipeline runtime (single bundled `pipeline.js`)
 
