@@ -16,3 +16,5 @@ The envelope carries `data.context.should_commit`. When `true`, instruct the cod
 Do not surface Requirements, Master Plan, or any other upstream doc to the coder. The handoff is self-contained.
 
 The coder's output is source code, tests, and an optional `## Execution Notes` appendix appended to the handoff body. When it committed, it also reports a per-repo result `[{ name, committed, commitHash, pushed }]` and the branch it committed on — relay both onto the `task_completed` signal so the hash is recorded (see the `task_completed` event). No doc path needs to be extracted.
+
+If the coder returns a `## Blocked` report instead of a completion, do not signal `task_completed`. Triage it per the pipeline guide's Blocked-report handling — resolve from the planning corpus and re-spawn with the clarification inlined, pause to ask the user, or halt when truly stuck.

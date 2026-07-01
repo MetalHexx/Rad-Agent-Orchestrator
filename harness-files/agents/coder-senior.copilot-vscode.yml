@@ -9,6 +9,5 @@ tools:
   - execute
   - todo
 skills:
-  - rad-orchestration
   - rad-execute-coding-task
-  - rad-run-tests
+  - rad-source-control
