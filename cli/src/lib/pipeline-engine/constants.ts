@@ -60,7 +60,6 @@ export const NEXT_ACTIONS = Object.freeze({
   SPAWN_FINAL_REVIEWER: 'spawn_final_reviewer',
 
   // Source control
-  INVOKE_SOURCE_CONTROL_COMMIT: 'invoke_source_control_commit',
   INVOKE_SOURCE_CONTROL_PR: 'invoke_source_control_pr',
 
   // Terminal states
@@ -97,7 +96,6 @@ export const EVENTS = Object.freeze({
   FINAL_REVIEW_COMPLETED: 'final_review_completed',
 
   // ── Source control events ─────────────────────────────────────────────
-  COMMIT_COMPLETED: 'commit_completed',
   PR_REQUESTED: 'pr_requested',
   PR_CREATED: 'pr_created',
 

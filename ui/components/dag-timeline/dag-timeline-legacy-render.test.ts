@@ -72,8 +72,6 @@ function makeLegacyPhaseIteration(index: number): IterationEntry {
             nodes: {
               task_handoff: stepState('completed', 'tasks/MYPROJ-TASK-P01-T01-AUTH.md'),
               task_executor: stepState('completed'),
-              commit_gate: { kind: 'conditional', status: 'completed', branch_taken: 'true' },
-              commit: stepState('completed'),
               code_review: stepState('completed', 'reports/MYPROJ-CODE-REVIEW-P01-T01-AUTH.md'),
               task_gate: { kind: 'gate', status: 'completed', gate_active: false },
             },
@@ -114,8 +112,6 @@ function makePostIter8PhaseIteration(index: number): IterationEntry {
             repos: [],
             nodes: {
               task_executor: stepState('in_progress'),
-              commit_gate: { kind: 'conditional', status: 'not_started', branch_taken: null },
-              commit: stepState('not_started'),
               code_review: stepState('not_started'),
               task_gate: { kind: 'gate', status: 'not_started', gate_active: false },
             },
@@ -343,8 +339,6 @@ function makePhaseCorrectiveIteration(index: number): IterationEntry {
             nodes: {
               task_handoff: stepState('completed', 'tasks/MYPROJ-TASK-P01-T01-AUTH.md'),
               task_executor: stepState('completed'),
-              commit_gate: { kind: 'conditional', status: 'completed', branch_taken: 'true' },
-              commit: stepState('completed'),
               code_review: stepState('completed', 'reports/MYPROJ-CODE-REVIEW-P01-T01-AUTH.md'),
               task_gate: { kind: 'gate', status: 'completed', gate_active: false },
             },

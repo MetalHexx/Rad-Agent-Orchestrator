@@ -320,6 +320,16 @@ export function enrichActionContext(input: EnrichmentInput): Record<string, unkn
       const taskLoopForComplexity = phaseIter?.nodes['task_loop'] as ForEachTaskNodeState | undefined;
       const complexity = taskLoopForComplexity?.iterations[taskNumber - 1]?.complexity ?? 'standard';
 
+      // Whether the coder should commit its work, derived from the sealed
+      // source-control policy: no source control (null) or `never` turns commit
+      // off; any other value ('always') turns it on. Rides the envelope as a
+      // sibling to `complexity` so the orchestrator can shape the coder's spawn
+      // prompt. Push is inferred at runtime from repo remote presence, so there
+      // is no should_push counterpart. Kept identical to the `task_completed`
+      // mutation's `commitExpected` so the two never disagree on the null case.
+      const scForCommit = state.pipeline.source_control;
+      const should_commit = scForCommit != null && scForCommit.auto_commit !== 'never';
+
       // Iter 11 — phase-scope-first. When a phase-scope corrective is active
       // (last entry on phaseIter.corrective_tasks with status `not_started` or
       // `in_progress`), route handoff_doc to that corrective's pre-completed
@@ -336,7 +346,7 @@ export function enrichActionContext(input: EnrichmentInput): Record<string, unkn
         if (typeof phaseCorrectiveDoc === 'string' && phaseCorrectiveDoc.trim().length > 0) {
           // Return the stored path unchanged (not the trimmed copy) so downstream
           // consumers see the value exactly as the mutation wrote it.
-          return { ...base, handoff_doc: phaseCorrectiveDoc, repos, complexity };
+          return { ...base, handoff_doc: phaseCorrectiveDoc, repos, complexity, should_commit };
         }
       }
 
@@ -360,12 +370,12 @@ export function enrichActionContext(input: EnrichmentInput): Record<string, unkn
         if (typeof correctiveDoc === 'string' && correctiveDoc.trim().length > 0) {
           // Return the stored path unchanged (not the trimmed copy) so downstream
           // consumers see the value exactly as the mutation wrote it.
-          return { ...base, handoff_doc: correctiveDoc, repos, complexity };
+          return { ...base, handoff_doc: correctiveDoc, repos, complexity, should_commit };
         }
       }
 
       const handoff_doc = taskIter?.doc_path ?? '';
-      return { ...base, handoff_doc, repos, complexity };
+      return { ...base, handoff_doc, repos, complexity, should_commit };
     }
 
     if (action === 'spawn_code_reviewer') {
@@ -411,44 +421,6 @@ export function enrichActionContext(input: EnrichmentInput): Record<string, unkn
   }
 
   // Source control enrichment
-  if (action === 'invoke_source_control_commit') {
-    const phaseNumber = resolveActivePhaseIndex(state);
-    const taskNumber = resolveActiveTaskIndex(state, phaseNumber);
-    const phase_id = formatPhaseId(phaseNumber);
-
-    let task_number: number | null = taskNumber;
-    let task_id = formatTaskId(phaseNumber, taskNumber);
-
-    const phaseLoopForSentinel = state.graph.nodes['phase_loop'] as ForEachPhaseNodeState | undefined;
-    const phaseIterForSentinel = phaseLoopForSentinel?.iterations[phaseNumber - 1];
-    const phaseCorrectives = phaseIterForSentinel?.corrective_tasks ?? [];
-    const phaseCorrectiveActive = phaseCorrectives.length > 0 &&
-      (phaseCorrectives[phaseCorrectives.length - 1].status === 'not_started' ||
-       phaseCorrectives[phaseCorrectives.length - 1].status === 'in_progress');
-    if (phaseCorrectiveActive) {
-      task_number = null;
-      task_id = `${phase_id}-PHASE`;
-    }
-
-    // Derive per-repo entries with fresh absolute paths via buildReposArray —
-    // never read a stored path. Merges base_branch from sc repos (required by
-    // the source-control skill's commit context contract).
-    const scReposForCommit = state.pipeline.source_control?.repos ?? [];
-    const repos = buildReposArray(state).map(r => ({
-      ...r,
-      base_branch: scReposForCommit.find(sc => sc.name === r.name)?.base_branch ?? null,
-    }));
-
-    return {
-      ...walkerContext,
-      phase_number: phaseNumber,
-      phase_id,
-      task_number,
-      task_id,
-      repos,
-    };
-  }
-
   if (action === 'invoke_source_control_pr') {
     // Derive per-repo entries with fresh absolute paths via buildReposArray —
     // never read a stored path. Merges base_branch from sc repos (required by

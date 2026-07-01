@@ -226,7 +226,7 @@ test('multi-level chaining: deeply nested corrective task ID construction', () =
 
 // ─── Nested state data safety ─────────────────────────────────────────────────
 
-test('traversing taskLoopIteration nested data completes without error and yields 4 child node keys', () => {
+test('traversing taskLoopIteration nested data completes without error and yields 3 child node keys', () => {
   const entries = Object.entries(taskLoopIteration.nodes);
   const found = entries.find(([, n]) => isLoopNode(n));
   assert.ok(found !== undefined);
@@ -234,7 +234,7 @@ test('traversing taskLoopIteration nested data completes without error and yield
   const innerKeys = Object.keys(forEachTask.iterations[0].nodes);
   assert.deepStrictEqual(
     innerKeys.sort(),
-    ['code_review', 'commit_gate', 'task_executor', 'task_gate'].sort()
+    ['code_review', 'task_executor', 'task_gate'].sort()
   );
 });
 

@@ -3,11 +3,6 @@ import { STATUS_MAP } from './node-status-map';
 
 export type CompatibleNodeState = StepNodeState | GateNodeState | ConditionalNodeState | ParallelNodeState;
 
-export interface RowVisibilityContext {
-  prUrl: string | null;
-  commitHash: string | null;
-}
-
 /**
  * Hide rows that add no signal beyond what the project header already
  * surfaces (auto_commit / auto_pr / gate_mode badges). Hiding a gate
@@ -17,15 +12,13 @@ export interface RowVisibilityContext {
 export function shouldRenderTimelineRow(
   nodeId: string,
   node: CompatibleNodeState,
-  ctx: RowVisibilityContext,
 ): boolean {
-  if (nodeId === 'commit_gate' || nodeId === 'pr_gate') return false;
+  if (nodeId === 'pr_gate') return false;
 
   if (node.kind === 'gate' && (nodeId === 'task_gate' || nodeId === 'phase_gate')) {
     if (node.gate_active === false) return false;
   }
 
-  if (nodeId === 'commit' && (ctx.commitHash == null || ctx.commitHash === '')) return false;
   if (nodeId === 'final_pr') return false; // FR-14: PRs surface only in the Source Control panel
 
   return true;
@@ -426,7 +419,6 @@ export function deriveIterationTaskProgress(
  */
 const ITERATION_SUBSTEP_CONFIG: Record<string, { cssVar: string; label: string }> = {
   task_executor: { cssVar: '--tier-execution', label: 'Coding'     },
-  commit:        { cssVar: '--tier-execution', label: 'Committing' },
   code_review:   { cssVar: '--tier-review',    label: 'Reviewing'  },
   phase_review:  { cssVar: '--tier-review',    label: 'Reviewing'  },
   final_review:  { cssVar: '--tier-review',    label: 'Reviewing'  },

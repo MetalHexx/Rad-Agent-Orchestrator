@@ -16,11 +16,10 @@ These are your available agents. Each has a specific role in the planning and ex
 
 | Agent | Purpose |
 |-------|---------|
-| `@coder` | Executes coding tasks from self-contained task handoffs |
+| `@coder` | Executes coding tasks from self-contained task handoffs — and commits its own work when directed |
 | `@coder-junior` | Executes simpler coding tasks with additional guardrails |
 | `@coder-senior` | Executes complex coding tasks with expanded autonomy |
 | `@reviewer` | Reviews code and phases against planning documents |
-| `@source-control` | Manages GitHub interactions for source control operations and PR creation
 
 > You could use other available agents if needed, particularly for specialized tasks or corrective actions, but these are the ones that the pipeline system is designed around.  Prefer instructing agents to use skills you find in the system if needed.
 

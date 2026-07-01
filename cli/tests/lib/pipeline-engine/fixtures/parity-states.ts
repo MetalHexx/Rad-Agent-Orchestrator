@@ -10,6 +10,7 @@ import type {
   StepNodeState,
   ForEachPhaseNodeState,
   ForEachTaskNodeState,
+  EventContext,
 } from '../../../../src/lib/pipeline-engine/types.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -312,9 +313,10 @@ export function driveToExecutionWithConfig(
   }
 
   // Mirror the production handshake: `source_control_init` must fire before the
-  // walker first evaluates commit_gate / pr_gate (which now read state_ref).
+  // walker first evaluates pr_gate (which now reads state_ref) and before
+  // task_completed reads auto_commit for commit recording.
   // Resolve auto_commit / auto_pr from the caller's config, mapping `ask` → `always`
-  // so integration tests that leave them at the default still fire the gate's true
+  // so integration tests that leave them at the default still fire pr_gate's true
   // branch (matching pre-state-ref semantics where `"ask" !== "never"`).
   // Tests exercising the false branch supply `never` explicitly.
   initSourceControlForTests(io, config);
@@ -329,17 +331,17 @@ export function driveToExecutionWithConfig(
 
 /**
  * Initialize pipeline.source_control for integration tests whose walker will
- * evaluate commit_gate / pr_gate (state_ref: pipeline.source_control.*).
+ * evaluate pr_gate (state_ref: pipeline.source_control.*) and whose
+ * task_completed recording reads auto_commit.
  *
  * Previously fired source_control_init to seed this state; now that the event
  * and its mutation are retired (P04-T03, FR-6), we write directly to state.
  *
  * Normalization mirrors the pre-state-ref behavior of `config_ref`: any value
- * other than the canonical `"never" | "no"` is treated as `"always"` so that
- * commit_gate / pr_gate's `neq "never"` predicate fires. Previously tests that
- * left `auto_commit` at the `"ask"` default relied on `config_ref` reading it
- * literally — `"ask" !== "never"` → commit step fires. The normalization
- * preserves that semantics under state_ref.
+ * other than the canonical `"never" | "no"` is treated as `"always"`, so a
+ * non-never `auto_commit` records per-repo hashes on task_completed and pr_gate's
+ * `neq "never"` predicate fires. This preserves the pre-state-ref semantics where
+ * tests left `auto_commit` at the `"ask"` default (`"ask" !== "never"`).
  */
 export function initSourceControlForTests(io: MockIO, config: OrchestrationConfig): void {
   const toNormalized = (raw: string | undefined): 'always' | 'never' => {
@@ -366,6 +368,24 @@ export function initSourceControlForTests(io: MockIO, config: OrchestrationConfi
   io.writeState(PROJECT_DIR, patched);
 }
 
+// ── Folded task_completed context ─────────────────────────────────────────────
+
+/**
+ * Build the task_completed context for the drive helpers. The coder reports its
+ * per-repo commit result on task_completed when commit is enabled
+ * (auto_commit != never); the mutation records each hash against the task
+ * iteration by name. When commit is off the array is omitted and nothing is
+ * recorded.
+ */
+function taskCompletedCtx(io: MockIO, phase: number, task: number): Partial<EventContext> {
+  const sc = io.currentState?.pipeline.source_control;
+  const ctx: Partial<EventContext> = { phase, task };
+  if (sc && sc.auto_commit !== 'never' && sc.repos.length > 0) {
+    ctx.repos = sc.repos.map((r, i) => ({ name: r.name, committed: true, commitHash: `h${phase}${task}${i}`, pushed: true }));
+  }
+  return ctx;
+}
+
 // ── Drive single task helper ──────────────────────────────────────────────────
 
 /**
@@ -378,8 +398,9 @@ export function driveTaskWith(io: MockIO, phase: number, task: number): Pipeline
   // Per FR-11, `_started` events are no longer accepted. The optimistic write
   // in processEvent (FR-10) transitions step nodes to in_progress without
   // needing an explicit signal, so the drive helper dispatches only the
-  // completion events.
-  processEvent('task_completed', PROJECT_DIR, ctx, io, TEST_PATH_CONTEXT);
+  // completion events. task_completed relays the coder's per-repo commit result
+  // when commit is enabled (see taskCompletedCtx).
+  processEvent('task_completed', PROJECT_DIR, taskCompletedCtx(io, phase, task), io, TEST_PATH_CONTEXT);
   const reviewDoc = codeReviewDoc(phase, task);
   seedDoc(reviewDoc);
   let result = processEvent('code_review_completed', PROJECT_DIR, {
@@ -387,11 +408,6 @@ export function driveTaskWith(io: MockIO, phase: number, task: number): Pipeline
     doc_path: reviewDoc,
     verdict: 'approved',
   }, io, TEST_PATH_CONTEXT);
-
-  // If commit conditional fires, drive commit events at task scope
-  if (result.action === 'invoke_source_control_commit') {
-    result = processEvent('commit_completed', PROJECT_DIR, ctx, io, TEST_PATH_CONTEXT);
-  }
 
   // If task gate fires, approve it to continue (matches drivePhaseReviewApproval pattern)
   if (result.action === 'gate_task') {
@@ -415,7 +431,7 @@ export function drivePhaseReviewApproval(io: MockIO, phase: number): PipelineRes
     phase, doc_path: phaseReviewDoc(phase), verdict: 'approved', exit_criteria_met: true,
   }, io, TEST_PATH_CONTEXT);
 
-  // If phase gate fires, approve it to reach commit conditional
+  // If phase gate fires, approve it
   if (result.action === 'gate_phase') {
     result = processEvent('phase_gate_approved', PROJECT_DIR, { phase }, io, TEST_PATH_CONTEXT);
   }
@@ -427,7 +443,7 @@ export function drivePhaseReviewApproval(io: MockIO, phase: number): PipelineRes
 
 /**
  * Drives the pipeline from scaffold through one phase (two tasks) to the review
- * tier. Handles gate approvals and commit steps based on the provided config.
+ * tier. Handles gate approvals based on the provided config.
  * Returns MockIO positioned at the review tier (ready for final_review tests).
  */
 export function driveToReviewTier(config: OrchestrationConfig): MockIO {
@@ -447,7 +463,7 @@ export function driveToReviewTier(config: OrchestrationConfig): MockIO {
     io.currentState!.pipeline.gate_mode = null;
   }
 
-  // commit_gate / pr_gate now read state_ref; init before the walker evaluates them.
+  // pr_gate now reads state_ref; init before the walker evaluates it.
   initSourceControlForTests(io, config);
 
   // Mirror Iter 5's explosion-script seeding (phase_planning + task_handoff
@@ -460,17 +476,12 @@ export function driveToReviewTier(config: OrchestrationConfig): MockIO {
   // (FR-10) cover the transition.
   for (const t of [1, 2]) {
     const ctx = { phase: 1, task: t };
-    processEvent('task_completed', PROJECT_DIR, ctx, io, TEST_PATH_CONTEXT);
+    processEvent('task_completed', PROJECT_DIR, taskCompletedCtx(io, 1, t), io, TEST_PATH_CONTEXT);
     const crDoc = path.join(PROJECT_DIR, 'tasks', `p1-t${t}-review.md`);
     seedDoc(crDoc);
-    let result = processEvent('code_review_completed', PROJECT_DIR, {
+    const result = processEvent('code_review_completed', PROJECT_DIR, {
       ...ctx, doc_path: crDoc, verdict: 'approved',
     }, io, TEST_PATH_CONTEXT);
-
-    // If commit conditional fires, drive commit events at task scope
-    if (result.action === 'invoke_source_control_commit') {
-      result = processEvent('commit_completed', PROJECT_DIR, ctx, io, TEST_PATH_CONTEXT);
-    }
 
     // If task gate fires (e.g., ask mode), approve it
     if (result.action === 'gate_task') {

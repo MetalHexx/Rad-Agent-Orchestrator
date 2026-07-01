@@ -54,16 +54,16 @@ node "${PLUGIN_ROOT}/skills/rad-orchestration/scripts/radorch.mjs" pipeline sign
   [--doc-path <path>] \
   [--branch <name>] [--base-branch <name>] [--worktree-path <path>] \
   [--auto-commit <always|never>] [--auto-pr <always|never>] \
-  [--remote-url <url>] [--compare-url <url>] \
+  [--remote-url <url>] \
   [--gate-type <type>] [--reason <text>] [--gate-mode <mode>] \
-  [--commit-hash <hash>] [--pushed <true|false>] [--pr-url <url>] \
+  [--pr-url <url>] \
   [--repos '<json>'] \
   [--parse-error <json>]
 ```
 
 Always invoke from the workspace root. The `--config` flag overrides the default config path. The catalog file for each event documents which flags are required for that event in its `signal_payload` block; the `Signal:` line in `data.prompt` mirrors the same shape.
 
-The `commit_completed` and `pr_created` events carry a single array-shaped `--repos '<json>'` flag whose value is the CLI's structured per-repo result (a JSON array of objects, one per repository); the `--phase` and `--task` flags remain scalar integers as before.
+The `task_completed` and `pr_created` events carry a single array-shaped `--repos '<json>'` flag whose value is the per-repo result (a JSON array of objects, one per repository). On `task_completed` the array is relayed only when the task was directed to commit, together with `--branch` (the branch the coder committed on); the engine records each hash and refuses one reported off its intended branch. The `--phase` and `--task` flags remain scalar integers.
 
 ### First Call
 
@@ -163,6 +163,15 @@ For the `execute_task` action, spawn the right-sized coder for the task. The tie
 | `complex` | coder-senior |
 
 Authored plans carry `complexity` as a signal only; the tier is resolved here at spawn time and is never written into the Master Plan or Task Handoff.
+
+### Blocked-report triage (coder escalation)
+
+A coder cannot talk to the user, so when it cannot proceed it returns a `## Blocked` report **instead of** a completion — carrying `Severity` (medium | high), the specific `Blocker`, what it already `Tried`, and what it `Need`s to proceed. When you receive one, do **not** signal `task_completed`. Triage it up the ladder:
+
+1. Read the tasks `## Execution Notes` section to see if there are more details about what the coder tried and why it failed.
+1. **Resolve from the corpus.** You can read the upstream planning docs the coder cannot — Requirements, Master Plan, phase docs. If the answer is there, re-spawn the same coder with the clarification inlined into its spawn prompt. This counts against `max_retries_per_task`.
+2. **Ask the user (in-session pause).** If the corpus doesn't resolve it or the blast radius is large or risky, pause and ask. Scribe the answer into the handoff body so it is durable, then re-spawn. The task stays `in_progress` — resumable, no halt.
+3. **Halt when truly stuck.** If you cannot resolve it, the run is unattended, or the change is too risky to guess → signal `halt` (the emergency terminal stop) and surface a descriptive, operator-facing reason. Prefer the in-session pause whenever the user is reachable; reach for `halt` only as the last rung.
 
 ## Status Reporting
 

@@ -101,12 +101,12 @@ describe('parseTemplateToGraph', () => {
 
   it('child nodes inside conditional branches have parentId set to the conditional node id', () => {
     const graph = parseTemplateToGraph(EXTRA_HIGH_YAML);
-    const commitNode = graph.nodes.find(n => n.id === 'commit');
-    assert.ok(commitNode, 'commit node not found');
+    const finalPrNode = graph.nodes.find(n => n.id === 'final_pr');
+    assert.ok(finalPrNode, 'final_pr node not found');
     assert.strictEqual(
-      commitNode.parentId,
-      'commit_gate',
-      'commit should have parentId: commit_gate'
+      finalPrNode.parentId,
+      'pr_gate',
+      'final_pr should have parentId: pr_gate'
     );
   });
 
@@ -121,10 +121,10 @@ describe('parseTemplateToGraph', () => {
 
   it('conditional branch edges have label: "true" for true-branch children', () => {
     const graph = parseTemplateToGraph(EXTRA_HIGH_YAML);
-    const commitTrueEdge = graph.edges.find(
-      e => e.source === 'commit_gate' && e.target === 'commit' && e.label === 'true'
+    const prTrueEdge = graph.edges.find(
+      e => e.source === 'pr_gate' && e.target === 'final_pr' && e.label === 'true'
     );
-    assert.ok(commitTrueEdge, 'commit_gate → commit (true) edge not found');
+    assert.ok(prTrueEdge, 'pr_gate → final_pr (true) edge not found');
   });
 
   it('all edges have type: smoothstep, markerEnd: { type: arrowclosed }, and animated: false', () => {
@@ -287,10 +287,10 @@ describe('node kind coverage', () => {
     assert.ok('approved_event' in gate.data.meta, 'meta.approved_event missing');
   });
 
-  it('conditional nodes: commit_gate has kind=conditional, meta.condition is parseable JSON with state_ref/operator/value', () => {
+  it('conditional nodes: pr_gate has kind=conditional, meta.condition is parseable JSON with state_ref/operator/value', () => {
     const graph = parseTemplateToGraph(EXTRA_HIGH_YAML);
-    const cond = graph.nodes.find(n => n.id === 'commit_gate');
-    assert.ok(cond, 'commit_gate node not found');
+    const cond = graph.nodes.find(n => n.id === 'pr_gate');
+    assert.ok(cond, 'pr_gate node not found');
     assert.strictEqual(cond.data.kind, 'conditional');
     assert.ok('condition' in cond.data.meta, 'meta.condition missing');
     const condValue = JSON.parse(cond.data.meta.condition);
@@ -330,27 +330,13 @@ describe('recursive nesting', () => {
     assert.strictEqual(taskLoop.parentId, 'phase_loop');
   });
 
-  it('nodes inside task_loop body (task_executor, code_review, commit_gate, task_gate) have parentId: task_loop', () => {
+  it('nodes inside task_loop body (task_executor, code_review, task_gate) have parentId: task_loop', () => {
     const graph = parseTemplateToGraph(EXTRA_HIGH_YAML);
-    for (const id of ['task_executor', 'code_review', 'commit_gate', 'task_gate']) {
+    for (const id of ['task_executor', 'code_review', 'task_gate']) {
       const node = graph.nodes.find(n => n.id === id);
       assert.ok(node, `${id} not found`);
       assert.strictEqual(node.parentId, 'task_loop', `${id} should have parentId: task_loop`);
     }
-  });
-
-  it('commit_gate (conditional inside task_loop) has parentId: task_loop', () => {
-    const graph = parseTemplateToGraph(EXTRA_HIGH_YAML);
-    const commitGate = graph.nodes.find(n => n.id === 'commit_gate');
-    assert.ok(commitGate, 'commit_gate not found');
-    assert.strictEqual(commitGate.parentId, 'task_loop');
-  });
-
-  it('commit (step in conditional true branch) has parentId: commit_gate', () => {
-    const graph = parseTemplateToGraph(EXTRA_HIGH_YAML);
-    const commit = graph.nodes.find(n => n.id === 'commit');
-    assert.ok(commit, 'commit node not found');
-    assert.strictEqual(commit.parentId, 'commit_gate');
   });
 
   it('round-trip preserves nested body arrays and branches structure', () => {
@@ -364,18 +350,22 @@ describe('recursive nesting', () => {
     assert.ok(phaseLoopReparsed, 'phase_loop not found in re-parsed YAML');
     assert.ok(Array.isArray(phaseLoopReparsed.body), 'phase_loop.body should be an array');
 
-    // task_loop nested inside phase_loop body
+    // task_loop nested inside phase_loop body, with its own body array
     const taskLoopReparsed = findYamlNode(phaseLoopReparsed.body, 'task_loop');
     assert.ok(taskLoopReparsed, 'task_loop not found in phase_loop.body');
     assert.ok(Array.isArray(taskLoopReparsed.body), 'task_loop.body should be an array');
-
-    // commit_gate in task_loop body, with branches
-    const commitGateReparsed = findYamlNode(taskLoopReparsed.body, 'commit_gate');
-    assert.ok(commitGateReparsed, 'commit_gate not found in task_loop.body');
-    assert.ok(commitGateReparsed.branches, 'commit_gate should have branches');
     assert.ok(
-      Array.isArray(commitGateReparsed.branches['true']),
-      'commit_gate.branches.true should be an array'
+      findYamlNode(taskLoopReparsed.body, 'code_review'),
+      'code_review not found in task_loop.body'
+    );
+
+    // pr_gate (conditional) round-trips with its branches structure intact
+    const prGateReparsed = findYamlNode(reparsed.nodes, 'pr_gate');
+    assert.ok(prGateReparsed, 'pr_gate not found in re-parsed YAML');
+    assert.ok(prGateReparsed.branches, 'pr_gate should have branches');
+    assert.ok(
+      Array.isArray(prGateReparsed.branches['true']),
+      'pr_gate.branches.true should be an array'
     );
   });
 });
@@ -392,10 +382,8 @@ describe('depends_on ↔ edges round-trip', () => {
   });
 
   it('task_gate depends on code_review → one unlabeled edge exists', () => {
-    // Prior to iter-3, task_gate.depends_on was ['code_review', 'commit_gate'];
-    // the iter-3 template refactor narrowed it to ['code_review']. This test
-    // now verifies the live single-dependency round-trip instead of the stale
-    // commit_gate → task_gate edge that no longer exists in extra-high.yml.
+    // task_gate.depends_on is ['code_review'], so the round-trip yields a single
+    // unlabeled code_review → task_gate edge.
     const graph = parseTemplateToGraph(EXTRA_HIGH_YAML);
     const edge = graph.edges.find(
       e => e.source === 'code_review' && e.target === 'task_gate' && e.label === undefined
@@ -417,8 +405,7 @@ describe('depends_on ↔ edges round-trip', () => {
     assert.ok(gateModeSelection, 'gate_mode_selection not found in re-parsed YAML');
     assert.deepStrictEqual(gateModeSelection.depends_on, ['plan_approval_gate']);
 
-    // task_gate.depends_on should be ['code_review'] (iter-3 narrowed this from
-    // the prior ['code_review', 'commit_gate']).
+    // task_gate.depends_on should be ['code_review'].
     const taskGate = findYamlNode(reparsed.nodes, 'task_gate');
     assert.ok(taskGate, 'task_gate not found in re-parsed YAML');
     assert.deepStrictEqual(taskGate.depends_on, ['code_review']);
@@ -465,10 +452,10 @@ describe('meta field round-trip', () => {
 
   it('conditional node condition (nested object) survives round-trip with state_ref, operator, value', () => {
     const graph = parseTemplateToGraph(EXTRA_HIGH_YAML);
-    const commitGate = graph.nodes.find(n => n.id === 'commit_gate');
-    assert.ok(commitGate, 'commit_gate not found');
-    const condition = JSON.parse(commitGate.data.meta.condition);
-    assert.strictEqual(condition.state_ref, 'pipeline.source_control.auto_commit');
+    const prGate = graph.nodes.find(n => n.id === 'pr_gate');
+    assert.ok(prGate, 'pr_gate not found');
+    const condition = JSON.parse(prGate.data.meta.condition);
+    assert.strictEqual(condition.state_ref, 'pipeline.source_control.auto_pr');
     assert.strictEqual(condition.operator, 'neq');
     assert.strictEqual(condition.value, 'never');
 
@@ -476,9 +463,9 @@ describe('meta field round-trip', () => {
     const fullMeta = (parseYamlRaw(EXTRA_HIGH_YAML) as any).template;
     const serialized = serializeGraphToYaml(graph, fullMeta);
     const reparsed = parseYamlRaw(serialized) as any;
-    const commitGateReparsed = findYamlNode(reparsed.nodes, 'commit_gate');
-    assert.ok(commitGateReparsed, 'commit_gate not found in re-parsed YAML');
-    assert.deepStrictEqual(commitGateReparsed.condition, condition);
+    const prGateReparsed = findYamlNode(reparsed.nodes, 'pr_gate');
+    assert.ok(prGateReparsed, 'pr_gate not found in re-parsed YAML');
+    assert.deepStrictEqual(prGateReparsed.condition, condition);
   });
 
   it('loop node source_doc_ref (string value) survives round-trip', () => {

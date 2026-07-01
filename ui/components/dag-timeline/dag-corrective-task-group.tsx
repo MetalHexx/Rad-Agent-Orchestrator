@@ -89,7 +89,6 @@ function CorrectiveRow({
   } else {
     const ctStageId =
       derivedBadge.label === 'Reviewing'  ? 'code_review'  :
-      derivedBadge.label === 'Committing' ? 'commit'       :
       derivedBadge.label === 'Coding'     ? 'task_executor': '';
     ctCssVar = resolveStageBadge(ctStageId, derivedBadge.status).cssVar;
   }

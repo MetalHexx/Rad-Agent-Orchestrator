@@ -39,10 +39,6 @@
       "destinationPath": "${RAD_HOME}/action-events/action.gate_task.md"
     },
     {
-      "bundlePath": "action-events/action.invoke_source_control_commit.md",
-      "destinationPath": "${RAD_HOME}/action-events/action.invoke_source_control_commit.md"
-    },
-    {
       "bundlePath": "action-events/action.invoke_source_control_pr.md",
       "destinationPath": "${RAD_HOME}/action-events/action.invoke_source_control_pr.md"
     },
@@ -73,10 +69,6 @@
     {
       "bundlePath": "action-events/event.code_review_completed.md",
       "destinationPath": "${RAD_HOME}/action-events/event.code_review_completed.md"
-    },
-    {
-      "bundlePath": "action-events/event.commit_completed.md",
-      "destinationPath": "${RAD_HOME}/action-events/event.commit_completed.md"
     },
     {
       "bundlePath": "action-events/event.explosion_completed.md",
@@ -169,10 +161,6 @@
     {
       "bundlePath": "agents/reviewer.md",
       "destinationPath": "${HARNESS_ROOT}/agents/reviewer.md"
-    },
-    {
-      "bundlePath": "agents/source-control.md",
-      "destinationPath": "${HARNESS_ROOT}/agents/source-control.md"
     },
     {
       "bundlePath": "hooks/session-preamble.mjs",
@@ -329,10 +317,6 @@
     {
       "bundlePath": "skills/rad-repo/references/interacting-with-users.md",
       "destinationPath": "${HARNESS_ROOT}/skills/rad-repo/references/interacting-with-users.md"
-    },
-    {
-      "bundlePath": "skills/rad-run-tests/SKILL.md",
-      "destinationPath": "${HARNESS_ROOT}/skills/rad-run-tests/SKILL.md"
     },
     {
       "bundlePath": "skills/rad-source-control/SKILL.md",

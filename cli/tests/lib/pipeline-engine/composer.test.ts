@@ -285,13 +285,13 @@ describe('composeOrphanEventPrompt — Step-N numbering and flag', () => {
 describe('deriveSignalLine — array-shaped flags (AD-3)', () => {
   it('renders an array flag as a single --repos <json> token', () => {
     const fm = {
-      kind: 'event', name: 'commit_completed', title: 'x', description: 'y',
+      kind: 'event', name: 'task_completed', title: 'x', description: 'y',
       signal_payload: {
         repos: { required: true, array: true, description: 'per-repo commit results' },
       },
     } as unknown as EventFrontmatter;
-    expect(deriveSignalLine('commit_completed', fm))
-      .toBe("Signal: commit_completed --repos '<json>'");
+    expect(deriveSignalLine('task_completed', fm))
+      .toBe("Signal: task_completed --repos '<json>'");
   });
 
   it('keeps scalar flags rendered as --flag <value>', () => {

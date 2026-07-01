@@ -86,24 +86,6 @@ nodes:
             events: { completed: task_completed }
             depends_on: []
 
-          - id: commit_gate
-            kind: conditional
-            label: "Auto-Commit"
-            condition:
-              state_ref: pipeline.source_control.auto_commit
-              operator: neq
-              value: never
-            branches:
-              true:
-                - id: commit
-                  kind: step
-                  label: "Source Control Commit"
-                  action: invoke_source_control_commit
-                  events: { completed: commit_completed }
-                  depends_on: []
-              false: []
-            depends_on: [task_executor]
-
       - id: phase_review
         kind: step
         label: "Phase Review"

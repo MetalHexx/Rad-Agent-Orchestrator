@@ -18,7 +18,7 @@ beforeEach(() => { cleanups.push(useRealCatalog()); });
 describe('driveToNode helper', () => {
   it('exposes a chain map keyed by every step id in extra-high.yml that the suite asserts on', () => {
     for (const target of ['master_plan', 'explode_master_plan', 'final_review',
-                          'task_executor', 'commit', 'code_review', 'phase_review', 'final_pr']) {
+                          'task_executor', 'code_review', 'phase_review', 'final_pr']) {
       expect(EVENT_CHAINS).toHaveProperty(target);
       expect(Array.isArray(EVENT_CHAINS[target as keyof typeof EVENT_CHAINS])).toBe(true);
     }

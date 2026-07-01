@@ -260,14 +260,14 @@ export function DAGTimeline({ nodes, currentNodePath, onDocClick, expandedLoopId
         <Fragment key={group.label}>
           <DAGSectionGroup label={group.label}>
             {group.entries
-              .filter(([nodeId, node]) => shouldRenderTimelineRow(nodeId, node as CompatibleNodeState, { commitHash: null, prUrl: prUrl ?? null }))
+              .filter(([nodeId, node]) => shouldRenderTimelineRow(nodeId, node as CompatibleNodeState))
               .map(renderNodeEntry)}
           </DAGSectionGroup>
           {group.label === 'Planning' && afterPlanningSlot}
         </Fragment>
       ))}
       {unmatchedEntries
-        .filter(([nodeId, node]) => shouldRenderTimelineRow(nodeId, node as CompatibleNodeState, { commitHash: null, prUrl: prUrl ?? null }))
+        .filter(([nodeId, node]) => shouldRenderTimelineRow(nodeId, node as CompatibleNodeState))
         .map(renderNodeEntry)}
     </div>
   );

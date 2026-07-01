@@ -186,7 +186,7 @@ export interface CorrectiveTaskEntry {
   status: NodeStatus;
   nodes: Record<string, NodeState>;
   doc_path?: string | null;   // corrective task handoff doc (authored pre-injection)
-  repos: RepoCommitEntry[];   // per-repo commit tracking, set by COMMIT_COMPLETED mutation
+  repos: RepoCommitEntry[];   // per-repo commit tracking, set by the task_completed mutation
 }
 
 export interface IterationEntry {
@@ -195,7 +195,7 @@ export interface IterationEntry {
   nodes: Record<string, NodeState>;
   corrective_tasks: CorrectiveTaskEntry[];
   doc_path?: string | null;   // iteration doc (phase plan or task handoff)
-  repos: RepoCommitEntry[];   // per-repo commit tracking, set by COMMIT_COMPLETED mutation
+  repos: RepoCommitEntry[];   // per-repo commit tracking, set by the task_completed mutation
   complexity?: 'simple' | 'standard' | 'complex'; // authoring complexity signal on task iterations
 }
 

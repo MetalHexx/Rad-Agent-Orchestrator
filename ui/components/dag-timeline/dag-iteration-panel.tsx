@@ -10,7 +10,6 @@ import { ProgressBar } from '@/components/execution/progress-bar';
 import { NodeStatusBadge } from './node-status-badge';
 import { isLoopNode, parsePhaseNameFromDocPath, parseTaskNameFromDocPath, buildIterationItemValue, deriveIterationTaskProgress, deriveIterationBadgeLabel, shouldRenderTimelineRow, resolveStageBadge } from './dag-timeline-helpers';
 import type { CompatibleNodeState } from './dag-timeline-helpers';
-import { firstCommitHash } from './source-control-helpers';
 import { CommitChips } from './commit-chips';
 import type { IterationEntry } from '@/types/state';
 
@@ -151,11 +150,8 @@ export function DAGIterationPanel({
     // step nodes (e.g. phase_review) render at phase-level depth OUTSIDE the
     // task spine — aligning them with the phase header and bounding the spine
     // line to task-like content.
-    // Multi-repo: gate the `commit` row on the FIRST non-empty hash across all
-    // repos (not just repos[0]) — otherwise a later repo's commit is hidden.
-    const anyCommitHash = firstCommitHash(iteration.repos);
     const renderableEntries = Object.entries(iteration.nodes).filter(([childNodeId, childNode]) =>
-      shouldRenderTimelineRow(childNodeId, childNode as CompatibleNodeState, { commitHash: anyCommitHash, prUrl: null })
+      shouldRenderTimelineRow(childNodeId, childNode as CompatibleNodeState)
     );
     const loopIndex = renderableEntries.findIndex(([, n]) => isLoopNode(n));
     const preLoopEntries  = loopIndex === -1 ? renderableEntries : renderableEntries.slice(0, loopIndex);
@@ -336,7 +332,6 @@ export function DAGIterationPanel({
   // Task iteration cssVar mirrors its label vocabulary:
   //   Coding     → --tier-execution (FR-2 / DD-1)
   //   Reviewing  → --tier-review
-  //   Committing → --tier-execution
   //   Correcting → --status-failed (FR-4 / DD-3 / NFR-2)
   //   Failed     → --status-failed (FR-6 / DD-4 / NFR-2)
   //   non-in_progress / non-failed → STATUS_MAP defaults via resolveStageBadge
@@ -348,7 +343,6 @@ export function DAGIterationPanel({
   } else {
     const taskStageId =
       derivedBadge.label === 'Reviewing'  ? 'code_review'  :
-      derivedBadge.label === 'Committing' ? 'commit'       :
       derivedBadge.label === 'Coding'     ? 'task_executor': '';
     taskCssVar = resolveStageBadge(taskStageId, derivedBadge.status).cssVar;
   }

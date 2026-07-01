@@ -36,7 +36,6 @@ const tmpl = {
           body: [
             { id: 'task_gate', kind: 'gate' },
             { id: 'task_executor', kind: 'step' },
-            { id: 'commit', kind: 'step' },
             { id: 'code_review', kind: 'step' },
           ],
         },
@@ -65,7 +64,6 @@ function activeCorrective(index: number, injectedAfter: string, codeReviewStatus
     nodes: {
       task_gate: gate('completed', true),
       task_executor: step('completed'),
-      commit: step('completed'),
       code_review: { kind: 'step', status: codeReviewStatus, doc_path: null, retries: 0, verdict: 'changes_requested' },
     },
   };
@@ -127,7 +125,7 @@ function taskScopeState(): PipelineState {
   const taskIter = {
     index: 0, status: 'in_progress', doc_path: null, repos: [{ name: 'backend', commit_hash: null }],
     corrective_tasks: [activeCorrective(1, 'code_review', 'in_progress')],
-    nodes: { task_gate: gate('completed', true), task_executor: step('completed'), commit: step('completed'), code_review: step('completed') },
+    nodes: { task_gate: gate('completed', true), task_executor: step('completed'), code_review: step('completed') },
   };
   return {
     graph: {
@@ -158,7 +156,7 @@ function firstCorrectiveState(): PipelineState {
   const taskIter = {
     index: 0, status: 'in_progress', doc_path: null, repos: [{ name: 'backend', commit_hash: null }],
     corrective_tasks: [],
-    nodes: { task_gate: gate('completed', true), task_executor: step('completed'), commit: step('completed'), code_review: step('in_progress') },
+    nodes: { task_gate: gate('completed', true), task_executor: step('completed'), code_review: step('in_progress') },
   };
   return {
     graph: {

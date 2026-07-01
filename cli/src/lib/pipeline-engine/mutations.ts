@@ -39,9 +39,9 @@ function assertHashWritable(entry: RepoCommitEntry, incoming: string | null): vo
   const existing = entry.commit_hash;
   if (existing != null && incoming != null && existing !== incoming) {
     throw new Error(
-      `commit_completed refused: would overwrite a finalized commit_hash ` +
-      `('${existing}' → '${incoming}') on an already-recorded node. ` +
-      `A finalized commit hash is immutable; the incoming signal addresses the wrong node or carries a stale context.`
+      `task_completed refused: would overwrite a finalized commit_hash ` +
+      `('${existing}' → '${incoming}') on an already-recorded entry. ` +
+      `A finalized commit hash is immutable; the incoming signal addresses the wrong entry or carries a stale context.`
     );
   }
 }
@@ -53,9 +53,9 @@ function assertHashWritable(entry: RepoCommitEntry, incoming: string | null): vo
  * by name and sets commit_hash when committed=true. A committed=false row with
  * no commitHash is a no-op (clean skip — never a rejection). A committed=false
  * row that nonetheless carries a commitHash is malformed (a real commit whose
- * `committed` flag was dropped in relay) and is rejected loudly — the CLI
- * guarantees committed:false ⇒ commitHash:null, so this only fires on a
- * mis-relayed payload.
+ * `committed` flag was dropped in relay) and is rejected loudly — a well-formed
+ * commit report guarantees committed:false ⇒ commitHash:null, so this only
+ * fires on a mis-relayed payload.
  */
 function applyPerRepoCommitHashes(
   repos: RepoCommitEntry[],
@@ -67,9 +67,9 @@ function applyPerRepoCommitHashes(
     if (!row.committed) {
       if (row.commitHash != null) {
         throw new Error(
-          `commit_completed refused: repo '${row.name}' carries commitHash ` +
+          `task_completed refused: repo '${row.name}' carries commitHash ` +
           `'${row.commitHash}' but committed is false/absent. A committed row must set ` +
-          `committed:true — relay the source-control agent's result array verbatim ` +
+          `committed:true — relay the coder's result array verbatim ` +
           `(every field of each row, including committed).`
         );
       }
@@ -77,14 +77,14 @@ function applyPerRepoCommitHashes(
     }
     // committed:true must carry a real hash. A null/empty hash on a committed row
     // would silently record no hash, collapsing the reviewer's diff scope to
-    // `git diff HEAD`. The commit CLI never emits this (committed ⇒ commitHash), so
-    // it only fires on a mis-relayed payload — reject it loudly, symmetric with the
-    // committed:false-with-hash guard above.
+    // `git diff HEAD`. A well-formed commit report never emits this (committed ⇒
+    // commitHash), so it only fires on a mis-relayed payload — reject it loudly,
+    // symmetric with the committed:false-with-hash guard above.
     if (row.commitHash == null || row.commitHash === '') {
       throw new Error(
-        `commit_completed refused: repo '${row.name}' reports committed:true but carries no ` +
+        `task_completed refused: repo '${row.name}' reports committed:true but carries no ` +
         `commit hash (commitHash is ${row.commitHash === '' ? 'empty' : 'null'}). A committed ` +
-        `repo must report its commit hash — relay the source-control agent's result array verbatim ` +
+        `repo must report its commit hash — relay the coder's result array verbatim ` +
         `(every field of each row, including commitHash).`
       );
     }
@@ -96,6 +96,38 @@ function applyPerRepoCommitHashes(
     assertHashWritable(entry, row.commitHash);
     entry.commit_hash = row.commitHash;
     mutations_applied.push(`set ${label}[name=${row.name}].commit_hash = ${row.commitHash ?? 'null'}`);
+  }
+}
+
+// ── On-branch record-time guard (R3 / Security) ──────────────────────────────
+
+/**
+ * Refuses to record a commit that a committed row reports on a branch other than
+ * that repo's intended task branch (sealed in source_control). This is the
+ * record-time catch-net behind the coder's pre-commit on-branch check: it hardens
+ * the record path against a stale or misrouted signal that would attach a
+ * wrong-branch commit to the iteration. committed:false rows are not checked.
+ * When the signal relays no branch the guard is a no-op — the coder's commit step
+ * is the primary gate; this only fires when a branch is present to compare.
+ */
+function assertReposOnBranch(
+  state: PipelineState,
+  signalRepos: SignalRepoRow[],
+  reportedBranch: string | undefined,
+): void {
+  if (reportedBranch === undefined || reportedBranch === '') return;
+  const scRepos = state.pipeline.source_control?.repos ?? [];
+  for (const row of signalRepos) {
+    if (!row.committed) continue;
+    const intended = scRepos.find(sc => sc.name === row.name)?.branch;
+    if (intended != null && intended !== '' && reportedBranch !== intended) {
+      throw new Error(
+        `task_completed refused: repo '${row.name}' reports a commit on branch ` +
+        `'${reportedBranch}' but its intended task branch is '${intended}'. A commit off ` +
+        `the intended branch is refused at record time — the coder commits on its own task ` +
+        `branch in its own worktree.`
+      );
+    }
   }
 }
 
@@ -578,7 +610,97 @@ mutationRegistry.set(EVENTS.TASK_COMPLETED, (state, context, _config, _template)
     const node = resolveNodeState(cloned, 'task_executor', 'task', phase, task);
     node.status = 'completed';
     mutations_applied.push('set task_executor.status = completed');
-  } catch {
+
+    // ── Commit recording (R3) ─────────────────────────────────────────────
+    // The coder owns its task's commit, so its per-repo hash is recorded here on
+    // task_completed. Recording runs before code_review (which depends on
+    // task_executor), so the reviewer's diff scope stays anchored to the hash.
+    const signalRepos = (context.repos as SignalRepoRow[] | undefined) ?? [];
+    const sc = cloned.pipeline.source_control;
+    const commitExpected = sc != null && sc.auto_commit !== 'never';
+
+    // When commit is on, the coder relays a per-repo result array — even a
+    // "nothing changed" task sends committed:false rows, never an empty array.
+    // An empty/missing payload on the commit path is a relay bug: advancing
+    // would record zero hashes and collapse the reviewer's diff scope to
+    // `git diff HEAD`. When commit is off (auto_commit=never) the task carries
+    // no payload, so recording is skipped entirely — the commit-or-not policy
+    // from source-control state, enforced here at record time.
+    if (commitExpected && signalRepos.length === 0) {
+      throw new Error(
+        `task_completed refused: commit is enabled (auto_commit != never) but no per-repo ` +
+        `result payload was relayed (repos[] is missing or empty). The signal must carry the ` +
+        `coder's commit result array via --repos '<json>'; advancing without it would record ` +
+        `zero commit hashes.`
+      );
+    }
+
+    // Mirror of the guard above (R3 / contract). When commit is off — source_control
+    // is unset, or auto_commit=never — the coder is directed to leave its work
+    // uncommitted, so the task carries NO per-repo payload (see event.task_completed
+    // and action.execute_task). A non-empty repos[] in no-commit mode is a relay bug:
+    // recording hashes that should not exist would silently attach a commit to a task
+    // the policy said not to commit. Refuse it loudly instead of masking the mis-relay.
+    if (!commitExpected && signalRepos.length > 0) {
+      throw new Error(
+        `task_completed refused: commit is disabled (source_control is unset or ` +
+        `auto_commit=never) but a per-repo result payload was relayed (repos[] is non-empty). ` +
+        `In no-commit mode the signal must carry no --repos payload; refusing to record commit ` +
+        `hashes for a task that was not directed to commit.`
+      );
+    }
+
+    if (signalRepos.length > 0) {
+      // Record-time on-branch catch-net (R3 / Security) — refuse a commit
+      // reported off its intended task branch before it is recorded.
+      assertReposOnBranch(cloned, signalRepos, context.branch as string | undefined);
+
+      // Phase-scope-first routing: route the per-repo hashes to the active
+      // phase-scope corrective, else the active task-scope corrective, else the
+      // task iteration, matched by name. Each corrective round owns a fresh entry
+      // (repos:[]), so a retried task records to its own entry and the
+      // immutability guard never has to overwrite a finalized hash.
+      const phaseIteration = resolvePhaseIteration(cloned, phase);
+      const activePhaseCorrective = phaseIteration.corrective_tasks.slice().reverse().find(
+        (ct: CorrectiveTaskEntry) => ct.status === 'in_progress' || ct.status === 'not_started'
+      );
+      if (activePhaseCorrective) {
+        applyPerRepoCommitHashes(
+          activePhaseCorrective.repos,
+          signalRepos,
+          mutations_applied,
+          `phase_corrective_task[${activePhaseCorrective.index}].repos`,
+        );
+      } else {
+        const taskIteration = resolveTaskIteration(cloned, phase, task);
+        const activeCorrective = taskIteration.corrective_tasks.slice().reverse().find(
+          (ct: CorrectiveTaskEntry) => ct.status === 'in_progress' || ct.status === 'not_started'
+        );
+        if (activeCorrective) {
+          applyPerRepoCommitHashes(
+            activeCorrective.repos,
+            signalRepos,
+            mutations_applied,
+            `corrective_task[${activeCorrective.index}].repos`,
+          );
+        } else {
+          applyPerRepoCommitHashes(
+            taskIteration.repos,
+            signalRepos,
+            mutations_applied,
+            `task_iteration[${taskIteration.index}].repos`,
+          );
+        }
+      }
+    }
+  } catch (err) {
+    // Re-throw the loud record-time guards (empty-payload, per-repo hash, and
+    // on-branch — all sharing the `task_completed refused:` prefix) so they
+    // surface as diagnosable rejections instead of being masked by the generic
+    // node-resolution disambiguation below.
+    if (err instanceof Error && /task_completed refused/i.test(err.message)) {
+      throw err;
+    }
     if (context.phase === undefined) {
       const phaseLoopNode = cloned.graph.nodes['phase_loop'] as ForEachPhaseNodeState | undefined;
       const hasInProgressPhase = phaseLoopNode?.iterations?.some(it => it.status === 'in_progress');
@@ -949,137 +1071,6 @@ mutationRegistry.set(EVENTS.FINAL_REVIEW_COMPLETED, (state, context, _config, _t
   return { state: cloned, mutations_applied };
 });
 
-// ── Source control commit mutations ───────────────────────────────────────────
-
-mutationRegistry.set(EVENTS.COMMIT_COMPLETED, (state, context, _config, _template): MutationResult => {
-  const cloned = structuredClone(state);
-  const mutations_applied: string[] = [];
-
-  let phase = context.phase;
-  if (phase === undefined) {
-    try {
-      phase = resolveActivePhaseIndex(cloned);
-    } catch {
-      throw new Error(
-        `Cannot apply mutation for "commit_completed": no active phase could be resolved from state.\n` +
-        `Either no phase is currently in_progress, or multiple phases are in_progress simultaneously.\n` +
-        `Pass --phase <N> to specify the phase explicitly.`
-      );
-    }
-  }
-
-  let task = context.task;
-  if (task === undefined) {
-    try {
-      task = resolveActiveTaskIndex(cloned, phase);
-    } catch {
-      throw new Error(
-        `Cannot apply mutation for "commit_completed": no active task could be resolved from state for phase ${phase}.\n` +
-        `Either no task is currently in_progress, or multiple tasks are in_progress simultaneously.\n` +
-        `Pass --task <N> to specify the task explicitly.`
-      );
-    }
-  }
-
-  try {
-    const node = resolveNodeState(cloned, 'commit', 'task', phase, task);
-    node.status = 'completed';
-    mutations_applied.push('set commit.status = completed');
-
-    const signalRepos = (context.repos as SignalRepoRow[] | undefined) ?? [];
-
-    // A commit_completed signal must relay the source-control agent's per-repo
-    // result array. An empty/missing repos[] would complete the commit node and
-    // advance the walker without recording any hash — a silent correctness hole.
-    // (The legitimate "nothing changed" case is a non-empty array of committed:false
-    // rows, not an empty array, so this never rejects a real clean-skip.)
-    if (signalRepos.length === 0) {
-      throw new Error(
-        `commit_completed refused: no per-repo result payload (repos[] is missing or empty). ` +
-        `The commit signal must relay the source-control agent's result array via --repos '<json>'; ` +
-        `advancing without it would complete the commit step recording zero commit hashes.`
-      );
-    }
-
-    // Iter 12 (P04-T02) — array-shaped signal. The commit CLI emits a per-repo
-    // result array; we fan the hashes into the matching repos[] entry by name,
-    // creating entries that are absent (corrective entries start with repos:[]).
-    // committed=false rows are a no-op (clean skip — not an error).
-    //
-    // Phase-scope-first routing: when a phase-scope corrective is active on
-    // this phase iteration, route the per-repo hashes there before considering
-    // task-scope routing.
-    const phaseIteration = resolvePhaseIteration(cloned, phase);
-    const activePhaseCorrective = phaseIteration.corrective_tasks.slice().reverse().find(
-      (ct: CorrectiveTaskEntry) => ct.status === 'in_progress' || ct.status === 'not_started'
-    );
-
-    if (activePhaseCorrective) {
-      applyPerRepoCommitHashes(
-        activePhaseCorrective.repos,
-        signalRepos,
-        mutations_applied,
-        `phase_corrective_task[${activePhaseCorrective.index}].repos`,
-      );
-      return { state: cloned, mutations_applied };
-    }
-
-    // Write per-repo commit hashes to task IterationEntry or active task-scope
-    // CorrectiveTaskEntry, matched by name.
-    const taskIteration = resolveTaskIteration(cloned, phase, task);
-    const activeCorrective = taskIteration.corrective_tasks.slice().reverse().find(
-      (ct: CorrectiveTaskEntry) => ct.status === 'in_progress' || ct.status === 'not_started'
-    );
-
-    if (activeCorrective) {
-      applyPerRepoCommitHashes(
-        activeCorrective.repos,
-        signalRepos,
-        mutations_applied,
-        `corrective_task[${activeCorrective.index}].repos`,
-      );
-    } else {
-      applyPerRepoCommitHashes(
-        taskIteration.repos,
-        signalRepos,
-        mutations_applied,
-        `task_iteration[${taskIteration.index}].repos`,
-      );
-    }
-
-    return { state: cloned, mutations_applied };
-  } catch (err) {
-    // Re-throw the loud per-repo guards (hash-overwrite via assertHashWritable,
-    // and the malformed committed:false-with-hash rejection) so they propagate
-    // as diagnosable rejections rather than being swallowed by the generic
-    // node-resolution error message below (DD-1, NFR-3). Both share the
-    // `commit_completed refused:` prefix.
-    if (err instanceof Error && /commit_completed refused|immutable|overwrite|already recorded|finalized/i.test(err.message)) {
-      throw err;
-    }
-    if (context.phase === undefined) {
-      const phaseLoopNode = cloned.graph.nodes['phase_loop'] as ForEachPhaseNodeState | undefined;
-      const hasInProgressPhase = phaseLoopNode?.iterations?.some(it => it.status === 'in_progress');
-      if (hasInProgressPhase) {
-        throw new Error(
-          `Cannot apply mutation for "commit_completed": no active task could be resolved from state for phase ${phase}.\n` +
-          `Either no task is currently in_progress, or multiple tasks are in_progress simultaneously.\n` +
-          `Pass --task <N> to specify the task explicitly.`
-        );
-      }
-      throw new Error(
-        `Cannot apply mutation for "commit_completed": no active phase could be resolved from state.\n` +
-        `Either no phase is currently in_progress, or multiple phases are in_progress simultaneously.\n` +
-        `Pass --phase <N> to specify the phase explicitly.`
-      );
-    }
-    throw new Error(
-      `Cannot apply mutation for "commit_completed": no active task could be resolved from state for phase ${phase}.\n` +
-      `Either no task is currently in_progress, or multiple tasks are in_progress simultaneously.\n` +
-      `Pass --task <N> to specify the task explicitly.`
-    );
-  }
-});
 
 // ── Source control PR mutations (final_pr as top-scoped sibling) ──────────────
 

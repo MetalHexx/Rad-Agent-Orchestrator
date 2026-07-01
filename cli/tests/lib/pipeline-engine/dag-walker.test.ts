@@ -149,50 +149,37 @@ describe('for_each_phase / for_each_task iteration entry shape (FR-27, AD-4)', (
 });
 
 describe('deriveCurrentNodePathFromMarkers — conditional / parallel are not concrete leaves', () => {
-  // In the runtime templates, `commit_gate` (a conditional) stays in_progress
-  // while its taken-branch step `commit` is in_progress. The branch step is
-  // scaffolded as a FLAT SIBLING in the same iteration nodes record and is
-  // ordered after the gate. The derived cursor must name the concrete active
-  // step, not the conditional router that precedes it in scan order.
-  function stateWithActiveCommitUnderConditional(): PipelineState {
+  // In the runtime templates, `pr_gate` (a conditional) stays in_progress while
+  // its taken-branch step `final_pr` is in_progress. The branch step is
+  // scaffolded as a FLAT SIBLING in the same nodes record and is ordered after
+  // the gate. The derived cursor must name the concrete active step, not the
+  // conditional router that precedes it in scan order.
+  function stateWithActivePrUnderConditional(): PipelineState {
     return {
       graph: {
         status: 'in_progress',
         current_node_path: null,
         nodes: {
+          // A completed phase_loop satisfies the derive guard (it requires a
+          // phase_loop with >=1 iteration) without offering an in_progress leaf.
           phase_loop: {
             kind: 'for_each_phase',
-            status: 'in_progress',
+            status: 'completed',
             iterations: [
-              {
-                index: 0, status: 'in_progress', doc_path: null, repos: [], corrective_tasks: [],
-                nodes: {
-                  task_loop: {
-                    kind: 'for_each_task',
-                    status: 'in_progress',
-                    iterations: [
-                      {
-                        index: 0, status: 'in_progress', doc_path: null, repos: [], corrective_tasks: [],
-                        nodes: {
-                          task_executor: { kind: 'step', status: 'completed', doc_path: null, retries: 0 },
-                          commit_gate: { kind: 'conditional', status: 'in_progress', branch_taken: 'true' },
-                          commit: { kind: 'step', status: 'in_progress', doc_path: null, retries: 0 },
-                        },
-                      },
-                    ],
-                  },
-                },
-              },
+              { index: 0, status: 'completed', doc_path: null, repos: [], corrective_tasks: [], nodes: {} },
             ],
           },
+          final_review: { kind: 'step', status: 'completed', doc_path: null, retries: 0 },
+          pr_gate: { kind: 'conditional', status: 'in_progress', branch_taken: 'true' },
+          final_pr: { kind: 'step', status: 'in_progress', doc_path: null, retries: 0 },
         },
       },
     } as unknown as PipelineState;
   }
 
   it('returns the active branch step path, not the in_progress conditional router', () => {
-    const derived = deriveCurrentNodePathFromMarkers(stateWithActiveCommitUnderConditional());
-    expect(derived).toBe('phase_loop[0].task_loop[0].commit');
+    const derived = deriveCurrentNodePathFromMarkers(stateWithActivePrUnderConditional());
+    expect(derived).toBe('final_pr');
   });
 
   it('descends into an in_progress parallel container to find the concrete leaf', () => {
