@@ -80,6 +80,15 @@ test-run.log
 !/prompt-tests/execute-coding-task-e2e/output/tdd-slip/baseline-*/lint-report.md
 !/prompt-tests/execute-coding-task-e2e/output/tdd-slip/baseline-*/run-notes.md
 
+# Prompt harness — coder-commit-e2e.
+# Same structure as above: ignore run-folder contents (including the nested
+# sandbox .git/), re-include the inaugural-baseline run-notes.md under baseline-* folders.
+# Two modes share this behavior: solo-commit (isolated) + pipeline-sideproject (real pipeline).
+/prompt-tests/coder-commit-e2e/output/*/*/**
+!/prompt-tests/coder-commit-e2e/output/*/.gitkeep
+!/prompt-tests/coder-commit-e2e/output/solo-commit/baseline-*/run-notes.md
+!/prompt-tests/coder-commit-e2e/output/pipeline-sideproject/baseline-*/run-notes.md
+
 # Prompt harness — repo-skill-discovery-e2e.
 /prompt-tests/repo-skill-discovery-e2e/output/*/*/**
 !/prompt-tests/repo-skill-discovery-e2e/output/*/.gitkeep

@@ -1,0 +1,6 @@
+{
+  "name": "solo-commit",
+  "private": true,
+  "type": "module",
+  "description": "Sandbox fixture project for the coder-commit-e2e prompt-test. The runner git-inits this dir; the coder implements slugify() and commits it. type:module so node --test treats the .js targets as ESM."
+}
