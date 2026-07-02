@@ -346,11 +346,10 @@ function makePhaseCorrectiveIteration(index: number): IterationEntry {
         ],
       },
       // Under iter-11, PHASE_REVIEW_COMPLETED sets phase_review.status = 'completed'
-      // (and writes verdict = effective_outcome) BEFORE birthing the corrective
-      // entry into phaseIter.corrective_tasks[]. The fixture reflects that real
-      // post-mutation shape so the render test exercises the actual invariant
-      // rather than an impossible "in_progress phase_review + active corrective"
-      // combination.
+      // BEFORE birthing the corrective entry into phaseIter.corrective_tasks[].
+      // The fixture reflects that real post-mutation shape so the render test
+      // exercises the actual invariant rather than an impossible "in_progress
+      // phase_review + active corrective" combination.
       phase_review: stepState('completed', 'reports/MYPROJ-PHASE-REVIEW-P01-SETUP.md'),
       phase_gate: { kind: 'gate', status: 'not_started', gate_active: false },
     },

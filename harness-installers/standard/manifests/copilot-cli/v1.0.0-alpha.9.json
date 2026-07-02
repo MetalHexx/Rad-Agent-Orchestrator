@@ -159,6 +159,10 @@
       "destinationPath": "${HARNESS_ROOT}/agents/orchestrator.agent.md"
     },
     {
+      "bundlePath": "agents/reviewer-junior.agent.md",
+      "destinationPath": "${HARNESS_ROOT}/agents/reviewer-junior.agent.md"
+    },
+    {
       "bundlePath": "agents/reviewer.agent.md",
       "destinationPath": "${HARNESS_ROOT}/agents/reviewer.agent.md"
     },
@@ -191,28 +195,16 @@
       "destinationPath": "${HARNESS_ROOT}/skills/rad-code-review/SKILL.md"
     },
     {
-      "bundlePath": "skills/rad-code-review/final-review/template.md",
-      "destinationPath": "${HARNESS_ROOT}/skills/rad-code-review/final-review/template.md"
+      "bundlePath": "skills/rad-code-review/final-review.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-code-review/final-review.md"
     },
     {
-      "bundlePath": "skills/rad-code-review/final-review/workflow.md",
-      "destinationPath": "${HARNESS_ROOT}/skills/rad-code-review/final-review/workflow.md"
+      "bundlePath": "skills/rad-code-review/phase-review.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-code-review/phase-review.md"
     },
     {
-      "bundlePath": "skills/rad-code-review/phase-review/template.md",
-      "destinationPath": "${HARNESS_ROOT}/skills/rad-code-review/phase-review/template.md"
-    },
-    {
-      "bundlePath": "skills/rad-code-review/phase-review/workflow.md",
-      "destinationPath": "${HARNESS_ROOT}/skills/rad-code-review/phase-review/workflow.md"
-    },
-    {
-      "bundlePath": "skills/rad-code-review/task-review/template.md",
-      "destinationPath": "${HARNESS_ROOT}/skills/rad-code-review/task-review/template.md"
-    },
-    {
-      "bundlePath": "skills/rad-code-review/task-review/workflow.md",
-      "destinationPath": "${HARNESS_ROOT}/skills/rad-code-review/task-review/workflow.md"
+      "bundlePath": "skills/rad-code-review/task-review.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-code-review/task-review.md"
     },
     {
       "bundlePath": "skills/rad-create-plans/SKILL.md",

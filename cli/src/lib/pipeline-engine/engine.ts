@@ -208,7 +208,6 @@ function scaffoldState(
       gate_mode: config.human_gates.execution_mode,
       limits: {
         max_retries_per_task: config.limits.max_retries_per_task,
-        max_consecutive_review_rejections: config.limits.max_consecutive_review_rejections,
       },
       source_control: {
         auto_commit: config.source_control.auto_commit,

@@ -27,7 +27,6 @@ function makeValidConfig(): OrchestrationConfig {
     version: '4',
     limits: {
       max_retries_per_task: 2,
-      max_consecutive_review_rejections: 3,
     },
     human_gates: {
       after_planning: true,
@@ -92,12 +91,12 @@ function updateFieldOnObject(
   return clone as unknown as OrchestrationConfig;
 }
 
-test('updateField: limits.max_consecutive_review_rejections updates to 12', () => {
+test('updateField: limits.max_retries_per_task updates to 12', () => {
   const config = makeValidConfig();
-  const updated = updateFieldOnObject(config, 'limits.max_consecutive_review_rejections', 12);
-  assert.strictEqual(updated.limits.max_consecutive_review_rejections, 12);
+  const updated = updateFieldOnObject(config, 'limits.max_retries_per_task', 12);
+  assert.strictEqual(updated.limits.max_retries_per_task, 12);
   // Original is not mutated
-  assert.strictEqual(config.limits.max_consecutive_review_rejections, 3);
+  assert.strictEqual(config.limits.max_retries_per_task, 2);
 });
 
 test('updateField: human_gates.execution_mode updates to phase', () => {
@@ -132,7 +131,7 @@ test('isDirty: false when config matches baseline (form mode)', () => {
 test('isDirty: true when config differs from baseline (form mode)', () => {
   const config = makeValidConfig();
   const baseline = JSON.stringify(config);
-  const modified = updateFieldOnObject(config, 'limits.max_consecutive_review_rejections', 12);
+  const modified = updateFieldOnObject(config, 'limits.max_retries_per_task', 12);
   assert.strictEqual(JSON.stringify(modified) !== baseline, true);
 });
 
@@ -160,16 +159,16 @@ test('isDirty: false when config is null', () => {
 
 test('updateField re-runs validateConfig and catches errors', () => {
   const config = makeValidConfig();
-  const updated = updateFieldOnObject(config, 'limits.max_consecutive_review_rejections', -1);
+  const updated = updateFieldOnObject(config, 'limits.max_retries_per_task', -1);
   const errors = validateConfig(updated);
-  assert.ok(errors['limits.max_consecutive_review_rejections'], 'Expected validation error for max_consecutive_review_rejections');
+  assert.ok(errors['limits.max_retries_per_task'], 'Expected validation error for max_retries_per_task');
 });
 
 test('updateField with valid value produces no errors for that field', () => {
   const config = makeValidConfig();
-  const updated = updateFieldOnObject(config, 'limits.max_consecutive_review_rejections', 12);
+  const updated = updateFieldOnObject(config, 'limits.max_retries_per_task', 12);
   const errors = validateConfig(updated);
-  assert.strictEqual(errors['limits.max_consecutive_review_rejections'], undefined);
+  assert.strictEqual(errors['limits.max_retries_per_task'], undefined);
 });
 
 /* ------------------------------------------------------------------ */
@@ -197,11 +196,11 @@ test('setMode to raw when clean: rawYaml stays as original', () => {
 test('setMode to raw when dirty: rawYaml gets serialized from config', () => {
   const config = makeValidConfig();
   const baseline = JSON.stringify(config);
-  const modified = updateFieldOnObject(config, 'limits.max_consecutive_review_rejections', 12);
+  const modified = updateFieldOnObject(config, 'limits.max_retries_per_task', 12);
   const formDirty = JSON.stringify(modified) !== baseline;
   assert.ok(formDirty);
   const rawYaml = formDirty ? stringifyYaml(modified) : '';
-  assert.ok(rawYaml.includes('max_consecutive_review_rejections: 12'));
+  assert.ok(rawYaml.includes('max_retries_per_task: 12'));
 });
 
 /* ------------------------------------------------------------------ */
@@ -226,10 +225,10 @@ test('save in raw mode: request body has mode and rawYaml', () => {
 
 test('save in form mode with validation errors: should not proceed', () => {
   const config = makeValidConfig();
-  const modified = updateFieldOnObject(config, 'limits.max_consecutive_review_rejections', -1);
+  const modified = updateFieldOnObject(config, 'limits.max_retries_per_task', -1);
   const errors = validateConfig(modified);
   const hasErrors = Object.keys(errors).length > 0;
-  assert.ok(hasErrors, 'Validation should catch invalid max_consecutive_review_rejections');
+  assert.ok(hasErrors, 'Validation should catch invalid max_retries_per_task');
 });
 
 /* ------------------------------------------------------------------ */
@@ -238,7 +237,7 @@ test('save in form mode with validation errors: should not proceed', () => {
 
 test('after save success: new baseline matches saved config', () => {
   const config = makeValidConfig();
-  const modified = updateFieldOnObject(config, 'limits.max_consecutive_review_rejections', 12);
+  const modified = updateFieldOnObject(config, 'limits.max_retries_per_task', 12);
   // Simulate save success — baseline is updated to match saved config
   const newBaseline = JSON.stringify(modified);
   assert.strictEqual(JSON.stringify(modified) !== newBaseline, false);
@@ -257,7 +256,7 @@ test('formDirtyOnSwitch: false initially', () => {
 test('formDirtyOnSwitch: true when switching to raw with dirty form', () => {
   const config = makeValidConfig();
   const baseline = JSON.stringify(config);
-  const modified = updateFieldOnObject(config, 'limits.max_consecutive_review_rejections', 12);
+  const modified = updateFieldOnObject(config, 'limits.max_retries_per_task', 12);
   // Simulate setMode("raw") logic
   const formDirty = JSON.stringify(modified) !== baseline;
   assert.strictEqual(formDirty, true);
@@ -279,7 +278,7 @@ test('formDirtyOnSwitch: false when switching to raw with clean form', () => {
 test('formDirtyOnSwitch: resets to false when switching back to form', () => {
   const config = makeValidConfig();
   const baseline = JSON.stringify(config);
-  const modified = updateFieldOnObject(config, 'limits.max_consecutive_review_rejections', 12);
+  const modified = updateFieldOnObject(config, 'limits.max_retries_per_task', 12);
   // First switch to raw — dirty
   const formDirty = JSON.stringify(modified) !== baseline;
   let formDirtyOnSwitch = formDirty;

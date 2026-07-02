@@ -20,7 +20,6 @@ const VALID_CONFIG: OrchestrationConfig = {
   version: '4',
   limits: {
     max_retries_per_task: 2,
-    max_consecutive_review_rejections: 3,
   },
   human_gates: {
     after_planning: true,
@@ -36,7 +35,6 @@ const VALID_CONFIG: OrchestrationConfig = {
 const VALID_YAML = `version: "4"
 limits:
   max_retries_per_task: 2
-  max_consecutive_review_rejections: 3
 human_gates:
   after_planning: true
   execution_mode: ask
@@ -137,7 +135,7 @@ async function run() {
   await test('form mode — validation errors return 400 with details', async () => {
   const badConfig = {
     ...VALID_CONFIG,
-    limits: { ...VALID_CONFIG.limits, max_consecutive_review_rejections: -1 },
+    limits: { ...VALID_CONFIG.limits, max_retries_per_task: -1 },
   };
   const req = makePutRequest({ mode: 'form', config: badConfig });
   const res = await PUT(req);
@@ -145,7 +143,7 @@ async function run() {
   const json = await res.json();
   assert.strictEqual(json.error, 'Validation failed');
   assert.ok(json.details, 'Response should contain details');
-  assert.ok(json.details['limits.max_consecutive_review_rejections'], 'Should have max_consecutive_review_rejections error');
+  assert.ok(json.details['limits.max_retries_per_task'], 'Should have max_retries_per_task error');
 });
 
   // --- Form mode: missing config ---

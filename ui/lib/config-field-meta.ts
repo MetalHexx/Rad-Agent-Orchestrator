@@ -18,7 +18,7 @@ export const CONFIG_FIELDS: FieldMeta[] = [
     controlType: 'readonly',
   },
 
-  // 2–3. Pipeline Limits Section
+  // 2. Pipeline Limits Section
   {
     key: 'limits.max_retries_per_task',
     label: 'Max Retries per Task',
@@ -27,15 +27,6 @@ export const CONFIG_FIELDS: FieldMeta[] = [
     section: 'limits',
     controlType: 'number',
     min: 0,
-  },
-  {
-    key: 'limits.max_consecutive_review_rejections',
-    label: 'Max Review Rejections',
-    tooltip:
-      'How many consecutive review rejections are allowed before halting the pipeline.',
-    section: 'limits',
-    controlType: 'number',
-    min: 1,
   },
 
   // 6–8. Human Gates Section

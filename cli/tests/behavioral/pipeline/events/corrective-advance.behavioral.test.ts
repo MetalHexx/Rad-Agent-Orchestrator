@@ -128,7 +128,7 @@ function baseState(currentNodePath: string, phaseIteration: Record<string, unkno
     project: { name: 'cli-behavioral', created: '2024-01-01T00:00:00.000Z', updated: '2024-01-01T00:00:00.000Z' },
     config: {
       gate_mode: 'autonomous',
-      limits: { max_retries_per_task: 3, max_consecutive_review_rejections: 3 },
+      limits: { max_retries_per_task: 3 },
       source_control: { auto_commit: 'always', auto_pr: 'never' },
     },
     pipeline: {
@@ -172,12 +172,19 @@ function completedTaskIteration(commitHash: string | null) {
   };
 }
 
+// Original scope docs seeded on the hosting iterations. Under the raw-verdict
+// contract a born corrective copies its hosting iteration's doc_path (the
+// ORIGINAL phase plan / task handoff), so these must be non-empty — an empty
+// scope doc is an engine invariant violation that the mutation throws on.
+const PHASE_PLAN_DOC = 'phases/p1-plan.md';
+const TASK_HANDOFF_DOC = 'tasks/p1-t1.md';
+
 // ── Phase-scope corrective states ────────────────────────────────────────────
 function phaseCorrectiveState(cursor: string, nodes: Record<string, unknown>, repos = [{ name: 'backend', commit_hash: null }]) {
   return baseState(cursor, {
-    index: 0, status: 'in_progress', doc_path: null, repos: [],
+    index: 0, status: 'in_progress', doc_path: PHASE_PLAN_DOC, repos: [],
     corrective_tasks: [
-      { index: 1, reason: 'phase review requested changes', injected_after: 'phase_review', status: 'in_progress', doc_path: null, repos, nodes },
+      { index: 1, reason: 'phase review requested changes', injected_after: 'phase_review', status: 'in_progress', doc_path: PHASE_PLAN_DOC, repos, nodes },
     ],
     nodes: {
       task_loop: { kind: 'for_each_task', status: 'completed', iterations: [completedTaskIteration('aaa1111')] },
@@ -191,8 +198,9 @@ function phaseCorrectiveState(cursor: string, nodes: Record<string, unknown>, re
 function taskCorrectiveState(cursor: string, nodes: Record<string, unknown>) {
   const taskIter = completedTaskIteration('aaa1111');
   (taskIter as Record<string, unknown>).status = 'in_progress';
+  (taskIter as Record<string, unknown>).doc_path = TASK_HANDOFF_DOC;
   (taskIter as Record<string, unknown>).corrective_tasks = [
-    { index: 1, reason: 'code review requested changes', injected_after: 'code_review', status: 'in_progress', doc_path: null, repos: [{ name: 'backend', commit_hash: null }], nodes },
+    { index: 1, reason: 'code review requested changes', injected_after: 'code_review', status: 'in_progress', doc_path: TASK_HANDOFF_DOC, repos: [{ name: 'backend', commit_hash: null }], nodes },
   ];
   return baseState(cursor, {
     index: 0, status: 'in_progress', doc_path: null, repos: [],
@@ -280,20 +288,19 @@ describe('corrective task advancement — full engine flow', () => {
 // superseded parent corrective must be finalized to `completed` at birth so it
 // is never stranded at in_progress inside a later-completed iteration (which the
 // dashboard rendered as a perpetual "Coding" spinner). Driving
-// code_review_completed --verdict changes_requested requires the mutation's
-// routing inputs to be present on the review doc frontmatter (merged by
-// pre-read): verdict, orchestrator_mediated, effective_outcome, and
-// corrective_handoff_path.
+// code_review_completed with a raw `changes_requested` verdict births the
+// successor; the born corrective carries its hosting iteration's ORIGINAL scope
+// doc, not an orchestrator-authored handoff path.
 
 const PHASE_C1_CR_DOC = 'reports/phase-c1-cr.md';
-const PHASE_C1_CR_CONTENTS = `---\nverdict: changes_requested\norchestrator_mediated: true\neffective_outcome: changes_requested\ncorrective_handoff_path: tasks/phase-c2.md\n---\nPhase corrective C1 code review — requests further changes.\n`;
+const PHASE_C1_CR_CONTENTS = `---\nverdict: changes_requested\n---\nPhase corrective C1 code review — requests further changes.\n`;
 const PHASE_C2_CR_DOC = 'reports/phase-c2-cr.md';
 const PHASE_C2_CR_APPROVED = `---\nverdict: approved\n---\nPhase corrective C2 code review — approved.\n`;
 const PHASE_C2_HANDOFF = 'tasks/phase-c2.md';
 const HANDOFF_STUB = `---\ntype: task_handoff\n---\nCorrective handoff stub.\n`;
 
 const TASK_C1_CR_DOC = 'reports/task-c1-cr.md';
-const TASK_C1_CR_CONTENTS = `---\nverdict: changes_requested\norchestrator_mediated: true\neffective_outcome: changes_requested\ncorrective_handoff_path: tasks/task-c2.md\n---\nTask corrective C1 code review — requests further changes.\n`;
+const TASK_C1_CR_CONTENTS = `---\nverdict: changes_requested\n---\nTask corrective C1 code review — requests further changes.\n`;
 const TASK_C2_HANDOFF = 'tasks/task-c2.md';
 
 describe('corrective-of-a-corrective — superseded parent finalization (full engine flow)', () => {
@@ -320,7 +327,7 @@ describe('corrective-of-a-corrective — superseded parent finalization (full en
     // Successor born and now active.
     expect(cts[1].index).toBe(2);
     expect(cts[1].injected_after).toBe('code_review');
-    expect(cts[1].doc_path).toBe('tasks/phase-c2.md');
+    expect(cts[1].doc_path).toBe(PHASE_PLAN_DOC);
     expect(onDisk.graph.current_node_path).toMatch(/corrective_tasks\[2\]/);
     assertPromptForEnvelopeAction(env);
   });
@@ -382,7 +389,7 @@ describe('corrective-of-a-corrective — superseded parent finalization (full en
     expect(cts[0].status).toBe('completed');
     expect(cts[1].index).toBe(2);
     expect(cts[1].injected_after).toBe('code_review');
-    expect(cts[1].doc_path).toBe('tasks/task-c2.md');
+    expect(cts[1].doc_path).toBe(TASK_HANDOFF_DOC);
     expect(onDisk.graph.current_node_path).toMatch(/task_loop\[0\]\.corrective_tasks\[2\]/);
     assertPromptForEnvelopeAction(env);
   });

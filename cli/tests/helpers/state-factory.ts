@@ -77,7 +77,6 @@ export function makeV6State(opts: MakeV6StateOptions): Record<string, unknown> {
       gate_mode: 'ask',
       limits: {
         max_retries_per_task: 3,
-        max_consecutive_review_rejections: 3,
       },
       source_control: {
         auto_commit: 'ask',
@@ -105,6 +104,9 @@ export function makeV6State(opts: MakeV6StateOptions): Record<string, unknown> {
  * Returns a complete v5 PipelineState with one phase iteration (whose own
  * commit_hash is null) containing a task_loop with one task iteration whose
  * commit_hash is the passed taskCommitHash.  Used as migration test input.
+ * The v5 limits shape (max_phases / max_tasks_per_phase /
+ * max_consecutive_review_rejections) is intentional — the archived v5 schema
+ * requires those fields, and the v5→v6 migration drops them.
  */
 export function makeValidV5State(opts: MakeV5StateOptions): Record<string, unknown> {
   const { taskCommitHash } = opts;

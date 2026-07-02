@@ -70,7 +70,7 @@ function makeV5State(nodes: NodesRecord = {}): ProjectStateV5 {
     project: { name: 'TEST', created: '', updated: '' },
     config: {
       gate_mode: 'autonomous',
-      limits: { max_phases: 5, max_tasks_per_phase: 10, max_retries_per_task: 2, max_consecutive_review_rejections: 2 },
+      limits: { max_phases: 5, max_tasks_per_phase: 10, max_retries_per_task: 2 },
       source_control: { auto_commit: 'never', auto_pr: 'never' },
     },
     pipeline: {

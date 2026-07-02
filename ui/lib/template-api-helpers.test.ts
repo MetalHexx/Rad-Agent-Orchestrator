@@ -38,7 +38,6 @@ const MINIMAL_CONFIG: OrchestrationConfig = {
   version: '4',
   limits: {
     max_retries_per_task: 2,
-    max_consecutive_review_rejections: 3,
   },
   human_gates: {
     after_planning: true,

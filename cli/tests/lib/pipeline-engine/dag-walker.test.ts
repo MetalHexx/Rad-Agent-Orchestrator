@@ -4,7 +4,7 @@ import { NODE_STATUSES } from '../../../src/lib/pipeline-engine/constants.js';
 import type { PipelineState, PipelineTemplate, OrchestrationConfig, StepNodeDef, StepNodeState, ForEachPhaseNodeDef, ForEachTaskNodeDef, ForEachPhaseNodeState } from '../../../src/lib/pipeline-engine/types.js';
 
 const CFG: OrchestrationConfig = {
-  limits: { max_retries_per_task: 3, max_consecutive_review_rejections: 3 },
+  limits: { max_retries_per_task: 3 },
   human_gates: { after_planning: true, execution_mode: 'task', after_final_review: true },
   source_control: { auto_commit: 'never', auto_pr: 'never' },
   default_template: 't',

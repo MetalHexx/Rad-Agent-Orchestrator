@@ -24,9 +24,9 @@ console.log('\nconfig-field-meta tests\n');
 
 // --- CONFIG_FIELDS array ---
 
-test('CONFIG_FIELDS is an array of exactly 10 entries', () => {
+test('CONFIG_FIELDS is an array of exactly 9 entries', () => {
   assert.ok(Array.isArray(CONFIG_FIELDS));
-  assert.strictEqual(CONFIG_FIELDS.length, 10);
+  assert.strictEqual(CONFIG_FIELDS.length, 9);
 });
 
 test('every entry conforms to FieldMeta interface', () => {
@@ -44,9 +44,9 @@ test('every entry conforms to FieldMeta interface', () => {
 
 // --- CONFIG_FIELD_MAP ---
 
-test('CONFIG_FIELD_MAP contains exactly 10 keys matching CONFIG_FIELDS', () => {
+test('CONFIG_FIELD_MAP contains exactly 9 keys matching CONFIG_FIELDS', () => {
   const keys = Object.keys(CONFIG_FIELD_MAP);
-  assert.strictEqual(keys.length, 10);
+  assert.strictEqual(keys.length, 9);
   for (const field of CONFIG_FIELDS) {
     assert.ok(keys.includes(field.key), `missing key in map: ${field.key}`);
   }
@@ -88,10 +88,9 @@ test('version is readonly with section "version"', () => {
 
 // --- Number field min values ---
 
-test('both number fields have correct min values', () => {
+test('the number field has correct min value', () => {
   const expected: Record<string, number> = {
     'limits.max_retries_per_task': 0,
-    'limits.max_consecutive_review_rejections': 1,
   };
   for (const [key, minVal] of Object.entries(expected)) {
     const f = CONFIG_FIELD_MAP[key];

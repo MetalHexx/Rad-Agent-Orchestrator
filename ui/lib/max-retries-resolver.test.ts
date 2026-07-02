@@ -28,7 +28,6 @@ function test(name: string, fn: () => void) {
 
 interface StateConfigLimits {
   max_retries_per_task?: number;
-  max_consecutive_review_rejections?: number;
 }
 interface StateConfig {
   limits: StateConfigLimits;

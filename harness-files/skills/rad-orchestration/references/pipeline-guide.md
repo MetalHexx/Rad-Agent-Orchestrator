@@ -94,9 +94,11 @@ Only these actions pause execution for human input or stop the loop. All other a
 | `gate_phase` | Pause — wait for human approval |
 | `ask_gate_mode` | Pause — wait for operator gate mode selection |
 
-## Corrective Mediation
+## Corrective Flow
 
-When the pipeline returns `data.action` of `spawn_code_reviewer` and the reviewer returns a raw `verdict: changes_requested`, the orchestrator enters an in-session mediation flow **before** signaling `code_review_completed`. The full mediation procedure — per-finding judgment, addendum authoring, corrective Task Handoff creation, and budget enforcement — is defined in [`corrective-playbook.md`](corrective-playbook.md). The same flow fires on `phase_review_completed` with raw `verdict: changes_requested`. When the reviewer returns `approved`, the orchestrator signals the completion event with no mediation fields and propagation is normal. When the reviewer returns `rejected`, the orchestrator signals the completion event immediately (no mediation) and the mutation routes the rejected verdict into a clean pipeline halt. The orchestrator never flips an `approved` verdict to `changes_requested`.
+The orchestrator is a dumb router for corrective cycles — it does not read findings or judge them. When a reviewer (task or phase scope) returns raw `verdict: changes_requested`, signal the completion event (`code_review_completed` / `phase_review_completed`) exactly as you would for any other outcome. The pipeline engine reads the raw verdict off the review doc, births the corrective, and returns the next `execute_task` action carrying the same `handoff_doc` — never re-authored — plus `review_report_path`, the path to the review doc the reviewer just wrote. Relay both into the coder's spawn prompt; the coder self-mediates, fixing real findings and writing a justified disposition for anything it disputes back into that same `review_report_path`. The re-spawned reviewer reopens the same path and re-adjudicates — one running review report per scope, stable across a task's corrective cycles.
+
+`approved` and `rejected` verdicts propagate untouched — signal the completion event with nothing extra; `rejected` routes into a clean pipeline halt. The orchestrator never flips an `approved` verdict to `changes_requested`. See [`corrective-playbook.md`](corrective-playbook.md) for the full flow, and "Coder escalation (break-glass)" below for tier selection on the re-spawn.
 
 ## Error Handling
 
@@ -160,11 +162,34 @@ For the `execute_task` action, spawn the right-sized coder for the task. The tie
 |---|---|
 | `simple` | coder-junior |
 | `standard` | coder |
-| `complex` | coder-senior |
+| `complex` | coder |
+
+`coder-senior` is **not** an initial tier — it is break-glass, reached only through corrective escalation (see "Coder escalation (break-glass)" below). A `complex` task starts at `coder`; its extra weight buys a task-scope reviewer, not a bigger coder up front.
 
 Authored plans carry `complexity` as a signal only; the tier is resolved here at spawn time and is never written into the Master Plan or Task Handoff.
 
-### Blocked-report triage (coder escalation)
+### Reviewer tier selection
+
+For `spawn_code_reviewer`, spawn the right-sized reviewer from the task's `data.context.complexity`:
+
+| `complexity` | subagent |
+|---|---|
+| `simple` | reviewer-junior |
+| `standard` \| `complex` | reviewer |
+
+`reviewer-junior` is scoped narrowly to simple task-scope reviews. For `spawn_phase_reviewer` and `spawn_final_reviewer`, always spawn `reviewer` — there is no junior tier at phase or final scope.
+
+### Coder escalation (break-glass)
+
+Corrective re-spawns are not pinned to the task's original tier. `coder-senior` is **break-glass** — reserved for escalation as the corrective budget tightens, never a routine choice:
+
+- Read `corrective_index` (the 1-based number of the corrective attempt about to be spawned) and `max_retries_per_task` (from `orchestration.yml`) — the same values that gate the budget.
+- While `corrective_index` sits well under `max_retries_per_task`, keep the task's original tier (`coder-junior` or `coder`) for the re-spawn — repeated findings on a simple task don't by themselves justify coder escalation.
+- As `corrective_index` climbs toward `max_retries_per_task`, escalate one step at a time: `coder-junior` steps up to `coder` first; if the corrective is still failing on the last attempt or two before the budget runs out, escalate to `coder-senior`.
+- Never escalate on a task's first, non-corrective `execute_task` dispatch — escalation applies only to corrective re-spawns.
+- `max_retries_per_task` remains the sole corrective gate. Escalation buys the remaining attempts a stronger coder; it does not extend the budget — when it's exhausted, the pipeline halts regardless of tier.
+
+### Blocked-report triage
 
 A coder cannot talk to the user, so when it cannot proceed it returns a `## Blocked` report **instead of** a completion — carrying `Severity` (medium | high), the specific `Blocker`, what it already `Tried`, and what it `Need`s to proceed. When you receive one, do **not** signal `task_completed`. Triage it up the ladder:
 

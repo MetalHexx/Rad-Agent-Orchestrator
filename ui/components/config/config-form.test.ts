@@ -72,7 +72,6 @@ const MOCK_CONFIG: OrchestrationConfig = {
   version: "4",
   limits: {
     max_retries_per_task: 2,
-    max_consecutive_review_rejections: 3,
   },
   human_gates: {
     after_planning: true,
@@ -103,9 +102,9 @@ test("getNestedValue extracts nested key (default_template)", () => {
   assert.strictEqual(val, undefined);
 });
 
-test("getNestedValue extracts deeply nested key (limits.max_consecutive_review_rejections)", () => {
-  const val = getNestedValue(MOCK_CONFIG as unknown as Record<string, unknown>, "limits.max_consecutive_review_rejections");
-  assert.strictEqual(val, 3);
+test("getNestedValue extracts deeply nested key (limits.max_retries_per_task)", () => {
+  const val = getNestedValue(MOCK_CONFIG as unknown as Record<string, unknown>, "limits.max_retries_per_task");
+  assert.strictEqual(val, 2);
 });
 
 test("getNestedValue returns undefined for non-existent path", () => {
@@ -148,7 +147,7 @@ test("All 5 section keys are present in grouped fields", () => {
 
 test("Section field counts are correct", () => {
   const grouped = groupFieldsBySection(CONFIG_FIELDS);
-  assert.strictEqual(grouped.get("limits")!.length, 2);
+  assert.strictEqual(grouped.get("limits")!.length, 1);
   assert.strictEqual(grouped.get("human-gates")!.length, 3);
   assert.strictEqual(grouped.get("source-control")!.length, 2);
   assert.strictEqual(grouped.get("template")!.length, 1);
@@ -184,9 +183,9 @@ test("String fields (default_template) have controlType 'text'", () => {
   assert.ok(textKeys.includes("default_template"));
 });
 
-test("Number fields (2 limits) have controlType 'number' with min values", () => {
+test("Number fields (1 limit) have controlType 'number' with min values", () => {
   const numberFields = CONFIG_FIELDS.filter((f) => f.controlType === "number");
-  assert.strictEqual(numberFields.length, 2);
+  assert.strictEqual(numberFields.length, 1);
   for (const f of numberFields) {
     assert.strictEqual(f.section, "limits");
     assert.strictEqual(typeof f.min, "number");
@@ -196,7 +195,6 @@ test("Number fields (2 limits) have controlType 'number' with min values", () =>
 test("Number field min attributes are correct", () => {
   const fieldMap = new Map(CONFIG_FIELDS.map((f) => [f.key, f]));
   assert.strictEqual(fieldMap.get("limits.max_retries_per_task")!.min, 0);
-  assert.strictEqual(fieldMap.get("limits.max_consecutive_review_rejections")!.min, 1);
 });
 
 test("Boolean fields (after_planning, after_final_review, telemetry.enabled) have controlType 'switch'", () => {
@@ -259,22 +257,22 @@ test("Text input onChange produces (dotPath, stringValue) pair", () => {
 test("Number input onChange produces (dotPath, numericValue) pair", () => {
   const calls: [string, unknown][] = [];
   const onChange = (path: string, value: unknown) => calls.push([path, value]);
-  const field = CONFIG_FIELDS.find((f) => f.key === "limits.max_consecutive_review_rejections")!;
+  const field = CONFIG_FIELDS.find((f) => f.key === "limits.max_retries_per_task")!;
   // Simulate: e.target.value === '' ? '' : Number(e.target.value)
   const inputValue: string = "15";
   const converted = inputValue === "" ? "" : Number(inputValue);
   onChange(field.key, converted);
-  assert.deepStrictEqual(calls[0], ["limits.max_consecutive_review_rejections", 15]);
+  assert.deepStrictEqual(calls[0], ["limits.max_retries_per_task", 15]);
 });
 
 test("Number input onChange produces empty string for cleared input", () => {
   const calls: [string, unknown][] = [];
   const onChange = (path: string, value: unknown) => calls.push([path, value]);
-  const field = CONFIG_FIELDS.find((f) => f.key === "limits.max_consecutive_review_rejections")!;
+  const field = CONFIG_FIELDS.find((f) => f.key === "limits.max_retries_per_task")!;
   const inputValue: string = "";
   const converted = inputValue === "" ? "" : Number(inputValue);
   onChange(field.key, converted);
-  assert.deepStrictEqual(calls[0], ["limits.max_consecutive_review_rejections", ""]);
+  assert.deepStrictEqual(calls[0], ["limits.max_retries_per_task", ""]);
 });
 
 test("Switch onChange produces (dotPath, booleanValue) pair", () => {
@@ -315,17 +313,17 @@ test("ToggleGroup value prop handles undefined gracefully (produces empty array)
 
 test("Validation errors are keyed by dot-path matching field keys", () => {
   const errors: ConfigValidationErrors = {
-    "limits.max_consecutive_review_rejections": "Must be at least 1",
+    "limits.max_retries_per_task": "Must be 0 or a positive integer",
     "human_gates.execution_mode": "Invalid execution mode",
   };
   // The component passes errors[field.key] to ConfigFieldRow error prop
-  const rejectionsField = CONFIG_FIELDS.find((f) => f.key === "limits.max_consecutive_review_rejections")!;
-  assert.strictEqual(errors[rejectionsField.key], "Must be at least 1");
+  const retriesField = CONFIG_FIELDS.find((f) => f.key === "limits.max_retries_per_task")!;
+  assert.strictEqual(errors[retriesField.key], "Must be 0 or a positive integer");
 });
 
 test("Fields without errors receive undefined error prop", () => {
   const errors: ConfigValidationErrors = {
-    "limits.max_consecutive_review_rejections": "Must be at least 1",
+    "limits.max_retries_per_task": "Must be 0 or a positive integer",
   };
   const defaultTemplateField = CONFIG_FIELDS.find((f) => f.key === "default_template")!;
   assert.strictEqual(errors[defaultTemplateField.key], undefined);

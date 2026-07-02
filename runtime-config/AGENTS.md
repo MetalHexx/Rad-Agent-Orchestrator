@@ -8,7 +8,7 @@ Source of truth for harness-neutral runtime configuration. Installers copy this 
 
 Two types of content:
 
-**`orchestration.yml`** — system configuration read by every project's pipeline. Current fields: `version`, `default_template`, `limits` (`max_retries_per_task`, `max_consecutive_review_rejections`), `human_gates` (`after_planning`, `execution_mode`, `after_final_review`), `source_control` (`auto_commit`, `auto_pr`).
+**`orchestration.yml`** — system configuration read by every project's pipeline. Current fields: `version`, `default_template`, `limits` (`max_retries_per_task`), `human_gates` (`after_planning`, `execution_mode`, `after_final_review`), `source_control` (`auto_commit`, `auto_pr`).
 
 **`templates/`** — four review-intensity tier templates that the pipeline engine loads when a project is started. Each file defines a `template` header (`id`, `version`, `description`) and a `nodes` DAG:
 - `extra-high.yml` — per-task code review + phase review + final review

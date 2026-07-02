@@ -17,7 +17,6 @@ export interface OrchestrationConfig {
   version: string;
   limits: {
     max_retries_per_task: number;
-    max_consecutive_review_rejections: number;
   };
   human_gates: {
     after_planning: boolean;

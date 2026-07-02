@@ -33,9 +33,21 @@ mini-table. A phase may span repos; each task targets one.}
 
 ## P01: {Phase Title}
 
-{1–2 line phase outcome: the capability that exists when the phase completes, and
-where the cross-repo seam knits together. No task table here — the explosion
-generates it.}
+**Intent**
+{One to two sentences: the capability that exists when the phase completes, and
+why it matters. Not a restatement of the task titles below.}
+
+**Exit criteria**
+- {A concrete, checkable condition that means the phase is done — what phase
+  review verifies against the diff.}
+- {…}
+
+**Integration seams**
+- {A cross-task or cross-repo boundary this phase knits together — an endpoint
+  and the view that calls it, a shared event payload — for phase review to
+  check beyond each task's own correctness.}
+
+No task table here — the explosion generates it.
 
 ### P01-T01: {Imperative task title, 4–7 words}
 

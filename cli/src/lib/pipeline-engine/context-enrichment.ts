@@ -1,10 +1,13 @@
 import { execFileSync } from 'node:child_process';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { userDataPaths } from '../paths.js';
 import { WorkGraphService } from '@rad-orchestration/work-graph';
 import type {
   PipelineState,
   OrchestrationConfig,
   EventContext,
+  CorrectiveTaskEntry,
   ForEachPhaseNodeState,
   ForEachTaskNodeState,
   StepNodeState,
@@ -160,6 +163,56 @@ const EMPTY_CONTEXT_ACTIONS = new Set([
 ]);
 
 /**
+ * Report-fields subset for a corrective-active spawn: always the corrective's
+ * 1-based `corrective_index`, plus `review_report_path` when the entry carries a
+ * non-empty one (omitted otherwise). Spread into the coder/reviewer spawn
+ * context so a correction sees the review report that requested it.
+ */
+function correctiveReportFields(entry: CorrectiveTaskEntry): Record<string, unknown> {
+  const fields: Record<string, unknown> = { corrective_index: entry.index };
+  const reportPath = entry.review_report_path;
+  if (typeof reportPath === 'string' && reportPath.trim().length > 0) {
+    fields.review_report_path = reportPath;
+  }
+  return fields;
+}
+
+/**
+ * Resolve the pre-pipeline requirements doc (a `/rad-plan` artifact) by
+ * convention scan, mirroring `readProjectReposDefault`'s master-plan lookup:
+ * exact `<PROJECT>-REQUIREMENTS.md` → case-insensitive `<PROJECT>-REQUIREMENTS*`
+ * prefix → loose "contains REQUIREMENTS" `.md`. Returns the absolute path, or
+ * null when the project dir is unknown/unreadable or nothing matches (there is
+ * no state field for this doc, so an unresolved scan is a lost convenience, not
+ * a blocker — the final reviewer self-discovers it).
+ */
+function findRequirementsDoc(projectDir: string | undefined, projectName: string): string | null {
+  if (!projectDir) return null;
+  let entries: string[];
+  try {
+    entries = fs.readdirSync(projectDir);
+  } catch {
+    return null;
+  }
+  const exact = `${projectName}-REQUIREMENTS.md`;
+  for (const e of entries) {
+    if (e === exact) return path.join(projectDir, e);
+  }
+  const upperPrefix = `${projectName.toUpperCase()}-REQUIREMENTS`;
+  for (const e of entries) {
+    if (e.toUpperCase().startsWith(upperPrefix) && e.toLowerCase().endsWith('.md')) {
+      return path.join(projectDir, e);
+    }
+  }
+  for (const e of entries) {
+    if (e.toUpperCase().includes('REQUIREMENTS') && e.toLowerCase().endsWith('.md')) {
+      return path.join(projectDir, e);
+    }
+  }
+  return null;
+}
+
+/**
  * Derive per-repo enrichment entries for any action that emits a `repos[]` array.
  *
  * For each entry in `state.pipeline.source_control.repos[]`, resolves the
@@ -245,8 +298,16 @@ export function enrichActionContext(input: EnrichmentInput): Record<string, unkn
         .find(ct => ct.repos.some(r => r.commit_hash != null));
       const lastTaskRepos = lastTaskFinalCorrective?.repos ?? lastTask?.repos ?? [];
 
-      const correctiveFields = phaseIter && phaseIter.corrective_tasks.length > 0
-        ? { is_correction: true, corrective_index: phaseIter.corrective_tasks.length }
+      // Canonical corrective_index: the latest corrective's own `.index`, not
+      // the array length (reconciled to CorrectiveTaskEntry.index — the same
+      // derivation execute_task and spawn_code_reviewer use). This corrective
+      // branch is provably unreachable via the walker (phase review is
+      // single-pass), so this is hygiene/future-proofing.
+      const lastPhaseCorrective = phaseIter && phaseIter.corrective_tasks.length > 0
+        ? phaseIter.corrective_tasks[phaseIter.corrective_tasks.length - 1]
+        : undefined;
+      const correctiveFields = lastPhaseCorrective
+        ? { is_correction: true, corrective_index: lastPhaseCorrective.index }
         : {};
 
       // Build repos[] with path/branch from buildReposArray, then attach per-repo phase SHAs.
@@ -258,7 +319,7 @@ export function enrichActionContext(input: EnrichmentInput): Record<string, unkn
         ),
       }));
 
-      return { ...base, repos, ...correctiveFields };
+      return { ...base, repos, phase_plan_doc: phaseIter?.doc_path ?? null, ...correctiveFields };
     }
 
     return base;
@@ -346,7 +407,7 @@ export function enrichActionContext(input: EnrichmentInput): Record<string, unkn
         if (typeof phaseCorrectiveDoc === 'string' && phaseCorrectiveDoc.trim().length > 0) {
           // Return the stored path unchanged (not the trimmed copy) so downstream
           // consumers see the value exactly as the mutation wrote it.
-          return { ...base, handoff_doc: phaseCorrectiveDoc, repos, complexity, should_commit };
+          return { ...base, handoff_doc: phaseCorrectiveDoc, repos, complexity, should_commit, ...correctiveReportFields(activePhaseCorrective) };
         }
       }
 
@@ -370,7 +431,7 @@ export function enrichActionContext(input: EnrichmentInput): Record<string, unkn
         if (typeof correctiveDoc === 'string' && correctiveDoc.trim().length > 0) {
           // Return the stored path unchanged (not the trimmed copy) so downstream
           // consumers see the value exactly as the mutation wrote it.
-          return { ...base, handoff_doc: correctiveDoc, repos, complexity, should_commit };
+          return { ...base, handoff_doc: correctiveDoc, repos, complexity, should_commit, ...correctiveReportFields(activeCorrective) };
         }
       }
 
@@ -382,10 +443,17 @@ export function enrichActionContext(input: EnrichmentInput): Record<string, unkn
       const phaseLoop = state.graph.nodes['phase_loop'] as ForEachPhaseNodeState | undefined;
       const phaseIter = phaseLoop?.iterations[phaseNumber - 1];
 
+      // Mirror execute_task's complexity derivation verbatim (including the quirk
+      // that it always reads the base task iteration's signal, defaulting to
+      // `standard`) so the reviewer tier routes consistently with the coder tier.
+      const taskLoopForComplexity = phaseIter?.nodes['task_loop'] as ForEachTaskNodeState | undefined;
+      const complexity = taskLoopForComplexity?.iterations[taskNumber - 1]?.complexity ?? 'standard';
+
       // Iter 11 — phase-scope-first. When a phase-scope corrective is active,
       // route repos[].head_sha to the phase-scope corrective's per-repo commit hashes
-      // and flag is_correction + corrective_index from phaseIter. Checked BEFORE the
-      // task-scope corrective path.
+      // and flag is_correction + report fields from phaseIter. Checked BEFORE the
+      // task-scope corrective path. handoff_doc is the phase iteration's original
+      // scope doc.
       const phaseCTs = phaseIter?.corrective_tasks ?? [];
       const activePhaseCorrective = phaseCTs.slice().reverse().find(
         ct => ct.status === 'in_progress' || ct.status === 'not_started'
@@ -395,8 +463,10 @@ export function enrichActionContext(input: EnrichmentInput): Record<string, unkn
         return {
           ...base,
           repos: buildReposArray(state, r => sourceRepos.find(sr => sr.name === r.name)?.commit_hash ?? null),
+          complexity,
+          handoff_doc: phaseIter?.doc_path ?? null,
           is_correction: true,
-          corrective_index: activePhaseCorrective.index,
+          ...correctiveReportFields(activePhaseCorrective),
         };
       }
 
@@ -408,11 +478,13 @@ export function enrichActionContext(input: EnrichmentInput): Record<string, unkn
       );
       const sourceRepos = activeCorrective ? activeCorrective.repos : (taskIter?.repos ?? []);
       const correctiveFields = activeCorrective
-        ? { is_correction: true, corrective_index: activeCorrective.index }
+        ? { is_correction: true, ...correctiveReportFields(activeCorrective) }
         : {};
       return {
         ...base,
         repos: buildReposArray(state, r => sourceRepos.find(sr => sr.name === r.name)?.commit_hash ?? null),
+        complexity,
+        handoff_doc: taskIter?.doc_path ?? null,
         ...correctiveFields,
       };
     }
@@ -537,9 +609,16 @@ export function enrichActionContext(input: EnrichmentInput): Record<string, unkn
       };
     });
 
+    // Scope docs for the final review: the pre-pipeline requirements doc
+    // (convention-scanned; null when unresolved) and every phase plan path.
+    const requirements_doc = findRequirementsDoc(input.cliContext.project_dir, state.project.name);
+    const phase_plan_paths = phaseIterations.map(pi => pi.doc_path ?? null);
+
     return {
       ...walkerContext,
       repos,
+      requirements_doc,
+      phase_plan_paths,
     };
   }
 
