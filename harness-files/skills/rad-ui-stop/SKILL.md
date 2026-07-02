@@ -1,6 +1,6 @@
 ---
 name: rad-ui-stop
-description: Stop the detached radorch dashboard UI server (SIGTERM).
+description: Use this skill to stop the rad orchestration dashboard UI.  It is the reference for how to stop the UI and report the result.  This is useful to invoke if the user is having issues using the UI.  It may help to stop the UI and restart it to resolve issues.  It is also useful to invoke if the user wants to stop the UI for any reason.
 user-invocable: true
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: rad-orchestration
-description: This skill can be invoked when the user starts talking about planning or executing a project. Use this skill to run a team of subagents through an automated SDLC process that helps them get work done safely and effectively.  
+description: Use this skill if you're a main agent orchestrator executing a rad-orchestration project.  It is the reference for how to run the pipeline, signal events, execute actions, and manage the overall flow of a project.  Typically, you are guided to using this skill when /rad-execute is invoked, but you may read it if you need to refresh your memory due to compaction during an execution.
 user-invocable: false
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: rad-execute-coding-task
-description: 'Execute a single coding task end-to-end from a self-contained task-handoff document — implement to the repo''s conventions, test by judgment, and commit and push the work when directed. On a corrective cycle the coder answers its own code review, fixing real findings and disputing false ones. The handoff is the primary input; the only other doc read is the review report on a corrective — no upstream planning docs.'
+description: 'Use this still if you are a coder agent and have this skill assigned.  It is the reference for how to perform a coding task.'
 user-invocable: false
 ---
 

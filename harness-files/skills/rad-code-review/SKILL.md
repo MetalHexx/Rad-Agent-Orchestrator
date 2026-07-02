@@ -1,6 +1,6 @@
 ---
 name: rad-code-review
-description: 'Review a diff for conformance and quality in three scopes — task, phase, and final. Judgment-led two-lens review (did the diff deliver its scope''s contract; is the work sound engineering) writing a lightweight running review report the coder answers with dispositions, and one verdict: approved | changes_requested | rejected.'
+description: 'Use this still if you are a reviewer agent and have this skill assigned.  It is the reference for how to perform a code review at task, phase, or final scope.'
 user-invocable: false
 ---
 

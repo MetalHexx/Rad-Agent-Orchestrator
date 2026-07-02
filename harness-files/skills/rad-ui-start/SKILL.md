@@ -1,6 +1,6 @@
 ---
 name: rad-ui-start
-description: Start the radorch dashboard UI as a detached server and report the URL.
+description: Use this skill to start the rad orchestration dashboard UI.  It is the reference for how to launch the UI and obtain the URL.  Use it when the conversation indicates the user wants to start the dashboard.  This is commonly used during brainstorming, planning or executing a project or sharing a visual diagram or markdown document with the user.  It provides a visual overview of the project and its current state, and allows the user to interact with the pipeline in a more intuitive way.
 user-invocable: true
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: rad-visual-docs
-description: 'Generate beautiful brainstorm/summary visuals, UI mockups and wireframes, and architecture / data-flow / sequence / state diagrams. Trigger when the user wants to *see* something: "make me a wireframe / mockup", "diagram this architecture / flow / sequence", "turn this into a visual or HTML summary", "show me a visual" or "visualize the goals". 
+description: 'Use this skill to help the user generate beautiful brainstorm/summary visuals, UI mockups and wireframes, and architecture / data-flow / sequence / state diagrams. Trigger when the user wants to *see* something: "make me a wireframe / mockup", "diagram this architecture / flow / sequence", "turn this into a visual or HTML summary", "show me a visual" or "visualize the goals".  If you are struggling to align with the user, a visual is often a good way to get on the same page.'
 user-invocable: true
 ---
 
