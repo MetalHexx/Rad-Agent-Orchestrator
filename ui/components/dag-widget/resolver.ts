@@ -155,10 +155,26 @@ function walkPath(rootNodes: NodesRecord, path: string): PathWalkResult {
   return { node: currentNode, leaf, isCorrective, iteration, correctiveEntry };
 }
 
+/**
+ * Converts the pipeline engine's bracket-index node-path grammar
+ * (`phase_loop[0].task_loop[0].corrective_tasks[1].task_executor`) into the
+ * resolver's segment grammar (`phase_loop.iter0.task_loop.iter0.ct1.task_executor`)
+ * that `walkPath` understands. Order matters: `corrective_tasks[N]` (1-based,
+ * matches `CorrectiveTaskEntry.index`) is rewritten to `.ctN` before the
+ * remaining `[N]` loop-iteration brackets (0-based) become `.iterN` — otherwise
+ * the corrective container's own bracket would be consumed by the generic rule
+ * first. A no-op on paths that are already segment form or bracket-free.
+ */
+export function normalizeNodePath(path: string): string {
+  return path
+    .replace(/\.corrective_tasks\[(\d+)\]/g, '.ct$1')
+    .replace(/\[(\d+)\]/g, '.iter$1');
+}
+
 function normalizeFocus(focus: string | undefined, currentNodePath: string | null): string | null {
   const raw = focus ?? currentNodePath;
   if (raw == null || raw.length === 0) return null;
-  return raw;
+  return normalizeNodePath(raw);
 }
 
 /**

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveStateId, resolveStateView } from './resolver';
+import { resolveStateId, resolveStateView, normalizeNodePath } from './resolver';
 import type { ProjectStateV5, NodesRecord, GraphStatus } from '@/types/state';
 
 // A rich graph so a single fixture exercises every mapping path: top-level
@@ -80,6 +80,71 @@ function makeState(currentNodePath: string | null, status: GraphStatus = 'in_pro
 
 const TASK_PATH = 'phase_loop.iter0.task_loop.iter0';
 const noopDeps = { onDocClick: () => {}, compareUrlByRepo: {}, projectName: 'demo' };
+
+// ─── normalizeNodePath: engine bracket grammar → resolver segment grammar ────
+
+test('normalizeNodePath rewrites a bracketed task_executor path to segment form', () => {
+  assert.equal(
+    normalizeNodePath('phase_loop[0].task_loop[0].task_executor'),
+    'phase_loop.iter0.task_loop.iter0.task_executor',
+  );
+});
+
+test('normalizeNodePath rewrites a bracketed code_review path to segment form', () => {
+  assert.equal(
+    normalizeNodePath('phase_loop[0].task_loop[0].code_review'),
+    'phase_loop.iter0.task_loop.iter0.code_review',
+  );
+});
+
+test('normalizeNodePath rewrites a bracketed phase_review path to segment form', () => {
+  assert.equal(normalizeNodePath('phase_loop[0].phase_review'), 'phase_loop.iter0.phase_review');
+});
+
+test('normalizeNodePath rewrites corrective_tasks[N] before the loop brackets, keeping the 1-based index', () => {
+  assert.equal(
+    normalizeNodePath('phase_loop[0].task_loop[0].corrective_tasks[1].task_executor'),
+    'phase_loop.iter0.task_loop.iter0.ct1.task_executor',
+  );
+});
+
+test('normalizeNodePath is a no-op on already-segmented iterN/ctN input', () => {
+  const segmented = 'phase_loop.iter0.task_loop.iter0.ct1.task_executor';
+  assert.equal(normalizeNodePath(segmented), segmented);
+});
+
+test('normalizeNodePath is a no-op on a bracket-free top-level id', () => {
+  assert.equal(normalizeNodePath('final_review'), 'final_review');
+  assert.equal(normalizeNodePath('plan_approval_gate'), 'plan_approval_gate');
+});
+
+// ─── resolveStateId with real (bracket-format) engine paths ─────────────────
+// The engine writes current_node_path in bracket-index notation; these guard
+// the actual bug (bracketed paths falling to fallback) rather than only the
+// pre-normalized segment form the rest of this file exercises.
+
+test('a bracket-format task_executor path resolves to coding', () => {
+  assert.equal(resolveStateId(makeState('phase_loop[0].task_loop[0].task_executor')), 'coding');
+});
+
+test('a bracket-format code_review path resolves to reviewing', () => {
+  assert.equal(resolveStateId(makeState('phase_loop[0].task_loop[0].code_review')), 'reviewing');
+});
+
+test('a bracket-format phase_review path resolves to phase-review', () => {
+  assert.equal(resolveStateId(makeState('phase_loop[0].phase_review')), 'phase-review');
+});
+
+test('a bracket-format corrective_tasks[N] path resolves to corrective', () => {
+  assert.equal(
+    resolveStateId(makeState('phase_loop[0].task_loop[0].corrective_tasks[1].task_executor')),
+    'corrective',
+  );
+});
+
+test('a bracket-format path into a missing iteration still resolves to fallback', () => {
+  assert.equal(resolveStateId(makeState('phase_loop[9].task_loop[0].task_executor')), 'fallback');
+});
 
 // ─── node id / kind → StateId mapping ────────────────────────────────────────
 

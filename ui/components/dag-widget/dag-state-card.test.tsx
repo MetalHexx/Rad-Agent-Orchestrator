@@ -4,7 +4,7 @@ import React, { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { JSDOM } from 'jsdom';
 import { DagStateCard } from './dag-state-card';
-import type { ProjectStateV5, GraphStatus } from '@/types/state';
+import type { ProjectStateV5, GraphStatus, NodesRecord } from '@/types/state';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 (globalThis as any).React = React;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -25,6 +25,68 @@ function makeState(currentNodePath: string | null, status: GraphStatus = 'in_pro
 }
 
 const baseProps = { onDocClick: () => {}, compareUrlByRepo: {}, projectName: 'demo' };
+
+// A minimal phase-loop → task-loop → task_executor tree, deep enough that the
+// engine's real bracket-index `current_node_path` grammar has somewhere to
+// resolve to.
+const BRACKET_NODES: NodesRecord = {
+  phase_loop: {
+    kind: 'for_each_phase',
+    status: 'in_progress',
+    iterations: [
+      {
+        index: 0,
+        status: 'in_progress',
+        doc_path: 'phases/DEMO-PHASE-01-SETUP.md',
+        corrective_tasks: [],
+        repos: [],
+        nodes: {
+          task_loop: {
+            kind: 'for_each_task',
+            status: 'in_progress',
+            iterations: [
+              {
+                index: 0,
+                status: 'in_progress',
+                doc_path: 'tasks/DEMO-TASK-P01-T01-AUTH.md',
+                repos: [],
+                corrective_tasks: [],
+                nodes: {
+                  task_executor: { kind: 'step', status: 'in_progress', doc_path: null, retries: 0 },
+                },
+              },
+            ],
+          },
+        },
+      },
+    ],
+  },
+};
+
+function makeBracketState(currentNodePath: string): ProjectStateV5 {
+  return {
+    $schema: 'orchestration-state-v5',
+    project: { name: 'demo', created: '2026-01-01', updated: '2026-01-01' },
+    config: {
+      gate_mode: 'task',
+      limits: { max_phases: 3, max_tasks_per_phase: 3, max_retries_per_task: 2 },
+      source_control: { auto_commit: 'never', auto_pr: 'never' },
+    },
+    pipeline: { gate_mode: 'task', source_control: null, current_tier: 'execution', halt_reason: null },
+    graph: { template_id: 'std', status: 'in_progress', current_node_path: currentNodePath, nodes: BRACKET_NODES },
+  };
+}
+
+test('a bracket-format current_node_path on task_executor renders the Coding view, not the fallback', () => {
+  const html = renderToStaticMarkup(
+    createElement(DagStateCard, {
+      ...baseProps,
+      state: makeBracketState('phase_loop[0].task_loop[0].task_executor'),
+    }),
+  );
+  assert.ok(html.includes('Task Handoff'), 'Coding view control renders');
+  assert.ok(!html.includes('Pipeline node'), 'fallback view did not render');
+});
 
 test('renders the fallback view for an unknown current node without crashing', () => {
   const html = renderToStaticMarkup(
