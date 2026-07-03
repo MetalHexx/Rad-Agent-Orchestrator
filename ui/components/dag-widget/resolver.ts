@@ -9,6 +9,9 @@ import type {
 import { deriveCurrentPhase, derivePhaseProgress } from '@/components/dag-timeline/dag-timeline-helpers';
 import type { StateId, StateView, StateViewContext } from './types';
 import { fallbackView } from './states/fallback-view';
+import { codingView } from './states/coding-view';
+import { reviewingView } from './states/reviewing-view';
+import { correctiveView } from './states/corrective-view';
 
 /**
  * Leaf node id → `StateId`. Only nodes that name a first-class card state are
@@ -168,12 +171,15 @@ export function resolveStateId(state: AnyProjectState, focus?: string): StateId 
 
 /**
  * Registry of concrete state views keyed by `StateId`. A lookup — not a switch
- * ladder — so later tasks register their views as plain entries. This task
- * ships only `fallback`; any resolved id without a registered view renders the
- * fallback, which is why the mapping above can name states no view backs yet.
+ * ladder — so later tasks register their views as plain entries. `coding`,
+ * `reviewing`, and `corrective` are registered here; any resolved id without a
+ * registered view (the milestone states, for now) renders the fallback.
  */
 const STATE_VIEW_REGISTRY: Partial<Record<StateId, StateView>> = {
   fallback: fallbackView,
+  coding: codingView,
+  reviewing: reviewingView,
+  corrective: correctiveView,
 };
 
 /** Presentational dependencies the shell threads into every view context. */
