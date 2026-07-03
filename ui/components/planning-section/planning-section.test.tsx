@@ -158,10 +158,22 @@ test('the card centers its content within the shared height rather than stretchi
   assert.match(html, /justify-center/, 'the card wrapper centers its content instead of stretching');
 });
 
+test('the card wrapper clips an over-height card instead of letting it spill past the shared row height', () => {
+  const html = render({ ...baseProps, artifacts, state: makeState('some_unmapped_node') });
+  const wrapper = /<div class="flex flex-col justify-center overflow-hidden lg:h-\[168px\]"/.exec(html);
+  assert.ok(wrapper, 'the card wrapper carries overflow-hidden alongside the fixed row height');
+});
+
+test('the docs scroll container carries tabIndex so it is keyboard-focusable independent of its descendants', () => {
+  const html = render({ ...baseProps, artifacts, state: makeState('some_unmapped_node') });
+  assert.match(html, /tabindex="0"/, 'the scrollable docs container is directly reachable via Tab');
+});
+
 test('a solo docs column (no card) keeps its natural height — no fixed height or internal scroll', () => {
   const html = render({ ...baseProps, artifacts, state: makeState(null, 'not_started') });
   assert.ok(!html.includes('lg:h-[168px]'), 'no shared row height outside the two-up row');
   assert.ok(!html.includes('overflow-y-auto'), 'no forced internal scroll outside the two-up row');
+  assert.ok(!html.includes('tabindex="0"'), 'no forced tabindex outside the two-up row\'s scrollable case');
 });
 
 test('a solo card (no docs) keeps its natural height — no fixed height or centering wrapper', () => {

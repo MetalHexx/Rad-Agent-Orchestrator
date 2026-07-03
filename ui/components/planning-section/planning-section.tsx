@@ -78,7 +78,7 @@ export function PlanningSection({
 
   const docsColumn = (
     <Card className={cn("py-2", isRow && PLANNING_ROW_HEIGHT_CLASS)}>
-      <div className={cn("py-2", isRow && "min-h-0 flex-1 overflow-y-auto")}>
+      <div className={cn("py-2", isRow && "min-h-0 flex-1 overflow-y-auto")} tabIndex={isRow ? 0 : undefined}>
         <PlanningDocsList
           artifacts={artifacts}
           requirementsStatus={requirementsStatus}
@@ -100,7 +100,9 @@ export function PlanningSection({
     />
   );
   const card = isRow ? (
-    <div className={cn("flex flex-col justify-center", PLANNING_ROW_HEIGHT_CLASS)}>{dagStateCard}</div>
+    <div className={cn("flex flex-col justify-center overflow-hidden", PLANNING_ROW_HEIGHT_CLASS)}>
+      {dagStateCard}
+    </div>
   ) : (
     dagStateCard
   );
