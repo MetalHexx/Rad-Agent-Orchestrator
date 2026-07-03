@@ -118,3 +118,24 @@ test('reuses the DagStateCard and PlanningDocsList rather than reimplementing th
   assert.ok(source.includes('DagStateCard'), 'composes the shared DAG-state card');
   assert.ok(source.includes('PlanningDocsList'), 'composes the shared planning docs list');
 });
+
+// ─── Spacing regression fix ─────────────────────────────────────────────────
+
+test('wraps the docs-list rows in an inner div so they are not direct gap-4 flex children', () => {
+  // The structure should be: <Card><div className="py-2"><PlanningDocsList /></div></Card>
+  // This prevents the rows from being direct children of the Card's gap-4 flex container.
+  const innerDivPattern = /<div className="py-2">\s*<PlanningDocsList/;
+  assert.ok(
+    innerDivPattern.test(source),
+    'PlanningDocsList is wrapped in an inner div with py-2 class',
+  );
+});
+
+test('the inner wrapper div has py-2 padding, not relying on the Card gap-4 for row spacing', () => {
+  // Verify the inner div exists and uses py-2 to control padding
+  const cardWithInnerDiv = /<Card[^>]*>\s*<div className="py-2">/;
+  assert.ok(
+    cardWithInnerDiv.test(source),
+    'inner py-2 div wraps PlanningDocsList inside Card',
+  );
+});

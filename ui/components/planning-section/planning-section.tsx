@@ -64,14 +64,16 @@ export function PlanningSection({
 
   const docsColumn = (
     <Card className="py-2">
-      <PlanningDocsList
-        artifacts={artifacts}
-        requirementsStatus={requirementsStatus}
-        onOpen={onOpen}
-        onDelete={onDelete}
-        unseen={unseen}
-        activePulse={activePulse}
-      />
+      <div className="py-2">
+        <PlanningDocsList
+          artifacts={artifacts}
+          requirementsStatus={requirementsStatus}
+          onOpen={onOpen}
+          onDelete={onDelete}
+          unseen={unseen}
+          activePulse={activePulse}
+        />
+      </div>
     </Card>
   );
 
