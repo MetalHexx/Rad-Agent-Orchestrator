@@ -296,7 +296,7 @@ describe('runPluginChecks — new plugin-install checks (FR-14)', () => {
     try {
       const agentsDir = path.join(pluginRoot, 'agents');
       await fs.mkdir(agentsDir, { recursive: true });
-      await fs.writeFile(path.join(agentsDir, 'orchestrator.md'), '# stub agent\n');
+      await fs.writeFile(path.join(agentsDir, 'reviewer.md'), '# stub agent\n');
       await fs.writeFile(path.join(agentsDir, 'coder.md'), '# stub agent\n');
       const result = await runPluginChecks({ root: home, localVersion: '1.0.0', pluginRoot });
       const check = result.find((c) => c.name === 'plugin-agents-resolvable');
@@ -518,7 +518,7 @@ describe('Section 9 — plugin check noise suppression', () => {
       // agents/ folder with one readable .md file.
       const agentsDir = path.join(pluginRoot, 'agents');
       await fs.mkdir(agentsDir, { recursive: true });
-      await fs.writeFile(path.join(agentsDir, 'orchestrator.md'), '# stub agent\n');
+      await fs.writeFile(path.join(agentsDir, 'coder.md'), '# stub agent\n');
 
       const result = await runPluginChecks({ root, localVersion: '1.0.0', pluginRoot });
       expect(result.find((c) => c.name === 'bundle-integrity')?.status).toBe('pass');

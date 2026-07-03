@@ -10,7 +10,7 @@ function makeFixtureRoot() {
   // Synthetic adapter output for copilot-vscode. Agent filename suffix .agent.md per VS Code's filename rule.
   fs.mkdirSync(join(root, 'harness-adapters/output/copilot-vscode/agents'), { recursive: true });
   fs.mkdirSync(join(root, 'harness-adapters/output/copilot-vscode/skills/rad-x/references'), { recursive: true });
-  fs.writeFileSync(join(root, 'harness-adapters/output/copilot-vscode/agents/orchestrator.agent.md'),
+  fs.writeFileSync(join(root, 'harness-adapters/output/copilot-vscode/agents/coder.agent.md'),
     'model: Claude Opus 4.7 (copilot)\nSee ${SKILLS_ROOT}/rad-x/SKILL.md and ${PLUGIN_ROOT}/hooks/.\n');
   fs.writeFileSync(join(root, 'harness-adapters/output/copilot-vscode/skills/rad-x/SKILL.md'),
     'subagent_type: coder\nSee ${SKILLS_ROOT}/rad-x/references/r.md\n');
@@ -37,7 +37,7 @@ function makeFixtureRoot() {
 
   // Canonical agents directory for validate gate 2.
   fs.mkdirSync(join(root, 'harness-files/agents'), { recursive: true });
-  fs.writeFileSync(join(root, 'harness-files/agents/orchestrator.md'), '# orchestrator');
+  fs.writeFileSync(join(root, 'harness-files/agents/coder.md'), '# coder');
 
   // The installer package itself — source-side plugin.json, hooks/, lib/install/, manifests/.
   const installerDir = join(root, 'harness-installers/copilot-vscode-plugin');
@@ -85,7 +85,7 @@ test('runBuild produces a full output/ tree with plugin.json under .claude-plugi
     assert.ok(fs.existsSync(join(out, '.claude-plugin/plugin.json')), 'plugin.json under .claude-plugin/ (Claude format → CLAUDE_PLUGIN_ROOT injection)');
     assert.ok(!fs.existsSync(join(out, 'plugin.json')), 'no root plugin.json (Copilot format would shadow Claude detection)');
     assert.ok(fs.existsSync(join(out, 'package.json')), 'synthesized package.json (FR-32)');
-    assert.ok(fs.existsSync(join(out, 'agents/orchestrator.agent.md')), 'agent .agent.md filename per VS Code (FR-26)');
+    assert.ok(fs.existsSync(join(out, 'agents/coder.agent.md')), 'agent .agent.md filename per VS Code (FR-26)');
     assert.ok(fs.existsSync(join(out, 'skills/rad-x/SKILL.md')));
     assert.ok(fs.existsSync(join(out, '_install-source/orchestration.yml')), 'runtime-config staged under _install-source/');
     assert.ok(fs.existsSync(join(out, '_install-source/templates/medium.yml')));
@@ -107,12 +107,12 @@ test('expand-tokens substitutes destination tokens across agents+skills WITHOUT 
   try {
     await runBuild({ rootDir: root, skipAdapterEngine: true, skipBootstrap: true, skipUiRunner: true });
     const out = join(root, 'harness-installers/copilot-vscode-plugin/output');
-    const orch = fs.readFileSync(join(out, 'agents/orchestrator.agent.md'), 'utf8');
-    assert.ok(orch.includes('${COPILOT_VSCODE_PLUGIN_ROOT}/skills/rad-x/SKILL.md'), '${SKILLS_ROOT} substituted to COPILOT_VSCODE_PLUGIN_ROOT (FR-29)');
-    assert.ok(orch.includes('${COPILOT_VSCODE_PLUGIN_ROOT}/hooks/'), '${PLUGIN_ROOT} substituted (FR-29)');
-    assert.ok(!orch.includes('rad-orc-vscode:'), 'NO agent-namespacing transform (FR-4, AD-10)');
+    const agent = fs.readFileSync(join(out, 'agents/coder.agent.md'), 'utf8');
+    assert.ok(agent.includes('${COPILOT_VSCODE_PLUGIN_ROOT}/skills/rad-x/SKILL.md'), '${SKILLS_ROOT} substituted to COPILOT_VSCODE_PLUGIN_ROOT (FR-29)');
+    assert.ok(agent.includes('${COPILOT_VSCODE_PLUGIN_ROOT}/hooks/'), '${PLUGIN_ROOT} substituted (FR-29)');
+    assert.ok(!agent.includes('rad-orc-vscode:'), 'NO agent-namespacing transform (FR-4, AD-10)');
     // The (copilot) model identifier suffix survives token substitution unchanged (FR-3 — adapter-shipped).
-    assert.ok(orch.includes('Claude Opus 4.7 (copilot)'), 'model identifier (copilot) suffix preserved verbatim (FR-3)');
+    assert.ok(agent.includes('Claude Opus 4.7 (copilot)'), 'model identifier (copilot) suffix preserved verbatim (FR-3)');
     const skill = fs.readFileSync(join(out, 'skills/rad-x/SKILL.md'), 'utf8');
     assert.ok(skill.includes('subagent_type: coder'), 'subagent_type bare (no namespacing — AD-10)');
   } finally {

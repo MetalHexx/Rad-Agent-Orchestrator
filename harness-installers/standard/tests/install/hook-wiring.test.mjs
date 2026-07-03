@@ -42,7 +42,7 @@ function withHome(home) {
 /**
  * Build a synthetic per-harness bundle on disk. Includes:
  *   - package.json with `version`
- *   - agents/orchestrator.md
+ *   - agents/coder.md
  *   - skills/rad-orchestration/scripts/radorch.mjs
  *   - hooks/session-preamble.mjs  (the staged shim drop)
  *   - manifests/v<version>.json  (lists the three files above plus the shim)
@@ -59,7 +59,7 @@ function buildBundle(bundleRoot, { version, priorVersion, includeHookShim = true
   );
 
   fs.mkdirSync(path.join(bundleRoot, 'agents'), { recursive: true });
-  fs.writeFileSync(path.join(bundleRoot, 'agents/orchestrator.md'), `# orchestrator v${version}\n`);
+  fs.writeFileSync(path.join(bundleRoot, 'agents/coder.md'), `# coder v${version}\n`);
 
   const scriptsDir = path.join(bundleRoot, 'skills/rad-orchestration/scripts');
   fs.mkdirSync(scriptsDir, { recursive: true });
@@ -67,8 +67,8 @@ function buildBundle(bundleRoot, { version, priorVersion, includeHookShim = true
 
   const manifestFiles = [
     {
-      bundlePath: 'agents/orchestrator.md',
-      destinationPath: '${HARNESS_ROOT}/agents/orchestrator.md',
+      bundlePath: 'agents/coder.md',
+      destinationPath: '${HARNESS_ROOT}/agents/coder.md',
       sha256: 'x',
     },
     {
@@ -128,8 +128,8 @@ function makeFixture() {
     fs.mkdirSync(agentsDir, { recursive: true });
     fs.mkdirSync(skillsDir, { recursive: true });
     fs.writeFileSync(
-      path.join(agentsDir, agentFilename(h, 'orchestrator')),
-      '---\nname: orchestrator\ndescription: test\n---\n# Orchestrator\n',
+      path.join(agentsDir, agentFilename(h, 'reviewer')),
+      '---\nname: reviewer\ndescription: test\n---\n# Reviewer\n',
     );
     fs.writeFileSync(
       path.join(agentsDir, agentFilename(h, 'coder')),
@@ -171,7 +171,7 @@ function makeFixture() {
   // harness-files/agents/ (needed by validate step)
   const canonicalAgentsDir = path.join(root, 'harness-files/agents');
   fs.mkdirSync(canonicalAgentsDir, { recursive: true });
-  fs.writeFileSync(path.join(canonicalAgentsDir, 'orchestrator.md'), '# orchestrator\n');
+  fs.writeFileSync(path.join(canonicalAgentsDir, 'reviewer.md'), '# reviewer\n');
   fs.writeFileSync(path.join(canonicalAgentsDir, 'coder.md'), '# coder\n');
 
   // harness-installers/standard/
@@ -422,7 +422,7 @@ test('upgrade claude: generated hook command quotes the shim path to handle spac
     // Seed prior install
     const claudeRoot = path.join(home, '.claude');
     fs.mkdirSync(path.join(claudeRoot, 'agents'), { recursive: true });
-    fs.writeFileSync(path.join(claudeRoot, 'agents/orchestrator.md'), '# old\n');
+    fs.writeFileSync(path.join(claudeRoot, 'agents/coder.md'), '# old\n');
     fs.mkdirSync(path.join(claudeRoot, 'skills/rad-orchestration/scripts'), { recursive: true });
     fs.writeFileSync(path.join(claudeRoot, 'skills/rad-orchestration/scripts/radorch.mjs'), '# old\n');
 

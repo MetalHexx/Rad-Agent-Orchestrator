@@ -44,9 +44,9 @@ const MANIFEST_DIRS = [
 const HARDCODED_LITERAL_FILES = [
   'harness-installers/claude-plugin/build-scripts/parity-check.js',
   'harness-installers/claude-plugin/tests/manifest-shape.test.mjs',
-  'harness-installers/claude-plugin/tests/build-orchestrator.test.mjs',
-  'harness-installers/copilot-cli-plugin/tests/build-orchestrator.test.mjs',
-  'harness-installers/copilot-vscode-plugin/tests/build-orchestrator.test.mjs',
+  'harness-installers/claude-plugin/tests/build-payload.test.mjs',
+  'harness-installers/copilot-cli-plugin/tests/build-payload.test.mjs',
+  'harness-installers/copilot-vscode-plugin/tests/build-payload.test.mjs',
   'harness-installers/standard/tests/build/build.test.mjs',
   'harness-installers/standard/tests/build/emit-manifest.test.mjs',
   'harness-installers/standard/tests/build/validate.test.mjs',

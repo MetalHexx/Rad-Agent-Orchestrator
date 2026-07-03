@@ -9,7 +9,7 @@ function makeFixture() {
   const root = mkdtempSync(join(tmpdir(), 'expand-tokens-'));
   mkdirSync(join(root, 'in/agents'), { recursive: true });
   mkdirSync(join(root, 'in/skills/rad-x/references'), { recursive: true });
-  writeFileSync(join(root, 'in/agents/orchestrator.md'),
+  writeFileSync(join(root, 'in/agents/coder.md'),
     'Spawn **coder** agent.\nSee ${SKILLS_ROOT}/rad-x/SKILL.md.\nUse ${PLUGIN_ROOT}/hooks/.\n');
   writeFileSync(join(root, 'in/skills/rad-x/SKILL.md'),
     'subagent_type: planner\nSee ${SKILLS_ROOT}/rad-x/references/r.md\n');
@@ -32,10 +32,10 @@ test('expandTokens substitutes destination tokens and applies agent-namespacing 
       },
       agentNames: ['coder', 'planner', 'reviewer'],
     });
-    const orch = readFileSync(join(root, 'out/agents/orchestrator.md'), 'utf8');
-    assert.ok(orch.includes('**rad-orc:coder**'), 'bold dispatch token namespaced');
-    assert.ok(orch.includes('${CLAUDE_PLUGIN_ROOT}/skills/rad-x/SKILL.md'), '${SKILLS_ROOT} substituted');
-    assert.ok(orch.includes('${CLAUDE_PLUGIN_ROOT}/hooks/'), '${PLUGIN_ROOT} substituted');
+    const agent = readFileSync(join(root, 'out/agents/coder.md'), 'utf8');
+    assert.ok(agent.includes('**rad-orc:coder**'), 'bold dispatch token namespaced');
+    assert.ok(agent.includes('${CLAUDE_PLUGIN_ROOT}/skills/rad-x/SKILL.md'), '${SKILLS_ROOT} substituted');
+    assert.ok(agent.includes('${CLAUDE_PLUGIN_ROOT}/hooks/'), '${PLUGIN_ROOT} substituted');
     const skill = readFileSync(join(root, 'out/skills/rad-x/SKILL.md'), 'utf8');
     assert.ok(skill.includes('subagent_type: rad-orc:planner'), 'subagent_type namespaced');
     const refs = readFileSync(join(root, 'out/skills/rad-x/references/r.md'), 'utf8');

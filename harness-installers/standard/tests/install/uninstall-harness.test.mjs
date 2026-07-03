@@ -20,7 +20,7 @@ function buildBundle(bundleRoot, version) {
   );
 
   fs.mkdirSync(path.join(bundleRoot, 'agents'), { recursive: true });
-  fs.writeFileSync(path.join(bundleRoot, 'agents/orchestrator.md'), `# orchestrator v${version}\n`);
+  fs.writeFileSync(path.join(bundleRoot, 'agents/coder.md'), `# coder v${version}\n`);
 
   const scriptsDir = path.join(bundleRoot, 'skills/rad-orchestration/scripts');
   fs.mkdirSync(scriptsDir, { recursive: true });
@@ -29,8 +29,8 @@ function buildBundle(bundleRoot, version) {
   const manifest = {
     files: [
       {
-        bundlePath: 'agents/orchestrator.md',
-        destinationPath: '${HARNESS_ROOT}/agents/orchestrator.md',
+        bundlePath: 'agents/coder.md',
+        destinationPath: '${HARNESS_ROOT}/agents/coder.md',
         sha256: 'x',
       },
       {
@@ -77,9 +77,9 @@ test('uninstallHarness removes per-harness files and the registry entry; preserv
 
     const home = path.join(tmp, 'home');
     const harnessRootPath = path.join(home, '.claude');
-    const orchestratorPath = path.join(harnessRootPath, 'agents/orchestrator.md');
+    const coderPath = path.join(harnessRootPath, 'agents/coder.md');
     const radorchMjsPath = path.join(harnessRootPath, 'skills/rad-orchestration/scripts/radorch.mjs');
-    assert.ok(fs.existsSync(orchestratorPath), 'install put orchestrator.md in place');
+    assert.ok(fs.existsSync(coderPath), 'install put coder.md in place');
     assert.ok(fs.existsSync(radorchMjsPath), 'install put radorch.mjs in place');
 
     // Seed ~/.radorc/ assets that the uninstall should leave alone. Some
@@ -104,7 +104,7 @@ test('uninstallHarness removes per-harness files and the registry entry; preserv
     assert.ok(result.prunedDirs >= 1, 'at least one empty installer subfolder was pruned');
 
     // Manifest files removed.
-    assert.ok(!fs.existsSync(orchestratorPath), 'orchestrator.md removed');
+    assert.ok(!fs.existsSync(coderPath), 'coder.md removed');
     assert.ok(!fs.existsSync(radorchMjsPath), 'radorch.mjs removed');
 
     // User-authored file under agents/ keeps agents/ alive.

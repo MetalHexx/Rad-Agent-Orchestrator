@@ -7,11 +7,11 @@ import { runBuild } from '../build-scripts/build.js';
 
 function makeFixtureRoot() {
   const root = fs.mkdtempSync(join(os.tmpdir(), 'cli-build-'));
-  // Synthetic fixture: only the source trees the build orchestrator reads.
+  // Synthetic fixture: only the source trees the build script reads.
   // greenfieldRel='.' flattens the layout so root acts as both repo root and greenfield root.
   fs.mkdirSync(join(root, 'harness-adapters/output/copilot-cli/agents'), { recursive: true });
   fs.mkdirSync(join(root, 'harness-adapters/output/copilot-cli/skills/rad-x/references'), { recursive: true });
-  fs.writeFileSync(join(root, 'harness-adapters/output/copilot-cli/agents/orchestrator.agent.md'),
+  fs.writeFileSync(join(root, 'harness-adapters/output/copilot-cli/agents/coder.agent.md'),
     'See ${SKILLS_ROOT}/rad-x/SKILL.md and ${PLUGIN_ROOT}/hooks/.\n');
   fs.writeFileSync(join(root, 'harness-adapters/output/copilot-cli/skills/rad-x/SKILL.md'),
     'subagent_type: coder\nSee ${SKILLS_ROOT}/rad-x/references/r.md\n');
@@ -80,7 +80,7 @@ test('runBuild produces a full output/ tree with adapter content, runtime-config
     const out = join(root, 'harness-installers/copilot-cli-plugin/output');
     assert.ok(fs.existsSync(join(out, 'plugin.json')), 'plugin.json at payload root (FR-36)');
     assert.ok(fs.existsSync(join(out, 'package.json')), 'synthesized package.json');
-    assert.ok(fs.existsSync(join(out, 'agents/orchestrator.agent.md')), 'agent .agent.md filename per Copilot (FR-29 gate 2)');
+    assert.ok(fs.existsSync(join(out, 'agents/coder.agent.md')), 'agent .agent.md filename per Copilot (FR-29 gate 2)');
     assert.ok(fs.existsSync(join(out, 'skills/rad-x/SKILL.md')));
     assert.ok(fs.existsSync(join(out, '_install-source/orchestration.yml')), 'runtime-config staged under _install-source/');
     assert.ok(fs.existsSync(join(out, '_install-source/templates/medium.yml')));
@@ -107,10 +107,10 @@ test('expand-tokens substitutes destination tokens across agents+skills WITHOUT 
       skipAdapterEngine: true, skipBootstrap: true, skipUiRunner: true,
     });
     const out = join(root, 'harness-installers/copilot-cli-plugin/output');
-    const orch = fs.readFileSync(join(out, 'agents/orchestrator.agent.md'), 'utf8');
-    assert.ok(orch.includes('${COPILOT_CLI_PLUGIN_ROOT}/skills/rad-x/SKILL.md'), '${SKILLS_ROOT} substituted (FR-27)');
-    assert.ok(orch.includes('${COPILOT_CLI_PLUGIN_ROOT}/hooks/'), '${PLUGIN_ROOT} substituted (FR-27)');
-    assert.ok(!orch.includes('rad-orc:'), 'NO agent-namespacing transform (FR-3, AD-10)');
+    const agent = fs.readFileSync(join(out, 'agents/coder.agent.md'), 'utf8');
+    assert.ok(agent.includes('${COPILOT_CLI_PLUGIN_ROOT}/skills/rad-x/SKILL.md'), '${SKILLS_ROOT} substituted (FR-27)');
+    assert.ok(agent.includes('${COPILOT_CLI_PLUGIN_ROOT}/hooks/'), '${PLUGIN_ROOT} substituted (FR-27)');
+    assert.ok(!agent.includes('rad-orc:'), 'NO agent-namespacing transform (FR-3, AD-10)');
     const refs = fs.readFileSync(join(out, 'skills/rad-x/references/r.md'), 'utf8');
     assert.ok(!refs.includes('rad-orc:coder'), 'reference docs unchanged (NFR-13)');
     const skill = fs.readFileSync(join(out, 'skills/rad-x/SKILL.md'), 'utf8');

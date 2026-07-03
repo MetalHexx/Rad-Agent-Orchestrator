@@ -25,10 +25,10 @@ function makeFixture() {
     fs.mkdirSync(agentsDir, { recursive: true });
     fs.mkdirSync(skillsDir, { recursive: true });
     fs.writeFileSync(
-      path.join(agentsDir, agentFilename(h, 'orchestrator')),
+      path.join(agentsDir, agentFilename(h, 'reviewer')),
       [
         '---',
-        'name: orchestrator',
+        'name: reviewer',
         'description: test',
         '---',
         '',
@@ -83,10 +83,10 @@ function makeFixture() {
 
   // harness-files/agents/ — canonical agents dir required by the validate step.
   // Must list only the agents that also appear in output/<harness>/agents/ so
-  // gate 2 passes. The adapter output above ships orchestrator.md + coder.md.
+  // gate 2 passes. The adapter output above ships reviewer.md + coder.md.
   const canonicalAgentsDir = path.join(root, 'harness-files/agents');
   fs.mkdirSync(canonicalAgentsDir, { recursive: true });
-  fs.writeFileSync(path.join(canonicalAgentsDir, 'orchestrator.md'), '# orchestrator\n');
+  fs.writeFileSync(path.join(canonicalAgentsDir, 'reviewer.md'), '# reviewer\n');
   fs.writeFileSync(path.join(canonicalAgentsDir, 'coder.md'), '# coder\n');
 
   // harness-installers/standard/ source — needs package.json for synth.
@@ -145,9 +145,9 @@ test('runBuild produces output/<harness>/ per harness and shared output/ui/', as
     // Per-harness payload (FR-19, FR-20, FR-21, FR-22).
     for (const h of HARNESSES) {
       const hOut = path.join(out, h);
-      const orchestratorFile = agentFilename(h, 'orchestrator');
-      assert.ok(fs.existsSync(path.join(hOut, 'agents', orchestratorFile)),
-        `${h}: agents/${orchestratorFile}`);
+      const reviewerFile = agentFilename(h, 'reviewer');
+      assert.ok(fs.existsSync(path.join(hOut, 'agents', reviewerFile)),
+        `${h}: agents/${reviewerFile}`);
       assert.ok(fs.existsSync(path.join(hOut, 'skills/rad-orchestration/SKILL.md')),
         `${h}: skills/rad-orchestration/SKILL.md`);
       assert.ok(fs.existsSync(path.join(hOut, 'orchestration.yml')),
@@ -189,28 +189,28 @@ test('runBuild produces output/<harness>/ per harness and shared output/ui/', as
     // resolved per-user by installManifestFiles. Baking os.homedir() here was a
     // latent bug (ships the build machine's home to every user + makes the
     // manifest sha non-reproducible across platforms).
-    const orchClaude = fs.readFileSync(path.join(out, 'claude/agents/orchestrator.md'), 'utf8');
-    assert.ok(orchClaude.includes('${SKILLS_ROOT}/rad-orchestration/SKILL.md'),
-      'claude orchestrator.md: ${SKILLS_ROOT} preserved as a token (resolved at install)');
-    assert.ok(orchClaude.includes('${PLUGIN_ROOT}'),
-      'claude orchestrator.md: ${PLUGIN_ROOT} preserved as a token (resolved at install)');
-    assert.ok(!orchClaude.includes(os.homedir()),
-      'claude orchestrator.md: build machine home dir must NOT be baked into the bundle');
+    const reviewerClaude = fs.readFileSync(path.join(out, 'claude/agents/reviewer.md'), 'utf8');
+    assert.ok(reviewerClaude.includes('${SKILLS_ROOT}/rad-orchestration/SKILL.md'),
+      'claude reviewer.md: ${SKILLS_ROOT} preserved as a token (resolved at install)');
+    assert.ok(reviewerClaude.includes('${PLUGIN_ROOT}'),
+      'claude reviewer.md: ${PLUGIN_ROOT} preserved as a token (resolved at install)');
+    assert.ok(!reviewerClaude.includes(os.homedir()),
+      'claude reviewer.md: build machine home dir must NOT be baked into the bundle');
     // AD-6: no namespacing rewrite — agent body still references bare names.
-    assert.ok(orchClaude.includes('**coder**'),
-      'claude orchestrator.md: **coder** kept bare (no rad-orc: prefix)');
-    assert.ok(orchClaude.includes('**planner**'),
-      'claude orchestrator.md: **planner** kept bare (no rad-orc: prefix)');
-    assert.ok(!orchClaude.includes('rad-orc:coder'),
+    assert.ok(reviewerClaude.includes('**coder**'),
+      'claude reviewer.md: **coder** kept bare (no rad-orc: prefix)');
+    assert.ok(reviewerClaude.includes('**planner**'),
+      'claude reviewer.md: **planner** kept bare (no rad-orc: prefix)');
+    assert.ok(!reviewerClaude.includes('rad-orc:coder'),
       'claude: no rad-orc:coder namespacing applied (AD-6)');
 
     for (const h of ['copilot-vscode', 'copilot-cli']) {
-      const orch = fs.readFileSync(path.join(out, h, 'agents', agentFilename(h, 'orchestrator')), 'utf8');
-      assert.ok(orch.includes('${SKILLS_ROOT}'), `${h}: ${`\${SKILLS_ROOT}`} preserved as a token`);
-      assert.ok(orch.includes('${PLUGIN_ROOT}'), `${h}: ${`\${PLUGIN_ROOT}`} preserved as a token`);
-      assert.ok(!orch.includes(os.homedir()), `${h}: build machine home dir must NOT be baked in`);
-      assert.ok(orch.includes('**coder**'),
-        `${h} orchestrator.md: **coder** kept bare (no rad-orc: prefix)`);
+      const reviewer = fs.readFileSync(path.join(out, h, 'agents', agentFilename(h, 'reviewer')), 'utf8');
+      assert.ok(reviewer.includes('${SKILLS_ROOT}'), `${h}: ${`\${SKILLS_ROOT}`} preserved as a token`);
+      assert.ok(reviewer.includes('${PLUGIN_ROOT}'), `${h}: ${`\${PLUGIN_ROOT}`} preserved as a token`);
+      assert.ok(!reviewer.includes(os.homedir()), `${h}: build machine home dir must NOT be baked in`);
+      assert.ok(reviewer.includes('**coder**'),
+        `${h} reviewer.md: **coder** kept bare (no rad-orc: prefix)`);
     }
 
     // Build no longer synthesizes a top-level output/package.json — the source-side

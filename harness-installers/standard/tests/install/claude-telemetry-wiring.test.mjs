@@ -57,7 +57,7 @@ async function makeClaudeFixture() {
   );
 
   fs.mkdirSync(path.join(bundleRoot, 'agents'), { recursive: true });
-  fs.writeFileSync(path.join(bundleRoot, 'agents/orchestrator.md'), `# orchestrator v${version}\n`);
+  fs.writeFileSync(path.join(bundleRoot, 'agents/coder.md'), `# coder v${version}\n`);
 
   const scriptsDir = path.join(bundleRoot, 'skills/rad-orchestration/scripts');
   fs.mkdirSync(scriptsDir, { recursive: true });
@@ -66,8 +66,8 @@ async function makeClaudeFixture() {
   const manifest = {
     files: [
       {
-        bundlePath: 'agents/orchestrator.md',
-        destinationPath: '${HARNESS_ROOT}/agents/orchestrator.md',
+        bundlePath: 'agents/coder.md',
+        destinationPath: '${HARNESS_ROOT}/agents/coder.md',
         sha256: 'x',
       },
       {
