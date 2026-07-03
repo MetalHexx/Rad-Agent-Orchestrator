@@ -24,8 +24,8 @@ test('planning view renders no commit chip', () => {
   assert.ok(!source.includes('CommitChips'));
 });
 
-test('planning view renders no controls slot — no docs, no commit', () => {
-  assert.ok(!source.includes('ControlsSlot'));
+test('planning view mounts an empty controls slot — no docs, no commit, but the row still floors its height', () => {
+  assert.match(source, /<ControlsSlot\s*\/>/);
 });
 
 test('planning view sets no slot geometry — the shared slot wrappers own layout', () => {

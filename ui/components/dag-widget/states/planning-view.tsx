@@ -1,4 +1,4 @@
-import { RingSlot, TitleSlot } from '../card-slots';
+import { RingSlot, TitleSlot, ControlsSlot } from '../card-slots';
 import { Ring } from '../ring';
 import type { StateView } from '../types';
 
@@ -8,7 +8,9 @@ const TIER_CSS_VAR = '--tier-planning';
  * The Planning milestone view (`master_plan`). Blue tier, indeterminate ring —
  * plan authoring has no known duration or progress fraction to show, so the
  * ring sweeps rather than fills. No docs (the master plan doesn't exist yet)
- * and no commit, so the controls row is omitted entirely.
+ * and no commit, so the controls row renders empty — still mounted so its
+ * `min-h-8` floor applies, keeping the card's footprint identical to every
+ * other state (R8).
  */
 export const planningView: StateView = {
   id: 'planning',
@@ -21,6 +23,7 @@ export const planningView: StateView = {
         <TitleSlot>
           <span className="truncate text-base font-medium text-foreground">Scribing Master Plan…</span>
         </TitleSlot>
+        <ControlsSlot />
       </>
     );
   },
