@@ -45,18 +45,6 @@ export function validatePluginTree(opts) {
     }
   }
 
-  // Gate 3: namespaced dispatch tokens present in orchestrator.md.
-  const orchOut = fs.readFileSync(path.join(outputDir, 'agents/orchestrator.md'), 'utf8');
-  const orchCanon = fs.readFileSync(path.join(canonicalAgentsDir, 'orchestrator.md'), 'utf8');
-  for (const name of canonical) {
-    if (name === 'orchestrator') continue;
-    if (!new RegExp(`\\b${name}\\b`).test(orchCanon)) continue;
-    const token = `rad-orc:${name}`;
-    if (!orchOut.includes(token)) {
-      throw new Error(`validate: orchestrator.md missing namespaced token ${token} (gate 3)`);
-    }
-  }
-
   // Gate 4: per-version manifest present.
   const manifestRel = `manifests/v${version}.json`;
   if (!fs.existsSync(path.join(outputDir, manifestRel))) {

@@ -9,8 +9,8 @@ function makeUpstream() {
   const root = fs.mkdtempSync(join(os.tmpdir(), 'build-'));
   // Adapter-engine output (claude only)
   fs.mkdirSync(join(root, 'harness-adapters/output/claude/agents'), { recursive: true });
-  fs.writeFileSync(join(root, 'harness-adapters/output/claude/agents/orchestrator.md'),
-    '---\nname: orchestrator\ndescription: test\n---\nSpawn **coder** agent. See ${SKILLS_ROOT}/rad-orchestration/SKILL.md.\n');
+  fs.writeFileSync(join(root, 'harness-adapters/output/claude/agents/reviewer.md'),
+    '---\nname: reviewer\ndescription: test\n---\nSpawn **coder** agent. See ${SKILLS_ROOT}/rad-orchestration/SKILL.md.\n');
   fs.writeFileSync(join(root, 'harness-adapters/output/claude/agents/coder.md'),
     '---\nname: coder\ndescription: test\n---\n# Coder\n');
   fs.mkdirSync(join(root, 'harness-adapters/output/claude/skills/rad-orchestration'), { recursive: true });
@@ -29,9 +29,9 @@ function makeUpstream() {
   fs.mkdirSync(join(root, 'cli/src/bin'), { recursive: true });
   fs.writeFileSync(join(root, 'cli/src/bin/radorch.ts'), 'console.log("radorch");\n');
   fs.writeFileSync(join(root, 'cli/package.json'), JSON.stringify({ name: 'cli', type: 'module' }));
-  // canonical agents (harness-files/agents/) — required by validatePluginTree gate 2 & 3.
+  // canonical agents (harness-files/agents/) — required by validatePluginTree gate 2.
   fs.mkdirSync(join(root, 'harness-files/agents'), { recursive: true });
-  fs.writeFileSync(join(root, 'harness-files/agents/orchestrator.md'), 'Spawn **coder** agent.\n');
+  fs.writeFileSync(join(root, 'harness-files/agents/reviewer.md'), 'Spawn **coder** agent.\n');
   fs.writeFileSync(join(root, 'harness-files/agents/coder.md'), '# Coder\n');
   // ui/ synthetic
   fs.mkdirSync(join(root, 'ui/.next/standalone'), { recursive: true });
@@ -61,7 +61,7 @@ test('runBuild emits the full plugin payload to output/ in correct shape', async
   try {
     await runBuild({ rootDir: root, skipAdapterEngine: true, skipUiRunner: true, skipBootstrap: true, greenfieldRel: '.' });
     const out = join(root, 'harness-installers/claude-plugin/output');
-    assert.ok(fs.existsSync(join(out, 'agents/orchestrator.md')), 'agents copied');
+    assert.ok(fs.existsSync(join(out, 'agents/reviewer.md')), 'agents copied');
     assert.ok(fs.existsSync(join(out, 'skills/rad-orchestration/SKILL.md')), 'skills copied');
     assert.ok(fs.existsSync(join(out, '_install-source/orchestration.yml')), 'orchestration.yml staged under _install-source/');
     assert.ok(fs.existsSync(join(out, '_install-source/templates/medium.yml')), 'templates staged under _install-source/');
@@ -88,10 +88,10 @@ test('destination tokens are substituted across body files', async () => {
   try {
     await runBuild({ rootDir: root, skipAdapterEngine: true, skipUiRunner: true, skipBootstrap: true, greenfieldRel: '.' });
     const out = join(root, 'harness-installers/claude-plugin/output');
-    const orch = fs.readFileSync(join(out, 'agents/orchestrator.md'), 'utf8');
-    assert.ok(orch.includes('${CLAUDE_PLUGIN_ROOT}/skills/rad-orchestration/SKILL.md'),
+    const reviewer = fs.readFileSync(join(out, 'agents/reviewer.md'), 'utf8');
+    assert.ok(reviewer.includes('${CLAUDE_PLUGIN_ROOT}/skills/rad-orchestration/SKILL.md'),
       '${SKILLS_ROOT} replaced with ${CLAUDE_PLUGIN_ROOT}/skills');
-    assert.ok(orch.includes('**rad-orc:coder**'),
+    assert.ok(reviewer.includes('**rad-orc:coder**'),
       'agent-namespacing applied');
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });

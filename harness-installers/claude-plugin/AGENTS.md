@@ -20,7 +20,7 @@ A self-contained npm package (`@rad-orchestration/claude-plugin-source`) whose `
 10. **copy-plugin-manifest** — copies `.claude-plugin/plugin.json` verbatim
 11. **synthesize-package-json** — merges wrapper `package.json` with `plugin.json`; `plugin.json.version` always wins; writes to `output/package.json`
 12. **copy-manifest-catalog** — copies `manifests/v*.json` to `output/manifests/`
-13. **validate** — calls `validatePluginTree` to confirm required artifacts, agent presence, namespaced dispatch tokens, version manifest, and size budget
+13. **validate** — calls `validatePluginTree` to confirm required artifacts, agent presence, version manifest, and size budget
 
 `opts.rootDir` is the repo root. `opts.greenfieldRel` (default `'.'`) names the relative path to the greenfield folder; tests pass `'.'` to use a synthetic fixture tree.
 
