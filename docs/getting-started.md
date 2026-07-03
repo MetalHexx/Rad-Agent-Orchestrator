@@ -47,7 +47,7 @@ It is also great for validating your plans.  Much easier than reviewing files.
 For more information: [dashboard.md](dashboard.md)
 
 ### Guide your project execution
-While the project is executing, feel free to pause and guide the execution. Doing so will not harm your project run. In fact, it can be of great utility! The pipeline can be steered and help make adjustments to the project run. It is also useful for gaining insight about the project execution.
+While the project is executing, feel free to pause and guide the execution. Doing so will not harm your project run. In fact, it can be of great utility! The pipeline can be steered to help make adjustments to the project run. It is also useful for gaining insight about the project execution.
 
 ### Resuming Projects 
 If you need to pause a project run, or your computer crashes.  Do not worry!  Your project is tracked and will easily resume from any point in time.  Type `/rad-execute <PROJECT-NAME>` and your project will reliably resume exactly where it left off.  

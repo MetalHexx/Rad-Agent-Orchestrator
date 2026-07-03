@@ -32,7 +32,7 @@ flowchart TD
 
 ## Lifecycles
 
-A task begins `not_started`, transitions to `in_progress` when the main agent dispatches it, and stays there while the Coder implements and the Reviewer evaluates. In tiers with per-task code review (`extra-high`, `high`), the task transitions to `completed` once code review approves and the per-task gate clears — auto-approved under `phase` or `autonomous` modes, awaits the operator under `task` mode. In tiers without per-task review (`medium`, `low`), the task transitions to `completed` immediately after implementation. On a `changes_requested` verdict with retries remaining, the main agent authors a corrective task handoff and the task re-enters `in_progress` for another implementation pass.
+A task begins `not_started`, transitions to `in_progress` when the main agent dispatches it, and stays there while the Coder implements and the Reviewer evaluates. In tiers with per-task code review (`extra-high`, `high`), the task transitions to `completed` once code review approves and the per-task gate clears — auto-approved under `phase` or `autonomous` modes, awaits the operator under `task` mode. In tiers without per-task review (`medium`, `low`), the task transitions to `completed` immediately after implementation. On a `changes_requested` verdict with retries remaining, the pipeline engine births a corrective task automatically, carrying the original handoff unchanged, and the task re-enters `in_progress` for another implementation pass.
 
 A phase aggregates over its tasks. While any task in the phase is still working, the phase remains `in_progress`. After the last task completes — and, in tiers with phase review (`extra-high`, `medium`), the phase review approves — the phase transitions to `completed`. The next phase then begins.
 
@@ -61,7 +61,7 @@ Execution-mode behavior:
 
 ## Corrective Cycles
 
-When a code review or phase review flags problems, the main agent authors a corrective task automatically and re-runs the affected work. Corrective passes count against `max_retries_per_task`; if a task exhausts its retry budget without a clean review, the pipeline halts and waits for the operator to step in.
+When a code review or phase review flags problems, the pipeline engine births a corrective task automatically and re-runs the affected work. Corrective passes count against `max_retries_per_task`; if a task exhausts its retry budget without a clean review, the pipeline halts and waits for the operator to step in.
 
 ## Process Templates
 
