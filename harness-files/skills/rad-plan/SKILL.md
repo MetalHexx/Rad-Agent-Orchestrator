@@ -115,10 +115,10 @@ matching size.
 
 | Option | Copy (two sentences max) |
 |---|---|
-| `Small` | One named, self-contained change per task — a function, a validator, a constant. 3–5 tasks per phase. |
-| `Medium` | A vertical slice through one layer per task: a module, a config section, a CLI command with its tests. 2–4 tasks per phase. |
-| `Large` | A full feature slice touching multiple layers or subsystems end-to-end per task. 2–3 tasks per phase. |
-| `Extra Large` | A standalone feature per task — scope that would be a phase at smaller sizes; phases are thin wrappers. 1–2 tasks per phase, possibly single-phase. |
+| `Small` | One named, self-contained change per task — a function, a validator, a constant. |
+| `Medium` | A vertical slice through one layer per task: a module, a config section, a CLI command with its tests. |
+| `Large` | A full feature slice touching multiple layers or subsystems end-to-end per task. |
+| `Extra Large` | A standalone feature per task — scope that would be a phase at smaller sizes; phases are thin wrappers. |
 | `Custom` | You describe the sizing criterion in your own words; the main agent uses your prose as the task-scope target while still applying natural-seam judgment for phase boundaries. |
 
 The question's framing prose: "How big should each task and phase be?
