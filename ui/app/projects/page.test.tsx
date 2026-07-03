@@ -257,6 +257,7 @@ async function run() {
       '@/components/documents',
       '@/components/config',
       '@/components/dag-timeline',
+      '@/components/planning-section',
       '@/components/dag-timeline/source-control-helpers',
       '@/components/dag-timeline/source-control-bind',
       '@/components/repo-registry/use-registry-store',
