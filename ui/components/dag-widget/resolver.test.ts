@@ -60,6 +60,8 @@ const RICH_NODES: NodesRecord = {
   },
   final_review: { kind: 'step', status: 'not_started', doc_path: null, retries: 0 },
   final_approval_gate: { kind: 'gate', status: 'not_started', gate_active: false },
+  pr_gate: { kind: 'conditional', status: 'not_started', branch_taken: null },
+  final_pr: { kind: 'step', status: 'not_started', doc_path: null, retries: 0 },
 };
 
 function makeState(currentNodePath: string | null, status: GraphStatus = 'in_progress'): ProjectStateV5 {
@@ -105,6 +107,24 @@ test('final_review maps to final-review', () => {
   assert.equal(resolveStateId(makeState('final_review')), 'final-review');
 });
 
+// ─── plumbing nodes folded into their nearest meaningful state ──────────────
+
+test('explode_master_plan folds into planning, not the fallback', () => {
+  assert.equal(resolveStateId(makeState('explode_master_plan')), 'planning');
+});
+
+test('final_approval_gate folds into final-review, not the fallback', () => {
+  assert.equal(resolveStateId(makeState('final_approval_gate')), 'final-review');
+});
+
+test('pr_gate folds into final-review, not the fallback', () => {
+  assert.equal(resolveStateId(makeState('pr_gate')), 'final-review');
+});
+
+test('final_pr folds into final-review, not the fallback', () => {
+  assert.equal(resolveStateId(makeState('final_pr')), 'final-review');
+});
+
 // ─── corrective — the Blocker-class regression guard ─────────────────────────
 
 test('a .ct{N}. corrective path resolves to corrective, not the leaf mapping', () => {
@@ -128,13 +148,16 @@ test('resolveStateView surfaces the corrective node object and flags on the cont
 });
 
 // ─── skip-set resolves away ──────────────────────────────────────────────────
+// explode_master_plan / final_approval_gate / pr_gate / final_pr no longer
+// belong here — they fold into planning / final-review above. The remaining
+// skip-set (loop containers + auto gates) still resolves to fallback.
 
 for (const skipPath of [
   'phase_loop',
   'gate_mode_selection',
-  'explode_master_plan',
+  'phase_loop.iter0.task_loop',
+  'phase_loop.iter0.phase_gate',
   `${TASK_PATH}.task_gate`,
-  'final_approval_gate',
 ]) {
   test(`skip-set node "${skipPath}" resolves to fallback`, () => {
     assert.equal(resolveStateId(makeState(skipPath)), 'fallback');
@@ -178,6 +201,18 @@ test('resolveStateView returns the registered phase-review view for phase_review
   const { view, ctx } = resolveStateView(makeState('phase_loop.iter0.phase_review'), undefined, noopDeps);
   assert.equal(ctx.stateId, 'phase-review');
   assert.equal(view.id, 'phase-review');
+});
+
+test('resolveStateView returns the registered planning view (not fallback) for explode_master_plan', () => {
+  const { view, ctx } = resolveStateView(makeState('explode_master_plan'), undefined, noopDeps);
+  assert.equal(ctx.stateId, 'planning');
+  assert.equal(view.id, 'planning');
+});
+
+test('resolveStateView returns the registered final-review view (not fallback) for final_pr', () => {
+  const { view, ctx } = resolveStateView(makeState('final_pr'), undefined, noopDeps);
+  assert.equal(ctx.stateId, 'final-review');
+  assert.equal(view.id, 'final-review');
 });
 
 test('resolveStateView returns the registered coding view for task_executor', () => {

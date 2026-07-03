@@ -168,3 +168,42 @@ test('Final Review reads the report + verdict from the top-level final_review no
   const buttonCount = (html.match(/<button/g) ?? []).length;
   assert.equal(buttonCount, 1, 'the Report button is active — its doc_path came from final_review, not the null final_pr leaf');
 });
+
+// ─── end-to-end via the resolver — the plumbing-node fold ───────────────────
+
+function makeStateWithLeaf(currentNodePath: string, verdict: string | null, docPath: string | null): AnyProjectState {
+  const nodes: NodesRecord = {
+    final_review: { kind: 'step', status: 'completed', doc_path: docPath, retries: 0, verdict },
+    final_approval_gate: { kind: 'gate', status: 'in_progress', gate_active: true },
+    pr_gate: { kind: 'conditional', status: 'in_progress', branch_taken: null },
+    final_pr: { kind: 'step', status: 'not_started', doc_path: null, retries: 0 },
+  };
+  return {
+    $schema: 'orchestration-state-v5',
+    project: { name: 'demo', created: '2026-01-01', updated: '2026-01-01' },
+    config: {
+      gate_mode: 'task',
+      limits: { max_phases: 3, max_tasks_per_phase: 3, max_retries_per_task: 2 },
+      source_control: { auto_commit: 'never', auto_pr: 'never' },
+    },
+    pipeline: { gate_mode: 'task', source_control: null, current_tier: 'review', halt_reason: null },
+    graph: { template_id: 'std', status: 'in_progress', current_node_path: currentNodePath, nodes },
+  };
+}
+
+for (const leafPath of ['final_pr', 'final_approval_gate', 'pr_gate']) {
+  test(`resolveStateView renders the Final Review card, not the fallback, when the live leaf is "${leafPath}"`, () => {
+    const { view, ctx } = resolveStateView(
+      makeStateWithLeaf(leafPath, 'approved', 'reviews/FINAL.md'),
+      undefined,
+      { onDocClick: () => {}, compareUrlByRepo: {}, projectName: 'demo' },
+    );
+    assert.equal(ctx.stateId, 'final-review');
+    assert.equal(view.id, 'final-review');
+
+    const html = renderToStaticMarkup(createElement('div', null, view.render(ctx)));
+    assert.match(html, />Approved</, 'verdict is read through to the real final_review node regardless of which leaf is live');
+    const buttonCount = (html.match(/<button/g) ?? []).length;
+    assert.equal(buttonCount, 1, 'the Report doc button is active from the real final_review doc_path');
+  });
+}

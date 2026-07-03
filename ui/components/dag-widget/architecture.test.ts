@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -14,6 +14,9 @@ const cardSlots = read('card-slots.tsx');
 const ring = read('ring.tsx');
 
 const ALL_SOURCES = { shell, resolver, fallback, cardSlots, ring };
+
+const statesDir = join(dir, 'states');
+const STATE_VIEW_FILES = readdirSync(statesDir).filter((f) => f.endsWith('.tsx') && !f.endsWith('.test.tsx'));
 
 test('the shell owns the four-region geometry and imports the resolver', () => {
   assert.match(shell, /resolveStateView/, 'shell resolves the active view via the resolver');
@@ -38,6 +41,32 @@ test('slot geometry lives once in the slot module', () => {
 test('the view registry is a lookup, not a switch ladder over node ids', () => {
   assert.match(resolver, /REGISTRY|Record<StateId/, 'a keyed registry backs resolution');
   assert.ok(!/\bswitch\s*\(/.test(resolver), 'resolver uses no switch statement');
+});
+
+test('no state view renders a spinner/state badge — the heading/meta anatomy replaces it', () => {
+  assert.ok(STATE_VIEW_FILES.length > 0, 'sanity: the states directory is not empty');
+  for (const file of STATE_VIEW_FILES) {
+    const src = readFileSync(join(statesDir, file), 'utf-8');
+    assert.ok(!src.includes('SpinnerBadge'), `${file} must not render a SpinnerBadge`);
+    assert.ok(!src.includes('Badge'), `${file} must not render any state badge`);
+  }
+});
+
+test('the plumbing nodes fold into their nearest meaningful state instead of the fallback', () => {
+  assert.match(resolver, /explode_master_plan:\s*'planning'/, 'explode_master_plan folds into the planning card');
+  for (const nodeId of ['final_approval_gate', 'pr_gate', 'final_pr']) {
+    assert.match(resolver, new RegExp(`${nodeId}:\\s*'final-review'`), `${nodeId} folds into the final-review card`);
+  }
+
+  const skipSetMatch = resolver.match(/SKIP_STATE_NODE_IDS[^=]*=\s*new Set\(\[([\s\S]*?)\]\)/);
+  assert.ok(skipSetMatch, 'resolver declares SKIP_STATE_NODE_IDS as a Set literal');
+  const skipSetBody = skipSetMatch![1];
+  for (const nodeId of ['explode_master_plan', 'final_approval_gate', 'pr_gate', 'final_pr']) {
+    assert.ok(
+      !skipSetBody.includes(`'${nodeId}'`),
+      `${nodeId} must not remain in the skip-set now that it folds into a real state`,
+    );
+  }
 });
 
 test('the card family never references the .live-pulse-* affordance', () => {

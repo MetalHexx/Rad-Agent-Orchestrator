@@ -31,30 +31,34 @@ import { completeView } from './states/complete-view';
  */
 const NODE_ID_TO_STATE: Record<string, StateId> = {
   master_plan: 'planning',
+  explode_master_plan: 'planning',
   plan_approval_gate: 'plan-approval',
   task_executor: 'coding',
   code_review: 'reviewing',
   phase_review: 'phase-review',
   final_review: 'final-review',
+  final_approval_gate: 'final-review',
+  pr_gate: 'final-review',
+  final_pr: 'final-review',
 };
 
 /**
- * Node ids that are never a card state. They resolve to `fallback` (or, in
- * later tasks, are resolved past to the active leaf). Kept explicit so an id
- * accidentally added to `NODE_ID_TO_STATE` that also belongs here is easy to
- * spot, and so the intent (loop containers, auto gates, PR nodes, the two
- * planning-plumbing steps) is documented at the resolver.
+ * Node ids that are never a card state. They resolve to `fallback`. Kept
+ * explicit so an id accidentally added to `NODE_ID_TO_STATE` that also
+ * belongs here is easy to spot, and so the intent (loop containers, auto
+ * gates, the mode-selection gate) is documented at the resolver — none of
+ * these ever present as a standalone live current node. `explode_master_plan`,
+ * `final_approval_gate`, `pr_gate`, and `final_pr` are deliberately NOT here:
+ * each can legitimately be the live current node, so they fold into their
+ * nearest meaningful state (`planning` / `final-review`) in
+ * `NODE_ID_TO_STATE` above instead of painting the gray fallback.
  */
 const SKIP_STATE_NODE_IDS: ReadonlySet<string> = new Set([
-  'explode_master_plan',
   'gate_mode_selection',
   'phase_loop',
   'task_loop',
   'phase_gate',
   'task_gate',
-  'final_approval_gate',
-  'pr_gate',
-  'final_pr',
 ]);
 
 const ITER_SEGMENT = /^iter(\d+)$/;
