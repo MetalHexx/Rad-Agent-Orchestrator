@@ -52,3 +52,43 @@ test('both modes occupy the identical fixed diameter', () => {
   assert.match(det, size, 'determinate ring is 72px square');
   assert.match(indet, size, 'indeterminate ring is 72px square');
 });
+
+// ─── unified track + stroke ───────────────────────────────────────────────────
+
+test('indeterminate mode renders an underlaid muted full-circle track behind the sweep', () => {
+  const html = render({ value: 0, max: 1, color: 'var(--tier-review)', mode: 'indeterminate' });
+  assert.ok(html.includes('data-ring-track'), 'indeterminate ring includes a dedicated track element');
+  assert.ok(html.includes('var(--muted)'), 'the track is filled with the same muted token the determinate track uses');
+});
+
+test('determinate mode also carries the muted track fill', () => {
+  const html = render({ value: 4, max: 10, color: 'var(--tier-execution)', mode: 'determinate' });
+  assert.ok(html.includes('var(--muted)'), 'determinate track background uses the muted token');
+});
+
+test('indeterminate mask stroke matches the determinate band thickness fraction (28% of radius)', () => {
+  const html = render({ value: 0, max: 1, color: 'var(--tier-review)', mode: 'indeterminate' });
+  // RING_DIAMETER (72) / 2 * 0.28, rounded — kept in lockstep with determinate's innerRadius via one shared fraction.
+  assert.ok(html.includes('10px'), 'indeterminate stroke resolves from the shared RING_STROKE_FRACTION');
+});
+
+// ─── sublabel ─────────────────────────────────────────────────────────────────
+
+test('sublabel renders as a muted small-caps line beneath the center children when provided', () => {
+  const html = render({
+    value: 4,
+    max: 10,
+    color: 'var(--tier-execution)',
+    mode: 'determinate',
+    children: '4',
+    sublabel: 'TASK',
+  });
+  assert.ok(html.includes('>4<'), 'primary center content still renders');
+  assert.ok(html.includes('>TASK<'), 'sublabel text renders');
+  assert.match(html, /uppercase[^"]*"[^>]*>TASK</, 'sublabel is styled small-caps/uppercase');
+});
+
+test('sublabel is omitted entirely when absent', () => {
+  const html = render({ value: 4, max: 10, color: 'var(--tier-execution)', mode: 'determinate', children: '4' });
+  assert.ok(!html.includes('uppercase'), 'no sublabel markup renders when sublabel is unset');
+});
