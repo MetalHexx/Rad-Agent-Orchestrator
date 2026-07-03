@@ -77,12 +77,29 @@ like, and what to test — enough contract for a coding agent to execute a task
    Output Contract).
 
 8. **Author the full phase + task blocks.** Below the Execution Map, write the
-   real anchors the explosion reads: a `## P{NN}: {Title}` per phase with a 1–2
-   line phase outcome, and a `### P{NN}-T{MM}: {Title}` per task carrying its
-   `Task type` / `Complexity` / `Target repo` / `Files` / `The change` /
-   `Done when` / `Testing`. Match the worked block in the Authoring Guide at a
-   contract-rich-middle density. Don't hand-write a phase task table or a
-   `## Execution Notes` section — the explosion generates both.
+   real anchors the explosion reads: a `## P{NN}: {Title}` per phase, and a
+   `### P{NN}-T{MM}: {Title}` per task carrying its `Task type` / `Complexity` /
+   `Target repo` / `Files` / `The change` / `Done when` / `Testing`. Match the
+   worked block in the Authoring Guide at a contract-rich-middle density. Don't
+   hand-write a phase task table or a `## Execution Notes` section — the
+   explosion generates both.
+
+   The phase body — everything between a `## P{NN}:` heading and its first
+   `### P{NN}-T{MM}:` — is copied verbatim into the exploded Phase Plan. It's
+   the phase's entire self-contained brief: phase review works from the Phase
+   Plan and the cumulative diff alone, with no requirements ledger to fall back
+   on. Write three bold-labeled subsections (never `## P`, `### P`, or
+   `## Phase` — those are parser anchors; see Heading discipline):
+   - **Intent** — one to two sentences: the outcome this phase delivers and why
+     it matters. Not a restatement of the task titles below it.
+   - **Exit criteria** — the concrete, checkable conditions that mean the phase
+     is done. Phase review verifies each one against the diff and sets
+     `exit_criteria_met` from them — write what's observably true, not a recap
+     of what the tasks did.
+   - **Integration seams** — the cross-task and cross-repo boundaries this
+     phase knits together (an endpoint and the view that calls it, a shared
+     event payload) — what phase review must check beyond each task's own
+     correctness.
 
 9. **Self-check.** A quick judgment pass before saving (see the Self-check nudge in
    the Authoring Guide). The parser enforces structure; you check substance.
@@ -149,6 +166,8 @@ heading as preamble. It throws on any `## P{digit}…`, `### P{digit}…`, or
 lives in the preamble region, uses **bold phase labels and mini-tables, never
 headings** (Step 7). The real `## P{NN}:` / `### P{NN}-T{MM}:` headings appear only
 below it, opening the full blocks. Zero-pad to two digits: `P01`, `P02`, `P01-T01`.
+The same discipline holds inside a phase body: its Intent / Exit criteria /
+Integration seams subsections (Step 8) are bold labels too, not headings.
 
 **Body section order**:
 

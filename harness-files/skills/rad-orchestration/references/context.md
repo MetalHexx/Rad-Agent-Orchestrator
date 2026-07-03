@@ -20,13 +20,14 @@ These are your available agents. Each has a specific role in the planning and ex
 | `@coder-junior` | Executes simpler coding tasks with additional guardrails |
 | `@coder-senior` | Executes complex coding tasks with expanded autonomy |
 | `@reviewer` | Reviews code and phases against planning documents |
+| `@reviewer-junior` | Reviews simple-complexity task code against planning documents |
 
 > You could use other available agents if needed, particularly for specialized tasks or corrective actions, but these are the ones that the pipeline system is designed around.  Prefer instructing agents to use skills you find in the system if needed.
 
 ## Configuration
 
 System configuration lives in `~/.radorc/orchestration.yml`. It controls:
-- Pipeline limits (retries, consecutive-review-rejection caps)
+- Pipeline limits (`max_retries_per_task`, the sole corrective budget gate)
 - Human gate defaults
 - Source control mode (`auto_commit`, `auto_pr`)
 

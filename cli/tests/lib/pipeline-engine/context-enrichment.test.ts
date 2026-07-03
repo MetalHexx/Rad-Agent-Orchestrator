@@ -1,8 +1,38 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import os from 'node:os';
+import fs from 'node:fs';
+import path from 'node:path';
 import { enrichActionContext, resolveActivePhaseIndex, resolveActiveTaskIndex, type EnrichmentInput } from '../../../src/lib/pipeline-engine/context-enrichment.js';
 import { makeV6State } from '../../helpers/state-factory.js';
 import type { PipelineState, OrchestrationConfig } from '../../../src/lib/pipeline-engine/types.js';
+import { userDataPaths } from '../../../src/lib/paths.js';
+
+// Module-boundary mock: resolveRequirementsDoc (context-enrichment.ts) reads real
+// paths via userDataPaths() + WorkGraphService, so isolate it here rather than
+// against the developer's real ~/.radorc. No pre-existing paths-mock lived in
+// this test dir — established here, mirroring the temp-dir isolation the sibling
+// composer/engine tests already use.
+vi.mock('../../../src/lib/paths.js', () => ({
+  userDataPaths: vi.fn(),
+}));
+
+function mockUserDataPathsRoot(root: string): void {
+  vi.mocked(userDataPaths).mockReturnValue({
+    root,
+    installJson: path.join(root, 'install.json'),
+    orchestrationYml: path.join(root, 'orchestration.yml'),
+    ui: path.join(root, 'ui'),
+    templates: path.join(root, 'templates'),
+    projects: path.join(root, 'projects'),
+    sideProjects: path.join(root, 'side-projects'),
+    worktrees: path.join(root, 'worktrees'),
+    logs: path.join(root, 'logs'),
+    runtime: path.join(root, 'runtime'),
+    telemetry: path.join(root, 'telemetry'),
+    bootstrapLock: path.join(root, 'runtime', 'bootstrap.lock'),
+    actionEvents: path.join(root, 'action-events'),
+  });
+}
 
 // Minimal runtime input for spawn_master_plan — that branch only reads `action`
 // and `walkerContext` now. The remaining fields are required structurally on
@@ -678,5 +708,38 @@ describe('execute_task surfaces complexity and should_commit to the coder spawn'
     state.pipeline.source_control!.auto_commit = 'never';
     const ctx = enrichActionContext({ action: 'execute_task', walkerContext: {}, state, config: DEFAULT_CONFIG, cliContext: {} });
     expect(ctx.should_commit).toBe(false);
+  });
+});
+
+describe('spawn_final_reviewer requirements_doc resolution via work-graph (P01-T01)', () => {
+  function stateForProject(projectName: string): PipelineState {
+    return {
+      graph: { nodes: {} },
+      pipeline: {},
+      project: { name: projectName },
+    } as unknown as PipelineState;
+  }
+
+  it('carries requirements_doc as the project-relative filename when the doc exists on disk', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ce-requirements-'));
+    mockUserDataPathsRoot(root);
+    const projectName = 'REQ-DOC-PRESENT';
+    const projectDir = path.join(root, 'projects', projectName);
+    fs.mkdirSync(projectDir, { recursive: true });
+    fs.writeFileSync(path.join(projectDir, `${projectName}-REQUIREMENTS.md`), '# requirements');
+
+    const ctx = enrichActionContext(makeEnrichmentInput('spawn_final_reviewer', stateForProject(projectName)));
+    expect(ctx.requirements_doc).toBe(`${projectName}-REQUIREMENTS.md`);
+  });
+
+  it('carries requirements_doc as null when the project has no requirements doc', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ce-requirements-'));
+    mockUserDataPathsRoot(root);
+    const projectName = 'REQ-DOC-ABSENT';
+    const projectDir = path.join(root, 'projects', projectName);
+    fs.mkdirSync(projectDir, { recursive: true });
+
+    const ctx = enrichActionContext(makeEnrichmentInput('spawn_final_reviewer', stateForProject(projectName)));
+    expect(ctx.requirements_doc).toBeNull();
   });
 });

@@ -9,7 +9,6 @@ const DEFAULT_CONFIG: OrchestrationConfig = {
   default_template: 'extra-high',
   limits: {
     max_retries_per_task: 5,
-    max_consecutive_review_rejections: 3,
   },
   human_gates: {
     after_planning: true,

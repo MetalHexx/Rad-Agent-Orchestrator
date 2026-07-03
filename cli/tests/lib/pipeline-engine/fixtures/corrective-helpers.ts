@@ -3,7 +3,7 @@
  *
  * `driveTwoRepoTaskCorrective`: drives the pipeline to a state where phase 1 task 1
  * has an active task-scope corrective entry with `repos: []`. The corrective is born
- * via a `code_review_completed` with `changes_requested` + orchestrator mediation.
+ * via a `code_review_completed` carrying a raw `changes_requested` verdict.
  *
  * `activeCorrective`: returns the latest (active) corrective task entry for a given
  * phase/task from the mock IO state.
@@ -33,18 +33,15 @@ import {
 } from './parity-states.js';
 import type { StepNodeState } from '../../../../src/lib/pipeline-engine/types.js';
 
-// ── Corrective-handoff doc path used by the mediation event ──────────────────
-
-const CORRECTIVE_HANDOFF_PATH = '/tmp/test-project/PARITY-TEST/tasks/corrective-p1-t1.md';
-
 // ── driveTwoRepoTaskCorrective ────────────────────────────────────────────────
 
 /**
  * Drives the pipeline from scaffold through phase 1 task 1, firing
- * `code_review_completed` with `changes_requested` so that a task-scope
- * corrective is born with `repos: []`. Returns MockIO positioned at the
- * corrective-active tier (corrective is `in_progress`, waiting for
- * task_executor to complete).
+ * `code_review_completed` with a raw `changes_requested` verdict so that a
+ * task-scope corrective is born with `repos: []`. The corrective carries the
+ * ORIGINAL task handoff as its `doc_path` and the review report as its
+ * `review_report_path`. Returns MockIO positioned at the corrective-active tier
+ * (corrective is `in_progress`, waiting for task_executor to complete).
  *
  * The source-control state carries two repos (`fake-api` and `fake-ui`) so
  * the corrective tests can assert create-or-match-by-name across both entries
@@ -172,23 +169,14 @@ export function driveTwoRepoTaskCorrective(): MockIO {
     TEST_PATH_CONTEXT,
   );
 
-  // 2. Seed the code review doc with changes_requested mediation frontmatter.
+  // 2. Seed the code review doc with a raw changes_requested verdict.
   const reviewDoc = codeReviewDoc(1, 1);
   DOC_STORE[reviewDoc.replace(/\\/g, '/')] = {
     frontmatter: {
       verdict: 'changes_requested',
-      orchestrator_mediated: true,
-      effective_outcome: 'changes_requested',
-      corrective_handoff_path: CORRECTIVE_HANDOFF_PATH,
       reason: 'Code review requested changes — multirepo corrective test',
     },
     content: '# Code Review\n\nRequested changes.',
-  };
-
-  // Also seed the corrective handoff doc so doc-resolution doesn't fail.
-  DOC_STORE[CORRECTIVE_HANDOFF_PATH.replace(/\\/g, '/')] = {
-    frontmatter: { type: 'task_handoff', phase: 1, task: 1 },
-    content: '# Corrective Handoff\n\nCorrect the issues.',
   };
 
   // 3. Fire code_review_completed with changes_requested to birth the corrective.

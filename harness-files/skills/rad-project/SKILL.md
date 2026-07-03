@@ -1,6 +1,6 @@
 ---
 name: rad-project
-description: Use this skill to understand, navigate, and organize the work-graph — the live map of projects in the system, what state each is in, how they relate to one another, and where their worktrees are. Use at brainstorm time when continuing a series or referencing existing work — orient on live state before exploring files.
+description: Use this skill when the user references a project that you're not aware of or need additional context about.  It is the reference for how to answer questions about project identity, relationships, project worktree location and how projects interrelate.  You may uncover important context for the current project at hand if you know how it relates to other projects.  Also consider using this when a user is creates a new project as it might need to have a relationship created to other projects.  
 user-invocable: true
 ---
 

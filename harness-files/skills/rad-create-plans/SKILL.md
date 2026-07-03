@@ -1,6 +1,6 @@
 ---
 name: rad-create-plans
-description: "Consolidated document-creation skill for Requirements and Master Plan documents. Routes to the per-document-type workflow by the mode the caller declares."
+description: "Use this skill if you are a main agent who is helping to author planning documents (Requirements or Master Plan).  This is triggered by the pipeline or by a brainstorm handoff.  It is the reference for how to author planning documents in the rad-orc workflow."
 user-invocable: false
 ---
 

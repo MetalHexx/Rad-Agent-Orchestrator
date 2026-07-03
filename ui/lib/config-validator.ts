@@ -13,18 +13,12 @@ function isSection(value: unknown): value is Record<string, unknown> {
 export function validateConfig(config: OrchestrationConfig): ConfigValidationErrors {
   const errors: ConfigValidationErrors = {};
 
-  // 1–2. limits — all integer constraints
+  // 1. limits — integer constraint
   if (!isSection(config.limits)) {
     errors['limits'] = 'Missing limits section';
   } else {
     if (!Number.isInteger(config.limits.max_retries_per_task) || (config.limits.max_retries_per_task as number) < 0) {
       errors['limits.max_retries_per_task'] = 'Must be 0 or a positive integer';
-    }
-    if (
-      !Number.isInteger(config.limits.max_consecutive_review_rejections) ||
-      (config.limits.max_consecutive_review_rejections as number) < 1
-    ) {
-      errors['limits.max_consecutive_review_rejections'] = 'Must be a positive integer';
     }
   }
 

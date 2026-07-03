@@ -13,15 +13,17 @@ Covers all documents produced during pipeline execution. Planning documents (Mas
 | Error Log | — (root) | `{NAME}-ERROR-LOG.md` | `MYAPP-ERROR-LOG.md` |
 | Phase Plan | phases/ | `{NAME}-PHASE-{NN}-{TITLE}.md` | `MYAPP-PHASE-01-SETUP.md` |
 | Task Handoff | tasks/ | `{NAME}-TASK-P{NN}-T{NN}-{TITLE}.md` | `MYAPP-TASK-P01-T02-AUTH.md` |
-| Corrective Task Handoff (task scope) | tasks/ | `{NAME}-TASK-P{NN}-T{NN}-{TITLE}-C{N}.md` | `MYAPP-TASK-P01-T02-AUTH-C1.md` |
-| Corrective Task Handoff (phase scope) | tasks/ | `{NAME}-TASK-P{NN}-PHASE-C{N}.md` | `MYAPP-TASK-P01-PHASE-C1.md` |
 | Code Review | reports/ | `{NAME}-CODE-REVIEW-P{NN}-T{NN}-{TITLE}.md` | `MYAPP-CODE-REVIEW-P01-T02-AUTH.md` |
 | Phase Review | reports/ | `{NAME}-PHASE-REVIEW-P{NN}-{TITLE}.md` | `MYAPP-PHASE-REVIEW-P01-SETUP.md` |
 | Final Review | reports/ | `{NAME}-FINAL-REVIEW.md` | `MYAPP-FINAL-REVIEW.md` |
 
-### Corrective Filename Suffix
+### Review Report Path (`review_report_path`)
 
-When a producing skill re-authors a document during a corrective cycle, append the suffix `-C{corrective_index}` immediately before `.md`. Read `corrective_index` from the event context — do not query the filesystem. The original (non-corrective) document is preserved, not overwritten.
+Code Review and Phase Review documents are **stable, single files per scope**. The reviewer creates the file once; on a `changes_requested` verdict, the same path (carried as `review_report_path` in the pipeline's event context) is reopened by the coder to write dispositions, and by the next reviewer to re-adjudicate them. `corrective_index` (see Frontmatter Field Reference) tracks which adjudication cycle the file is currently on.
+
+A phase-scope corrective is carried by a task-level code review of the phase's sentinel task (`task_id: "P{NN}-PHASE"`), hosted under the phase iteration's `corrective_tasks[]`. Its review report path is `{NAME}-CODE-REVIEW-P{NN}-PHASE.md` — stable across that phase's corrective cycles, same convention as any task-scope review.
+
+Task Handoffs are never re-authored for a review-stage corrective. The same handoff a task started with is reused, unchanged, across all of that task's corrective cycles — the coder reads it alongside the current `review_report_path`.
 
 - Normal (first-time): `{NAME}-PHASE-{NN}-{TITLE}.md`
 - Corrective: `{NAME}-PHASE-{NN}-{TITLE}-C{corrective_index}.md`
@@ -31,14 +33,6 @@ When a producing skill re-authors a document during a corrective cycle, append t
 | Original plan | `MYPROJ-PHASE-02-SETUP.md` |
 | First correction | `MYPROJ-PHASE-02-SETUP-C1.md` |
 | Second correction | `MYPROJ-PHASE-02-SETUP-C2.md` |
-| Original task handoff | `MYPROJ-TASK-P01-T02-AUTH.md` |
-| Corrective task handoff (task scope, first) | `MYPROJ-TASK-P01-T02-AUTH-C1.md` |
-| Corrective task handoff (phase scope, first) | `MYPROJ-TASK-P01-PHASE-C1.md` |
-| Code review of a phase-scope corrective (first) | `MYPROJ-CODE-REVIEW-P01-PHASE-C1.md` |
-
-The `-C{N}` suffix rule applies to Task Handoffs and task-level Code Reviews. It does NOT apply to Phase Reviews — under Iter 11's single-pass clause, a phase iteration runs `phase_review` exactly once; its corrective cycle is carried entirely by task-level re-reviews of the phase-sentinel Task Handoff (see "Phase-scope sentinel form" below). For Task Handoffs, the corrective handoff is authored by the orchestrator during mediation — not by a coder. Each producing skill's workflow cross-references this section for the shared pattern.
-
-**Phase-scope sentinel form.** When the orchestrator mediates a `phase_review` and the effective outcome is `changes_requested`, the authored corrective Task Handoff substitutes the `PHASE` token for the `T{NN}-{TITLE}` segment: `{NAME}-TASK-P{NN}-PHASE-C{N}.md`. The token signals that the corrective applies to phase-scope exit-criteria or cross-task integration — not a single task. The same sentinel carries through to the corresponding task-level code review filename: `{NAME}-CODE-REVIEW-P{NN}-PHASE-C{N}.md`. The corresponding state entry lives under `phaseIter.corrective_tasks[]`, not `taskIter.corrective_tasks[]`.
 
 ## Frontmatter Field Reference
 
@@ -61,13 +55,8 @@ The `-C{N}` suffix rule applies to Task Handoffs and task-level Code Reviews. It
 | verdict | string | `"approved"` \| `"changes_requested"` \| `"rejected"` | Code Review, Phase Review, Final Review |
 | severity | string | `"none"` \| `"low"` \| `"medium"` \| `"high"` | Code Review, Phase Review |
 | exit_criteria_met | boolean | `true` \| `false` | Phase Review |
-| orchestrator_mediated | boolean | `true` (only value that appears) | Code Review, Phase Review |
-| effective_outcome | string | `"approved"` \| `"changes_requested"` | Code Review, Phase Review |
-| corrective_handoff_path | string | Path to corrective Task Handoff (present only when `effective_outcome === "changes_requested"`) | Code Review, Phase Review |
-| corrective_index | integer | 1-based corrective attempt index (e.g., `1`) | Corrective Task Handoff |
-| corrective_scope | string | `"task"` \| `"phase"` | Corrective Task Handoff |
-| budget_max | integer | Value of `max_retries_per_task` at authoring time | Corrective Task Handoff |
-| budget_remaining | integer | Informational remaining retry budget at authoring time | Corrective Task Handoff |
+| corrective_index | integer | 1-based corrective attempt/adjudication-cycle index (e.g., `1`) | Code Review, Phase Review |
+| corrective_scope | string | `"task"` \| `"phase"` | Code Review, Phase Review |
 
 **`status` field values by document type:**
 

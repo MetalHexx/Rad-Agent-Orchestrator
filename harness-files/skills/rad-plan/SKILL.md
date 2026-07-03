@@ -1,6 +1,6 @@
 ---
 name: rad-plan
-description: "Start the planning pipeline for a new project — builds the Master Plan from an approved Requirements doc and runs the audit"
+description: "Use this skill once you are aligned on a project and ready to start.  Typically this is invoked directly by the user after /rad-brainstorm has completed and the Requirements doc is approved.  It is the reference for how to run the planning pipeline and author the Master Plan."
 user-invocable: true
 ---
 

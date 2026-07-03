@@ -31,7 +31,7 @@ async function setup(): Promise<string> {
       },
       config: {
         gate_mode: 'task',
-        limits: { max_retries_per_task: 3, max_consecutive_review_rejections: 3 },
+        limits: { max_retries_per_task: 3 },
         source_control: { auto_commit: 'always', auto_pr: 'never' },
       },
       pipeline: {

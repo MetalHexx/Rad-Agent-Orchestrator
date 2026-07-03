@@ -15,7 +15,6 @@ let failed = 0;
 const MINIMAL_CONFIG_YAML = `version: "1"
 limits:
   max_retries_per_task: 3
-  max_consecutive_review_rejections: 3
 human_gates:
   after_planning: true
   execution_mode: autonomous
@@ -84,7 +83,7 @@ async function run() {
     await test('returns .claude as the orchestration root', async () => {
       const config: OrchestrationConfig = {
         version: '1',
-        limits: { max_retries_per_task: 3, max_consecutive_review_rejections: 3 },
+        limits: { max_retries_per_task: 3 },
         human_gates: { after_planning: true, execution_mode: 'autonomous', after_final_review: true },
         source_control: { auto_commit: 'always', auto_pr: 'never' },
       };
@@ -94,7 +93,7 @@ async function run() {
     await test('returns .claude consistently regardless of input config shape', async () => {
       const config: OrchestrationConfig = {
         version: '1',
-        limits: { max_retries_per_task: 3, max_consecutive_review_rejections: 3 },
+        limits: { max_retries_per_task: 3 },
         human_gates: { after_planning: true, execution_mode: 'autonomous', after_final_review: true },
         source_control: { auto_commit: 'always', auto_pr: 'never' },
       };

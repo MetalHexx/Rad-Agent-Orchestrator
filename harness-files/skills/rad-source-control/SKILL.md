@@ -1,6 +1,6 @@
 ---
 name: rad-source-control
-description: 'Source control operations for the rad orchestration pipeline — commit your task''s work (coding agent), open the project pull request (main session), or create and clean up a worktree (main session). Each operation routes to its own reference.'
+description: 'Use this skill if you are a main agent, coder agent and have this skill assigned.  It is the reference for how to perform source-control operations like creating commits, opening pull requests, and creating or cleaning up worktrees for a project.'
 user-invocable: false
 ---
 

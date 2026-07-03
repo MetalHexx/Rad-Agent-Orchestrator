@@ -110,7 +110,6 @@ export interface MakeTestIOOpts {
 const DEFAULT_CONFIG: OrchestrationConfig = {
   limits: {
     max_retries_per_task: 3,
-    max_consecutive_review_rejections: 3,
   },
   human_gates: { after_planning: true, execution_mode: 'task', after_final_review: true },
   source_control: { auto_commit: 'never', auto_pr: 'never' },

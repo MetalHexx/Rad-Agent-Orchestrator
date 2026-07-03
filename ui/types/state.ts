@@ -45,17 +45,14 @@ export interface StateConfigLimits {
   max_phases: number;
   max_tasks_per_phase: number;
   max_retries_per_task: number;
-  max_consecutive_review_rejections: number;
 }
 
 /**
  * v6 state-embedded limits snapshot. The plan-size keys (`max_phases`,
- * `max_tasks_per_phase`) were excised in v6 — only the retry/rejection
- * limits survive.
+ * `max_tasks_per_phase`) were excised in v6 — only the retry limit survives.
  */
 export interface V6StateConfigLimits {
   max_retries_per_task: number;
-  max_consecutive_review_rejections: number;
 }
 
 // ─── Runtime Gate Mode ───────────────────────────────────────────────────────

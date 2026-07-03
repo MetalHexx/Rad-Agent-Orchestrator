@@ -24,7 +24,7 @@ const atPlanApprovalGateState = {
   project: { name: 'cli-behavioral', created: '2024-01-01T00:00:00.000Z', updated: '2024-01-01T00:00:00.000Z' },
   config: {
     gate_mode: 'task',
-    limits: { max_retries_per_task: 3, max_consecutive_review_rejections: 3 },
+    limits: { max_retries_per_task: 3 },
     source_control: { auto_commit: 'never', auto_pr: 'never' },
   },
   pipeline: { gate_mode: 'task', source_control: null, current_tier: 'planning', halt_reason: null },
@@ -47,7 +47,7 @@ const atFinalApprovalGateState = {
   project: { name: 'cli-behavioral', created: '2024-01-01T00:00:00.000Z', updated: '2024-01-01T00:00:00.000Z' },
   config: {
     gate_mode: 'task',
-    limits: { max_retries_per_task: 3, max_consecutive_review_rejections: 3 },
+    limits: { max_retries_per_task: 3 },
     source_control: { auto_commit: 'never', auto_pr: 'never' },
   },
   pipeline: { gate_mode: 'task', source_control: null, current_tier: 'review', halt_reason: null },
@@ -70,7 +70,7 @@ const atTaskGateActiveState = {
   project: { name: 'cli-behavioral', created: '2024-01-01T00:00:00.000Z', updated: '2024-01-01T00:00:00.000Z' },
   config: {
     gate_mode: 'task',
-    limits: { max_retries_per_task: 3, max_consecutive_review_rejections: 3 },
+    limits: { max_retries_per_task: 3 },
     source_control: { auto_commit: 'never', auto_pr: 'never' },
   },
   pipeline: { gate_mode: 'task', source_control: null, current_tier: 'execution', halt_reason: null },

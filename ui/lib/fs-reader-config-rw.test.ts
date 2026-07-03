@@ -18,7 +18,6 @@ const SAMPLE_CONFIG: OrchestrationConfig = {
   version: '1',
   limits: {
     max_retries_per_task: 3,
-    max_consecutive_review_rejections: 3,
   },
   human_gates: {
     after_planning: true,
@@ -34,7 +33,6 @@ const SAMPLE_CONFIG: OrchestrationConfig = {
 const MINIMAL_CONFIG_YAML = `version: "1"
 limits:
   max_retries_per_task: 3
-  max_consecutive_review_rejections: 3
 human_gates:
   after_planning: true
   execution_mode: ask
@@ -122,7 +120,7 @@ async function run() {
         await withFakeHome(fakeHome, async () => {
           const { config, rawYaml } = await readConfigWithRaw();
           assert.strictEqual(config.version, '1');
-          assert.strictEqual(config.limits.max_consecutive_review_rejections, 3);
+          assert.strictEqual(config.limits.max_retries_per_task, 3);
           assert.strictEqual(typeof rawYaml, 'string');
           assert.ok(rawYaml.includes('version'));
           assert.ok(rawYaml.includes('max_retries_per_task'));

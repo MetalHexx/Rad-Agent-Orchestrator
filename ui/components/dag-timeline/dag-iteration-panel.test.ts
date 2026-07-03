@@ -323,10 +323,10 @@ test('phase-scope corrective iteration fixture has corrective_tasks.length === 1
     ],
     nodes: {
       // Under iter-11, PHASE_REVIEW_COMPLETED sets phase_review.status =
-      // 'completed' (with verdict = effective_outcome) BEFORE birthing the
-      // corrective into phaseIter.corrective_tasks[]. Fixture matches the
-      // real post-mutation shape rather than the impossible "in_progress
-      // phase_review + active corrective" combination.
+      // 'completed' BEFORE birthing the corrective into
+      // phaseIter.corrective_tasks[]. Fixture matches the real post-mutation
+      // shape rather than the impossible "in_progress phase_review + active
+      // corrective" combination.
       phase_review: { kind: 'step', status: 'completed', doc_path: 'reports/PROJ-PHASE-REVIEW-P01.md', retries: 0 },
     },
     repos: [],
