@@ -17,13 +17,13 @@ function makeValidOutput(version) {
   fs.writeFileSync(join(root, 'hooks/bootstrap.mjs'), '// boot\n');
   fs.writeFileSync(join(root, 'hooks/drift-check.mjs'), '// drift\n');
   fs.mkdirSync(join(root, 'agents'), { recursive: true });
-  fs.writeFileSync(join(root, 'agents/orchestrator.agent.md'), '# orchestrator\n');
+  fs.writeFileSync(join(root, 'agents/reviewer.agent.md'), '# reviewer\n');
   fs.writeFileSync(join(root, 'agents/coder.agent.md'), '# coder\n');
   fs.mkdirSync(join(root, 'manifests'), { recursive: true });
   fs.writeFileSync(join(root, `manifests/v${version}.json`), JSON.stringify({ version, channel: 'copilot-vscode-plugin', files: [] }));
 
   const canonicalDir = fs.mkdtempSync(join(os.tmpdir(), 'canon-'));
-  fs.writeFileSync(join(canonicalDir, 'orchestrator.md'), '# orchestrator');
+  fs.writeFileSync(join(canonicalDir, 'reviewer.md'), '# reviewer');
   fs.writeFileSync(join(canonicalDir, 'coder.md'), '# coder');
   return { root, canonicalDir };
 }
@@ -94,10 +94,10 @@ test('valid output passes every gate', () => {
   fs.rmSync(canonicalDir, { recursive: true, force: true });
 });
 
-test('namespaced-token gate is NOT enforced (FR-4, AD-10) — orchestrator.agent.md with bare @coder dispatches passes', () => {
+test('namespaced-token gate is NOT enforced (FR-4, AD-10) — reviewer.agent.md with bare @coder dispatches passes', () => {
   const { root, canonicalDir } = makeValidOutput('1.0.0');
-  fs.writeFileSync(join(root, 'agents/orchestrator.agent.md'),
-    '# orchestrator\nDispatch the coder agent using `@coder`.\n');
+  fs.writeFileSync(join(root, 'agents/reviewer.agent.md'),
+    '# reviewer\nDispatch the coder agent using `@coder`.\n');
   assert.doesNotThrow(() => validatePluginTree({
     outputDir: root, canonicalAgentsDir: canonicalDir, sizer: () => ({ unpackedSize: 1024 }),
   }), 'no namespaced-token enforcement (AD-10)');

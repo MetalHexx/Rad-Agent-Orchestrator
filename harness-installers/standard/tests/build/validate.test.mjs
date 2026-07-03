@@ -17,7 +17,7 @@ test('REQUIRED_PER_HARNESS no longer includes the retired pipeline bundle', () =
 });
 
 /** Build a minimal synthetic output tree satisfying all four gates. */
-function makeValidDist(root, canonicalAgentsDir, agents = ['orchestrator', 'coder']) {
+function makeValidDist(root, canonicalAgentsDir, agents = ['reviewer', 'coder']) {
   for (const h of HARNESSES) {
     const hOut = path.join(root, h);
     // Required per-harness artifacts (gate 1)
@@ -44,7 +44,7 @@ function makeValidDist(root, canonicalAgentsDir, agents = ['orchestrator', 'code
 }
 
 /** Build a synthetic canonical agents dir with the given agent basenames. */
-function makeCanonicalAgentsDir(root, agents = ['orchestrator', 'coder']) {
+function makeCanonicalAgentsDir(root, agents = ['reviewer', 'coder']) {
   const dir = path.join(root, 'canonical-agents');
   fs.mkdirSync(dir, { recursive: true });
   for (const name of agents) {
@@ -57,8 +57,8 @@ test('gate 1: missing required artifact throws (radorch.mjs)', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'validate-gate1-'));
   try {
     const outputDir = path.join(root, 'output');
-    const canonicalAgentsDir = makeCanonicalAgentsDir(root, ['orchestrator', 'coder']);
-    makeValidDist(outputDir, canonicalAgentsDir, ['orchestrator', 'coder']);
+    const canonicalAgentsDir = makeCanonicalAgentsDir(root, ['reviewer', 'coder']);
+    makeValidDist(outputDir, canonicalAgentsDir, ['reviewer', 'coder']);
     // Remove radorch.mjs from the claude harness to trigger gate 1
     fs.rmSync(path.join(outputDir, 'claude/skills/rad-orchestration/scripts/radorch.mjs'));
     assert.throws(
@@ -77,8 +77,8 @@ test('gate 2: missing canonical agent in output throws (coder.md)', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'validate-gate2-'));
   try {
     const outputDir = path.join(root, 'output');
-    const canonicalAgentsDir = makeCanonicalAgentsDir(root, ['orchestrator', 'coder']);
-    makeValidDist(outputDir, canonicalAgentsDir, ['orchestrator', 'coder']);
+    const canonicalAgentsDir = makeCanonicalAgentsDir(root, ['reviewer', 'coder']);
+    makeValidDist(outputDir, canonicalAgentsDir, ['reviewer', 'coder']);
     // Remove coder.md from the claude harness agents directory
     fs.rmSync(path.join(outputDir, 'claude/agents/coder.md'));
     assert.throws(
@@ -97,8 +97,8 @@ test('gate 2: missing copilot-suffixed agent in output throws (coder.agent.md)',
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'validate-gate2-copilot-'));
   try {
     const outputDir = path.join(root, 'output');
-    const canonicalAgentsDir = makeCanonicalAgentsDir(root, ['orchestrator', 'coder']);
-    makeValidDist(outputDir, canonicalAgentsDir, ['orchestrator', 'coder']);
+    const canonicalAgentsDir = makeCanonicalAgentsDir(root, ['reviewer', 'coder']);
+    makeValidDist(outputDir, canonicalAgentsDir, ['reviewer', 'coder']);
     // Remove the .agent.md-suffixed file from copilot-vscode. The validator must
     // check the documented per-harness suffix; bare `.md` here would be wrong.
     fs.rmSync(path.join(outputDir, 'copilot-vscode/agents/coder.agent.md'));
@@ -121,8 +121,8 @@ test('gate 3: missing per-harness manifest throws', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'validate-gate3-'));
   try {
     const outputDir = path.join(root, 'output');
-    const canonicalAgentsDir = makeCanonicalAgentsDir(root, ['orchestrator', 'coder']);
-    makeValidDist(outputDir, canonicalAgentsDir, ['orchestrator', 'coder']);
+    const canonicalAgentsDir = makeCanonicalAgentsDir(root, ['reviewer', 'coder']);
+    makeValidDist(outputDir, canonicalAgentsDir, ['reviewer', 'coder']);
     // Remove the manifest for claude harness
     fs.rmSync(path.join(outputDir, `claude/manifests/v${VERSION}.json`));
     assert.throws(
@@ -144,8 +144,8 @@ test('gate 4: tarball size exceeds budget throws', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'validate-gate4-'));
   try {
     const outputDir = path.join(root, 'output');
-    const canonicalAgentsDir = makeCanonicalAgentsDir(root, ['orchestrator', 'coder']);
-    makeValidDist(outputDir, canonicalAgentsDir, ['orchestrator', 'coder']);
+    const canonicalAgentsDir = makeCanonicalAgentsDir(root, ['reviewer', 'coder']);
+    makeValidDist(outputDir, canonicalAgentsDir, ['reviewer', 'coder']);
     const bigSizer = () => ({ unpackedSize: 60 * 1024 * 1024 });
     assert.throws(
       () => validatePackageTree({
@@ -172,8 +172,8 @@ test('happy path: valid synthetic output passes all four gates without throwing'
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'validate-happy-'));
   try {
     const outputDir = path.join(root, 'output');
-    const canonicalAgentsDir = makeCanonicalAgentsDir(root, ['orchestrator', 'coder']);
-    makeValidDist(outputDir, canonicalAgentsDir, ['orchestrator', 'coder']);
+    const canonicalAgentsDir = makeCanonicalAgentsDir(root, ['reviewer', 'coder']);
+    makeValidDist(outputDir, canonicalAgentsDir, ['reviewer', 'coder']);
     // Use a sizer that returns an acceptable size
     const okSizer = () => ({ unpackedSize: 10 * 1024 * 1024 });
     assert.doesNotThrow(

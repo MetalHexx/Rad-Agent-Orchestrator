@@ -31,8 +31,8 @@ function stageFixture(root) {
     fs.mkdirSync(agentsDir, { recursive: true });
     fs.mkdirSync(skillsDir, { recursive: true });
     fs.writeFileSync(
-      path.join(agentsDir, agentFilename(h, 'orchestrator')),
-      '---\nname: orchestrator\ndescription: test\n---\n\nSpawn **coder** agent. See ${SKILLS_ROOT}/rad-orchestration/SKILL.md.\n',
+      path.join(agentsDir, agentFilename(h, 'reviewer')),
+      '---\nname: reviewer\ndescription: test\n---\n\nSpawn **coder** agent. See ${SKILLS_ROOT}/rad-orchestration/SKILL.md.\n',
     );
     fs.writeFileSync(
       path.join(agentsDir, agentFilename(h, 'coder')),
@@ -77,7 +77,7 @@ function stageFixture(root) {
   // harness-files/agents/ — canonical agents listing for the validate step.
   const canonicalAgentsDir = path.join(root, 'harness-files/agents');
   fs.mkdirSync(canonicalAgentsDir, { recursive: true });
-  fs.writeFileSync(path.join(canonicalAgentsDir, 'orchestrator.md'), '# orchestrator\n');
+  fs.writeFileSync(path.join(canonicalAgentsDir, 'reviewer.md'), '# reviewer\n');
   fs.writeFileSync(path.join(canonicalAgentsDir, 'coder.md'), '# coder\n');
 
   // harness-installers/standard/ source.

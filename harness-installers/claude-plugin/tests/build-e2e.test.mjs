@@ -20,7 +20,7 @@ test('end-to-end build produces a valid plugin payload', { skip: process.env.SKI
   for (const rel of [
     '.claude-plugin/plugin.json',
     'package.json',
-    'agents/orchestrator.md',
+    'agents/coder.md',
     'skills/rad-orchestration/SKILL.md',
     'skills/rad-orchestration/scripts/radorch.mjs',
     'hooks/hooks.json',

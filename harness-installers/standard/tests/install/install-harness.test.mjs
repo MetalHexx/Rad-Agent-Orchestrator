@@ -19,7 +19,7 @@ import { installHarness } from '../../lib/install/install-harness.js';
  * Build a self-contained synthetic bundle on disk:
  *   - bundle/package.json with the given version
  *   - bundle/manifests/v<version>.json with two file entries
- *   - bundle/agents/orchestrator.md
+ *   - bundle/agents/coder.md
  *   - bundle/skills/rad-orchestration/scripts/radorch.mjs
  *
  * Optionally also seed a prior manifest at bundle/manifests/v<priorVersion>.json
@@ -33,7 +33,7 @@ function buildBundle(bundleRoot, { version, priorVersion } = {}) {
   );
 
   fs.mkdirSync(path.join(bundleRoot, 'agents'), { recursive: true });
-  fs.writeFileSync(path.join(bundleRoot, 'agents/orchestrator.md'), `# orchestrator v${version}\n`);
+  fs.writeFileSync(path.join(bundleRoot, 'agents/coder.md'), `# coder v${version}\n`);
 
   const scriptsDir = path.join(bundleRoot, 'skills/rad-orchestration/scripts');
   fs.mkdirSync(scriptsDir, { recursive: true });
@@ -42,8 +42,8 @@ function buildBundle(bundleRoot, { version, priorVersion } = {}) {
   const manifest = {
     files: [
       {
-        bundlePath: 'agents/orchestrator.md',
-        destinationPath: '${HARNESS_ROOT}/agents/orchestrator.md',
+        bundlePath: 'agents/coder.md',
+        destinationPath: '${HARNESS_ROOT}/agents/coder.md',
         sha256: 'x',
       },
       {
@@ -137,7 +137,7 @@ test('fresh-install: install.json absent → action fresh-install, files copied,
     // Files were copied into ~/.claude/.
     const sentinel = path.join(tmp, 'home/.claude/skills/rad-orchestration/scripts/radorch.mjs');
     assert.strictEqual(fs.existsSync(sentinel), true, 'sentinel copied');
-    assert.strictEqual(fs.existsSync(path.join(tmp, 'home/.claude/agents/orchestrator.md')), true);
+    assert.strictEqual(fs.existsSync(path.join(tmp, 'home/.claude/agents/coder.md')), true);
   } finally {
     restoreHome();
     fs.rmSync(tmp, { recursive: true, force: true });
@@ -157,7 +157,7 @@ test('upgrade-complete: install.json registers lower version → prior manifest 
     const home = path.join(tmp, 'home');
     const claudeRoot = path.join(home, '.claude');
     fs.mkdirSync(path.join(claudeRoot, 'agents'), { recursive: true });
-    fs.writeFileSync(path.join(claudeRoot, 'agents/orchestrator.md'), '# old\n');
+    fs.writeFileSync(path.join(claudeRoot, 'agents/coder.md'), '# old\n');
     fs.mkdirSync(path.join(claudeRoot, 'skills/rad-orchestration/scripts'), { recursive: true });
     fs.writeFileSync(path.join(claudeRoot, 'skills/rad-orchestration/scripts/radorch.mjs'), '# old\n');
 
@@ -191,8 +191,8 @@ test('upgrade-complete: install.json registers lower version → prior manifest 
     assert.strictEqual(installJson.harnesses.claude.installed_at, installedAt, 'installed_at preserved on upgrade');
 
     // New file content overwrote the old.
-    const orchestrator = fs.readFileSync(path.join(claudeRoot, 'agents/orchestrator.md'), 'utf8');
-    assert.match(orchestrator, /v1\.0\.1/);
+    const coder = fs.readFileSync(path.join(claudeRoot, 'agents/coder.md'), 'utf8');
+    assert.match(coder, /v1\.0\.1/);
   } finally {
     restoreHome();
     fs.rmSync(tmp, { recursive: true, force: true });

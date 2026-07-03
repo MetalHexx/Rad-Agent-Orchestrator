@@ -102,6 +102,11 @@ describe('worktreeLaunch dispatch matrix', () => {
     const payload = deliveredPayload(spawn, platform);
     expect(payload).toContain('copilot');
     expect(payload).toContain(addDir);
+    expect(payload).toContain('--allow-tool=shell');
+    expect(payload).toContain('-i');
+    expect(payload).toContain('/rad-execute X');
+    expect(payload).not.toContain('--agent');
+    expect(payload).not.toContain('orchestrator');
   });
 
   it.each(['win32', 'darwin', 'linux'] as const)('launches vscode on %s without --prompt or --add-dir', (platform) => {

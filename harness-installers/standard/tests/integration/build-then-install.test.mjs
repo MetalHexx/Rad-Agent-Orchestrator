@@ -43,10 +43,10 @@ function makeFixture(root) {
     fs.mkdirSync(agentsDir, { recursive: true });
     fs.mkdirSync(skillsDir, { recursive: true });
     fs.writeFileSync(
-      path.join(agentsDir, agentFilename(h, 'orchestrator')),
+      path.join(agentsDir, agentFilename(h, 'reviewer')),
       [
         '---',
-        'name: orchestrator',
+        'name: reviewer',
         'description: test',
         '---',
         '',
@@ -97,7 +97,7 @@ function makeFixture(root) {
   // harness-files/agents/ — canonical agents listing for the validate step.
   const canonicalAgentsDir = path.join(root, 'harness-files/agents');
   fs.mkdirSync(canonicalAgentsDir, { recursive: true });
-  fs.writeFileSync(path.join(canonicalAgentsDir, 'orchestrator.md'), '# orchestrator\n');
+  fs.writeFileSync(path.join(canonicalAgentsDir, 'reviewer.md'), '# reviewer\n');
   fs.writeFileSync(path.join(canonicalAgentsDir, 'coder.md'), '# coder\n');
 
   // harness-installers/standard/ source — needs package.json for synthesize.
@@ -226,8 +226,8 @@ test('build then install produces correct ~/.radorc/ and ~/.<harness>/ shapes fo
     // ---------------------------------------------------------------------
     // FR-3: per-harness install root populated for each installed harness.
     // ---------------------------------------------------------------------
-    assert.ok(fs.existsSync(path.join(home, '.claude/agents/orchestrator.md')),
-      'FR-3: claude orchestrator.md installed');
+    assert.ok(fs.existsSync(path.join(home, '.claude/agents/reviewer.md')),
+      'FR-3: claude reviewer.md installed');
     assert.ok(fs.existsSync(path.join(home, '.claude/agents/coder.md')),
       'FR-3: claude coder.md installed');
     assert.ok(fs.existsSync(path.join(home, '.claude/skills/rad-orchestration/scripts/radorch.mjs')),
@@ -237,19 +237,19 @@ test('build then install produces correct ~/.radorc/ and ~/.<harness>/ shapes fo
     assert.ok(fs.existsSync(path.join(home, '.claude/skills/rad-orchestration/SKILL.md')),
       'FR-3: claude SKILL.md installed');
 
-    assert.ok(fs.existsSync(path.join(home, '.copilot/agents/orchestrator.agent.md')),
-      'FR-3: copilot orchestrator.agent.md installed');
+    assert.ok(fs.existsSync(path.join(home, '.copilot/agents/reviewer.agent.md')),
+      'FR-3: copilot reviewer.agent.md installed');
     assert.ok(fs.existsSync(path.join(home, '.copilot/skills/rad-orchestration/scripts/radorch.mjs')),
       'FR-3: copilot CLI sentinel installed');
 
     // FR-3 content fidelity — the installed agent must carry the token-
     // expanded body (not the bundle's raw `${SKILLS_ROOT}` placeholder).
-    const claudeOrch = fs.readFileSync(
-      path.join(home, '.claude/agents/orchestrator.md'), 'utf8');
-    assert.ok(!claudeOrch.includes('${SKILLS_ROOT}'),
-      'FR-3: claude orchestrator.md token-expanded (no bare ${SKILLS_ROOT})');
-    assert.ok(claudeOrch.includes(path.join(home, '.claude')),
-      'FR-3: claude orchestrator.md references ~/.claude/');
+    const claudeReviewer = fs.readFileSync(
+      path.join(home, '.claude/agents/reviewer.md'), 'utf8');
+    assert.ok(!claudeReviewer.includes('${SKILLS_ROOT}'),
+      'FR-3: claude reviewer.md token-expanded (no bare ${SKILLS_ROOT})');
+    assert.ok(claudeReviewer.includes(path.join(home, '.claude')),
+      'FR-3: claude reviewer.md references ~/.claude/');
 
     // ---------------------------------------------------------------------
     // FR-14: orchestration.yml preservation on second hydrate.

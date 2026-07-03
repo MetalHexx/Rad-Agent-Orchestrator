@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 // We assert against harness-files/skills/ rather than ../output/skills/ because
 // output/ is a gitignored build artifact: it is absent on a fresh checkout (so
 // the suite would fail under CI). The copy mechanics that carry the source into
-// the payload are covered by build-orchestrator.test.mjs.
+// the payload are covered by build-payload.test.mjs.
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const SKILLS_SRC = path.join(REPO_ROOT, 'harness-files/skills');
 

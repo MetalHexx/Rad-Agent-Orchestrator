@@ -18,9 +18,9 @@ and `gate approve-final`. Both surfaces project the result into the canonical en
 A change inside this folder can ripple to several surfaces. Verify each before merging:
 
 - **Markdown surfaces.** The action routing table in
-  `harness-files/skills/rad-orchestration/references/action-event-reference.md`,
-  the dispatch prose in `harness-files/agents/orchestrator.md`, and the parse-instruction
-  prose in `harness-files/skills/rad-orchestration/references/pipeline-guide.md` all
+  `harness-files/skills/rad-orchestration/references/action-event-reference.md` and the
+  parse-instruction prose in
+  `harness-files/skills/rad-orchestration/references/pipeline-guide.md` both
   describe the envelope shape and the action-to-event routing this engine emits. A new
   action, a renamed context field, or a new event reshapes those prose surfaces too.
 - **UI dashboard.** `ui/app/api/projects/[name]/gate/route.ts` (and its test) parses
