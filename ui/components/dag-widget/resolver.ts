@@ -9,9 +9,14 @@ import type {
 import { deriveCurrentPhase, derivePhaseProgress } from '@/components/dag-timeline/dag-timeline-helpers';
 import type { StateId, StateView, StateViewContext } from './types';
 import { fallbackView } from './states/fallback-view';
+import { planningView } from './states/planning-view';
+import { planApprovalView } from './states/plan-approval-view';
 import { codingView } from './states/coding-view';
 import { reviewingView } from './states/reviewing-view';
 import { correctiveView } from './states/corrective-view';
+import { phaseReviewView } from './states/phase-review-view';
+import { finalReviewView } from './states/final-review-view';
+import { completeView } from './states/complete-view';
 
 /**
  * Leaf node id → `StateId`. Only nodes that name a first-class card state are
@@ -171,15 +176,20 @@ export function resolveStateId(state: AnyProjectState, focus?: string): StateId 
 
 /**
  * Registry of concrete state views keyed by `StateId`. A lookup — not a switch
- * ladder — so later tasks register their views as plain entries. `coding`,
- * `reviewing`, and `corrective` are registered here; any resolved id without a
- * registered view (the milestone states, for now) renders the fallback.
+ * ladder — so every state registers as a plain entry. Every `StateId` is now
+ * registered; an id that somehow fails to resolve here still falls back via
+ * `resolveStateView`'s `?? fallbackView`.
  */
 const STATE_VIEW_REGISTRY: Partial<Record<StateId, StateView>> = {
   fallback: fallbackView,
+  planning: planningView,
+  'plan-approval': planApprovalView,
   coding: codingView,
   reviewing: reviewingView,
   corrective: correctiveView,
+  'phase-review': phaseReviewView,
+  'final-review': finalReviewView,
+  complete: completeView,
 };
 
 /** Presentational dependencies the shell threads into every view context. */

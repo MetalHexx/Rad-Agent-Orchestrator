@@ -38,8 +38,8 @@ test('renders without crashing for a completed graph', () => {
   const html = renderToStaticMarkup(
     createElement(DagStateCard, { ...baseProps, state: makeState(null, 'completed') }),
   );
-  // Complete has no registered view yet, so the fallback renders — the shell
-  // must still resolve and paint safely.
+  // The registered complete view renders — the shell must still resolve and
+  // paint safely even with an otherwise-empty node tree.
   assert.ok(html.length > 0);
 });
 

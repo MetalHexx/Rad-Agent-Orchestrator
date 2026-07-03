@@ -172,13 +172,12 @@ test('an explicit focus overrides current_node_path', () => {
   assert.equal(resolveStateId(state, `${TASK_PATH}.code_review`), 'reviewing');
 });
 
-// ─── view registry: coding/reviewing/corrective are registered; milestones are not ──
+// ─── view registry: every StateId now has a registered view ─────────────────
 
-test('resolveStateView returns the fallback view for a mapped-but-unregistered state', () => {
-  // phase_review maps to "phase-review", but no phase-review view is registered yet.
+test('resolveStateView returns the registered phase-review view for phase_review', () => {
   const { view, ctx } = resolveStateView(makeState('phase_loop.iter0.phase_review'), undefined, noopDeps);
   assert.equal(ctx.stateId, 'phase-review');
-  assert.equal(view.id, 'fallback');
+  assert.equal(view.id, 'phase-review');
 });
 
 test('resolveStateView returns the registered coding view for task_executor', () => {
