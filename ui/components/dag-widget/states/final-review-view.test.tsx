@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import React, { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { deriveRingArc, deriveVerdictTone, finalReviewView } from './final-review-view';
+import { deriveVerdictTone, finalReviewView } from './final-review-view';
 import { resolveStateView } from '../resolver';
 import type { AnyProjectState, NodesRecord } from '@/types/state';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -37,16 +37,6 @@ function makeState(verdict: string | null, docPath: string | null, prUrl: string
     graph: { template_id: 'std', status: 'in_progress', current_node_path: 'final_review', nodes },
   };
 }
-
-// ─── deriveRingArc ────────────────────────────────────────────────────────────
-
-test('deriveRingArc passes through a valid phase progress', () => {
-  assert.deepEqual(deriveRingArc({ completed: 3, total: 3 }), { value: 3, max: 3 });
-});
-
-test('deriveRingArc falls back to {0, 1} when phase progress is null', () => {
-  assert.deepEqual(deriveRingArc(null), { value: 0, max: 1 });
-});
 
 // ─── deriveVerdictTone ────────────────────────────────────────────────────────
 
@@ -83,6 +73,10 @@ test('deriveVerdictTone falls back to Pending on a null verdict (not yet reviewe
 
 test('final review view id is "final-review"', () => {
   assert.equal(finalReviewView.id, 'final-review');
+});
+
+test('final review view plots phase progress (the run-wide milestone position)', () => {
+  assert.match(source, /deriveRingArc\(ctx\.phaseProgress\)/);
 });
 
 test('final review view renders a determinate ring tinted to the green complete tier', () => {

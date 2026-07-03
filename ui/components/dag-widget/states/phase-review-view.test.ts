@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { deriveRingArc, derivePhaseNumber, phaseReviewView } from './phase-review-view';
+import { derivePhaseNumber, phaseReviewView } from './phase-review-view';
 import type { IterationEntry } from '@/types/state';
 
 const dir = dirname(fileURLToPath(import.meta.url));
@@ -31,21 +31,11 @@ test('derivePhaseNumber is null when no iteration resolved', () => {
   assert.equal(derivePhaseNumber(undefined), null);
 });
 
-// ─── deriveRingArc ────────────────────────────────────────────────────────────
-
-test('deriveRingArc passes through a valid phase progress', () => {
-  assert.deepEqual(deriveRingArc({ completed: 1, total: 4 }), { value: 1, max: 4 });
-});
-
-test('deriveRingArc falls back to {0, 1} when phase progress is null', () => {
-  assert.deepEqual(deriveRingArc(null), { value: 0, max: 1 });
-});
-
-test('deriveRingArc falls back to {0, 1} when total is zero (avoids a degenerate arc domain)', () => {
-  assert.deepEqual(deriveRingArc({ completed: 0, total: 0 }), { value: 0, max: 1 });
-});
-
 // ─── source shape ─────────────────────────────────────────────────────────────
+
+test('phase review view plots phase progress (the run-wide milestone position)', () => {
+  assert.match(source, /deriveRingArc\(ctx\.phaseProgress\)/);
+});
 
 test('phase review view id is "phase-review"', () => {
   assert.equal(phaseReviewView.id, 'phase-review');

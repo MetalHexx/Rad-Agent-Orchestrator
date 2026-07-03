@@ -1,29 +1,11 @@
-import type { CSSProperties } from 'react';
 import { DocumentLink } from '@/components/documents';
 import { Ring } from '../ring';
 import { RingSlot, TitleSlot, ControlsSlot } from '../card-slots';
 import type { StateView } from '../types';
+import { tierTintStyle, deriveRingArc } from './shared';
 
 const TIER_CSS_VAR = '--tier-review';
-
-/**
- * Overrides `--primary` for the wrapped subtree so `DocumentLink`'s
- * hard-coded `text-primary` icon/label resolve to this state's tier color —
- * same technique the work-state views use.
- */
-const TIER_TINT_STYLE = { '--primary': `var(${TIER_CSS_VAR})` } as CSSProperties;
-
-/**
- * Ring arc `{value, max}` from the resolver's phase progress. Falls back to
- * an empty-but-valid `{0, 1}` domain (never `{0, 0}`, which would hand the
- * ring a degenerate arc domain) when no phase progress is derivable yet.
- */
-export function deriveRingArc(
-  phaseProgress: { completed: number; total: number } | null,
-): { value: number; max: number } {
-  if (phaseProgress === null || phaseProgress.total <= 0) return { value: 0, max: 1 };
-  return { value: phaseProgress.completed, max: phaseProgress.total };
-}
+const TIER_TINT_STYLE = tierTintStyle(TIER_CSS_VAR);
 
 /**
  * 1-based phase number for display. The active node under `phase_review` is

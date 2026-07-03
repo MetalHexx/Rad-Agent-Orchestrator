@@ -6,7 +6,11 @@ import type {
   CorrectiveTaskEntry,
   ForEachPhaseNodeState,
 } from '@/types/state';
-import { deriveCurrentPhase, derivePhaseProgress } from '@/components/dag-timeline/dag-timeline-helpers';
+import {
+  deriveCurrentPhase,
+  derivePhaseProgress,
+  deriveIterationTaskProgress,
+} from '@/components/dag-timeline/dag-timeline-helpers';
 import type { StateId, StateView, StateViewContext } from './types';
 import { fallbackView } from './states/fallback-view';
 import { planningView } from './states/planning-view';
@@ -226,6 +230,10 @@ export function resolveStateView(
     : { node: undefined, leaf: '', isCorrective: false, iteration: undefined, correctiveEntry: undefined };
 
   const phaseLoop = getPhaseLoop(state);
+  // The task-progress ring is scoped to the phase the run is currently on, so
+  // it reads the active phase iteration's own task loop — the same iteration
+  // `deriveCurrentPhase` names — not the project-wide phase count.
+  const activePhaseIteration = phaseLoop?.iterations.find((iter) => iter.status === 'in_progress');
   const repos = walk.correctiveEntry?.repos ?? walk.iteration?.repos ?? [];
 
   const ctx: StateViewContext = {
@@ -238,6 +246,7 @@ export function resolveStateView(
     correctiveEntry: walk.correctiveEntry,
     phaseName: deriveCurrentPhase(phaseLoop),
     phaseProgress: derivePhaseProgress(phaseLoop),
+    taskProgress: activePhaseIteration ? deriveIterationTaskProgress(activePhaseIteration) : null,
     repos,
     prUrl: state.pipeline.source_control?.repos?.[0]?.pr_url ?? null,
     onDocClick: deps.onDocClick,

@@ -1,23 +1,14 @@
-import type { CSSProperties } from 'react';
 import { SpinnerBadge } from '@/components/badges';
 import { DocumentLink } from '@/components/documents';
 import { CommitChips } from '@/components/dag-timeline/commit-chips';
 import { Ring } from '../ring';
 import { RingSlot, TitleSlot, ControlsSlot } from '../card-slots';
 import type { StateView } from '../types';
-import type { AnyProjectState, CorrectiveTaskEntry, IterationEntry } from '@/types/state';
+import type { AnyProjectState, CorrectiveTaskEntry } from '@/types/state';
+import { tierTintStyle, deriveRingArc, deriveTaskNumber } from './shared';
 
 const TIER_CSS_VAR = '--status-failed';
-
-/**
- * Overrides `--primary` for the wrapped subtree so `DocumentLink`'s
- * hard-coded `text-primary` icon/label resolve to this state's tier color
- * instead of the app default — `DocumentLink` itself stays untouched. Works
- * because the compiled `.text-primary` rule reads `color: var(--primary)`
- * directly (Tailwind v4 `@theme inline`), so redefining `--primary` on an
- * ancestor retints every `text-primary` descendant.
- */
-const TIER_TINT_STYLE = { '--primary': `var(${TIER_CSS_VAR})` } as CSSProperties;
+const TIER_TINT_STYLE = tierTintStyle(TIER_CSS_VAR);
 
 /**
  * Fallback retry ceiling used when a snapshot omits
@@ -28,24 +19,6 @@ const TIER_TINT_STYLE = { '--primary': `var(${TIER_CSS_VAR})` } as CSSProperties
  * default retry budget.
  */
 export const DEFAULT_MAX_RETRIES_PER_TASK = 2;
-
-/** 1-based task number for display, derived from the active task iteration. */
-export function deriveTaskNumber(iteration: IterationEntry | undefined): number | null {
-  return iteration ? iteration.index + 1 : null;
-}
-
-/**
- * Ring arc `{value, max}` from the resolver's phase task-progress. Falls
- * back to an empty-but-valid `{0, 1}` domain (never `{0, 0}`, which would
- * hand the ring a degenerate arc domain) when no phase progress is derivable
- * yet.
- */
-export function deriveRingArc(
-  phaseProgress: { completed: number; total: number } | null,
-): { value: number; max: number } {
-  if (phaseProgress === null || phaseProgress.total <= 0) return { value: 0, max: 1 };
-  return { value: phaseProgress.completed, max: phaseProgress.total };
-}
 
 /** Resolves the max corrective retries from the state's config snapshot, with the documented fallback above. */
 export function resolveMaxRetriesPerTask(state: AnyProjectState): number {
@@ -76,7 +49,7 @@ export const correctiveView: StateView = {
   id: 'corrective',
   render(ctx) {
     const taskNumber = deriveTaskNumber(ctx.iteration);
-    const arc = deriveRingArc(ctx.phaseProgress);
+    const arc = deriveRingArc(ctx.taskProgress);
     const singleRepo = Object.keys(ctx.compareUrlByRepo).length <= 1;
     const retryBudget = deriveRetryBudgetLabel(ctx.correctiveEntry, ctx.state);
     const reviewNode = ctx.iteration?.nodes['code_review'];

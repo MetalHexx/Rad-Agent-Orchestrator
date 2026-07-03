@@ -6,15 +6,13 @@ import { dirname, join } from 'node:path';
 import React, { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import {
-  deriveTaskNumber,
-  deriveRingArc,
   resolveMaxRetriesPerTask,
   deriveRetryBudgetLabel,
   correctiveView,
   DEFAULT_MAX_RETRIES_PER_TASK,
 } from './corrective-view';
 import { resolveStateView } from '../resolver';
-import type { AnyProjectState, CorrectiveTaskEntry, IterationEntry, NodesRecord } from '@/types/state';
+import type { AnyProjectState, CorrectiveTaskEntry, NodesRecord } from '@/types/state';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 (globalThis as any).React = React;
 
@@ -41,18 +39,6 @@ function makeState(maxRetriesPerTask: number | undefined): AnyProjectState {
   };
 }
 
-function makeIteration(overrides: Partial<IterationEntry> = {}): IterationEntry {
-  return {
-    index: 0,
-    status: 'in_progress',
-    doc_path: 'tasks/T01.md',
-    corrective_tasks: [],
-    repos: [],
-    nodes: {},
-    ...overrides,
-  };
-}
-
 function makeCorrectiveEntry(overrides: Partial<CorrectiveTaskEntry> = {}): CorrectiveTaskEntry {
   return {
     index: 1,
@@ -65,26 +51,6 @@ function makeCorrectiveEntry(overrides: Partial<CorrectiveTaskEntry> = {}): Corr
     ...overrides,
   };
 }
-
-// ─── deriveTaskNumber ─────────────────────────────────────────────────────────
-
-test('deriveTaskNumber is 1-based from the enclosing task iteration index', () => {
-  assert.equal(deriveTaskNumber(makeIteration({ index: 0 })), 1);
-});
-
-test('deriveTaskNumber is null when no iteration resolved', () => {
-  assert.equal(deriveTaskNumber(undefined), null);
-});
-
-// ─── deriveRingArc ────────────────────────────────────────────────────────────
-
-test('deriveRingArc passes through a valid phase progress', () => {
-  assert.deepEqual(deriveRingArc({ completed: 1, total: 3 }), { value: 1, max: 3 });
-});
-
-test('deriveRingArc falls back to {0, 1} when phase progress is null', () => {
-  assert.deepEqual(deriveRingArc(null), { value: 0, max: 1 });
-});
 
 // ─── resolveMaxRetriesPerTask ─────────────────────────────────────────────────
 
@@ -120,6 +86,11 @@ test('deriveRetryBudgetLabel is null when no corrective entry resolved', () => {
 
 test('corrective view id is "corrective"', () => {
   assert.equal(correctiveView.id, 'corrective');
+});
+
+test('corrective view plots task progress, not phase completion', () => {
+  assert.match(source, /deriveRingArc\(ctx\.taskProgress\)/);
+  assert.ok(!source.includes('ctx.phaseProgress'), 'the work-state ring must not read phase progress');
 });
 
 test('corrective view renders a commit chip', () => {

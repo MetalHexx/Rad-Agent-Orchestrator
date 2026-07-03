@@ -191,3 +191,68 @@ test('resolveStateView derives phase name and progress from the phase loop', () 
   assert.equal(ctx.phaseName, 'Phase 1 — Setup');
   assert.deepEqual(ctx.phaseProgress, { completed: 0, total: 1 });
 });
+
+// ─── ring↔state seam: task-scoped progress, distinct from phase progress ─────
+
+test('resolveStateView exposes task progress scoped to the active phase iteration, distinct from phaseProgress', () => {
+  // Three phases (one done), the active phase two of five tasks in — so task
+  // progress ({2,5}) and phase progress ({1,3}) are deliberately different.
+  const nodes: NodesRecord = {
+    phase_loop: {
+      kind: 'for_each_phase',
+      status: 'in_progress',
+      iterations: [
+        { index: 0, status: 'completed', doc_path: 'phases/P1.md', corrective_tasks: [], repos: [], nodes: {} },
+        {
+          index: 1,
+          status: 'in_progress',
+          doc_path: 'phases/DEMO-PHASE-02-BUILD.md',
+          corrective_tasks: [],
+          repos: [],
+          nodes: {
+            task_loop: {
+              kind: 'for_each_task',
+              status: 'in_progress',
+              iterations: [
+                { index: 0, status: 'completed', doc_path: 'tasks/t1.md', corrective_tasks: [], repos: [], nodes: {} },
+                { index: 1, status: 'completed', doc_path: 'tasks/t2.md', corrective_tasks: [], repos: [], nodes: {} },
+                {
+                  index: 2,
+                  status: 'in_progress',
+                  doc_path: 'tasks/t3.md',
+                  corrective_tasks: [],
+                  repos: [],
+                  nodes: { task_executor: { kind: 'step', status: 'in_progress', doc_path: null, retries: 0 } },
+                },
+                { index: 3, status: 'not_started', doc_path: 'tasks/t4.md', corrective_tasks: [], repos: [], nodes: {} },
+                { index: 4, status: 'not_started', doc_path: 'tasks/t5.md', corrective_tasks: [], repos: [], nodes: {} },
+              ],
+            },
+          },
+        },
+        { index: 2, status: 'not_started', doc_path: 'phases/P3.md', corrective_tasks: [], repos: [], nodes: {} },
+      ],
+    },
+  };
+  const state: ProjectStateV5 = {
+    $schema: 'orchestration-state-v5',
+    project: { name: 'demo', created: '2026-01-01', updated: '2026-01-01' },
+    config: {
+      gate_mode: 'task',
+      limits: { max_phases: 3, max_tasks_per_phase: 5, max_retries_per_task: 2 },
+      source_control: { auto_commit: 'never', auto_pr: 'never' },
+    },
+    pipeline: { gate_mode: 'task', source_control: null, current_tier: 'execution', halt_reason: null },
+    graph: {
+      template_id: 'std',
+      status: 'in_progress',
+      current_node_path: 'phase_loop.iter1.task_loop.iter2.task_executor',
+      nodes,
+    },
+  };
+
+  const { ctx } = resolveStateView(state, undefined, noopDeps);
+  assert.equal(ctx.stateId, 'coding');
+  assert.deepEqual(ctx.phaseProgress, { completed: 1, total: 3 });
+  assert.deepEqual(ctx.taskProgress, { completed: 2, total: 5 });
+});

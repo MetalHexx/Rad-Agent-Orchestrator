@@ -9,9 +9,9 @@ import type {
 
 /**
  * The set of card states the resolver can name. Each concrete state view is a
- * pure registry entry keyed by one of these; `fallback` is the catch-all for
- * an unmapped / unknown current node. Only `fallback` is registered today —
- * the per-node business views land in later tasks as additional entries.
+ * pure registry entry keyed by one of these; every `StateId` below is
+ * registered to a concrete view, with `fallback` the catch-all for an
+ * unmapped / unknown current node.
  */
 export type StateId =
   | 'planning'
@@ -48,6 +48,13 @@ export interface StateViewContext {
   phaseName: string | null;
   /** Completed / total phases derived from the top-level `phase_loop`. */
   phaseProgress: { completed: number; total: number } | null;
+  /**
+   * Completed / total tasks within the active phase iteration's task loop —
+   * the task-scoped progress the work-state rings (Coding/Reviewing/Corrective)
+   * plot, distinct from the phase-scoped `phaseProgress` the review milestones
+   * use. `null` when no phase iteration is active or it carries no task loop.
+   */
+  taskProgress: { completed: number; total: number } | null;
   /** Repos of the enclosing iteration / corrective entry (empty when none). */
   repos: RepoCommitEntry[];
   /** PR URL surfaced by the completion states; `null` when unavailable. */

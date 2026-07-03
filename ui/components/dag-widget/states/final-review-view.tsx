@@ -1,31 +1,13 @@
-import type { CSSProperties } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { Check, X, AlertTriangle, Clock, HelpCircle } from 'lucide-react';
 import { DocumentLink, ExternalLink } from '@/components/documents';
 import { Ring } from '../ring';
 import { RingSlot, TitleSlot, ControlsSlot } from '../card-slots';
 import type { StateView } from '../types';
+import { tierTintStyle, deriveRingArc, parsePrLabel } from './shared';
 
 const TIER_CSS_VAR = '--tier-complete';
-
-/**
- * Overrides `--primary` for the wrapped subtree so `DocumentLink`'s
- * hard-coded `text-primary` icon/label resolve to this state's tier color —
- * same technique the work-state views use.
- */
-const TIER_TINT_STYLE = { '--primary': `var(${TIER_CSS_VAR})` } as CSSProperties;
-
-/**
- * Ring arc `{value, max}` from the resolver's phase progress. Falls back to
- * an empty-but-valid `{0, 1}` domain (never `{0, 0}`, which would hand the
- * ring a degenerate arc domain) when no phase progress is derivable yet.
- */
-export function deriveRingArc(
-  phaseProgress: { completed: number; total: number } | null,
-): { value: number; max: number } {
-  if (phaseProgress === null || phaseProgress.total <= 0) return { value: 0, max: 1 };
-  return { value: phaseProgress.completed, max: phaseProgress.total };
-}
+const TIER_TINT_STYLE = tierTintStyle(TIER_CSS_VAR);
 
 const VERDICT_TONE: Record<string, { label: string; cssVar: string; Icon: LucideIcon }> = {
   approved: { label: 'Approved', cssVar: '--verdict-approved', Icon: Check },
@@ -43,11 +25,6 @@ const VERDICT_TONE: Record<string, { label: string; cssVar: string; Icon: Lucide
 export function deriveVerdictTone(verdict: string | null): { label: string; cssVar: string; Icon: LucideIcon } {
   if (verdict === null) return { label: 'Pending', cssVar: '--status-not-started', Icon: Clock };
   return VERDICT_TONE[verdict] ?? { label: verdict, cssVar: '--status-not-started', Icon: HelpCircle };
-}
-
-function parsePrLabel(url: string): string {
-  const match = url.match(/\/pull\/(\d+)/);
-  return match ? `PR #${match[1]}` : 'PR';
 }
 
 /**

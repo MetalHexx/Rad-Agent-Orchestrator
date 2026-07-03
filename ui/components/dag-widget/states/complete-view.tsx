@@ -1,19 +1,13 @@
-import type { CSSProperties } from 'react';
 import { Check } from 'lucide-react';
 import { DocumentLink, ExternalLink } from '@/components/documents';
 import { Ring } from '../ring';
 import { RingSlot, TitleSlot, ControlsSlot } from '../card-slots';
 import type { StateView } from '../types';
 import type { AnyProjectState } from '@/types/state';
+import { tierTintStyle, parsePrLabel } from './shared';
 
 const TIER_CSS_VAR = '--tier-complete';
-
-/**
- * Overrides `--primary` for the wrapped subtree so `DocumentLink`'s
- * hard-coded `text-primary` icon/label resolve to this state's tier color —
- * same technique the work-state views use.
- */
-const TIER_TINT_STYLE = { '--primary': `var(${TIER_CSS_VAR})` } as CSSProperties;
+const TIER_TINT_STYLE = tierTintStyle(TIER_CSS_VAR);
 
 const VERDICT_TONE: Record<string, { label: string; cssVar: string }> = {
   approved: { label: 'Approved', cssVar: '--verdict-approved' },
@@ -44,11 +38,6 @@ export function deriveFinalReviewInfo(state: AnyProjectState): { docPath: string
   const node = state.graph.nodes['final_review'];
   if (!node || node.kind !== 'step') return { docPath: null, verdict: null };
   return { docPath: node.doc_path, verdict: node.verdict ?? null };
-}
-
-function parsePrLabel(url: string): string {
-  const match = url.match(/\/pull\/(\d+)/);
-  return match ? `PR #${match[1]}` : 'PR';
 }
 
 /**
