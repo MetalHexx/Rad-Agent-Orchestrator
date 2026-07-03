@@ -8,11 +8,11 @@ Contributor-facing reference for the orchestration system as it actually exists 
 
 ```mermaid
 flowchart TD
-    DEV(["VS Code + Copilot"]) --> ORCH(["Orchestrator"])
+    DEV(["Claude Code + Copilot"]) --> MAIN(["Main Agent"])
     DEV --> CLI(["radorch pipeline signal"])
 
-    ORCH -->|"--event signal"| CLI
-    CLI -->|"action + context"| ORCH
+    MAIN -->|"--event signal"| CLI
+    CLI -->|"action + context"| MAIN
 
     subgraph PLAN ["Planning Agents"]
         BRAIN(["Brainstormer"])
@@ -27,9 +27,9 @@ flowchart TD
 
     GATE{{"Human Gates"}}
 
-    ORCH --> PLAN
-    ORCH --> EXEC
-    ORCH --> GATE
+    MAIN --> PLAN
+    MAIN --> EXEC
+    MAIN --> GATE
 
     subgraph ENGINE ["Pipeline Engine"]
         ENG(["radorch pipeline signal + engine library"])
@@ -56,7 +56,7 @@ flowchart TD
     UI --> DOCS
 ```
 
-**Orchestrator** — agent running inside VS Code Copilot; routes pipeline-emitted actions to the right specialized agent or human gate.
+**Main agent** — the skills-driven agent that drives the pipeline on both Claude Code and Copilot; routes pipeline-emitted actions to the right specialized agent or human gate.
 
 **Planning agents** — the Brainstormer runs an optional idea-shaping collaboration and hands off to author the Requirements document inline; the Master Plan Author builds the Master Plan from the approved requirements. The Master Plan is what the explosion script unfolds into per-phase and per-task handoff documents.
 
@@ -64,7 +64,7 @@ flowchart TD
 
 **Human gates** — three checkpoints (plan approval, optional task/phase gate, final approval) where the pipeline pauses for explicit operator approval.
 
-**Pipeline engine** — The pipeline engine (`cli/src/lib/pipeline-engine/`) is the sole writer of `state.json`. It loads a process template, walks the DAG, applies a mutation for each event, runs the validator, and returns the next action plus an enriched context to the Orchestrator via the canonical envelope.
+**Pipeline engine** — The pipeline engine (`cli/src/lib/pipeline-engine/`) is the sole writer of `state.json`. It loads a process template, walks the DAG, applies a mutation for each event, runs the validator, and returns the next action plus an enriched context to the main agent via the canonical envelope.
 
 **Templates** — declarative YAML defining the node graph for a process variant (the four review-intensity tiers: `extra-high`, `high`, `medium`, `low`).
 
@@ -74,7 +74,7 @@ flowchart TD
 
 **Dashboard** — read-only Next.js UI at `:3000`. Reads project data via filesystem API routes and pushes live updates over SSE driven by a `chokidar` file watcher. Never mutates state — every write to `state.json` flows through the pipeline engine, which gives the dashboard a single-writer guarantee without locking.
 
-The `radorch pipeline signal` subcommand and the orchestrator agent share one entry point through the pipeline engine: every `--event` invocation reads state, applies a mutation, walks the DAG to the next action, runs validation on both sides of the mutation, writes state, and returns the action plus context. Out-of-band events (rejections, halts, configuration mutations) bypass the event index but use the same read-mutate-validate-write loop.
+The `radorch pipeline signal` subcommand and the main agent share one entry point through the pipeline engine: every `--event` invocation reads state, applies a mutation, walks the DAG to the next action, runs validation on both sides of the mutation, writes state, and returns the action plus context. Out-of-band events (rejections, halts, configuration mutations) bypass the event index but use the same read-mutate-validate-write loop.
 
 ---
 
@@ -137,7 +137,7 @@ Task corrective entries append to `taskIter.corrective_tasks`. Phase corrective 
 
 Out-of-band events (`plan_rejected`, `gate_rejected`, `final_rejected`, `halt`, `gate_mode_set`, `source_control_init`) reset or halt nodes outside the normal event index; see `mutations.ts` for the exact resets. `plan_rejected` resets `master_plan` and `plan_approval_gate` to `not_started` and clears `phase_loop.iterations`. `final_rejected` resets `final_review` and `final_approval_gate`. `gate_rejected` and `halt` set `pipeline.current_tier = halted` and `graph.status = halted` with a halt reason.
 
-Verdict mediation: `code_review_completed` and `phase_review_completed` accept an `effective_outcome` field set by the Orchestrator's mediation addendum. When the raw verdict is `changes_requested` and `orchestrator_mediated=true`, the effective outcome (one of `approved` or `changes_requested`) becomes the routing-authoritative verdict that drives corrective birth or completion.
+Corrective routing: `code_review_completed` and `phase_review_completed` carry the reviewer's raw `verdict` field, nothing else — there is no mediation layer. The engine reads that verdict directly; on `changes_requested` with retry budget remaining, it births the corrective itself (appends the corrective entry, holds the current node pointer at the review stage) and returns the next `execute_task` action carrying the original `handoff_doc` unchanged plus `review_report_path`. The coder self-mediates against that review doc, and the re-spawned reviewer reopens the same path to re-adjudicate — see [pipeline-guide.md](../../harness-files/skills/rad-orchestration/references/pipeline-guide.md)'s "Corrective Flow" for the full dumb-router loop.
 
 ---
 
