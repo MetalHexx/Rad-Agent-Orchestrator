@@ -1,11 +1,11 @@
-import { DocumentLink } from '@/components/documents';
 import { Ring } from '../ring';
-import { RingSlot, TitleSlot, ControlsSlot } from '../card-slots';
+import { RingSlot, HeadingSlot, MetaSlot, ControlsSlot } from '../card-slots';
+import { CardControlsRow, DocButton } from '../card-controls';
 import type { StateView } from '../types';
-import { tierTintStyle, deriveRingArc } from './shared';
+import { deriveRingArc } from './shared';
+import { deriveCardHeading } from './heading';
 
 const TIER_CSS_VAR = '--tier-review';
-const TIER_TINT_STYLE = tierTintStyle(TIER_CSS_VAR);
 
 /**
  * 1-based phase number for display. The active node under `phase_review` is
@@ -20,8 +20,10 @@ export function derivePhaseNumber(iteration: { index: number } | undefined): num
 
 /**
  * The Phase Review milestone view (`phase_review`). Purple tier, determinate
- * ring showing phase position across the run. Controls surface only the
- * phase review report — no commit chip at this milestone.
+ * ring showing phase position across the run with a "PHASE" sublabel.
+ * Heading/meta come from `deriveCardHeading` — the phase title and
+ * "Phase N". Controls surface only the phase review report — no commit
+ * chip at this milestone.
  */
 export const phaseReviewView: StateView = {
   id: 'phase-review',
@@ -29,23 +31,21 @@ export const phaseReviewView: StateView = {
     const phaseNumber = derivePhaseNumber(ctx.iteration);
     const arc = deriveRingArc(ctx.phaseProgress);
     const docPath = ctx.node && ctx.node.kind === 'step' ? ctx.node.doc_path : null;
+    const { heading, meta } = deriveCardHeading(ctx);
 
     return (
       <>
         <RingSlot>
-          <Ring value={arc.value} max={arc.max} color={`var(${TIER_CSS_VAR})`} mode="determinate">
+          <Ring value={arc.value} max={arc.max} color={`var(${TIER_CSS_VAR})`} mode="determinate" sublabel="PHASE">
             <span className="text-lg font-semibold text-foreground">{phaseNumber ?? '—'}</span>
           </Ring>
         </RingSlot>
-        <TitleSlot>
-          <span className="truncate text-base font-medium text-foreground">
-            {phaseNumber !== null ? `Phase ${phaseNumber} Review` : 'Phase Review'}
-          </span>
-        </TitleSlot>
+        <HeadingSlot heading={heading} hasMeta={meta !== null} />
+        <MetaSlot meta={meta} />
         <ControlsSlot>
-          <span className="inline-flex items-center gap-2" style={TIER_TINT_STYLE}>
-            <DocumentLink path={docPath} label="Report" onDocClick={ctx.onDocClick} />
-          </span>
+          <CardControlsRow>
+            <DocButton path={docPath} label="Report" onDocClick={ctx.onDocClick} iconCssVar={TIER_CSS_VAR} />
+          </CardControlsRow>
         </ControlsSlot>
       </>
     );

@@ -41,12 +41,25 @@ test('phase review view id is "phase-review"', () => {
   assert.equal(phaseReviewView.id, 'phase-review');
 });
 
-test('phase review view renders a determinate ring tinted to the purple review tier', () => {
+test('phase review view renders a determinate ring tinted to the purple review tier with a "PHASE" sublabel', () => {
   assert.match(source, /mode="determinate"/);
   assert.match(source, /--tier-review/);
+  assert.match(source, /sublabel="PHASE"/);
 });
 
-test('phase review view renders the Report doc link', () => {
+test('phase review view heading/meta are sourced from deriveCardHeading, not composed inline', () => {
+  assert.match(source, /deriveCardHeading\(ctx\)/);
+  assert.match(source, /<HeadingSlot\s+heading=\{heading\}\s+hasMeta=\{meta !== null\}\s*\/>/);
+  assert.match(source, /<MetaSlot\s+meta=\{meta\}\s*\/>/);
+});
+
+test('phase review view wraps its controls in CardControlsRow and uses DocButton, not DocumentLink', () => {
+  assert.match(source, /CardControlsRow/);
+  assert.match(source, /DocButton/);
+  assert.ok(!source.includes('DocumentLink'), 'the text doc link is retired in favor of the real button');
+});
+
+test('phase review view renders the Report doc button', () => {
   assert.match(source, /label="Report"/);
 });
 

@@ -1,13 +1,13 @@
 import type { LucideIcon } from 'lucide-react';
 import { Check, X, AlertTriangle, Clock, HelpCircle } from 'lucide-react';
-import { DocumentLink, ExternalLink } from '@/components/documents';
+import { ExternalLink } from '@/components/documents';
 import { Ring } from '../ring';
-import { RingSlot, TitleSlot, ControlsSlot } from '../card-slots';
+import { RingSlot, HeadingSlot, MetaSlot, ControlsSlot } from '../card-slots';
+import { CardControlsRow, DocButton } from '../card-controls';
 import type { StateView } from '../types';
-import { tierTintStyle, deriveRingArc, parsePrLabel } from './shared';
+import { deriveRingArc, parsePrLabel, deriveFinalReviewInfo } from './shared';
 
 const TIER_CSS_VAR = '--tier-complete';
-const TIER_TINT_STYLE = tierTintStyle(TIER_CSS_VAR);
 
 const VERDICT_TONE: Record<string, { label: string; cssVar: string; Icon: LucideIcon }> = {
   approved: { label: 'Approved', cssVar: '--verdict-approved', Icon: Check },
@@ -30,37 +30,39 @@ export function deriveVerdictTone(verdict: string | null): { label: string; cssV
 /**
  * The Final Review milestone view (`final_review`). Green tier, determinate
  * ring showing phase position across the run, centered on the review's
- * verdict tone. Controls surface the report and — when present — the run's
- * PR link; no commit chip at this milestone.
+ * verdict tone with the verdict label doubling as the ring sublabel.
+ * Reads the report + verdict from the top-level `final_review` node via
+ * `deriveFinalReviewInfo` rather than `ctx.node` — once the resolver folds
+ * `final_pr` into this view, `ctx.node` resolves to the PR node instead, so
+ * reading through the top-level node keeps this view correct regardless of
+ * which leaf is active. Controls surface the report and — when present —
+ * the run's PR link; no commit chip at this milestone.
  */
 export const finalReviewView: StateView = {
   id: 'final-review',
   render(ctx) {
     const arc = deriveRingArc(ctx.phaseProgress);
-    const docPath = ctx.node && ctx.node.kind === 'step' ? ctx.node.doc_path : null;
-    const verdict = ctx.node && ctx.node.kind === 'step' ? ctx.node.verdict ?? null : null;
+    const { docPath, verdict } = deriveFinalReviewInfo(ctx.state);
     const tone = deriveVerdictTone(verdict);
+    const heading = 'Final Review';
+    const meta = tone.label;
 
     return (
       <>
         <RingSlot>
-          <Ring value={arc.value} max={arc.max} color={`var(${TIER_CSS_VAR})`} mode="determinate">
+          <Ring value={arc.value} max={arc.max} color={`var(${TIER_CSS_VAR})`} mode="determinate" sublabel={tone.label}>
             <tone.Icon className="h-6 w-6" style={{ color: `var(${tone.cssVar})` }} aria-hidden="true" />
           </Ring>
         </RingSlot>
-        <TitleSlot>
-          <span className="truncate text-base font-medium text-foreground">Final Review</span>
-          <span className="truncate text-sm font-medium" style={{ color: `var(${tone.cssVar})` }}>
-            {tone.label}
-          </span>
-        </TitleSlot>
+        <HeadingSlot heading={heading} hasMeta={meta !== null} />
+        <MetaSlot meta={meta} />
         <ControlsSlot>
-          <span className="inline-flex items-center gap-2" style={TIER_TINT_STYLE}>
-            <DocumentLink path={docPath} label="Report" onDocClick={ctx.onDocClick} />
-          </span>
-          {ctx.prUrl !== null && (
-            <ExternalLink href={ctx.prUrl} label={parsePrLabel(ctx.prUrl)} icon="git-pull-request" />
-          )}
+          <CardControlsRow>
+            <DocButton path={docPath} label="Report" onDocClick={ctx.onDocClick} iconCssVar={TIER_CSS_VAR} />
+            {ctx.prUrl !== null && (
+              <ExternalLink href={ctx.prUrl} label={parsePrLabel(ctx.prUrl)} icon="git-pull-request" />
+            )}
+          </CardControlsRow>
         </ControlsSlot>
       </>
     );

@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import React, { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { deriveVerdictTone, deriveFinalReviewInfo, completeView } from './complete-view';
+import { deriveVerdictTone, completeView } from './complete-view';
 import { resolveStateView } from '../resolver';
 import type { AnyProjectState, NodesRecord } from '@/types/state';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -38,19 +38,6 @@ function makeState(verdict: string | null, docPath: string | null, prUrl: string
   };
 }
 
-// ─── deriveFinalReviewInfo ────────────────────────────────────────────────────
-
-test('deriveFinalReviewInfo reads doc_path and verdict from the top-level final_review node', () => {
-  const info = deriveFinalReviewInfo(makeState('approved', 'reviews/FINAL.md', null));
-  assert.deepEqual(info, { docPath: 'reviews/FINAL.md', verdict: 'approved' });
-});
-
-test('deriveFinalReviewInfo is null-safe when final_review is missing from the node tree', () => {
-  const state = makeState(null, null, null);
-  state.graph.nodes = {};
-  assert.deepEqual(deriveFinalReviewInfo(state), { docPath: null, verdict: null });
-});
-
 // ─── deriveVerdictTone ────────────────────────────────────────────────────────
 
 test('deriveVerdictTone maps known verdicts to their tone', () => {
@@ -71,16 +58,36 @@ test('complete view id is "complete"', () => {
   assert.equal(completeView.id, 'complete');
 });
 
-test('complete view renders a full determinate ring, not a partial arc', () => {
+test('complete view renders a full determinate ring, not a partial arc, with a fixed "SHIPPED" sublabel', () => {
   assert.match(source, /mode="determinate"/);
   assert.match(source, /value=\{1\}/);
   assert.match(source, /max=\{1\}/);
   assert.match(source, /--tier-complete/);
+  assert.match(source, /sublabel="SHIPPED"/);
 });
 
 test('complete view renders an unconditional Check glyph, not tied to the verdict', () => {
   const ringSection = source.slice(source.indexOf('<RingSlot>'), source.indexOf('</RingSlot>'));
   assert.match(ringSection, /<Check\b/);
+});
+
+test('complete view reads the report + verdict via the shared deriveFinalReviewInfo, not ctx.node', () => {
+  assert.match(source, /deriveFinalReviewInfo\(ctx\.state\)/);
+  assert.match(source, /from '\.\/shared'/);
+  assert.ok(!source.includes('ctx.node'), 'must not read the resolved leaf node');
+});
+
+test('complete view heading is the fixed "Run Complete" phrase; meta is the verdict label', () => {
+  assert.match(source, /heading = 'Run Complete'/);
+  assert.match(source, /const meta = tone\.label/);
+  assert.match(source, /<HeadingSlot\s+heading=\{heading\}\s+hasMeta=\{meta !== null\}\s*\/>/);
+  assert.match(source, /<MetaSlot\s+meta=\{meta\}\s*\/>/);
+});
+
+test('complete view wraps its controls in CardControlsRow and uses DocButton, not DocumentLink', () => {
+  assert.match(source, /CardControlsRow/);
+  assert.match(source, /DocButton/);
+  assert.ok(!source.includes('DocumentLink'), 'the text doc link is retired in favor of the real button');
 });
 
 test('complete view renders no commit chip', () => {

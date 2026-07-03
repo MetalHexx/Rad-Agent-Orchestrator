@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react';
-import type { IterationEntry } from '@/types/state';
+import type { AnyProjectState, IterationEntry } from '@/types/state';
 
 /**
  * Builds a style object that overrides `--primary` for the wrapped subtree so
@@ -36,4 +36,20 @@ export function deriveTaskNumber(iteration: IterationEntry | undefined): number 
 export function parsePrLabel(url: string): string {
   const match = url.match(/\/pull\/(\d+)/);
   return match ? `PR #${match[1]}` : 'PR';
+}
+
+/**
+ * Reads the final review's doc path and verdict from the top-level
+ * `final_review` node directly, independent of the resolved current node —
+ * `graph.status === 'completed'` wins resolution regardless of the active
+ * node (see the resolver), so `current_node_path` may point anywhere (or
+ * nowhere) by the time the run completes, and a `final_pr` leaf resolves
+ * `ctx.node` to the PR node rather than the review. Both Final Review and
+ * Complete read through here rather than `ctx.node` so either milestone
+ * renders correctly regardless of which leaf is actually active.
+ */
+export function deriveFinalReviewInfo(state: AnyProjectState): { docPath: string | null; verdict: string | null } {
+  const node = state.graph.nodes['final_review'];
+  if (!node || node.kind !== 'step') return { docPath: null, verdict: null };
+  return { docPath: node.doc_path, verdict: node.verdict ?? null };
 }

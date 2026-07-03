@@ -53,10 +53,24 @@ test('plan approval view uses ApproveGateButton with the plan_approved gate even
   assert.match(source, /gateEvent="plan_approved"/);
 });
 
-test('plan approval view renders a full determinate ring, not a partial arc', () => {
+test('plan approval view renders a full determinate ring, not a partial arc, with a "READY" sublabel', () => {
   assert.match(source, /mode="determinate"/);
   assert.match(source, /value=\{1\}/);
   assert.match(source, /max=\{1\}/);
+  assert.match(source, /sublabel="READY"/);
+});
+
+test('plan approval view renders the "Ready for Approval" heading with the plan doc path as meta', () => {
+  assert.match(source, /heading = 'Ready for Approval'/);
+  assert.match(source, /const meta = planDocPath \?\? 'Master Plan'/);
+  assert.match(source, /<HeadingSlot\s+heading=\{heading\}\s+hasMeta=\{meta !== null\}\s*\/>/);
+  assert.match(source, /<MetaSlot\s+meta=\{meta\}\s*\/>/);
+});
+
+test('plan approval view wraps its controls in CardControlsRow and uses DocButton, not DocumentLink', () => {
+  assert.match(source, /CardControlsRow/);
+  assert.match(source, /DocButton/);
+  assert.ok(!source.includes('DocumentLink'), 'the text doc link is retired in favor of the real button');
 });
 
 test('plan approval view renders no commit chip', () => {
@@ -83,7 +97,7 @@ test('Plan Approval renders the ApproveGateButton and the Master Plan doc link f
 
   // The primary Approve action renders as a real button.
   assert.match(html, />Approve</);
-  // The muted Master Plan doc link renders alongside it.
+  // The secondary Master Plan doc button renders alongside it.
   assert.match(html, />Master Plan</);
   // Two active controls: Approve + Master Plan doc link.
   const buttonCount = (html.match(/<button/g) ?? []).length;

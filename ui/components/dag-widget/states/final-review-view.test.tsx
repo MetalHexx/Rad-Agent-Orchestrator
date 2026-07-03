@@ -7,6 +7,7 @@ import React, { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { deriveVerdictTone, finalReviewView } from './final-review-view';
 import { resolveStateView } from '../resolver';
+import type { StateViewContext } from '../types';
 import type { AnyProjectState, NodesRecord } from '@/types/state';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 (globalThis as any).React = React;
@@ -79,9 +80,29 @@ test('final review view plots phase progress (the run-wide milestone position)',
   assert.match(source, /deriveRingArc\(ctx\.phaseProgress\)/);
 });
 
-test('final review view renders a determinate ring tinted to the green complete tier', () => {
+test('final review view renders a determinate ring tinted to the green complete tier with the verdict label as its sublabel', () => {
   assert.match(source, /mode="determinate"/);
   assert.match(source, /--tier-complete/);
+  assert.match(source, /sublabel=\{tone\.label\}/);
+});
+
+test('final review view reads the report + verdict from the top-level final_review node via deriveFinalReviewInfo, not ctx.node', () => {
+  const codeWithoutComments = source.replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.match(codeWithoutComments, /deriveFinalReviewInfo\(ctx\.state\)/);
+  assert.ok(!codeWithoutComments.includes('ctx.node'), 'must not read the resolved leaf node — it may be final_pr, not final_review');
+});
+
+test('final review view heading is the fixed "Final Review" phrase; meta is the verdict label', () => {
+  assert.match(source, /heading = 'Final Review'/);
+  assert.match(source, /const meta = tone\.label/);
+  assert.match(source, /<HeadingSlot\s+heading=\{heading\}\s+hasMeta=\{meta !== null\}\s*\/>/);
+  assert.match(source, /<MetaSlot\s+meta=\{meta\}\s*\/>/);
+});
+
+test('final review view wraps its controls in CardControlsRow and uses DocButton, not DocumentLink', () => {
+  assert.match(source, /CardControlsRow/);
+  assert.match(source, /DocButton/);
+  assert.ok(!source.includes('DocumentLink'), 'the text doc link is retired in favor of the real button');
 });
 
 test('final review view renders no commit chip', () => {
@@ -114,4 +135,36 @@ test('Final Review renders no PR link when pr_url is null', () => {
   });
   const html = renderToStaticMarkup(createElement('div', null, view.render(ctx)));
   assert.ok(!html.includes('<a '), 'no PR anchor rendered');
+});
+
+// ─── independence from ctx.node — the resolved leaf may be final_pr, not final_review ──
+
+test('Final Review reads the report + verdict from the top-level final_review node even when ctx.node resolves elsewhere', () => {
+  const state = makeState('approved', 'reviews/FINAL.md', null);
+  // Simulates the shape once the resolver folds final_pr into this view:
+  // the resolved leaf (ctx.node) is the PR node — doc_path/verdict null — while
+  // the top-level final_review node still carries the real report + verdict.
+  state.graph.nodes['final_pr'] = { kind: 'step', status: 'in_progress', doc_path: null, retries: 0 };
+  const ctx: StateViewContext = {
+    state,
+    stateId: 'final-review',
+    nodeId: 'final_pr',
+    node: state.graph.nodes['final_pr'],
+    isCorrective: false,
+    iteration: undefined,
+    correctiveEntry: undefined,
+    phaseName: null,
+    phaseProgress: null,
+    taskProgress: null,
+    repos: [],
+    prUrl: null,
+    onDocClick: () => {},
+    compareUrlByRepo: {},
+    projectName: 'demo',
+  };
+
+  const html = renderToStaticMarkup(createElement('div', null, finalReviewView.render(ctx)));
+  assert.match(html, />Approved</, 'verdict comes from the top-level final_review node, not the final_pr leaf');
+  const buttonCount = (html.match(/<button/g) ?? []).length;
+  assert.equal(buttonCount, 1, 'the Report button is active — its doc_path came from final_review, not the null final_pr leaf');
 });
