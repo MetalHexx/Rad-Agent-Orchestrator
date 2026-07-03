@@ -88,6 +88,26 @@ test('corrective view id is "corrective"', () => {
   assert.equal(correctiveView.id, 'corrective');
 });
 
+test('corrective view renders no badge', () => {
+  assert.ok(!source.includes('SpinnerBadge'), 'the badge is retired in favor of the heading/meta anatomy');
+});
+
+test('corrective view heading is sourced from deriveCardHeading and meta folds in the corrective reason', () => {
+  assert.match(source, /deriveCardHeading\(ctx\)/);
+  assert.match(source, /<HeadingSlot\s+heading=\{heading\}/);
+  assert.match(source, /correctiveEntry\?\.reason/);
+});
+
+test('corrective view wraps its controls in CardControlsRow and uses DocButton, not DocumentLink', () => {
+  assert.match(source, /CardControlsRow/);
+  assert.match(source, /DocButton/);
+  assert.ok(!source.includes('DocumentLink'), 'the text doc link is retired in favor of the real button');
+});
+
+test('corrective view ring center carries a "RETRY" sublabel', () => {
+  assert.match(source, /sublabel="RETRY"/);
+});
+
 test('corrective view plots task progress, not phase completion', () => {
   assert.match(source, /deriveRingArc\(ctx\.taskProgress\)/);
   assert.ok(!source.includes('ctx.phaseProgress'), 'the work-state ring must not read phase progress');
@@ -211,4 +231,8 @@ test('Corrective renders both doc links and a commit chip from a realistic itera
 
   // Retry budget (1/2) is display-only text in the ring center, never interactive.
   assert.match(html, />1\/2</);
+
+  // The "RETRY" sublabel and the corrective's own reason both surface.
+  assert.match(html, />RETRY</);
+  assert.match(html, /code review found issues/);
 });

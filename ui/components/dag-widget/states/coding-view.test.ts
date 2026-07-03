@@ -14,6 +14,31 @@ test('coding view id is "coding"', () => {
   assert.equal(codingView.id, 'coding');
 });
 
+test('coding view renders no badge', () => {
+  assert.ok(!source.includes('SpinnerBadge'), 'the badge is retired in favor of the heading/meta anatomy');
+});
+
+test('coding view heading/meta are sourced from deriveCardHeading, not composed inline', () => {
+  assert.match(source, /deriveCardHeading\(ctx\)/);
+  assert.match(source, /<HeadingSlot\s+heading=\{heading\}\s+hasMeta=\{meta !== null\}\s*\/>/);
+  assert.match(source, /<MetaSlot\s+meta=\{meta\}\s*\/>/);
+});
+
+test('coding view wraps its controls in CardControlsRow and uses DocButton, not DocumentLink', () => {
+  assert.match(source, /CardControlsRow/);
+  assert.match(source, /DocButton/);
+  assert.ok(!source.includes('DocumentLink'), 'the text doc link is retired in favor of the real button');
+});
+
+test('coding view surfaces only the Task Handoff doc control alongside the commit chip', () => {
+  assert.ok(!source.includes('Code Review'));
+  assert.ok(!source.includes('Review Report'));
+});
+
+test('coding view ring center carries a "TASK" sublabel', () => {
+  assert.match(source, /sublabel="TASK"/);
+});
+
 test('coding view plots task progress, not phase completion', () => {
   assert.match(source, /deriveRingArc\(ctx\.taskProgress\)/);
   assert.ok(!source.includes('ctx.phaseProgress'), 'the work-state ring must not read phase progress');

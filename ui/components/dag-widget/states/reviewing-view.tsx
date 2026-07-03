@@ -1,19 +1,19 @@
-import { SpinnerBadge } from '@/components/badges';
-import { DocumentLink } from '@/components/documents';
 import { CommitChips } from '@/components/dag-timeline/commit-chips';
 import { Ring } from '../ring';
-import { RingSlot, TitleSlot, ControlsSlot } from '../card-slots';
+import { RingSlot, HeadingSlot, MetaSlot, ControlsSlot } from '../card-slots';
+import { CardControlsRow, DocButton } from '../card-controls';
 import type { StateView } from '../types';
-import { tierTintStyle, deriveRingArc, deriveTaskNumber } from './shared';
+import { deriveRingArc, deriveTaskNumber } from './shared';
+import { deriveCardHeading } from './heading';
 
 const TIER_CSS_VAR = '--tier-review';
-const TIER_TINT_STYLE = tierTintStyle(TIER_CSS_VAR);
 
 /**
  * The Reviewing work-state view (`code_review`). Purple tier. Ring center
- * shows the current task number; its arc plots task progress within the active
- * phase. Controls surface the task handoff, the task's own code-review doc,
- * and a commit chip for the iteration's repos.
+ * shows the current task number under a "TASK" sublabel; its arc plots task
+ * progress within the active phase. Heading/meta are the task title and
+ * `Phase N · Task M`. Controls surface the task handoff, the task's own
+ * code-review doc, and a commit chip for the iteration's repos.
  */
 export const reviewingView: StateView = {
   id: 'reviewing',
@@ -23,27 +23,33 @@ export const reviewingView: StateView = {
     const singleRepo = Object.keys(ctx.compareUrlByRepo).length <= 1;
     const codeReviewNode = ctx.iteration?.nodes['code_review'];
     const codeReviewDocPath = codeReviewNode && 'doc_path' in codeReviewNode ? codeReviewNode.doc_path : null;
+    const { heading, meta } = deriveCardHeading(ctx);
 
     return (
       <>
         <RingSlot>
-          <Ring value={arc.value} max={arc.max} color={`var(${TIER_CSS_VAR})`} mode="determinate">
+          <Ring value={arc.value} max={arc.max} color={`var(${TIER_CSS_VAR})`} mode="determinate" sublabel="TASK">
             <span className="text-lg font-semibold text-foreground">{taskNumber ?? '—'}</span>
           </Ring>
         </RingSlot>
-        <TitleSlot>
-          <SpinnerBadge label="Reviewing" cssVar={TIER_CSS_VAR} isSpinning />
-          <span className="truncate text-sm text-muted-foreground">
-            {ctx.phaseName ?? 'Phase'}
-            {taskNumber !== null && ` · Task ${taskNumber}`}
-          </span>
-        </TitleSlot>
+        <HeadingSlot heading={heading} hasMeta={meta !== null} />
+        <MetaSlot meta={meta} />
         <ControlsSlot>
-          <span className="inline-flex items-center gap-2" style={TIER_TINT_STYLE}>
-            <DocumentLink path={ctx.iteration?.doc_path ?? null} label="Task Handoff" onDocClick={ctx.onDocClick} />
-            <DocumentLink path={codeReviewDocPath} label="Code Review" onDocClick={ctx.onDocClick} />
-          </span>
-          <CommitChips repos={ctx.repos} compareUrlByRepo={ctx.compareUrlByRepo} singleRepo={singleRepo} />
+          <CardControlsRow>
+            <DocButton
+              path={ctx.iteration?.doc_path ?? null}
+              label="Task Handoff"
+              onDocClick={ctx.onDocClick}
+              iconCssVar={TIER_CSS_VAR}
+            />
+            <DocButton
+              path={codeReviewDocPath}
+              label="Code Review"
+              onDocClick={ctx.onDocClick}
+              iconCssVar={TIER_CSS_VAR}
+            />
+            <CommitChips repos={ctx.repos} compareUrlByRepo={ctx.compareUrlByRepo} singleRepo={singleRepo} />
+          </CardControlsRow>
         </ControlsSlot>
       </>
     );
