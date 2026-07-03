@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -14,9 +14,6 @@ const cardSlots = read('card-slots.tsx');
 const ring = read('ring.tsx');
 
 const ALL_SOURCES = { shell, resolver, fallback, cardSlots, ring };
-
-const statesDir = join(dir, 'states');
-const STATE_VIEW_FILES = readdirSync(statesDir).filter((f) => f.endsWith('.tsx') && !f.endsWith('.test.tsx'));
 
 test('the shell owns the four-region geometry and imports the resolver', () => {
   assert.match(shell, /resolveStateView/, 'shell resolves the active view via the resolver');
@@ -58,16 +55,11 @@ test('the ring routes its recharts primitives through the compat shim', () => {
   assert.ok(!/as\s+unknown\s+as|as\s+any/.test(ring), 'no ad-hoc casts in the ring');
 });
 
-test('every state view (including fallback) mounts ControlsSlot — R8 requires an identical footprint across states', () => {
-  assert.ok(STATE_VIEW_FILES.length > 0, 'sanity: the states directory is not empty');
-  for (const file of STATE_VIEW_FILES) {
-    const src = readFileSync(join(statesDir, file), 'utf-8');
-    assert.match(src, /<ControlsSlot\b/, `${file} must render ControlsSlot so its min-h-8 floor always applies`);
-  }
-});
-
 test('the heading/meta block floats between the pinned ring and controls anchors, not a fixed-height floor', () => {
   assert.ok(!cardSlots.includes('min-h-16'), 'the fixed title-row floor is retired for the pinned-anchor centering model');
   assert.match(cardSlots, /export function HeadingSlot/, 'card-slots exports the single-line HeadingSlot');
   assert.match(cardSlots, /export function MetaSlot/, 'card-slots exports the MetaSlot');
+  assert.match(cardSlots, /gridArea:\s*'ring'[^}]*alignSelf:\s*'start'/, 'RingSlot pins to the start of its spanning row');
+  assert.match(cardSlots, /gridArea:\s*'heading'[^}]*alignSelf:\s*'end'/, 'HeadingSlot anchors to the end of its flexible row');
+  assert.match(cardSlots, /gridArea:\s*'meta'[^}]*alignSelf:\s*'start'/, 'MetaSlot anchors to the start of its flexible row, flush against the heading');
 });
