@@ -887,5 +887,47 @@ test('FR-13 — drawer header file is untouched (compile-time pin)', () => {
   assert.ok(true, 'see ui/components/documents/document-drawer.tsx — no diff expected');
 });
 
+// ─── P01-T02 — Requirements doc restored to Planning via file-list fallback ───
+
+test('requirements slot with no state node falls back to allFiles and lands before Master Plan, not in the "other" tail', () => {
+  const state = makeV5State({
+    research: { kind: 'step', status: 'completed', doc_path: 'PROJ-RESEARCH-FINDINGS.md', retries: 0 },
+    master_plan: { kind: 'step', status: 'completed', doc_path: 'PROJ-MASTER-PLAN.md', retries: 0 },
+  });
+  const allFiles = ['PROJ-RESEARCH-FINDINGS.md', 'PROJ-MASTER-PLAN.md', 'PROJ-REQUIREMENTS.md'];
+
+  const docs = getOrderedDocsV5(state, 'PROJ', allFiles);
+
+  const reqIndex = docs.findIndex((d) => d.title === 'Requirements');
+  const masterPlanIndex = docs.findIndex((d) => d.title === 'Master Plan');
+  assert.notStrictEqual(reqIndex, -1, 'Requirements doc must be present');
+  assert.deepStrictEqual(docs[reqIndex], { path: 'PROJ-REQUIREMENTS.md', title: 'Requirements', category: 'planning' });
+  assert.ok(reqIndex < masterPlanIndex, 'Requirements must be ordered before Master Plan');
+  assert.ok(!docs.some((d) => d.category === 'other' && d.path === 'PROJ-REQUIREMENTS.md'), 'Requirements must not leak into the "other" tail');
+});
+
+test('requirements slot with no doc in allFiles produces no Requirements entry', () => {
+  const state = makeV5State({
+    master_plan: { kind: 'step', status: 'completed', doc_path: 'PROJ-MASTER-PLAN.md', retries: 0 },
+  });
+  const allFiles = ['PROJ-MASTER-PLAN.md'];
+
+  const docs = getOrderedDocsV5(state, 'PROJ', allFiles);
+  assert.ok(!docs.some((d) => d.title === 'Requirements'), 'no Requirements entry when the file is absent');
+});
+
+test('a legacy requirements state node still present alongside allFiles produces exactly one Requirements entry (no duplicate)', () => {
+  const state = makeV5State({
+    requirements: { kind: 'step', status: 'completed', doc_path: 'PROJ-REQUIREMENTS.md', retries: 0 },
+    master_plan: { kind: 'step', status: 'completed', doc_path: 'PROJ-MASTER-PLAN.md', retries: 0 },
+  });
+  const allFiles = ['PROJ-REQUIREMENTS.md', 'PROJ-MASTER-PLAN.md'];
+
+  const docs = getOrderedDocsV5(state, 'PROJ', allFiles);
+  const matching = docs.filter((d) => d.title === 'Requirements');
+  assert.strictEqual(matching.length, 1, 'legacy state node path must not double up with the file-list fallback');
+  assert.strictEqual(matching[0].path, 'PROJ-REQUIREMENTS.md');
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

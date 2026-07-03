@@ -55,6 +55,7 @@ interface ProjectsPageContentProps {
   onActiveFileNameChange: (fileName: string | null) => void;
   registerOnDeleted: (fn: () => void) => void;
   urlDoc: string | null;
+  requirementsDoc: string | null;
 }
 
 function ProjectsPageContent({
@@ -74,6 +75,7 @@ function ProjectsPageContent({
   onActiveFileNameChange,
   registerOnDeleted,
   urlDoc,
+  requirementsDoc,
 }: ProjectsPageContentProps) {
   const live = useArtifactLive();
   const artifacts = live.artifacts;
@@ -237,6 +239,7 @@ function ProjectsPageContent({
                   projectName={selected.name}
                   phaseLoopStatus={v5Derivations.phaseLoopStatus}
                   prUrl={v5State.pipeline.source_control?.repos?.[0]?.pr_url ?? null}
+                  requirementsDoc={requirementsDoc}
                   afterPlanningSlot={
                     hasSourceControlRepos(v5State.pipeline.source_control) && (
                       <SourceControlPanel
@@ -422,6 +425,13 @@ export default function ProjectsPage() {
     return [];
   }, [v5State, selectedProject, fileList]);
 
+  // Root docs arrive as bare filenames in fileList, matching the
+  // `${PROJECT}-REQUIREMENTS.md` convention document-ordering.ts keys off of.
+  const requirementsDoc = useMemo(
+    () => fileList.find((f) => f === `${selectedProject}-REQUIREMENTS.md`) ?? null,
+    [fileList, selectedProject],
+  );
+
   // Reset the files-loaded gate on project change ONLY (not on fileRefetch),
   // so deleting an artifact — which bumps fileRefetch — doesn't flash the
   // timeline body back to a skeleton.
@@ -510,6 +520,7 @@ export default function ProjectsPage() {
                 onActiveFileNameChange={setActiveFileName}
                 registerOnDeleted={registerOnDeleted}
                 urlDoc={urlDoc}
+                requirementsDoc={requirementsDoc}
               />
             </ArtifactLiveProvider>
           ) : (

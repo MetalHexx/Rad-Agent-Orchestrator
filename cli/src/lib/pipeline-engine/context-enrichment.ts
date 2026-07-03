@@ -1,6 +1,4 @@
 import { execFileSync } from 'node:child_process';
-import * as fs from 'node:fs';
-import * as path from 'node:path';
 import { userDataPaths } from '../paths.js';
 import { WorkGraphService } from '@rad-orchestration/work-graph';
 import type {
@@ -178,38 +176,25 @@ function correctiveReportFields(entry: CorrectiveTaskEntry): Record<string, unkn
 }
 
 /**
- * Resolve the pre-pipeline requirements doc (a `/rad-plan` artifact) by
- * convention scan, mirroring `readProjectReposDefault`'s master-plan lookup:
- * exact `<PROJECT>-REQUIREMENTS.md` → case-insensitive `<PROJECT>-REQUIREMENTS*`
- * prefix → loose "contains REQUIREMENTS" `.md`. Returns the absolute path, or
- * null when the project dir is unknown/unreadable or nothing matches (there is
- * no state field for this doc, so an unresolved scan is a lost convenience, not
- * a blocker — the final reviewer self-discovers it).
+ * Resolve the pre-pipeline requirements doc (a `/rad-plan` artifact) via the
+ * work-graph, keyed on project name. Returns the project-relative
+ * `*-REQUIREMENTS.md` basename (mirroring the sibling `phase_plan_paths`
+ * shape), or null when the project is unknown or carries no requirements doc
+ * (there is no state field for this doc, so an unresolved lookup is a lost
+ * convenience, not a blocker).
  */
-function findRequirementsDoc(projectDir: string | undefined, projectName: string): string | null {
-  if (!projectDir) return null;
-  let entries: string[];
+function resolveRequirementsDoc(projectName: string): string | null {
   try {
-    entries = fs.readdirSync(projectDir);
+    const paths = userDataPaths();
+    const project = new WorkGraphService({
+      root: paths.root,
+      worktreesDir: paths.worktrees,
+      sideProjectsDir: paths.sideProjects,
+    }).listProjects().find(p => p.id === projectName);
+    return project?.docs.requirements ?? null;
   } catch {
-    return null;
+    return null; // discovery is a convenience, never a hard failure
   }
-  const exact = `${projectName}-REQUIREMENTS.md`;
-  for (const e of entries) {
-    if (e === exact) return path.join(projectDir, e);
-  }
-  const upperPrefix = `${projectName.toUpperCase()}-REQUIREMENTS`;
-  for (const e of entries) {
-    if (e.toUpperCase().startsWith(upperPrefix) && e.toLowerCase().endsWith('.md')) {
-      return path.join(projectDir, e);
-    }
-  }
-  for (const e of entries) {
-    if (e.toUpperCase().includes('REQUIREMENTS') && e.toLowerCase().endsWith('.md')) {
-      return path.join(projectDir, e);
-    }
-  }
-  return null;
 }
 
 /**
@@ -610,8 +595,8 @@ export function enrichActionContext(input: EnrichmentInput): Record<string, unkn
     });
 
     // Scope docs for the final review: the pre-pipeline requirements doc
-    // (convention-scanned; null when unresolved) and every phase plan path.
-    const requirements_doc = findRequirementsDoc(input.cliContext.project_dir, state.project.name);
+    // (work-graph-resolved; null when unresolved) and every phase plan path.
+    const requirements_doc = resolveRequirementsDoc(state.project.name);
     const phase_plan_paths = phaseIterations.map(pi => pi.doc_path ?? null);
 
     return {
