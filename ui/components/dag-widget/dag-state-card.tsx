@@ -17,15 +17,18 @@ export interface DagStateCardProps {
   projectName: string;
 }
 
-// Three-row grid: the ring spans all three rows on the left at a fixed
-// width. The heading and meta rows are equally flexible (`minmax(0, 1fr)`)
-// with the heading anchored to the bottom of its row and the meta anchored
-// to the top of its own — flush against each other, the pair floats
-// centered in the space the two flexible rows share, whether or not a meta
-// line is present. The controls row is `auto`, pinned to the bottom. Ring
-// and controls therefore hold identical coordinates in every state; only
-// the heading/meta block moves to stay centered between them.
-const SLOT_GRID_TEMPLATE = `"ring heading" minmax(0, 1fr) "ring meta" minmax(0, 1fr) "ring controls" auto / ${RING_DIAMETER}px minmax(0, 1fr)`;
+// Three-row grid: the ring spans only the heading and meta rows on the left,
+// at a fixed width — never the controls row. Its fixed 72px height is what
+// forces those two equally-flexible (`minmax(0, 1fr)`) rows to sum to
+// exactly 72px, so the heading/meta block's own vertical center always
+// lands on the ring's center, independent of the controls row's height:
+// with a meta line, the heading anchors to the end of its row and the meta
+// to the start of its own, meeting flush at that ring-center boundary; alone
+// (see `HeadingSlot`/`TitleSlot`), the heading instead spans both rows and
+// centers within their combined height, landing on the same boundary. The
+// controls row is `auto`, sized by its own content and pinned directly below
+// that ring-height block.
+const SLOT_GRID_TEMPLATE = `"ring heading" minmax(0, 1fr) "ring meta" minmax(0, 1fr) ". controls" auto / ${RING_DIAMETER}px minmax(0, 1fr)`;
 
 /**
  * Tracks the OS `prefers-reduced-motion` preference so the crossfade can be

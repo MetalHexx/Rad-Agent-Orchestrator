@@ -86,9 +86,17 @@ export interface CardSlotProps {
  * Props for `HeadingSlot`. Takes the heading as a plain string (not
  * `children`) so the slot itself owns single-line truncation and can carry
  * the untruncated text as a `title` attribute.
+ *
+ * `hasMeta` tells the slot whether a sibling `MetaSlot` is also rendering
+ * (i.e. reflects the same `meta !== null` the caller passes to `MetaSlot`,
+ * not just whether one is composed in JSX): with a meta line, the heading
+ * anchors to the end of its own row so the two sit flush across the shared
+ * boundary; alone, it spans both rows and centers within their combined
+ * height instead, so it still lands on the ring's own center.
  */
 export interface HeadingSlotProps {
   heading: string;
+  hasMeta?: boolean;
   className?: string;
 }
 
