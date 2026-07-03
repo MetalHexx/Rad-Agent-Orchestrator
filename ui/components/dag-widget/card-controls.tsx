@@ -1,10 +1,10 @@
-"use client";
+'use client';
 
-import type { ReactNode } from "react";
-import type { LucideIcon } from "lucide-react";
-import { FileText } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import type { ReactNode } from 'react';
+import type { LucideIcon } from 'lucide-react';
+import { FileText } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 
 export interface CardControlsRowProps {
   children?: ReactNode;
@@ -18,7 +18,7 @@ export interface CardControlsRowProps {
  * link, approve button) never overflows the card's fixed width.
  */
 export function CardControlsRow({ children, className }: CardControlsRowProps) {
-  return <div className={cn("flex flex-wrap items-center gap-2", className)}>{children}</div>;
+  return <div className={cn('flex flex-wrap items-center gap-2', className)}>{children}</div>;
 }
 
 export interface DocButtonProps {
@@ -37,9 +37,9 @@ export interface DocButtonProps {
    */
   iconCssVar?: string;
   /** House Button visual weight. Defaults to "outline". */
-  variant?: "outline" | "secondary";
+  variant?: 'outline' | 'secondary';
   /** House Button size. Defaults to "sm". */
-  size?: "sm" | "xs";
+  size?: 'sm' | 'xs';
   /** Leading icon; defaults to the document glyph `DocumentLink` uses. */
   icon?: LucideIcon;
   /**
@@ -62,8 +62,8 @@ export function DocButton({
   label,
   onDocClick,
   iconCssVar,
-  variant = "outline",
-  size = "sm",
+  variant = 'outline',
+  size = 'sm',
   icon: Icon = FileText,
   tabIndex,
 }: DocButtonProps) {
