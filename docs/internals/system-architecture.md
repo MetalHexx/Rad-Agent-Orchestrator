@@ -22,7 +22,6 @@ flowchart TD
     subgraph EXEC ["Execution Agents"]
         CODER(["Coder"])
         REVIEWER(["Code / Phase / Final Reviewer"])
-        SC(["Source Control"])
     end
 
     GATE{{"Human Gates"}}
@@ -60,7 +59,7 @@ flowchart TD
 
 **Planning agents** — the Brainstormer runs an optional idea-shaping collaboration and hands off to author the Requirements document inline; the Master Plan Author builds the Master Plan from the approved requirements. The Master Plan is what the explosion script unfolds into per-phase and per-task handoff documents.
 
-**Execution agents** — Coder writes code and tests against a task handoff; Reviewer evaluates with one of three review surfaces (code review per task, phase review per phase, final review per project); Source Control owns commits and PR creation.
+**Execution agents** — Coder writes code and tests against a task handoff; Reviewer evaluates with one of three review surfaces (code review per task, phase review per phase, final review per project).
 
 **Human gates** — three checkpoints (plan approval, optional task/phase gate, final approval) where the pipeline pauses for explicit operator approval.
 

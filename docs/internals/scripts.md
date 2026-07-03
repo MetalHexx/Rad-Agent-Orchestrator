@@ -5,7 +5,7 @@ operations: routing, mutation, and validation. The same `state.json` always prod
 the same next action — the engine encodes routing decisions as tested, deterministic
 code so LLM agents never re-derive them from natural language.
 
-> `radorch pipeline signal` is called by the Orchestrator agent during pipeline
+> `radorch pipeline signal` is called by the main agent during pipeline
 > execution. Users do not run it directly.
 
 ## CLI Interface
@@ -48,7 +48,7 @@ On error:
 }
 ```
 
-The orchestrator dispatches on `data.action`; the context payload is action-specific
+The main agent dispatches on `data.action`; the context payload is action-specific
 and documented in the action routing table.
 
 ## Cross-reference
