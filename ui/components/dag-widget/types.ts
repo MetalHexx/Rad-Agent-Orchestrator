@@ -74,10 +74,36 @@ export interface StateView {
   render(ctx: StateViewContext): ReactNode;
 }
 
-/** The three fixed slots the shell lays out; views fill them, never size them. */
-export type CardSlotName = 'ring' | 'title' | 'controls';
+/** The four fixed regions the shell lays out; views fill them, never size them. */
+export type CardSlotName = 'ring' | 'heading' | 'meta' | 'controls';
 
 export interface CardSlotProps {
   children?: ReactNode;
   className?: string;
+}
+
+/**
+ * Props for `HeadingSlot`. Takes the heading as a plain string (not
+ * `children`) so the slot itself owns single-line truncation and can carry
+ * the untruncated text as a `title` attribute.
+ */
+export interface HeadingSlotProps {
+  heading: string;
+  className?: string;
+}
+
+/**
+ * Props for `MetaSlot`. `meta: null` renders nothing — a heading-only state
+ * leaves no empty meta row behind for the anchor/centering layout to account
+ * for.
+ */
+export interface MetaSlotProps {
+  meta: string | null;
+  className?: string;
+}
+
+/** The `{ heading, meta }` text `deriveCardHeading` derives for the active state. */
+export interface CardHeading {
+  heading: string;
+  meta: string | null;
 }

@@ -17,10 +17,15 @@ export interface DagStateCardProps {
   projectName: string;
 }
 
-// Two-row grid: the ring spans both rows on the left at a fixed width; the
-// title sits top-right, controls bottom-right. Identical in every state, so the
-// three slots keep identical coordinates as the resolved content crossfades.
-const SLOT_GRID_TEMPLATE = `"ring title" auto "ring controls" auto / ${RING_DIAMETER}px minmax(0, 1fr)`;
+// Three-row grid: the ring spans all three rows on the left at a fixed
+// width. The heading and meta rows are equally flexible (`minmax(0, 1fr)`)
+// with the heading anchored to the bottom of its row and the meta anchored
+// to the top of its own — flush against each other, the pair floats
+// centered in the space the two flexible rows share, whether or not a meta
+// line is present. The controls row is `auto`, pinned to the bottom. Ring
+// and controls therefore hold identical coordinates in every state; only
+// the heading/meta block moves to stay centered between them.
+const SLOT_GRID_TEMPLATE = `"ring heading" minmax(0, 1fr) "ring meta" minmax(0, 1fr) "ring controls" auto / ${RING_DIAMETER}px minmax(0, 1fr)`;
 
 /**
  * Tracks the OS `prefers-reduced-motion` preference so the crossfade can be
@@ -40,8 +45,9 @@ function usePrefersReducedMotion(): boolean {
 }
 
 /**
- * The card shell: a static shadcn `Card` frame that owns the three fixed slots
- * and knows nothing about pipelines. It resolves the active view from
+ * The card shell: a static shadcn `Card` frame that owns the four fixed
+ * regions (ring / heading / meta / controls) and knows nothing about
+ * pipelines. It resolves the active view from
  * `focus ?? graph.current_node_path`, then renders that view's content into the
  * slots inside a crossfade region keyed by the resolved state id — the frame
  * stays put; only the inner content dissolves between states. Under
@@ -56,7 +62,7 @@ export function DagStateCard({ state, focus, onDocClick, compareUrlByRepo, proje
       <div className="px-4">
         <div
           key={ctx.stateId}
-          className={cn('grid items-center gap-x-4', !reduced && 'animate-in fade-in-0 duration-300')}
+          className={cn('grid gap-x-4', !reduced && 'animate-in fade-in-0 duration-300')}
           style={{ gridTemplate: SLOT_GRID_TEMPLATE }}
         >
           {view.render(ctx)}
