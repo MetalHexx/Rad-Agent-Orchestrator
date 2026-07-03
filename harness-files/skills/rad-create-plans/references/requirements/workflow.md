@@ -1,190 +1,130 @@
-## Role Summary
+# Requirements Document
 
-You author the project-level Requirements doc — a single ledger that captures
-functional requirements (FR), non-functional requirements (NFR), architectural
-decisions (AD), and design decisions (DD). This doc is the sealed specification
-of the system to be built. Each block stands on its own as a conclusive
-statement — a required behavior, a decided design, an architectural choice.
-Keep each block lean enough to chunk, short enough to scan, specific enough to
-act on.
+You author the project **Requirements** document — a requirement-grouped spec that
+reads top-to-bottom as whole units of work. Each `R{n}` is a thing to build, with
+its functional, design, and technical detail co-located. The document is the
+statement of *what* to build and *why* — it is **not** an
+implementation plan (granular, file-level steps belong to the Master Plan).
 
-This workflow does NOT load `references/shared/guidelines.md` or
-`references/shared/self-review.md`. The authoring rules below are the full set.
+## Workflow Steps
 
-## Inputs
+1. **Carry the brainstorm context in.** The consensus you reached with the user is
+   the seed. Do not re-interview the user or re-derive goals already settled.
 
-| Input | Source | Required? |
-|-------|--------|-----------|
-| Orchestrator prompt | Spawn context | Yes — provides project name, output path, user description |
-| Brainstorming | `{PROJECT-DIR}/{NAME}-BRAINSTORMING.md` | Optional — read if present |
-| Codebase | Workspace (via Grep/Glob/Read) | Yes — private discovery to ground requirements in reality |
+2. **Resolve the repo set from the project, not the current directory.** Use the
+   project's brainstorm-confirmed repos / the registry via `/rad-repo`. Resolving
+   from the project holds in multi-repo and detached/worktree layouts where the
+   current directory is not the project.
 
-If no brainstorming doc exists, the orchestrator prompt plus private codebase
-discovery is the full input. Do not manufacture brainstorming — say what the
-prompt says, no more.
+3. **Discover repo-tied skills.** For each repo in the set, list its skill catalog —
+   pass the repo's absolute path as `--repo-root`:
 
-## Workflow
-
-### Steps
-
-1. Read inputs. Read brainstorming (if present). Read the orchestrator prompt.
-   Do codebase discovery and any needed research to deliver the requirements.
-
-1a. If the Brainstorming doc contained an `## Open Questions` section,
-    resolve each question before proceeding to Step 2. Investigate with
-    your available inputs (orchestrator prompt, Brainstorming, codebase),
-    make a decision, and encode the finding into the relevant block. The
-    planner owns the decision — Open Questions left by the user are the
-    user's acknowledgment that the planner will close them. Open Questions
-    are not valid Requirements content; they must be closed at this step,
-    not transcribed into any block's body.
-
-1b. If your spawn prompt carried a `## Repository Skills Available` section, scan
-    the JSON array. For each entry whose `description` plausibly touches the
-    project's domain, `Read` the listed absolute `path` directly. **Skip
-    entries whose descriptions do not match — do not Read every SKILL.md just
-    because it appears in the catalog.** The description is the screening
-    surface; reading non-matches wastes tokens. If you encounter a `SKILL.md`
-    via Grep/Glob that is not in the catalog, do not Read it — the manifest
-    is the complete authoritative list and exclusions are intentional. Each
-    catalog entry carries a `repo` field identifying which registry repository
-    the skill belongs to (FR-18). Let the conventions encoded in consulted
-    `SKILL.md` files inform the requirements you author — especially any test
-    commands, file-layout rules, or error-handling patterns the eligible skill
-    defines — and note the source repo when encoding those conventions so
-    downstream planners can keep guidance repo-targeted.
-    Absence of the section means no eligible repo skills exist; proceed normally.
-
-1c. **Determine the project kind before touching the registry.** Set `project-type` using the closed
-    set `standard` | `side-project` based on the orchestrator prompt and brainstorming content:
-
-    - **`standard`** — an ordinary project that maps to one or more registered repos. Stamp
-      `project-type: standard` in the frontmatter and proceed to the registry lookup below.
-    - **`side-project`** — a project with no registered repo (a standalone script, experiment, or
-      personal tool). Stamp `project-type: side-project`, **skip the registry lookup entirely**,
-      and seal `repos: [<project-name>]` with `repo-group: null`. The convention-resolved local
-      directory *is* the named repo, so the name is correct rather than invented.
-
-    **Mutual-exclusion rule** (validate during authoring for `side-project`):
-    - A `side-project` must have exactly one entry in `repos` equal to the project name.
-    - A `side-project` must have `repo-group: null`.
-    - Any registered repo name in `repos`, a non-null `repo-group`, or more than one `repos`
-      entry is a validation error — surface it immediately rather than saving a malformed doc.
-
-    **Absence of `project-type`** means a doc predating this field; treat it as `standard`.
-    A future project kind is a new *value* in this closed set, never a new field.
-
-    If the kind is `standard`, continue to the registry lookup below. If `side-project`, skip it.
-
-1d. **Registry lookup (`standard` projects only).** Even when a brainstorming doc is present, or
-    spawn prompt is present, invoke the `/rad-repo` skill to read the registry. Record the inferred
-    set in the `repos:` frontmatter. When a brainstorm IS present, use this as a guiding post for
-    exploration, not the final set.
-
-2. Decide the four ID ranges. Count roughly how many FRs, NFRs, ADs, and DDs
-   the project needs. Use four separate sequences:
-   - FR-1, FR-2, ... (functional requirements — what the system does, capabilities, behaviors, features, etc.)
-   - NFR-1, NFR-2, ... (non-functional — performance, security, limits, scalability, reliability, maintainability, etc.)
-   - AD-1, AD-2, ... (architectural decisions — cross-cutting structure, contracts, technology requirements, error handling, data storage, API design, etc.)
-   - DD-1, DD-2, ... (design decisions — observable state, UX, interactions, visual design, design tokens, css, visual component structure, etc.)
-
-3. Author the intro. Two short paragraphs (2–3 sentences each) capturing
-   project sentiment: what is being built, who it's for, what success looks
-   like. No identifier lists. No "executive summary" prose padding.
-
-4. Author `## Goals` — single-line bullets. One thought per bullet. No caps,
-   no deep-nested sub-goals; if a goal needs a paragraph, it is probably an
-   FR. Within reason — two or three sub-bullets is fine if that's how the
-   goal reads naturally.
-
-5. Author `## Non-Goals` — single-line bullets. State what is explicitly
-   out of scope.
-
-6. Author the four requirement sections in this order:
-   - `## Functional Requirements`
-   - `## Non-Functional Requirements`
-   - `## Architectural Decisions`
-   - `## Design Decisions`
-
-7. Author each block with the shape:
-
-   ```markdown
-   ### {ID}: {Title}
-   **Tags:** {ID}, {keyword}, {keyword}
-   **Resolves:** FR-N[, FR-M]   ← only for AD/DD blocks when applicable
-
-   {1–2 sentence description. Constraints inlined as a short bullet list
-    only when a bullet form genuinely adds clarity.}
-
-    Anything else necessary to capture the requirement or decision.
+   ```
+   node "${PLUGIN_ROOT}/skills/rad-orchestration/scripts/radorch.mjs" skill-list --repo-root <absolute-repo-path>
    ```
 
-8. Save to `{PROJECT-DIR}/{NAME}-REQUIREMENTS.md`.
+   **Skip the repo you are standing in** — the harness already surfaces its skills.
+   If you stand above all repos (e.g. a worktrees parent, no current repo), run it
+   for every one. Read a listed skill only when its description matches the work;
+   skip the rest to avoid token waste.
+   - **Capture them in the doc.** Record the surfaced repo skills (each with its
+     repo tag) and any connected MCP servers worth reaching for in `## Required
+     Skills and MCPs`, so a later Master Plan session — often a fresh context —
+     starts with the tooling in hand. Omit the section when a project needs none.
+
+4. **Read repo instruction files** In each area you will touch,
+   read `CLAUDE.md`, `AGENTS.md`, and equivalents — including module-level files —
+   these files contain important information and nuances about the repo or module.
+
+5. **Ground with targeted codebase discovery.** Grep/Glob/Read the specific code,
+   contracts, and modules the requirements depend on. Assume the user is non-technical and will not know the codebase, repo, domain, or other technical details.
+
+6. **Create the project directory on first scribe.** If
+   `~/.radorc/projects/{PROJECT-NAME}/` does not exist, create it (do **not**
+   create `phases/`, `tasks/`, `reports/` — the pipeline owns those). Project
+   names are `SCREAMING-CASE`.
+
+7. **Author the document** per the template and the Authoring guide below. Scribe
+   **progressively as consensus forms** — the draft REQUIREMENTS doc is the living
+   document during ideation. Keep `status: draft`; revise in place as thinking
+   sharpens (don't append a changelog).
+
+8. **Link companion documents.** Any supplemental artifact — visual (wireframes,
+   diagrams, HTML summaries from `/rad-visual-docs`) or non-visual (a shared PRD,
+   data model, API-contract doc) — is linked from `## Companion Documents` by
+   relative path, and **kept in lockstep**: when the requirements change, update
+   the companions in the same pass. A stale companion is worse than none.
+
+9. **Save** to `{PROJECT-DIR}/{NAME}-REQUIREMENTS.md`.
 
 ## Output Contract
 
-**Filename**: `{NAME}-REQUIREMENTS.md` at project root.
+**Filename**: `{NAME}-REQUIREMENTS.md` at the project root.
 
-**Frontmatter**:
+**Frontmatter** — the [template](templates/REQUIREMENTS.md) carries the canonical
+block; copy it from there rather than reproducing it here. These mechanical fields
+are what the rest of the chain inherits, so they are critically important to get
+right:
 
-```yaml
----
-project: "{PROJECT-NAME}"
-type: requirements
-status: "draft"
-approved_at: null
-created: "{YYYY-MM-DD}"
-project-type: standard
-repos: [repo-a, repo-b]
-repo-group: repo-group-name
-requirement_count: {N}
-author: "planner-agent"
----
-```
+- `status`: `draft` | `approved`. Always `draft` at authoring time; approval
+  happens later, so don't set `approved` prematurely here.
+- `project-type`: `standard` (maps to one or more registered repos) |
+  `side-project` (no registered repo — a standalone script/experiment). For a
+  side-project, seal `repos: [<project-name>]` and `repo-group: null`.
+- `repos`: the **authoritative** set the Master Plan and the rest of the chain
+  inherit. Requirement bodies stay repo-agnostic; the repo set lives in
+  frontmatter and the Affected Repositories table.
+- Do **not** add `approved_at`, `requirement_count`, or `author` — git carries
+  provenance and pipeline state carries approval.
 
-- `status`: `draft` | `approved` | `frozen`. Always `draft` at authoring time.
-- `approved_at`: `null` at authoring time. Set to `"{ISO-DATE-TIME}"` when a
-  human gate approves the doc.
-- `project-type`: `standard` | `side-project`. Always stamp this field; see Step 1c.
-  Absence means a doc predating this field and is treated as `standard`.
-- `repos`: for `standard` projects, list of registry repo names — a **non-authoritative
-  restate** the planner may refine from the brainstorm's proposed set. For `side-project`,
-  sealed as `[<project-name>]` — a single entry equal to the project name, derived from
-  the kind rather than a registry lookup. Requirement *bodies* stay repo-agnostic; the
-  repo set lives only in frontmatter.
-- `repo-group`: registry repo-group name for `standard` projects; `null` for `side-project`.
-- `requirement_count`: total of FR + NFR + AD + DD blocks in the body.
-- `author`: exactly `"planner-agent"`.
+**Body sections** — author them in the order the
+[template](templates/REQUIREMENTS.md) lays out; include the sections that fit and
+omit the ones that don't (the template marks which are conditional).
 
-**Body section order**:
+## Authoring Guide
 
-1. `# {PROJECT-NAME} — Requirements` (H1 title)
-2. Intro (1–2 paragraphs, unheaded)
-3. `## Goals`
-4. `## Non-Goals`
-5. `## Functional Requirements` → `### FR-1:` ...
-6. `## Non-Functional Requirements` → `### NFR-1:` ...
-7. `## Architectural Decisions` → `### AD-1:` ...
-8. `## Design Decisions` → `### DD-1:` ...
+The template is a **guide, not a contract** — include the sections that fit, omit
+the ones that don't (e.g., a backend change has no need for a UI/UX Design section). A few
+high-signal nudges, not a checklist to fill and never a book of dense prose:
 
-## Constraints
+**Structure**
+- **Requirement-grouped.** Each `### R{n}` is one thing to build, with its
+  functional + design + technical detail co-located so it reads as a whole unit.
+- **Requirement-level IDs only** (`R{n}`) — one ID per requirement, no
+  per-statement sub-IDs.
+- **Lean preamble.** State the intent and the problem being solved; don't restate
+  the Goals that follow.
+- **Cross-cutting once.** State system-wide concerns — contracts, data model,
+  quality attributes, risks — in the Technical Specification, not repeated per R.
 
-- No `## Context` or `## Rationale` sub-sections inside blocks. One or two
-  sentences of prose is the whole body.
-- No restating the project in block bodies. The intro does that once.
-- `**Tags:**` line is mandatory on every block.
-- `**Resolves:**` line appears only on AD/DD blocks, and only when they
-  resolve a specific FR (or small set of FRs).
-- No placeholder text. No "TBD", no "details to follow". If you don't know
-  enough to write it now, don't write the requirement.
-- Requirements describes the target state of the system, not the process of
-  getting there. Every block is self-contained and conclusive. Do not
-  reference downstream planning documents (Master Plan, phase plan, task
-  handoff, execution), do not delegate work to future agents, do not encode
-  future investigations as part of a decision. If the block body reads as a
-  deferral, the block isn't finished — close it at Step 1a by investigating
-  and deciding.
-- No cross-doc assumptions. Requirements stands on its own — it does not
-  reference external planning docs. Every FR/NFR/AD/DD block is
-  self-contained.
-- Four separate ID sequences. Never merge FR and AD numbering.
+**Voice & form**
+- **High-signal bullets** over prose. Keep prose light — for the preamble and a
+  requirement's one-line lead.
+- **Tables** for models, contracts, and field sets; **mermaid** where a picture
+  beats prose; **prose** for behavior and rationale.
+- **Target state, never steps.** Describe the system to be built, not the process
+  of building it. If a block reads like a task list, it's wrong.
+- **Write like a team member, not a stranger.** Match the standards and patterns
+  surfaced through instruction files (`AGENTS.md` / `CLAUDE.md`), code, skills, and MCPs,
+  so the work blends into the codebase.
+
+**Coverage & judgment**
+- **Cover the cross-cutting dimensions that apply** — logging, monitoring, infrastructure, UI/UX (incl. accessibility/a11y). Include the ones that are applicable to the project; omit the rest.
+- **Call out security** — when the work crosses a trust boundary, takes user
+  input, or handles authn/authz or secrets, name the threats that apply and their
+  mitigations. The user won't raise these — you must.
+- **State the testing approach** — the test levels that apply and what must be
+  covered, plus any fixtures or seams the Master Plan should plan for. Intent, not steps.
+- **Assume the user is non-technical.** Never assume the user knows the codebase, the repo, domain, or other technical details.  They will not think about important technical concerns unless you explicitly call them out.  The requirements document is the place to do that.
+- **Stay grounded (YAGNI).** As far as features, specify only what was discussed or discovered; don't invent new feature scope.  Ask the user if you think they're unsure or unaware. `## Non-Goals` names what is deliberately out.
+- **Don't over or under-engineer.**  If the user is asking for a simple solution, don't propose a complex one.  If the user is asking for a complex solution, don't propose a simple one.  Consider the codebase when making architectural decisions.  The requirements document is the place to do that.
+- **Declare environmental assumptions** — framework/runtime versions, package
+  installs, and services the work depends on. The doc *states* these.
+- **Declare quality attributes** — performance, scalability, reliability,
+  maintainability, and other non-functional requirements. The doc *states* these.  If you're unsure, ask the user to clarify.
+- **Open Questions** — if a requirement is unclear, capture it in `## Open Questions` and ask the user to clarify; don't assume. Aim to resolve these before `/rad-plan` — anything still open is resolved during planning.
+
+**Companion documents**
+- Link supplemental artifacts (visual and non-visual) from `## Companion Documents`
+  by relative path, and contextually too where it helps (a wireframe from UI/UX
+  Design, a diagram from Technical Specification). Keep them in lockstep.

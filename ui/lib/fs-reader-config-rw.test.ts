@@ -17,10 +17,7 @@ let failed = 0;
 const SAMPLE_CONFIG: OrchestrationConfig = {
   version: '1',
   limits: {
-    max_phases: 10,
-    max_tasks_per_phase: 20,
     max_retries_per_task: 3,
-    max_consecutive_review_rejections: 3,
   },
   human_gates: {
     after_planning: true,
@@ -35,10 +32,7 @@ const SAMPLE_CONFIG: OrchestrationConfig = {
 
 const MINIMAL_CONFIG_YAML = `version: "1"
 limits:
-  max_phases: 10
-  max_tasks_per_phase: 20
   max_retries_per_task: 3
-  max_consecutive_review_rejections: 3
 human_gates:
   after_planning: true
   execution_mode: ask
@@ -106,7 +100,7 @@ async function run() {
         await withFakeHome(fakeHome, async () => {
           const config = await readConfig();
           assert.strictEqual(config.version, '1');
-          assert.strictEqual(config.limits.max_phases, 10);
+          assert.strictEqual(config.limits.max_retries_per_task, 3);
         });
       } finally {
         await rm(fakeHome, { recursive: true, force: true });
@@ -126,10 +120,10 @@ async function run() {
         await withFakeHome(fakeHome, async () => {
           const { config, rawYaml } = await readConfigWithRaw();
           assert.strictEqual(config.version, '1');
-          assert.strictEqual(config.limits.max_tasks_per_phase, 20);
+          assert.strictEqual(config.limits.max_retries_per_task, 3);
           assert.strictEqual(typeof rawYaml, 'string');
           assert.ok(rawYaml.includes('version'));
-          assert.ok(rawYaml.includes('max_phases'));
+          assert.ok(rawYaml.includes('max_retries_per_task'));
         });
       } finally {
         await rm(fakeHome, { recursive: true, force: true });

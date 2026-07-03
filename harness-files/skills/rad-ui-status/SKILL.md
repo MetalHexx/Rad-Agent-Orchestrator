@@ -1,6 +1,6 @@
 ---
 name: rad-ui-status
-description: Report whether the radorch dashboard UI server is running, and its URL.
+description: Use this when you are having issues with the rad orchestration dashboard UI.  It is the reference for how to check the status of the UI and troubleshoot issues with it.
 user-invocable: true
 ---
 

@@ -1,87 +1,41 @@
-## PR Mode
+# Working With PRs
 
-### Single-repo mode
+Open the project's pull request(s) yourself, with `gh`, once the final review is approved and the PR gate is cleared. The action envelope carries `data.context.repos[]`; each entry has `name`, `path`, `branch`, and `base_branch`. Run every `gh` command from the repo's own `path`. One PR per repo.
 
-**1. Run:**
-```
-node "${PLUGIN_ROOT}/skills/rad-orchestration/scripts/radorch.mjs" git pr \
-  --worktree-path "<worktree>" \
-  --branch "<branch>" \
-  --base-branch "<base-branch>" \
-  --title "<project-name>" \
-  [--body-file "<path>"]
-```
-`--body-file` is the path to a markdown file that becomes the PR description on GitHub. Pass it when a body file path is provided in the prompt; omit it otherwise (PR will have no description).
+## 1. Detect an existing PR (idempotent)
 
-**2. Parse the envelope on stdout. Read fields from `data` and emit:**
-````
-## PR Result
-```json
-{ "pr_created": <data.pr_created>, "pr_url": "<data.pr_url-or-null>", "pr_number": <data.pr_number-or-null>, "pr_existed": <data.pr_existed>, "error": "<data.error-or-null>", "message": "<data.message>" }
-```
-````
+A retry must not open a duplicate. Before creating, check for an open PR from the branch:
 
-### Multi-repo fan-out mode
+    gh pr list --head "<branch>" --base "<base_branch>" --state open --json url --jq '.[0].url'
 
-Use fan-out mode when the project has more than one repository. Compose all PR descriptions first, then pass the full array to the CLI in a single call.
+- Non-empty → a PR already exists; reuse that URL and skip creation for this repo.
+- Empty → create the PR (below).
 
-**1. Compose one PR description per repo** (single pass, no CLI calls yet):
+## 2. Compose the body from the final review
 
-For each repo in `pipeline.source_control.repos`, author a PR title and description body. The body should summarise work done in that repo during this project.
+The PR description comes from the final-review document at `state.final_review.doc_path`. Summarize the delivered work — do not paste the whole review, summarize the body of work elegantly for a reviewer to clearly understand the changes and their impact.
 
-**2. Run the fan-out CLI:**
-```
-node "${PLUGIN_ROOT}/skills/rad-orchestration/scripts/radorch.mjs" git pr \
-  --repos '<json>'
-```
+## 3. Create the PR
 
-`--repos` accepts a JSON array. Each element must match the `FanOutRepo` shape exactly:
+    gh pr create --head "<branch>" --base "<base_branch>" --title "<project-name>" --body-file "<path>"
 
-```json
-[
-  {
-    "name": "<repo-name>",
-    "path": "<absolute-path-to-worktree>",
-    "branch": "<head-branch>",
-    "baseBranch": "<base-branch>",
-    "title": "<pr-title>",
-    "description": "<pr-body-markdown>"
-  }
-]
-```
+Use `--body-file` when you have a body; otherwise `--body ""`. Capture the returned PR URL.
 
-Field reference for each repo object:
-- `name` — repo identifier (matches `pipeline.source_control.repos[].name`)
-- `path` — absolute path to the worktree for this repo
-- `branch` — head branch to open the PR from
-- `baseBranch` — base branch to target (typically `main`)
-- `title` — PR title string
-- `description` — full PR description body (markdown)
+## 4. Cross-link sibling PRs (multi-repo projects)
 
-**3. Parse the envelope on stdout.** On success, `data` is an array of result objects:
+When a project spans more than one repo, open every repo's PR first, then edit each PR body to link the others so a reviewer can navigate the full change set:
 
-```json
-[
-  { "name": "<repo-name>", "pr_url": "<url>" }
-]
-```
+    gh pr edit "<pr-url>" --body-file "<updated-body-with-sibling-links>"
 
-Each result element matches the `FanOutResult` shape: `name` (repo identifier) and `pr_url` (the created or existing PR URL).
+Single-repo projects skip this step.
 
-**4. Relay the result as a single array-shaped `pr_created` signal:**
+## 5. Report the result
 
-```json
-{
-  "repos": [
-    { "name": "<repo-name>", "pr_url": "<url>" }
-  ]
-}
-```
+Relay one entry per repo:
 
-Pass the entire `data` array from step 3 directly as `repos` in the signal payload. The pipeline engine writes each `pr_url` to the matching `source_control.repos[]` entry by name.
+    { "name": "<repo>", "pr_url": "<url-or-null>" }
 
-**Failure discipline (fan-out):**
+- Created or reused → the URL.
+- Creation failed or a pre-condition was unmet → `pr_url: null`; the pipeline records the attempt as null and proceeds to the human gate.
 
-- If the CLI returns an error envelope (`ok: false`) or throws, halt and report the error.
-- On retry, the CLI's already-open-PR check (`pr_existed: true`) is idempotent — re-running fan-out for a repo that already has a PR returns its existing URL without creating a duplicate.
-- Apply the same halt-then-retry guard as for commit: surface the error, let the operator decide whether to retry or skip.
+A side-project has no remote and no pull-request surface — it never reaches this reference (`auto_pr` is `never`).

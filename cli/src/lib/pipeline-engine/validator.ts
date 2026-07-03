@@ -37,7 +37,7 @@ const validGraphStatuses = new Set<string>(Object.values(GRAPH_STATUSES));
 export function validateState(
   _previousState: PipelineState | null,
   proposedState: PipelineState,
-  config: OrchestrationConfig,
+  _config: OrchestrationConfig,
   template: PipelineTemplate,
   opts: { checkCursorHonesty?: boolean } = {},
 ): string[] {
@@ -50,7 +50,6 @@ export function validateState(
     ...checkIterationIndices(proposedState.graph.nodes, 'graph.nodes'),
     ...checkCompletedParentChildren(proposedState.graph.nodes, 'graph.nodes'),
     ...checkCorrectiveEntriesTerminal(proposedState.graph.nodes, 'graph.nodes'),
-    ...checkIterationLimits(proposedState, config),
     ...checkNodeKindMatchesTemplate(proposedState, template),
     ...checkStatusTransitions(_previousState, proposedState),
     ...checkImmutableCommitHash(_previousState, proposedState),
@@ -265,41 +264,6 @@ function validateCorrectiveEntry(ct: CorrectiveTaskEntry, path: string): string[
     // Task-level correctives must have scaffolded body nodes.
     errors.push(`Corrective task at ${path} has empty or missing nodes`);
   }
-  return errors;
-}
-
-// ── Check: iteration count limits ─────────────────────────────────────────────
-
-function checkIterationLimits(state: PipelineState, config: OrchestrationConfig): string[] {
-  const errors: string[] = [];
-  const limits = config.limits;
-
-  function walk(nodes: Record<string, NodeState>, path: string): void {
-    for (const [id, node] of Object.entries(nodes)) {
-      const nodePath = `${path}.${id}`;
-      if (node.kind === 'for_each_phase') {
-        if (node.iterations.length > limits.max_phases) {
-          errors.push(`${nodePath} has ${node.iterations.length} iterations, exceeding max_phases limit of ${limits.max_phases}`);
-        }
-        for (const iter of node.iterations) {
-          walk(iter.nodes, `${nodePath}.iterations[${iter.index}].nodes`);
-        }
-      }
-      if (node.kind === 'for_each_task') {
-        if (node.iterations.length > limits.max_tasks_per_phase) {
-          errors.push(`${nodePath} has ${node.iterations.length} iterations, exceeding max_tasks_per_phase limit of ${limits.max_tasks_per_phase}`);
-        }
-        for (const iter of node.iterations) {
-          walk(iter.nodes, `${nodePath}.iterations[${iter.index}].nodes`);
-        }
-      }
-      if (node.kind === 'parallel') {
-        walk(node.nodes, `${nodePath}.nodes`);
-      }
-    }
-  }
-
-  walk(state.graph.nodes, 'graph.nodes');
   return errors;
 }
 

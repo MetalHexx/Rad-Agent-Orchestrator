@@ -1,23 +1,26 @@
 #!/usr/bin/env node
 // check-manifest-drift.mjs — CI gate for the standard installer's manifests.
 //
-// The standard installer's manifests are GENERATED: emit-manifest.js walks each
-// output/<harness>/ tree and writes a sha256 per file into the tracked
-// manifests/<harness>/v<version>.json. So any change to the installable payload
-// (skills, agents, hooks, scripts, action-events) that isn't reflected in a
-// committed manifest shows up here as a working-tree change under manifests/.
-// This gate rebuilds and fails if the committed manifests are stale.
+// The standard installer's manifests are GENERATED path catalogs:
+// emit-manifest.js walks each output/<harness>/ tree and writes a
+// { bundlePath, destinationPath } entry per file (no hashes) into the tracked
+// manifests/<harness>/v<version>.json. So adding, removing, renaming, or
+// re-homing an installable payload file (skills, agents, hooks, scripts,
+// action-events) without updating a committed manifest shows up here as a
+// working-tree change under manifests/. This gate rebuilds and fails if the
+// committed manifests are stale. Editing file *content* (incl. frontmatter)
+// does not touch the manifest, so it never trips this gate.
 //
 // Fast path: the UI bundle (output/ui.tgz) is written OUTSIDE the per-harness
 // dirs that emit-manifest walks, so skipping the ~3-min `next build`
 // (skipUiRunner) yields byte-identical manifests in a fraction of the time.
 //
-// Reproducibility: the esbuild CLI bundle (skills/.../radorch.mjs) used to embed
-// module labels relative to process.cwd(), so the manifest sha for that file
-// differed between a repo-root build and an `npm run -w <workspace>` build (this
-// gate's cwd). emit-cli-bundle.js now pins esbuild's absWorkingDir to a fixed
-// base, making the bundle — and therefore every manifest entry — byte-identical
-// regardless of the invoking cwd. A single build here is sufficient.
+// Cross-platform: every manifest field is platform-stable — POSIX-normalised
+// bundlePaths, tokenised ${HARNESS_ROOT}/${RAD_HOME} destinations, entries
+// sorted by bundlePath, and no per-file hash. The manifest therefore
+// regenerates byte-identically regardless of OS or invoking cwd, so a single
+// build here is sufficient and a Windows-authored manifest matches CI's Linux
+// rebuild.
 //
 // Importing runBuild does not auto-run the build: build.js's self-run guard
 // keys on process.argv[1].

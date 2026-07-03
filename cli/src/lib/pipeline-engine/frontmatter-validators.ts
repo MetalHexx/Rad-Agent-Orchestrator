@@ -12,13 +12,13 @@ export interface FrontmatterValidationRule {
    * Optional predicate. When defined and it returns false for the given
    * frontmatter, the rule is skipped — the validator does not run the
    * presence check or the validate callback. Enables conditional rule groups
-   * (e.g., orchestrator-mediation fields that only apply on specific verdicts).
+   * (e.g., a field required only on a specific verdict).
    */
   when?: (frontmatter: Record<string, unknown>) => boolean;
   /**
    * Optional absence-enforcement flag. When true, the rule asserts the field
-   * is NOT present (undefined or null). Used for verdict-conditional fields
-   * that must be absent on non-mediated review docs.
+   * is NOT present (undefined or null). Generic infra retained for conditional
+   * absence checks; no rule set currently uses it.
    */
   mustBeAbsent?: boolean;
 }
@@ -33,13 +33,6 @@ export function coerceNull(value: unknown): unknown {
 }
 
 const VALIDATION_RULES: Record<string, FrontmatterValidationRule[]> = {
-  requirements_completed: [
-    {
-      field: 'requirement_count',
-      validate: (v) => typeof v === 'number' && Number.isInteger(v) && v > 0,
-      expected: 'a positive integer',
-    },
-  ],
   plan_approved: [
     {
       field: 'total_phases',
@@ -62,105 +55,34 @@ const VALIDATION_RULES: Record<string, FrontmatterValidationRule[]> = {
       expected: 'a non-empty array',
     },
   ],
-  // Iter 10 — conditional orchestrator-mediation contract. `verdict` is the
-  // reviewer's raw verdict; when it is `changes_requested`, the orchestrator's
-  // mediation addendum MUST supply `orchestrator_mediated`, `effective_outcome`,
-  // and (iff effective_outcome is `changes_requested`) `corrective_handoff_path`.
-  // When verdict is `approved` or `rejected`, all three mediation fields must
-  // be absent. See ok-write-the-plan-vast-thacker.md for the contract rationale.
+  // PO-4 — the reviewer's raw `verdict` is the sole routing input. A coder
+  // self-mediates its own review, so there is no orchestrator-authored
+  // mediation contract: the validator only enforces that the reviewer supplied
+  // a recognized verdict. The mutation layer (`mutations.ts`
+  // CODE_REVIEW_COMPLETED) routes corrective birth / halt off that raw verdict.
   code_review_completed: [
     {
       field: 'verdict',
       // Validate the raw verdict is exactly one of the three allowed values —
       // no trimming, no case normalization. A typo or stray whitespace
-      // (e.g., "approved ") would otherwise slip past the conditional
-      // mediation rules (which gate on exact-string match of
-      // 'changes_requested') and surface as a later runtime halt from the
-      // mutation's unknown-verdict branch instead of a structured frontmatter
-      // error. Fail early here with a clear field-specific message so the
-      // operator can fix the frontmatter and re-signal the event.
+      // (e.g., "approved ") is caught here with a clear field-specific message
+      // rather than surfacing later as the mutation's unknown-verdict halt, so
+      // the operator can fix the frontmatter and re-signal the event.
       validate: (v) => typeof v === 'string' && (v === 'approved' || v === 'changes_requested' || v === 'rejected'),
       expected: "one of 'approved', 'changes_requested', 'rejected'",
     },
-    // verdict === 'changes_requested' branch — mediation fields required
-    {
-      field: 'orchestrator_mediated',
-      validate: (v) => v === true,
-      expected: 'true (orchestrator mediation required for changes_requested verdicts)',
-      when: (fm) => fm.verdict === 'changes_requested',
-    },
-    {
-      field: 'effective_outcome',
-      validate: (v) => v === 'approved' || v === 'changes_requested',
-      expected: "'approved' or 'changes_requested'",
-      when: (fm) => fm.verdict === 'changes_requested',
-    },
-    // When effective_outcome is changes_requested, corrective_handoff_path is
-    // OPTIONAL. Absence is the orchestrator's budget-exhausted halt signal —
-    // the mutation reads effective_outcome=changes_requested + no handoff path
-    // as "orchestrator declined to author a handoff because budget is blown"
-    // and converts it into a clean pipeline halt. When supplied, the path must
-    // be a non-empty string (whitespace-only is rejected).
-    {
-      field: 'corrective_handoff_path',
-      validate: (v) => typeof v === 'string' && v.trim().length > 0,
-      expected: 'a non-empty string when supplied',
-      when: (fm) => fm.verdict === 'changes_requested'
-        && fm.effective_outcome === 'changes_requested'
-        && fm.corrective_handoff_path !== undefined
-        && fm.corrective_handoff_path !== null,
-    },
-    {
-      field: 'corrective_handoff_path',
-      validate: () => true,
-      expected: 'absent (must be omitted when effective_outcome is approved)',
-      when: (fm) => fm.verdict === 'changes_requested' && fm.effective_outcome === 'approved',
-      mustBeAbsent: true,
-    },
-    // verdict ∈ {'approved','rejected'} branch — mediation fields must be absent
-    {
-      field: 'orchestrator_mediated',
-      validate: () => true,
-      expected: 'absent (only permitted on changes_requested verdicts)',
-      when: (fm) => fm.verdict === 'approved' || fm.verdict === 'rejected',
-      mustBeAbsent: true,
-    },
-    {
-      field: 'effective_outcome',
-      validate: () => true,
-      expected: 'absent (only permitted on changes_requested verdicts)',
-      when: (fm) => fm.verdict === 'approved' || fm.verdict === 'rejected',
-      mustBeAbsent: true,
-    },
-    {
-      field: 'corrective_handoff_path',
-      validate: () => true,
-      expected: 'absent (only permitted on changes_requested verdicts)',
-      when: (fm) => fm.verdict === 'approved' || fm.verdict === 'rejected',
-      mustBeAbsent: true,
-    },
   ],
-  // Iter 11 — conditional orchestrator-mediation contract (parallels iter-10
-  // code_review_completed). `verdict` is the reviewer's raw verdict; when it is
-  // `changes_requested`, the orchestrator's mediation addendum MUST supply
-  // `orchestrator_mediated`, `effective_outcome`, and (iff effective_outcome is
-  // `changes_requested`) `corrective_handoff_path`. When verdict is `approved`
-  // or `rejected`, all three mediation fields must be absent. The mutation
-  // layer is `mutations.ts` PHASE_REVIEW_COMPLETED; the operator-facing write
-  // surface + judgment rubric lives in
-  // `harness-files/skills/rad-orchestration/references/corrective-playbook.md`
-  // (Phase-Scope Mediation section).
+  // PO-4 — phase review carries a raw `verdict` (sole routing input, as with
+  // code_review_completed) plus `exit_criteria_met`. No orchestrator-mediation
+  // fields are checked; the mutation layer (`mutations.ts`
+  // PHASE_REVIEW_COMPLETED) routes corrective birth / halt off the raw verdict.
   phase_review_completed: [
     {
       field: 'verdict',
       // Validate the raw verdict is exactly one of the three allowed values —
-      // no trimming, no case normalization. A typo or stray whitespace
-      // (e.g., "approved ") would otherwise slip past the conditional
-      // mediation rules (which gate on exact-string match of
-      // 'changes_requested') and surface as a later runtime halt from the
-      // mutation's unknown-verdict branch instead of a structured frontmatter
-      // error. Fail early here with a clear field-specific message so the
-      // operator can fix the frontmatter and re-signal the event.
+      // no trimming, no case normalization. A typo or stray whitespace is
+      // caught here with a clear field-specific message rather than surfacing
+      // later as the mutation's unknown-verdict halt.
       validate: (v) => typeof v === 'string' && (v === 'approved' || v === 'changes_requested' || v === 'rejected'),
       expected: "one of 'approved', 'changes_requested', 'rejected'",
     },
@@ -169,73 +91,10 @@ const VALIDATION_RULES: Record<string, FrontmatterValidationRule[]> = {
       validate: (v) => v !== undefined && v !== null,
       expected: 'a defined value',
     },
-    // verdict === 'changes_requested' branch — mediation fields required
-    {
-      field: 'orchestrator_mediated',
-      validate: (v) => v === true,
-      expected: 'true (orchestrator mediation required for changes_requested verdicts)',
-      when: (fm) => fm.verdict === 'changes_requested',
-    },
-    {
-      field: 'effective_outcome',
-      validate: (v) => v === 'approved' || v === 'changes_requested',
-      expected: "'approved' or 'changes_requested'",
-      when: (fm) => fm.verdict === 'changes_requested',
-    },
-    // When effective_outcome is changes_requested, corrective_handoff_path is
-    // OPTIONAL. Absence is the orchestrator's budget-exhausted halt signal —
-    // the mutation reads effective_outcome=changes_requested + no handoff path
-    // as "orchestrator declined to author a handoff because budget is blown"
-    // and converts it into a clean pipeline halt. When supplied, the path must
-    // be a non-empty string (whitespace-only is rejected).
-    {
-      field: 'corrective_handoff_path',
-      validate: (v) => typeof v === 'string' && v.trim().length > 0,
-      expected: 'a non-empty string when supplied',
-      when: (fm) => fm.verdict === 'changes_requested'
-        && fm.effective_outcome === 'changes_requested'
-        && fm.corrective_handoff_path !== undefined
-        && fm.corrective_handoff_path !== null,
-    },
-    {
-      field: 'corrective_handoff_path',
-      validate: () => true,
-      expected: 'absent (must be omitted when effective_outcome is approved)',
-      when: (fm) => fm.verdict === 'changes_requested' && fm.effective_outcome === 'approved',
-      mustBeAbsent: true,
-    },
-    // verdict ∈ {'approved','rejected'} branch — mediation fields must be absent
-    {
-      field: 'orchestrator_mediated',
-      validate: () => true,
-      expected: 'absent (only permitted on changes_requested verdicts)',
-      when: (fm) => fm.verdict === 'approved' || fm.verdict === 'rejected',
-      mustBeAbsent: true,
-    },
-    {
-      field: 'effective_outcome',
-      validate: () => true,
-      expected: 'absent (only permitted on changes_requested verdicts)',
-      when: (fm) => fm.verdict === 'approved' || fm.verdict === 'rejected',
-      mustBeAbsent: true,
-    },
-    {
-      field: 'corrective_handoff_path',
-      validate: () => true,
-      expected: 'absent (only permitted on changes_requested verdicts)',
-      when: (fm) => fm.verdict === 'approved' || fm.verdict === 'rejected',
-      mustBeAbsent: true,
-    },
   ],
-  // Iter 12 — final_review_completed verdict enum check. Final-review
-  // corrective cycles are out of scope (final review is strict-verdict-only;
-  // no orchestrator mediation is wired for it). The validator enforces that
-  // the reviewer always supplies a valid verdict; mediation fields
-  // (`orchestrator_mediated`, `effective_outcome`, `corrective_handoff_path`)
-  // are not checked here because they are not part of the final-review
-  // contract. A future iteration that wires final-review mediation can extend
-  // this rule set with conditional mediation-field rules parallel to the
-  // iter-10 code_review_completed + iter-11 phase_review_completed shape.
+  // final_review_completed verdict enum check. Final-review corrective cycles
+  // are out of scope (final review is strict-verdict-only). The validator
+  // enforces that the reviewer always supplies a valid verdict.
   final_review_completed: [
     {
       field: 'verdict',
@@ -280,9 +139,8 @@ export function validateFrontmatter(
       value = coerceNull(value);
     }
 
-    // Absence-enforcement rules — the field must NOT be present.
-    // Used by the Iter-10 code_review_completed contract to forbid orchestrator
-    // mediation fields on raw approved/rejected verdicts.
+    // Absence-enforcement rules — the field must NOT be present. Generic infra;
+    // no rule set currently uses it (retained for conditional absence checks).
     if (rule.mustBeAbsent) {
       if (value !== undefined && value !== null) {
         return {

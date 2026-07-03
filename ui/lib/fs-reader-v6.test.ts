@@ -26,10 +26,7 @@ function makeV6State(overrides: Record<string, unknown> = {}) {
     config: {
       gate_mode: 'task',
       limits: {
-        max_phases: 10,
-        max_tasks_per_phase: 20,
         max_retries_per_task: 3,
-        max_consecutive_review_rejections: 3,
       },
       source_control: {
         auto_commit: 'always',

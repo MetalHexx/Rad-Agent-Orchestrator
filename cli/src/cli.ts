@@ -2,7 +2,6 @@ import { Command } from 'commander';
 import { runCommand } from './framework/command.js';
 import { doctorCommand } from './commands/doctor/index.js';
 import { uiStartCommand, uiStopCommand, uiStatusCommand } from './commands/ui/index.js';
-import { gitCommitCommand, gitPrCommand } from './commands/git/index.js';
 import { repoAddCommand, repoBindCommand, repoEditCommand, repoListCommand, repoRemoveCommand, repoShowCommand } from './commands/repo/index.js';
 import { projectListCommand, projectLocateCommand, projectShowCommand, projectWorktreesCommand } from './commands/project/index.js';
 import { worktreeCreateCommand, worktreeLaunchCommand, worktreeRemoveCommand } from './commands/worktree/index.js';
@@ -81,28 +80,6 @@ export function buildProgram(version: string): Command {
     .action(async () => {
       const argv = process.argv.slice(4);
       await runCommand(uiStatusCommand, { argv, env: process.env, isTTY: Boolean(process.stdin.isTTY), stderr: process.stderr });
-    });
-
-  const git = program.command('git').description('Source control operations');
-  git
-    .command('commit')
-    .description(gitCommitCommand.description)
-    .helpOption(false)
-    .allowUnknownOption()
-    .allowExcessArguments(true)
-    .action(async () => {
-      const argv = process.argv.slice(4);
-      await runCommand(gitCommitCommand, { argv, env: process.env, isTTY: Boolean(process.stdin.isTTY), stderr: process.stderr });
-    });
-  git
-    .command('pr')
-    .description(gitPrCommand.description)
-    .helpOption(false)
-    .allowUnknownOption()
-    .allowExcessArguments(true)
-    .action(async () => {
-      const argv = process.argv.slice(4);
-      await runCommand(gitPrCommand, { argv, env: process.env, isTTY: Boolean(process.stdin.isTTY), stderr: process.stderr });
     });
 
   const repo = program.command('repo').description('Repo registry operations');

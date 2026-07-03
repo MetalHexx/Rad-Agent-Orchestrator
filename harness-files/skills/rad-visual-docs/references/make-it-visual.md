@@ -21,7 +21,7 @@ Generates screenshot-ready, self-contained HTML (or SVG) visuals from any source
 
 ## File Mechanics
 
-- **Path (exact filename)**: `~/.radorc/projects/{PROJECT-NAME}/{PROJECT-NAME}-BRAINSTORM.html` — the visual companion to `BRAINSTORMING.md` (one per project; regenerating overwrites it).
+- **Path (exact filename)**: `~/.radorc/projects/{PROJECT-NAME}/{PROJECT-NAME}-BRAINSTORM.html` — the project's brainstorm visual (one per project; regenerating overwrites it).
   - Use this **exact** name — not `-BRAINSTORM-VISUAL.html` or any other suffix.
   - The dashboard fills its "Brainstorm Visual" slot only from this name; a deviation still shows as a generic visual but won't fill that slot.
   - It's ok if you use another name for a different document -- we're not limited to brainstorming docs in general.

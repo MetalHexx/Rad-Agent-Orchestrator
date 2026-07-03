@@ -93,8 +93,8 @@ test("code_review returns Code Review", () => {
   assert.strictEqual(formatNodeId("code_review"), "Code Review");
 });
 
-test("commit (single word) returns Commit", () => {
-  assert.strictEqual(formatNodeId("commit"), "Commit");
+test("requirements (single word) returns Requirements", () => {
+  assert.strictEqual(formatNodeId("requirements"), "Requirements");
 });
 
 console.log("\ngetDisplayName tests\n");
@@ -120,7 +120,7 @@ test("loop node ID extracts leaf", () => {
 });
 
 test("single word with no dot and no underscore returns capitalized", () => {
-  assert.strictEqual(getDisplayName(compoundNodeIds.singleWord), "Commit");
+  assert.strictEqual(getDisplayName(compoundNodeIds.singleWord), "Requirements");
 });
 
 test("DISPLAY_NAME_OVERRIDES restores acronym capitalization for final_pr", () => {
@@ -765,12 +765,6 @@ test("FR-3 code_review in_progress → Reviewing", () => {
   assert.deepStrictEqual(deriveIterationBadgeLabel(iter, 'for_each_task'), { status: 'in_progress', label: 'Reviewing' });
 });
 
-test("FR-3 commit in_progress → Committing", () => {
-  const iter: IterationEntry = { index: 0, status: 'in_progress', corrective_tasks: [], repos: [],
-    nodes: { commit: { kind: 'step', status: 'in_progress', doc_path: null, retries: 0 } } };
-  assert.deepStrictEqual(deriveIterationBadgeLabel(iter, 'for_each_task'), { status: 'in_progress', label: 'Committing' });
-});
-
 test("FR-3 phase_review in_progress → Reviewing", () => {
   const iter: IterationEntry = { index: 0, status: 'in_progress', corrective_tasks: [], repos: [],
     nodes: { phase_review: { kind: 'step', status: 'in_progress', doc_path: null, retries: 0 } } };
@@ -845,86 +839,47 @@ test("getDocLinkLabel returns the correct bucket for every bucketed id", () => {
 });
 
 import { shouldRenderTimelineRow } from './dag-timeline-helpers';
-import type { RowVisibilityContext } from './dag-timeline-helpers';
 
 console.log("\nshouldRenderTimelineRow tests\n");
 
-const emptyCtx: RowVisibilityContext = { commitHash: null, prUrl: null };
-const ctxWithCommit: RowVisibilityContext = { commitHash: 'abc123', prUrl: null };
-const ctxWithPr: RowVisibilityContext = { prUrl: 'https://github.com/user/repo/pull/1', commitHash: null };
-
-test("commit_gate always hidden regardless of context", () => {
-  const node: import('@/types/state').ConditionalNodeState = { kind: 'conditional', status: 'completed', branch_taken: 'true' };
-  assert.strictEqual(shouldRenderTimelineRow('commit_gate', node, emptyCtx), false);
-  assert.strictEqual(shouldRenderTimelineRow('commit_gate', node, ctxWithCommit), false);
-  assert.strictEqual(shouldRenderTimelineRow('commit_gate', node, ctxWithPr), false);
-});
-
 test("pr_gate always hidden", () => {
   const node: import('@/types/state').GateNodeState = { kind: 'gate', status: 'completed', gate_active: false };
-  assert.strictEqual(shouldRenderTimelineRow('pr_gate', node, emptyCtx), false);
-  assert.strictEqual(shouldRenderTimelineRow('pr_gate', node, ctxWithPr), false);
+  assert.strictEqual(shouldRenderTimelineRow('pr_gate', node), false);
 });
 
 test("task_gate with gate_active: false returns false", () => {
   const node: import('@/types/state').GateNodeState = { kind: 'gate', status: 'completed', gate_active: false };
-  assert.strictEqual(shouldRenderTimelineRow('task_gate', node, emptyCtx), false);
+  assert.strictEqual(shouldRenderTimelineRow('task_gate', node), false);
 });
 
 test("task_gate with gate_active: true returns true", () => {
   const node: import('@/types/state').GateNodeState = { kind: 'gate', status: 'not_started', gate_active: true };
-  assert.strictEqual(shouldRenderTimelineRow('task_gate', node, emptyCtx), true);
+  assert.strictEqual(shouldRenderTimelineRow('task_gate', node), true);
 });
 
 test("phase_gate with gate_active: false returns false", () => {
   const node: import('@/types/state').GateNodeState = { kind: 'gate', status: 'completed', gate_active: false };
-  assert.strictEqual(shouldRenderTimelineRow('phase_gate', node, emptyCtx), false);
+  assert.strictEqual(shouldRenderTimelineRow('phase_gate', node), false);
 });
 
 test("phase_gate with gate_active: true returns true", () => {
   const node: import('@/types/state').GateNodeState = { kind: 'gate', status: 'not_started', gate_active: true };
-  assert.strictEqual(shouldRenderTimelineRow('phase_gate', node, emptyCtx), true);
+  assert.strictEqual(shouldRenderTimelineRow('phase_gate', node), true);
 });
 
-test("commit with commitHash: null returns false", () => {
+test("final_pr is unconditionally hidden (FR-14: PRs surface only in the Source Control panel)", () => {
   const node: import('@/types/state').StepNodeState = { kind: 'step', status: 'completed', doc_path: null, retries: 0 };
-  assert.strictEqual(shouldRenderTimelineRow('commit', node, { commitHash: null, prUrl: null }), false);
-});
-
-test("commit with commitHash: '' returns false", () => {
-  const node: import('@/types/state').StepNodeState = { kind: 'step', status: 'completed', doc_path: null, retries: 0 };
-  assert.strictEqual(shouldRenderTimelineRow('commit', node, { commitHash: '', prUrl: null }), false);
-});
-
-test("commit with commitHash: 'abc123' returns true", () => {
-  const node: import('@/types/state').StepNodeState = { kind: 'step', status: 'completed', doc_path: null, retries: 0 };
-  assert.strictEqual(shouldRenderTimelineRow('commit', node, { commitHash: 'abc123', prUrl: null }), true);
-});
-
-test("final_pr with prUrl: null returns false", () => {
-  const node: import('@/types/state').StepNodeState = { kind: 'step', status: 'completed', doc_path: null, retries: 0 };
-  assert.strictEqual(shouldRenderTimelineRow('final_pr', node, { commitHash: null, prUrl: null }), false);
-});
-
-test("final_pr with prUrl: '' returns false", () => {
-  const node: import('@/types/state').StepNodeState = { kind: 'step', status: 'completed', doc_path: null, retries: 0 };
-  assert.strictEqual(shouldRenderTimelineRow('final_pr', node, { commitHash: null, prUrl: '' }), false);
-});
-
-test("final_pr with prUrl: 'https://github.com/user/repo/pull/1' returns false (FR-14: always removed)", () => {
-  // FR-14: final_pr row is unconditionally removed — PRs surface only in the Source Control panel.
-  const node: import('@/types/state').StepNodeState = { kind: 'step', status: 'completed', doc_path: null, retries: 0 };
-  assert.strictEqual(shouldRenderTimelineRow('final_pr', node, { commitHash: null, prUrl: 'https://github.com/user/repo/pull/1' }), false);
+  assert.strictEqual(shouldRenderTimelineRow('final_pr', node), false);
 });
 
 test("unrelated node 'requirements' (kind: 'step') always returns true", () => {
   const node: import('@/types/state').StepNodeState = { kind: 'step', status: 'completed', doc_path: null, retries: 0 };
-  assert.strictEqual(shouldRenderTimelineRow('requirements', node, emptyCtx), true);
+  assert.strictEqual(shouldRenderTimelineRow('requirements', node), true);
 });
 
 test("unrelated node 'master_plan' always returns true", () => {
   const node: import('@/types/state').StepNodeState = { kind: 'step', status: 'not_started', doc_path: null, retries: 0 };
-  assert.strictEqual(shouldRenderTimelineRow('master_plan', node, emptyCtx), true);
+  assert.strictEqual(shouldRenderTimelineRow('master_plan', node), true);
 });
 
 import { resolveStageBadge, ITERATION_SUBSTEP_LABELS } from './dag-timeline-helpers';
@@ -945,13 +900,6 @@ test("FR-2/DD-1 task_executor in_progress resolves to --tier-execution + 'Coding
   assert.deepStrictEqual(
     resolveStageBadge('task_executor', 'in_progress'),
     { cssVar: '--tier-execution', label: 'Coding' },
-  );
-});
-
-test("FR-1/DD-1 commit in_progress resolves to --tier-execution + 'Committing'", () => {
-  assert.deepStrictEqual(
-    resolveStageBadge('commit', 'in_progress'),
-    { cssVar: '--tier-execution', label: 'Committing' },
   );
 });
 
@@ -997,7 +945,7 @@ test("FR-2/DD-2 non-in_progress statuses use STATUS_MAP defaults regardless of n
     { cssVar: '--status-skipped', label: 'Skipped' },
   );
   assert.deepStrictEqual(
-    resolveStageBadge('commit', 'failed'),
+    resolveStageBadge('final_review', 'failed'),
     { cssVar: '--status-failed', label: 'Failed' },
   );
   assert.deepStrictEqual(
@@ -1024,7 +972,6 @@ test("AD-4 compound nodeIds resolve via leaf segment", () => {
 test("FR-6 ITERATION_SUBSTEP_LABELS now covers final_review", () => {
   assert.strictEqual(ITERATION_SUBSTEP_LABELS.final_review, 'Reviewing');
   assert.strictEqual(ITERATION_SUBSTEP_LABELS.task_executor, 'Coding');
-  assert.strictEqual(ITERATION_SUBSTEP_LABELS.commit, 'Committing');
   assert.strictEqual(ITERATION_SUBSTEP_LABELS.code_review, 'Reviewing');
   assert.strictEqual(ITERATION_SUBSTEP_LABELS.phase_review, 'Reviewing');
 });
@@ -1150,17 +1097,6 @@ test("FR-2 task iter code_review in_progress still reads 'Reviewing'", () => {
   assert.deepStrictEqual(
     deriveIterationBadgeLabel(taskIter, 'for_each_task'),
     { status: 'in_progress', label: 'Reviewing' },
-  );
-});
-
-test("FR-2 task iter commit in_progress still reads 'Committing'", () => {
-  const taskIter: IterationEntry = {
-    index: 0, status: 'in_progress', corrective_tasks: [], repos: [],
-    nodes: { commit: { kind: 'step', status: 'in_progress', doc_path: null, retries: 0 } },
-  };
-  assert.deepStrictEqual(
-    deriveIterationBadgeLabel(taskIter, 'for_each_task'),
-    { status: 'in_progress', label: 'Committing' },
   );
 });
 

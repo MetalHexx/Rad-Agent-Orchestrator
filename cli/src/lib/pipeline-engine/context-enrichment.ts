@@ -1,12 +1,11 @@
 import { execFileSync } from 'node:child_process';
-import path from 'node:path';
-import { buildSkillManifestPerRepo } from '../skill-manifest.js';
 import { userDataPaths } from '../paths.js';
 import { WorkGraphService } from '@rad-orchestration/work-graph';
 import type {
   PipelineState,
   OrchestrationConfig,
   EventContext,
+  CorrectiveTaskEntry,
   ForEachPhaseNodeState,
   ForEachTaskNodeState,
   StepNodeState,
@@ -43,71 +42,6 @@ export function validateBaseShaChronology(
     }
   }
   return null;
-}
-
-/**
- * Call buildSkillManifestPerRepo to discover and render the spawn-prompt
- * suffix the orchestrator inlines into planner spawns. On any failure,
- * emit a single warn line and return '' — manifest failure must NEVER break
- * the planner spawn.
- *
- * Repos are resolved fresh via `resolveWorktrees(projectId)` (never stored
- * paths — AD-2). Each returned entry carries a `repo` tag (FR-18) so the
- * planner knows which repo offers which skill. Falls back to a single entry
- * derived from `locate(process.cwd())` (or `process.cwd()` directly) when
- * resolveWorktrees fails or returns nothing — this covers the bootstrap window
- * before source-control init runs (AD-6 bootstrap carve-out). For a
- * `rad-orc-source`-only project the manifest is empty because `rad-*` skills
- * are filtered; an empty result is returned as '' (expected).
- *
- * Returns:
- *   - empty string '' when the manifest is `[]` OR when the invocation failed
- *   - the heading + repo-tagged JSON + orientation sentence block when at least
- *     one eligible skill is present
- */
-function buildRepositorySkillsBlock(state: PipelineState): string {
-  let repos: Array<{ name: string; root: string }> = [];
-  try {
-    const paths = userDataPaths();
-    const wgs = new WorkGraphService({ root: paths.root, worktreesDir: paths.worktrees, sideProjectsDir: paths.sideProjects });
-    const projectId = (state as { project?: { name?: string } }).project?.name ?? '';
-    const refs = wgs.resolveWorktrees(projectId);
-    if (refs.length > 0) {
-      repos = refs.map(ref => ({ name: ref.repo, root: ref.path }));
-    }
-  } catch {
-    // resolveWorktrees failure is non-fatal — fall back to single-repo locate
-  }
-  if (repos.length === 0) {
-    // Fallback: single-repo derivation via locate (bootstrap carve-out, AD-6)
-    try {
-      const paths = userDataPaths();
-      const located = new WorkGraphService({ root: paths.root, worktreesDir: paths.worktrees, sideProjectsDir: paths.sideProjects }).locate(process.cwd());
-      if (located.kind === 'worktree' && located.worktree_name && located.repo) {
-        repos = [{ name: located.repo, root: path.join(paths.worktrees, located.worktree_name, located.repo) }];
-      }
-    } catch {
-      // Locate failure is non-fatal — fall back to process.cwd()
-    }
-    if (repos.length === 0) {
-      repos = [{ name: '', root: process.cwd() }];
-    }
-  }
-  let arr;
-  try {
-    arr = buildSkillManifestPerRepo({ repos });
-  } catch (err) {
-    console.warn(
-      `context-enrichment: buildSkillManifestPerRepo failed (${(err as Error).message}); emitting empty repository_skills_block`
-    );
-    return '';
-  }
-  if (!Array.isArray(arr) || arr.length === 0) return '';
-  const json = JSON.stringify(arr, null, 2);
-  return (
-    `\n\n## Repository Skills Available\n\n${json}\n\n` +
-    `Entries above are a catalog. Each entry carries a \`repo\` field identifying which repository the skill belongs to — use it to target repo-specific guidance when inlining skill conventions into tasks. Read a listed path **only when** its description matches the work you are about to plan — skip the rest to avoid token waste. Any \`SKILL.md\` you encounter outside this catalog (e.g., via Grep/Glob) was filtered on purpose; do not Read it.\n`
-  );
 }
 
 export interface EnrichmentInput {
@@ -206,7 +140,6 @@ export function resolveActiveTaskIndex(state: PipelineState, phaseIndex: number)
 }
 
 const PLANNING_SPAWN_STEPS: Record<string, string> = {
-  spawn_requirements: 'requirements',
   spawn_master_plan: 'master_plan',
 };
 
@@ -226,6 +159,43 @@ const EMPTY_CONTEXT_ACTIONS = new Set([
   'ask_gate_mode',
   'display_complete',
 ]);
+
+/**
+ * Report-fields subset for a corrective-active spawn: always the corrective's
+ * 1-based `corrective_index`, plus `review_report_path` when the entry carries a
+ * non-empty one (omitted otherwise). Spread into the coder/reviewer spawn
+ * context so a correction sees the review report that requested it.
+ */
+function correctiveReportFields(entry: CorrectiveTaskEntry): Record<string, unknown> {
+  const fields: Record<string, unknown> = { corrective_index: entry.index };
+  const reportPath = entry.review_report_path;
+  if (typeof reportPath === 'string' && reportPath.trim().length > 0) {
+    fields.review_report_path = reportPath;
+  }
+  return fields;
+}
+
+/**
+ * Resolve the pre-pipeline requirements doc (a `/rad-plan` artifact) via the
+ * work-graph, keyed on project name. Returns the project-relative
+ * `*-REQUIREMENTS.md` basename (mirroring the sibling `phase_plan_paths`
+ * shape), or null when the project is unknown or carries no requirements doc
+ * (there is no state field for this doc, so an unresolved lookup is a lost
+ * convenience, not a blocker).
+ */
+function resolveRequirementsDoc(projectName: string): string | null {
+  try {
+    const paths = userDataPaths();
+    const project = new WorkGraphService({
+      root: paths.root,
+      worktreesDir: paths.worktrees,
+      sideProjectsDir: paths.sideProjects,
+    }).listProjects().find(p => p.id === projectName);
+    return project?.docs.requirements ?? null;
+  } catch {
+    return null; // discovery is a convenience, never a hard failure
+  }
+}
 
 /**
  * Derive per-repo enrichment entries for any action that emits a `repos[]` array.
@@ -283,30 +253,10 @@ function buildReposArray(
 export function enrichActionContext(input: EnrichmentInput): Record<string, unknown> {
   const { action, walkerContext, state } = input;
 
-  // Planning spawn enrichment — invoke buildSkillManifest once per planner
-  // spawn and surface the rendered block under `repository_skills_block` so
-  // the orchestrator can inline it verbatim into the spawn prompt. Manifest
-  // failure never breaks the spawn — buildRepositorySkillsBlock returns ''
-  // on any error path. For spawn_master_plan only, also surface the
-  // phase/task limits so the orchestrator can inline a `## Plan Size Limits`
-  // block into the planner prompt without reading state.json or the YAML.
+  // Planning spawn enrichment — map the action to its planner step. The
+  // orchestrator inlines `step` into the spawn prompt directly.
   if (action in PLANNING_SPAWN_STEPS) {
-    const repository_skills_block = buildRepositorySkillsBlock(state);
-    const base = {
-      ...walkerContext,
-      step: PLANNING_SPAWN_STEPS[action],
-      repository_skills_block,
-    };
-    if (action === 'spawn_master_plan') {
-      return {
-        ...base,
-        limits: {
-          max_phases: input.config.limits.max_phases,
-          max_tasks_per_phase: input.config.limits.max_tasks_per_phase,
-        },
-      };
-    }
-    return base;
+    return { ...walkerContext, step: PLANNING_SPAWN_STEPS[action] };
   }
 
   // Phase-level enrichment
@@ -333,8 +283,16 @@ export function enrichActionContext(input: EnrichmentInput): Record<string, unkn
         .find(ct => ct.repos.some(r => r.commit_hash != null));
       const lastTaskRepos = lastTaskFinalCorrective?.repos ?? lastTask?.repos ?? [];
 
-      const correctiveFields = phaseIter && phaseIter.corrective_tasks.length > 0
-        ? { is_correction: true, corrective_index: phaseIter.corrective_tasks.length }
+      // Canonical corrective_index: the latest corrective's own `.index`, not
+      // the array length (reconciled to CorrectiveTaskEntry.index — the same
+      // derivation execute_task and spawn_code_reviewer use). This corrective
+      // branch is provably unreachable via the walker (phase review is
+      // single-pass), so this is hygiene/future-proofing.
+      const lastPhaseCorrective = phaseIter && phaseIter.corrective_tasks.length > 0
+        ? phaseIter.corrective_tasks[phaseIter.corrective_tasks.length - 1]
+        : undefined;
+      const correctiveFields = lastPhaseCorrective
+        ? { is_correction: true, corrective_index: lastPhaseCorrective.index }
         : {};
 
       // Build repos[] with path/branch from buildReposArray, then attach per-repo phase SHAs.
@@ -346,7 +304,7 @@ export function enrichActionContext(input: EnrichmentInput): Record<string, unkn
         ),
       }));
 
-      return { ...base, repos, ...correctiveFields };
+      return { ...base, repos, phase_plan_doc: phaseIter?.doc_path ?? null, ...correctiveFields };
     }
 
     return base;
@@ -402,6 +360,22 @@ export function enrichActionContext(input: EnrichmentInput): Record<string, unkn
       const phaseLoop = state.graph.nodes['phase_loop'] as ForEachPhaseNodeState | undefined;
       const phaseIter = phaseLoop?.iterations[phaseNumber - 1];
 
+      // Surface the authored complexity signal of the active task iteration so
+      // the coder spawn routes to the correct tier. Defaults to `standard` when
+      // the iteration carries no signal (e.g. phase-scope correctives).
+      const taskLoopForComplexity = phaseIter?.nodes['task_loop'] as ForEachTaskNodeState | undefined;
+      const complexity = taskLoopForComplexity?.iterations[taskNumber - 1]?.complexity ?? 'standard';
+
+      // Whether the coder should commit its work, derived from the sealed
+      // source-control policy: no source control (null) or `never` turns commit
+      // off; any other value ('always') turns it on. Rides the envelope as a
+      // sibling to `complexity` so the orchestrator can shape the coder's spawn
+      // prompt. Push is inferred at runtime from repo remote presence, so there
+      // is no should_push counterpart. Kept identical to the `task_completed`
+      // mutation's `commitExpected` so the two never disagree on the null case.
+      const scForCommit = state.pipeline.source_control;
+      const should_commit = scForCommit != null && scForCommit.auto_commit !== 'never';
+
       // Iter 11 — phase-scope-first. When a phase-scope corrective is active
       // (last entry on phaseIter.corrective_tasks with status `not_started` or
       // `in_progress`), route handoff_doc to that corrective's pre-completed
@@ -418,7 +392,7 @@ export function enrichActionContext(input: EnrichmentInput): Record<string, unkn
         if (typeof phaseCorrectiveDoc === 'string' && phaseCorrectiveDoc.trim().length > 0) {
           // Return the stored path unchanged (not the trimmed copy) so downstream
           // consumers see the value exactly as the mutation wrote it.
-          return { ...base, handoff_doc: phaseCorrectiveDoc, repos };
+          return { ...base, handoff_doc: phaseCorrectiveDoc, repos, complexity, should_commit, ...correctiveReportFields(activePhaseCorrective) };
         }
       }
 
@@ -442,22 +416,29 @@ export function enrichActionContext(input: EnrichmentInput): Record<string, unkn
         if (typeof correctiveDoc === 'string' && correctiveDoc.trim().length > 0) {
           // Return the stored path unchanged (not the trimmed copy) so downstream
           // consumers see the value exactly as the mutation wrote it.
-          return { ...base, handoff_doc: correctiveDoc, repos };
+          return { ...base, handoff_doc: correctiveDoc, repos, complexity, should_commit, ...correctiveReportFields(activeCorrective) };
         }
       }
 
       const handoff_doc = taskIter?.doc_path ?? '';
-      return { ...base, handoff_doc, repos };
+      return { ...base, handoff_doc, repos, complexity, should_commit };
     }
 
     if (action === 'spawn_code_reviewer') {
       const phaseLoop = state.graph.nodes['phase_loop'] as ForEachPhaseNodeState | undefined;
       const phaseIter = phaseLoop?.iterations[phaseNumber - 1];
 
+      // Mirror execute_task's complexity derivation verbatim (including the quirk
+      // that it always reads the base task iteration's signal, defaulting to
+      // `standard`) so the reviewer tier routes consistently with the coder tier.
+      const taskLoopForComplexity = phaseIter?.nodes['task_loop'] as ForEachTaskNodeState | undefined;
+      const complexity = taskLoopForComplexity?.iterations[taskNumber - 1]?.complexity ?? 'standard';
+
       // Iter 11 — phase-scope-first. When a phase-scope corrective is active,
       // route repos[].head_sha to the phase-scope corrective's per-repo commit hashes
-      // and flag is_correction + corrective_index from phaseIter. Checked BEFORE the
-      // task-scope corrective path.
+      // and flag is_correction + report fields from phaseIter. Checked BEFORE the
+      // task-scope corrective path. handoff_doc is the phase iteration's original
+      // scope doc.
       const phaseCTs = phaseIter?.corrective_tasks ?? [];
       const activePhaseCorrective = phaseCTs.slice().reverse().find(
         ct => ct.status === 'in_progress' || ct.status === 'not_started'
@@ -467,8 +448,10 @@ export function enrichActionContext(input: EnrichmentInput): Record<string, unkn
         return {
           ...base,
           repos: buildReposArray(state, r => sourceRepos.find(sr => sr.name === r.name)?.commit_hash ?? null),
+          complexity,
+          handoff_doc: phaseIter?.doc_path ?? null,
           is_correction: true,
-          corrective_index: activePhaseCorrective.index,
+          ...correctiveReportFields(activePhaseCorrective),
         };
       }
 
@@ -480,11 +463,13 @@ export function enrichActionContext(input: EnrichmentInput): Record<string, unkn
       );
       const sourceRepos = activeCorrective ? activeCorrective.repos : (taskIter?.repos ?? []);
       const correctiveFields = activeCorrective
-        ? { is_correction: true, corrective_index: activeCorrective.index }
+        ? { is_correction: true, ...correctiveReportFields(activeCorrective) }
         : {};
       return {
         ...base,
         repos: buildReposArray(state, r => sourceRepos.find(sr => sr.name === r.name)?.commit_hash ?? null),
+        complexity,
+        handoff_doc: taskIter?.doc_path ?? null,
         ...correctiveFields,
       };
     }
@@ -493,44 +478,6 @@ export function enrichActionContext(input: EnrichmentInput): Record<string, unkn
   }
 
   // Source control enrichment
-  if (action === 'invoke_source_control_commit') {
-    const phaseNumber = resolveActivePhaseIndex(state);
-    const taskNumber = resolveActiveTaskIndex(state, phaseNumber);
-    const phase_id = formatPhaseId(phaseNumber);
-
-    let task_number: number | null = taskNumber;
-    let task_id = formatTaskId(phaseNumber, taskNumber);
-
-    const phaseLoopForSentinel = state.graph.nodes['phase_loop'] as ForEachPhaseNodeState | undefined;
-    const phaseIterForSentinel = phaseLoopForSentinel?.iterations[phaseNumber - 1];
-    const phaseCorrectives = phaseIterForSentinel?.corrective_tasks ?? [];
-    const phaseCorrectiveActive = phaseCorrectives.length > 0 &&
-      (phaseCorrectives[phaseCorrectives.length - 1].status === 'not_started' ||
-       phaseCorrectives[phaseCorrectives.length - 1].status === 'in_progress');
-    if (phaseCorrectiveActive) {
-      task_number = null;
-      task_id = `${phase_id}-PHASE`;
-    }
-
-    // Derive per-repo entries with fresh absolute paths via buildReposArray —
-    // never read a stored path. Merges base_branch from sc repos (required by
-    // the source-control skill's commit context contract).
-    const scReposForCommit = state.pipeline.source_control?.repos ?? [];
-    const repos = buildReposArray(state).map(r => ({
-      ...r,
-      base_branch: scReposForCommit.find(sc => sc.name === r.name)?.base_branch ?? null,
-    }));
-
-    return {
-      ...walkerContext,
-      phase_number: phaseNumber,
-      phase_id,
-      task_number,
-      task_id,
-      repos,
-    };
-  }
-
   if (action === 'invoke_source_control_pr') {
     // Derive per-repo entries with fresh absolute paths via buildReposArray —
     // never read a stored path. Merges base_branch from sc repos (required by
@@ -647,9 +594,16 @@ export function enrichActionContext(input: EnrichmentInput): Record<string, unkn
       };
     });
 
+    // Scope docs for the final review: the pre-pipeline requirements doc
+    // (work-graph-resolved; null when unresolved) and every phase plan path.
+    const requirements_doc = resolveRequirementsDoc(state.project.name);
+    const phase_plan_paths = phaseIterations.map(pi => pi.doc_path ?? null);
+
     return {
       ...walkerContext,
       repos,
+      requirements_doc,
+      phase_plan_paths,
     };
   }
 

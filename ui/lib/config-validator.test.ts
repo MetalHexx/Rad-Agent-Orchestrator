@@ -10,10 +10,7 @@ function makeValidConfig(): OrchestrationConfig {
   return {
     version: '4',
     limits: {
-      max_phases: 5,
-      max_tasks_per_phase: 10,
       max_retries_per_task: 2,
-      max_consecutive_review_rejections: 3,
     },
     human_gates: {
       after_planning: true,
@@ -52,36 +49,6 @@ test('valid config returns empty object', () => {
   assert.strictEqual(Object.keys(result).length, 0);
 });
 
-
-// --- limits.max_phases ---
-
-test('limits.max_phases 0 returns error', () => {
-  const cfg = makeValidConfig();
-  cfg.limits.max_phases = 0;
-  const result = validateConfig(cfg);
-  assert.strictEqual(result['limits.max_phases'], 'Must be a positive integer');
-});
-
-test('limits.max_phases -1 returns error', () => {
-  const cfg = makeValidConfig();
-  cfg.limits.max_phases = -1;
-  const result = validateConfig(cfg);
-  assert.strictEqual(result['limits.max_phases'], 'Must be a positive integer');
-});
-
-test('limits.max_phases 1.5 returns error', () => {
-  const cfg = makeValidConfig();
-  cfg.limits.max_phases = 1.5;
-  const result = validateConfig(cfg);
-  assert.strictEqual(result['limits.max_phases'], 'Must be a positive integer');
-});
-
-test('limits.max_phases 1 is valid', () => {
-  const cfg = makeValidConfig();
-  cfg.limits.max_phases = 1;
-  const result = validateConfig(cfg);
-  assert.strictEqual(result['limits.max_phases'], undefined);
-});
 
 // --- limits.max_retries_per_task ---
 
@@ -175,11 +142,12 @@ test('source_control.auto_pr invalid returns error', () => {
 
 test('multiple invalid fields returns all errors', () => {
   const cfg = makeValidConfig();
-  cfg.limits.max_phases = 0;
-  cfg.limits.max_tasks_per_phase = -1;
+  cfg.limits.max_retries_per_task = -1;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (cfg.human_gates as any).execution_mode = 'invalid';
   const result = validateConfig(cfg);
-  assert.strictEqual(result['limits.max_phases'], 'Must be a positive integer');
-  assert.strictEqual(result['limits.max_tasks_per_phase'], 'Must be a positive integer');
+  assert.strictEqual(result['limits.max_retries_per_task'], 'Must be 0 or a positive integer');
+  assert.strictEqual(result['human_gates.execution_mode'], 'Invalid execution mode');
   assert.strictEqual(Object.keys(result).length, 2);
 });
 
@@ -234,7 +202,7 @@ test('validator no longer requires retired fields', () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const errors = validateConfig({
     version: '1.0',
-    limits: { max_phases: 10, max_tasks_per_phase: 8, max_retries_per_task: 5, max_consecutive_review_rejections: 3 },
+    limits: { max_retries_per_task: 5 },
     human_gates: { after_planning: true, execution_mode: 'ask', after_final_review: true },
     source_control: { auto_commit: 'ask', auto_pr: 'ask' },
     default_template: 'ask',

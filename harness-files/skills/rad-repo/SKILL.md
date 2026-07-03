@@ -1,6 +1,6 @@
 ---
 name: rad-repo
-description: Use this skill whenever a task might involve code beyond the current working directory — when you're figuring out where code lives, scoping work that may span multiple repositories, or about to act as if the current repo is the whole system — and whenever the user wants to register, bind, describe, group, or manage repositories and repo-groups. The repo registry is your map of the repos a team works across and how they relate.
+description: Use this skill whenever a task might involve code beyond the current working directory — when you're figuring out where code lives, scoping work that may span multiple repositories, or about to act as if the current repo is the whole system.  Use it whenever the user asks to register, bind, describe, group, or manage repositories and repo-groups.
 user-invocable: true
 ---
 

@@ -25,13 +25,13 @@ const cleanups: Array<() => void> = [];
 afterEach(() => { while (cleanups.length) cleanups.pop()!(); });
 beforeEach(() => { cleanups.push(useRealCatalog()); });
 
-// Synthetic execution template: task body is task_gate → task_executor → commit
-// → code_review. findTaskLoopBodyDefs mirrors this body into corrective entries
-// (both phase- and task-scope), so a corrective walks the same four nodes.
-const COMMIT_TEMPLATE_BODY = `template:
-  id: syn-exec-commit
+// Synthetic execution template: task body is task_gate → task_executor →
+// code_review. findTaskLoopBodyDefs mirrors this body into corrective entries
+// (both phase- and task-scope), so a corrective walks the same three nodes.
+const EXEC_TEMPLATE_BODY = `template:
+  id: syn-exec
   version: "1.0.0"
-  description: "Synthetic execution template with commit step for behavioral tests"
+  description: "Synthetic execution template for behavioral tests"
 nodes:
   - id: gate_mode_selection
     kind: gate
@@ -69,19 +69,13 @@ nodes:
             action: execute_task
             events: { completed: task_completed }
             depends_on: [task_gate]
-          - id: commit
-            kind: step
-            label: "Commit"
-            action: invoke_source_control_commit
-            events: { completed: commit_completed }
-            depends_on: [task_executor]
           - id: code_review
             kind: step
             label: "Code Review"
             action: spawn_code_reviewer
             events: { completed: code_review_completed }
             doc_output_field: doc_path
-            depends_on: [commit]
+            depends_on: [task_executor]
       - id: phase_gate
         kind: gate
         label: "Phase Gate"
@@ -119,11 +113,10 @@ const step = (status: string) => ({ kind: 'step', status, doc_path: null, retrie
 const gate = (status: string, gate_active: boolean) => ({ kind: 'gate', status, gate_active });
 
 /** Corrective body nodes mirroring the task body. */
-function correctiveNodes(taskExecutor: string, commit: string, codeReview: string) {
+function correctiveNodes(taskExecutor: string, codeReview: string) {
   return {
     task_gate: gate('completed', true),
     task_executor: step(taskExecutor),
-    commit: step(commit),
     code_review: step(codeReview),
   };
 }
@@ -135,7 +128,7 @@ function baseState(currentNodePath: string, phaseIteration: Record<string, unkno
     project: { name: 'cli-behavioral', created: '2024-01-01T00:00:00.000Z', updated: '2024-01-01T00:00:00.000Z' },
     config: {
       gate_mode: 'autonomous',
-      limits: { max_phases: 10, max_tasks_per_phase: 8, max_retries_per_task: 3, max_consecutive_review_rejections: 3 },
+      limits: { max_retries_per_task: 3 },
       source_control: { auto_commit: 'always', auto_pr: 'never' },
     },
     pipeline: {
@@ -152,7 +145,7 @@ function baseState(currentNodePath: string, phaseIteration: Record<string, unkno
       halt_reason: null,
     },
     graph: {
-      template_id: 'syn-exec-commit',
+      template_id: 'syn-exec',
       status: 'in_progress',
       current_node_path: currentNodePath,
       nodes: {
@@ -174,18 +167,24 @@ function completedTaskIteration(commitHash: string | null) {
     nodes: {
       task_gate: gate('completed', true),
       task_executor: step('completed'),
-      commit: step('completed'),
       code_review: step('completed'),
     },
   };
 }
 
+// Original scope docs seeded on the hosting iterations. Under the raw-verdict
+// contract a born corrective copies its hosting iteration's doc_path (the
+// ORIGINAL phase plan / task handoff), so these must be non-empty — an empty
+// scope doc is an engine invariant violation that the mutation throws on.
+const PHASE_PLAN_DOC = 'phases/p1-plan.md';
+const TASK_HANDOFF_DOC = 'tasks/p1-t1.md';
+
 // ── Phase-scope corrective states ────────────────────────────────────────────
 function phaseCorrectiveState(cursor: string, nodes: Record<string, unknown>, repos = [{ name: 'backend', commit_hash: null }]) {
   return baseState(cursor, {
-    index: 0, status: 'in_progress', doc_path: null, repos: [],
+    index: 0, status: 'in_progress', doc_path: PHASE_PLAN_DOC, repos: [],
     corrective_tasks: [
-      { index: 1, reason: 'phase review requested changes', injected_after: 'phase_review', status: 'in_progress', doc_path: null, repos, nodes },
+      { index: 1, reason: 'phase review requested changes', injected_after: 'phase_review', status: 'in_progress', doc_path: PHASE_PLAN_DOC, repos, nodes },
     ],
     nodes: {
       task_loop: { kind: 'for_each_task', status: 'completed', iterations: [completedTaskIteration('aaa1111')] },
@@ -199,8 +198,9 @@ function phaseCorrectiveState(cursor: string, nodes: Record<string, unknown>, re
 function taskCorrectiveState(cursor: string, nodes: Record<string, unknown>) {
   const taskIter = completedTaskIteration('aaa1111');
   (taskIter as Record<string, unknown>).status = 'in_progress';
+  (taskIter as Record<string, unknown>).doc_path = TASK_HANDOFF_DOC;
   (taskIter as Record<string, unknown>).corrective_tasks = [
-    { index: 1, reason: 'code review requested changes', injected_after: 'code_review', status: 'in_progress', doc_path: null, repos: [{ name: 'backend', commit_hash: null }], nodes },
+    { index: 1, reason: 'code review requested changes', injected_after: 'code_review', status: 'in_progress', doc_path: TASK_HANDOFF_DOC, repos: [{ name: 'backend', commit_hash: null }], nodes },
   ];
   return baseState(cursor, {
     index: 0, status: 'in_progress', doc_path: null, repos: [],
@@ -225,9 +225,9 @@ async function signal(projectDir: string, configPath: string, argv: string[]) {
 
 function makeWorld(state: unknown, sideFiles: Array<{ path: string; contents: string }> = []) {
   const w = buildWorld({
-    template: { id: 'syn-exec-commit', body: COMMIT_TEMPLATE_BODY },
+    template: { id: 'syn-exec', body: EXEC_TEMPLATE_BODY },
     state: state as Parameters<typeof buildWorld>[0]['state'],
-    config: { default_template: 'syn-exec-commit', human_gates: { after_planning: true, execution_mode: 'autonomous', after_final_review: true } },
+    config: { default_template: 'syn-exec', human_gates: { after_planning: true, execution_mode: 'autonomous', after_final_review: true } },
     sideFiles,
   });
   cleanups.push(w.cleanup);
@@ -239,56 +239,45 @@ function readState(projectDir: string) {
 }
 
 describe('corrective task advancement — full engine flow', () => {
-  it('phase-corrective task_completed advances to commit without tripping the cursor tripwire (regression)', async () => {
+  it('phase-corrective task_completed records the per-corrective hash and advances to code review without tripping the cursor tripwire (regression)', async () => {
     const w = makeWorld(phaseCorrectiveState(
       'phase_loop[0].corrective_tasks[1].task_executor',
-      correctiveNodes('in_progress', 'not_started', 'not_started'),
+      correctiveNodes('in_progress', 'not_started'),
     ));
-    const env = await signal(w.projectDir, w.configPath, ['--event', 'task_completed', '--phase', '1', '--task', '1']);
-
-    expect(env.ok, env.error?.message).toBe(true);
-    expect((env.data as { action: string }).action).toBe('invoke_source_control_commit');
-    const onDisk = readState(w.projectDir);
-    expect(onDisk.graph.current_node_path).toBe('phase_loop[0].corrective_tasks[1].commit');
-    const corrective = onDisk.graph.nodes.phase_loop.iterations[0].corrective_tasks[0];
-    expect(corrective.nodes.task_executor.status).toBe('completed');
-    expect(corrective.nodes.commit.status).toBe('in_progress');
-    assertPromptForEnvelopeAction(env);
-  });
-
-  it('task-corrective task_completed advances to commit without tripping the cursor tripwire', async () => {
-    const w = makeWorld(taskCorrectiveState(
-      'phase_loop[0].task_loop[0].corrective_tasks[1].task_executor',
-      correctiveNodes('in_progress', 'not_started', 'not_started'),
-    ));
-    const env = await signal(w.projectDir, w.configPath, ['--event', 'task_completed', '--phase', '1', '--task', '1']);
-
-    expect(env.ok, env.error?.message).toBe(true);
-    expect((env.data as { action: string }).action).toBe('invoke_source_control_commit');
-    const onDisk = readState(w.projectDir);
-    expect(onDisk.graph.current_node_path).toBe('phase_loop[0].task_loop[0].corrective_tasks[1].commit');
-    const corrective = onDisk.graph.nodes.phase_loop.iterations[0].nodes.task_loop.iterations[0].corrective_tasks[0];
-    expect(corrective.nodes.task_executor.status).toBe('completed');
-    expect(corrective.nodes.commit.status).toBe('in_progress');
-    assertPromptForEnvelopeAction(env);
-  });
-
-  it('phase-corrective commit_completed advances to code review and records the per-corrective hash', async () => {
-    const w = makeWorld(phaseCorrectiveState(
-      'phase_loop[0].corrective_tasks[1].commit',
-      correctiveNodes('completed', 'in_progress', 'not_started'),
-    ));
-    // P04-T02: signal is now array-shaped; use --repos instead of --commit-hash.
-    const env = await signal(w.projectDir, w.configPath, ['--event', 'commit_completed', '--phase', '1', '--task', '1',
-      '--repos', JSON.stringify([{ name: 'backend', committed: true, commitHash: 'cor1234', pushed: true }])]);
+    // task_completed carries the coder's per-repo commit result + branch and
+    // advances to code review; the hash is recorded before the reviewer runs.
+    const env = await signal(w.projectDir, w.configPath, ['--event', 'task_completed', '--phase', '1', '--task', '1',
+      '--repos', JSON.stringify([{ name: 'backend', committed: true, commitHash: 'cor1234', pushed: true }]), '--branch', 'feature/syn']);
 
     expect(env.ok, env.error?.message).toBe(true);
     expect((env.data as { action: string }).action).toBe('spawn_code_reviewer');
     const onDisk = readState(w.projectDir);
     expect(onDisk.graph.current_node_path).toBe('phase_loop[0].corrective_tasks[1].code_review');
     const corrective = onDisk.graph.nodes.phase_loop.iterations[0].corrective_tasks[0];
+    expect(corrective.nodes.task_executor.status).toBe('completed');
+    expect(corrective.nodes.code_review.status).toBe('in_progress');
+    // task_completed records the per-corrective commit hash.
     expect(corrective.repos[0].commit_hash).toBe('cor1234');
-    expect(corrective.nodes.commit.status).toBe('completed');
+    assertPromptForEnvelopeAction(env);
+  });
+
+  it('task-corrective task_completed records the per-corrective hash and advances to code review without tripping the cursor tripwire', async () => {
+    const w = makeWorld(taskCorrectiveState(
+      'phase_loop[0].task_loop[0].corrective_tasks[1].task_executor',
+      correctiveNodes('in_progress', 'not_started'),
+    ));
+    const env = await signal(w.projectDir, w.configPath, ['--event', 'task_completed', '--phase', '1', '--task', '1',
+      '--repos', JSON.stringify([{ name: 'backend', committed: true, commitHash: 'cor1234', pushed: true }]), '--branch', 'feature/syn']);
+
+    expect(env.ok, env.error?.message).toBe(true);
+    expect((env.data as { action: string }).action).toBe('spawn_code_reviewer');
+    const onDisk = readState(w.projectDir);
+    expect(onDisk.graph.current_node_path).toBe('phase_loop[0].task_loop[0].corrective_tasks[1].code_review');
+    const corrective = onDisk.graph.nodes.phase_loop.iterations[0].nodes.task_loop.iterations[0].corrective_tasks[0];
+    expect(corrective.nodes.task_executor.status).toBe('completed');
+    expect(corrective.nodes.code_review.status).toBe('in_progress');
+    // task_completed records the per-corrective commit hash.
+    expect(corrective.repos[0].commit_hash).toBe('cor1234');
     assertPromptForEnvelopeAction(env);
   });
 });
@@ -299,20 +288,19 @@ describe('corrective task advancement — full engine flow', () => {
 // superseded parent corrective must be finalized to `completed` at birth so it
 // is never stranded at in_progress inside a later-completed iteration (which the
 // dashboard rendered as a perpetual "Coding" spinner). Driving
-// code_review_completed --verdict changes_requested requires the mutation's
-// routing inputs to be present on the review doc frontmatter (merged by
-// pre-read): verdict, orchestrator_mediated, effective_outcome, and
-// corrective_handoff_path.
+// code_review_completed with a raw `changes_requested` verdict births the
+// successor; the born corrective carries its hosting iteration's ORIGINAL scope
+// doc, not an orchestrator-authored handoff path.
 
 const PHASE_C1_CR_DOC = 'reports/phase-c1-cr.md';
-const PHASE_C1_CR_CONTENTS = `---\nverdict: changes_requested\norchestrator_mediated: true\neffective_outcome: changes_requested\ncorrective_handoff_path: tasks/phase-c2.md\n---\nPhase corrective C1 code review — requests further changes.\n`;
+const PHASE_C1_CR_CONTENTS = `---\nverdict: changes_requested\n---\nPhase corrective C1 code review — requests further changes.\n`;
 const PHASE_C2_CR_DOC = 'reports/phase-c2-cr.md';
 const PHASE_C2_CR_APPROVED = `---\nverdict: approved\n---\nPhase corrective C2 code review — approved.\n`;
 const PHASE_C2_HANDOFF = 'tasks/phase-c2.md';
 const HANDOFF_STUB = `---\ntype: task_handoff\n---\nCorrective handoff stub.\n`;
 
 const TASK_C1_CR_DOC = 'reports/task-c1-cr.md';
-const TASK_C1_CR_CONTENTS = `---\nverdict: changes_requested\norchestrator_mediated: true\neffective_outcome: changes_requested\ncorrective_handoff_path: tasks/task-c2.md\n---\nTask corrective C1 code review — requests further changes.\n`;
+const TASK_C1_CR_CONTENTS = `---\nverdict: changes_requested\n---\nTask corrective C1 code review — requests further changes.\n`;
 const TASK_C2_HANDOFF = 'tasks/task-c2.md';
 
 describe('corrective-of-a-corrective — superseded parent finalization (full engine flow)', () => {
@@ -320,7 +308,7 @@ describe('corrective-of-a-corrective — superseded parent finalization (full en
     const w = makeWorld(
       phaseCorrectiveState(
         'phase_loop[0].corrective_tasks[1].code_review',
-        correctiveNodes('completed', 'completed', 'in_progress'),
+        correctiveNodes('completed', 'in_progress'),
       ),
       [
         { path: PHASE_C1_CR_DOC, contents: PHASE_C1_CR_CONTENTS },
@@ -339,7 +327,7 @@ describe('corrective-of-a-corrective — superseded parent finalization (full en
     // Successor born and now active.
     expect(cts[1].index).toBe(2);
     expect(cts[1].injected_after).toBe('code_review');
-    expect(cts[1].doc_path).toBe('tasks/phase-c2.md');
+    expect(cts[1].doc_path).toBe(PHASE_PLAN_DOC);
     expect(onDisk.graph.current_node_path).toMatch(/corrective_tasks\[2\]/);
     assertPromptForEnvelopeAction(env);
   });
@@ -348,7 +336,7 @@ describe('corrective-of-a-corrective — superseded parent finalization (full en
     const w = makeWorld(
       phaseCorrectiveState(
         'phase_loop[0].corrective_tasks[1].code_review',
-        correctiveNodes('completed', 'completed', 'in_progress'),
+        correctiveNodes('completed', 'in_progress'),
       ),
       [
         { path: PHASE_C1_CR_DOC, contents: PHASE_C1_CR_CONTENTS },
@@ -362,12 +350,9 @@ describe('corrective-of-a-corrective — superseded parent finalization (full en
     // 1. C1 review requests changes → C2 born, C1 finalized.
     let env = await signal(w.projectDir, w.configPath, ['--event', 'code_review_completed', '--doc-path', c1ReviewAbs, '--phase', '1', '--task', '1']);
     expect(env.ok, env.error?.message).toBe(true);
-    // 2. Drive C2's body to completion: execute → commit → code_review(approved).
-    env = await signal(w.projectDir, w.configPath, ['--event', 'task_completed', '--phase', '1', '--task', '1']);
-    expect(env.ok, env.error?.message).toBe(true);
-    // P04-T02: signal is now array-shaped; use --repos instead of --commit-hash.
-    env = await signal(w.projectDir, w.configPath, ['--event', 'commit_completed', '--phase', '1', '--task', '1',
-      '--repos', JSON.stringify([{ name: 'backend', committed: true, commitHash: 'c2hash1', pushed: true }])]);
+    // 2. Drive C2's body to completion: task_completed (with commit result) → code_review(approved).
+    env = await signal(w.projectDir, w.configPath, ['--event', 'task_completed', '--phase', '1', '--task', '1',
+      '--repos', JSON.stringify([{ name: 'backend', committed: true, commitHash: 'c2hash1', pushed: true }]), '--branch', 'feature/syn']);
     expect(env.ok, env.error?.message).toBe(true);
     env = await signal(w.projectDir, w.configPath, ['--event', 'code_review_completed', '--doc-path', c2ReviewAbs, '--phase', '1', '--task', '1']);
     expect(env.ok, env.error?.message).toBe(true);
@@ -386,7 +371,7 @@ describe('corrective-of-a-corrective — superseded parent finalization (full en
     const w = makeWorld(
       taskCorrectiveState(
         'phase_loop[0].task_loop[0].corrective_tasks[1].code_review',
-        correctiveNodes('completed', 'completed', 'in_progress'),
+        correctiveNodes('completed', 'in_progress'),
       ),
       [
         { path: TASK_C1_CR_DOC, contents: TASK_C1_CR_CONTENTS },
@@ -404,7 +389,7 @@ describe('corrective-of-a-corrective — superseded parent finalization (full en
     expect(cts[0].status).toBe('completed');
     expect(cts[1].index).toBe(2);
     expect(cts[1].injected_after).toBe('code_review');
-    expect(cts[1].doc_path).toBe('tasks/task-c2.md');
+    expect(cts[1].doc_path).toBe(TASK_HANDOFF_DOC);
     expect(onDisk.graph.current_node_path).toMatch(/task_loop\[0\]\.corrective_tasks\[2\]/);
     assertPromptForEnvelopeAction(env);
   });
@@ -429,7 +414,7 @@ describe('corrective close finalizes unreached body gates as skipped (state hygi
       baseState('phase_loop[0].corrective_tasks[1].code_review', {
         index: 0, status: 'in_progress', doc_path: null, repos: [],
         corrective_tasks: [
-          { index: 1, reason: 'phase review requested changes', injected_after: 'phase_review', status: 'in_progress', doc_path: null, repos: [{ name: 'backend', commit_hash: 'pcor1' }], nodes: correctiveNodes('completed', 'completed', 'in_progress') },
+          { index: 1, reason: 'phase review requested changes', injected_after: 'phase_review', status: 'in_progress', doc_path: null, repos: [{ name: 'backend', commit_hash: 'pcor1' }], nodes: correctiveNodes('completed', 'in_progress') },
         ],
         nodes: {
           task_loop: { kind: 'for_each_task', status: 'completed', iterations: [completedTaskIteration('aaa1111')] },
@@ -453,9 +438,9 @@ describe('corrective close finalizes unreached body gates as skipped (state hygi
     const taskIter = {
       index: 0, status: 'in_progress', doc_path: null, repos: [{ name: 'backend', commit_hash: 'aaa1111' }],
       corrective_tasks: [
-        { index: 1, reason: 'code review requested changes', injected_after: 'code_review', status: 'in_progress', doc_path: null, repos: [{ name: 'backend', commit_hash: 'tcor1' }], nodes: correctiveNodes('completed', 'completed', 'in_progress') },
+        { index: 1, reason: 'code review requested changes', injected_after: 'code_review', status: 'in_progress', doc_path: null, repos: [{ name: 'backend', commit_hash: 'tcor1' }], nodes: correctiveNodes('completed', 'in_progress') },
       ],
-      nodes: { task_gate: gate('not_started', false), task_executor: step('completed'), commit: step('completed'), code_review: step('completed') },
+      nodes: { task_gate: gate('not_started', false), task_executor: step('completed'), code_review: step('completed') },
     };
     const w = makeWorld(
       baseState('phase_loop[0].task_loop[0].corrective_tasks[1].code_review', {
@@ -484,7 +469,7 @@ describe('corrective close finalizes unreached body gates as skipped (state hygi
     const taskIter = {
       index: 0, status: 'in_progress', doc_path: null, repos: [{ name: 'backend', commit_hash: 'n1' }],
       corrective_tasks: [],
-      nodes: { task_gate: gate('completed', false), task_executor: step('completed'), commit: step('completed'), code_review: step('in_progress') },
+      nodes: { task_gate: gate('completed', false), task_executor: step('completed'), code_review: step('in_progress') },
     };
     const w = makeWorld(
       baseState('phase_loop[0].task_loop[0].code_review', {

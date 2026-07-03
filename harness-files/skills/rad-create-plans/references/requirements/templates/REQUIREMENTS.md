@@ -1,54 +1,96 @@
 ---
 project: "{PROJECT-NAME}"
 type: requirements
-status: "draft"
-approved_at: null
+status: draft
 created: "{YYYY-MM-DD}"
+project-type: standard
 repos: [repo-a, repo-b]
 repo-group: repo-group-name
-requirement_count: {N}
-author: "planner-agent"
 ---
 
 # {PROJECT-NAME} — Requirements
 
-{Intro paragraph 1 — 2–3 sentences: what is being built, who it's for.}
-
-{Intro paragraph 2 — 2–3 sentences: success criteria at a glance, headline constraints.}
+{Lean preamble — 2–4 sentences: the problem being solved and the intent. State
+what this is and why it exists; don't restate the Goals below.}
 
 ## Goals
-- {Single-line goal bullet}
-- {Single-line goal bullet}
+
+- {Single-line, high-signal goal.}
+- {…}
 
 ## Non-Goals
-- {Single-line out-of-scope bullet}
 
-## Functional Requirements
+- {What is deliberately out of scope.}
 
-### FR-1: {Short title}
-**Tags:** FR-1, {keyword}
+## Companion Documents
 
-{1–2 sentence description of what the system does. Constraints inline if short; bullet list only when bullets add clarity.}
+{Only when supplemental artifacts exist. Link each by relative path — visual
+(wireframes, diagrams, HTML summaries) and non-visual (PRD, data model, API
+contract). Keep in lockstep with this document.}
 
-## Non-Functional Requirements
+- [{title}](./{NAME}-{ARTIFACT}.html)
 
-### NFR-1: {Short title}
-**Tags:** NFR-1, {keyword}
+## Affected Repositories
 
-{1–2 sentences on performance, security, scale, or limit.}
+| Repository | Role | Nature of change |
+|---|---|---|
+| `{repo}` | {what it does here} | {new / edited surfaces} |
 
-## Architectural Decisions
+## Requirements
 
-### AD-1: {Short title}
-**Tags:** AD-1, {keyword}
-**Resolves:** FR-1
+### R1: {Thing to build}
 
-{Decision + constraint in 1–2 sentences. Rejected alternative: {option} — {consequence}.}
+{One-line lead — what this is.}
 
-## Design Decisions
+- {Functional behavior — high-signal bullets.}
+- {Design / UX detail, if any.}
+- {Technical detail specific to this requirement — contracts, fields, edge cases.}
 
-### DD-1: {Short title}
-**Tags:** DD-1, {keyword}
-**Resolves:** FR-1
+### R2: {Thing to build}
 
-{Observable state or interaction described in 1–2 sentences. No rationale essays.}
+{…}
+
+## Technical Specification
+
+{Cross-cutting structure, stated once: architecture, contracts, data model,
+quality attributes, risks. Tables for models/contracts/field sets; a mermaid
+diagram where a picture beats prose.}
+
+### Security Considerations
+
+{Only when the work has a security surface. Trust boundaries, authn/authz, input
+validation, secrets — name the threats that apply and their mitigations, not a
+generic checklist.}
+
+## UI/UX Design
+
+{Only when the work has a UI/UX surface. Design tokens, shared components to
+create / update / reuse, layout patterns, accessibility/a11y, and other UI/UX concerns.}
+
+### Testing Approach
+
+{The test levels that apply (unit, integration, e2e), what must be covered, and
+any fixtures or seams the Master Plan should account for. Intent, not a
+test-by-test script.}
+
+## Required Skills and MCPs
+
+{Tooling surfaced during authoring, captured for a later Master Plan session.
+Omit when none.}
+
+- **Repo skills:** {skill — repo tag}, or "none surfaced".
+- **MCPs:** {connected servers worth reaching for}, or "none required".
+
+## Key Files & Modules
+
+{The surface the Master Plan will touch — a map, not an implementation plan.}
+
+- `{repo}`: {modules / files}.
+
+## Open Questions
+
+{Only when something is genuinely unresolved. The open decisions and what each
+blocks — ask the user rather than assume. Resolve these before `/rad-plan` builds
+the Master Plan.}
+
+- {The open question — and what it blocks.}

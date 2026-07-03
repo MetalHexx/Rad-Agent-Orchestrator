@@ -1,12 +1,12 @@
 # Agents
 
-The orchestration system ships eight agents, each with a defined role, scoped tool access, and a narrow write surface. 
+The orchestration system ships seven agents, each with a defined role, scoped tool access, and a narrow write surface. 
 
-In Github copilot, you can optionally choose the Brainstormer or Orchestrator agent.  Or simply use the slash commands with the default agent.
+In Github copilot, you can optionally choose the Orchestrator agent.  Or simply use the slash commands with the default agent.
 
 In Claude Code, you always work with the default agent and simply use the slash commands.
 
-Other than the Brainstormer or Orchestrator (in Github copilot only), the agents are not directly invoked by users — operators interact via slash commands and the pipeline routes work to the right agent. The Brainstormer is user-invocable via `/rad-brainstorm`.
+Other than the Orchestrator (in Github copilot only), the agents are not directly invoked by users — operators interact via slash commands and the pipeline routes work to the right agent. Brainstorming runs as the `/rad-brainstorm` skill on your main agent.
 
 Typically, the agents will be capped at the highest model tier you have selected in your main agent chat.  So even if the Planner defaults to Opus, if you're using Sonnet in your main chat, your Planner will run with Sonnet.
 
@@ -14,7 +14,6 @@ Typically, the agents will be capped at the highest model tier you have selected
 
 | Agent | Model |
 |-------|-------|
-| Brainstormer | sonnet |
 | Orchestrator | opus |
 | Planner | opus |
 | Coder-Junior | haiku |
@@ -27,19 +26,13 @@ The three Coder tiers exist to route tasks between haiku, sonnet, and opus by co
 
 ## Agent Details
 
-### Brainstormer
-
-The Brainstormer works directly with the human in a conversational loop — asking probing questions, surfacing trade-offs, and converging on a well-defined scope before any pipeline work begins. It operates outside the main pipeline and produces `{NAME}-BRAINSTORMING.md` as the formal handoff to planning.  Any documents, images, or links captured in the brainstorming doc are pulled into the Planner's context window to written to the brainstorming document
-
-Brainstorming is also a great way to capture ideas before you're ready to execute any coding work.  Any project you brainstorm will also be available for browsing in the UI.  This creates a convenient way to plan out future work without committing to coding.
-
 ### Orchestrator
 
 The Orchestrator reads the pipeline state file on every event and dispatches the right agent at the right time. When a review comes back with changes requested, it reads the review document, judges the findings, and authors corrective task handoffs that send the Coder back to fix only what matters. Its write surface is intentionally narrow — it never writes project source code or tests.  It is recommended you run the Orchestrator with Sonnet or Opus.  The Orchestrator is only usable in Github Copilot, in claude code, the main agent acts as the Orchestrator.
 
 ### Planner
 
-The Planner authors `{NAME}-REQUIREMENTS.md` and `{NAME}-MASTER-PLAN.md` from the `{NAME}-BRAINSTORMING.md` and any user-supplied context. When authoring the plan, it pulls in domain skills already present in your repository — anything you have already authored as a skill in your repo is picked up automatically and shapes the resulting plan influenced by your skills. This is how the pipeline adapts to your existing work rather than generating a generic plan.  Currently, Opus 4.7 is the model this agent will use.
+The Planner authors `{NAME}-MASTER-PLAN.md` from the approved `{NAME}-REQUIREMENTS.md` and any user-supplied context. When authoring the plan, it pulls in domain skills already present in your repository — anything you have already authored as a skill in your repo is picked up automatically and shapes the resulting plan influenced by your skills. This is how the pipeline adapts to your existing work rather than generating a generic plan.  Currently, Opus 4.7 is the model this agent will use.
 
 ### Coder-Junior
 

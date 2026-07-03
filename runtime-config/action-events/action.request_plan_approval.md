@@ -11,4 +11,4 @@ Present the Master Plan to the operator. Show the phase breakdown and task list 
 
 Ask the operator to approve or reject. Hold here until they respond — do not proceed autonomously regardless of gate-mode settings or auto-approval configuration.
 
-Signal `plan_approved` when the operator approves. Signal `plan_rejected` when the operator rejects; the pipeline will route back to the planner for revision.
+If they approve, invoke the `/rad-execute` skill which will run the user through the execution steps.  If they reject, invoke `/rad-brainstorm` to continue refinement.

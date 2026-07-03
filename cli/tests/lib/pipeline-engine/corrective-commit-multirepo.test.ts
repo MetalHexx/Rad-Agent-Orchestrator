@@ -2,10 +2,10 @@
 //
 // Integration test: multi-repo corrective commit — create-or-match-by-name (FR-7, NFR-6).
 //
-// Asserts that a `commit_completed` signal with a two-repo array writes each
+// Asserts that a `task_completed` signal with a two-repo array writes each
 // commit hash to the matching corrective `repos[]` entry by name. The corrective
 // starts with `repos: []` (born from a `code_review_completed` with
-// `changes_requested`), so the P04-T02 create-or-match-by-name path is exercised
+// `changes_requested`), so the create-or-match-by-name path is exercised
 // across the corrective site.
 //
 // FR-7: per-repo commit hash tracking.
@@ -19,7 +19,7 @@ import { driveTwoRepoTaskCorrective, activeCorrective } from './fixtures/correct
 describe('multi-repo corrective commit — create-or-match-by-name (FR-7, NFR-6)', () => {
   it('creates corrective repos[] from the signal array names', () => {
     const io = driveTwoRepoTaskCorrective();
-    processEvent('commit_completed', PROJECT_DIR, {
+    processEvent('task_completed', PROJECT_DIR, {
       phase: 1, task: 1,
       repos: [
         { name: 'fake-api', committed: true, commitHash: 'apifix1', pushed: true },

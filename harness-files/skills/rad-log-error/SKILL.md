@@ -1,6 +1,6 @@
 ---
 name: rad-log-error
-description: 'Log pipeline execution errors to a structured per-project error log. Use when the pipeline envelope returns ok: false, when an agent produces invalid output, or when manual intervention is needed. Appends numbered entries to an append-only error log file.'
+description: 'Use this when the radorch.mjs pipeline envelope returns ok: false, when an agent produces invalid output, or when manual intervention is needed or any other issue occurs during a pipeline execution.'
 user-invocable: false
 ---
 

@@ -39,9 +39,9 @@ function assertHashWritable(entry: RepoCommitEntry, incoming: string | null): vo
   const existing = entry.commit_hash;
   if (existing != null && incoming != null && existing !== incoming) {
     throw new Error(
-      `commit_completed refused: would overwrite a finalized commit_hash ` +
-      `('${existing}' → '${incoming}') on an already-recorded node. ` +
-      `A finalized commit hash is immutable; the incoming signal addresses the wrong node or carries a stale context.`
+      `task_completed refused: would overwrite a finalized commit_hash ` +
+      `('${existing}' → '${incoming}') on an already-recorded entry. ` +
+      `A finalized commit hash is immutable; the incoming signal addresses the wrong entry or carries a stale context.`
     );
   }
 }
@@ -53,9 +53,9 @@ function assertHashWritable(entry: RepoCommitEntry, incoming: string | null): vo
  * by name and sets commit_hash when committed=true. A committed=false row with
  * no commitHash is a no-op (clean skip — never a rejection). A committed=false
  * row that nonetheless carries a commitHash is malformed (a real commit whose
- * `committed` flag was dropped in relay) and is rejected loudly — the CLI
- * guarantees committed:false ⇒ commitHash:null, so this only fires on a
- * mis-relayed payload.
+ * `committed` flag was dropped in relay) and is rejected loudly — a well-formed
+ * commit report guarantees committed:false ⇒ commitHash:null, so this only
+ * fires on a mis-relayed payload.
  */
 function applyPerRepoCommitHashes(
   repos: RepoCommitEntry[],
@@ -67,9 +67,9 @@ function applyPerRepoCommitHashes(
     if (!row.committed) {
       if (row.commitHash != null) {
         throw new Error(
-          `commit_completed refused: repo '${row.name}' carries commitHash ` +
+          `task_completed refused: repo '${row.name}' carries commitHash ` +
           `'${row.commitHash}' but committed is false/absent. A committed row must set ` +
-          `committed:true — relay the source-control agent's result array verbatim ` +
+          `committed:true — relay the coder's result array verbatim ` +
           `(every field of each row, including committed).`
         );
       }
@@ -77,14 +77,14 @@ function applyPerRepoCommitHashes(
     }
     // committed:true must carry a real hash. A null/empty hash on a committed row
     // would silently record no hash, collapsing the reviewer's diff scope to
-    // `git diff HEAD`. The commit CLI never emits this (committed ⇒ commitHash), so
-    // it only fires on a mis-relayed payload — reject it loudly, symmetric with the
-    // committed:false-with-hash guard above.
+    // `git diff HEAD`. A well-formed commit report never emits this (committed ⇒
+    // commitHash), so it only fires on a mis-relayed payload — reject it loudly,
+    // symmetric with the committed:false-with-hash guard above.
     if (row.commitHash == null || row.commitHash === '') {
       throw new Error(
-        `commit_completed refused: repo '${row.name}' reports committed:true but carries no ` +
+        `task_completed refused: repo '${row.name}' reports committed:true but carries no ` +
         `commit hash (commitHash is ${row.commitHash === '' ? 'empty' : 'null'}). A committed ` +
-        `repo must report its commit hash — relay the source-control agent's result array verbatim ` +
+        `repo must report its commit hash — relay the coder's result array verbatim ` +
         `(every field of each row, including commitHash).`
       );
     }
@@ -96,6 +96,38 @@ function applyPerRepoCommitHashes(
     assertHashWritable(entry, row.commitHash);
     entry.commit_hash = row.commitHash;
     mutations_applied.push(`set ${label}[name=${row.name}].commit_hash = ${row.commitHash ?? 'null'}`);
+  }
+}
+
+// ── On-branch record-time guard (R3 / Security) ──────────────────────────────
+
+/**
+ * Refuses to record a commit that a committed row reports on a branch other than
+ * that repo's intended task branch (sealed in source_control). This is the
+ * record-time catch-net behind the coder's pre-commit on-branch check: it hardens
+ * the record path against a stale or misrouted signal that would attach a
+ * wrong-branch commit to the iteration. committed:false rows are not checked.
+ * When the signal relays no branch the guard is a no-op — the coder's commit step
+ * is the primary gate; this only fires when a branch is present to compare.
+ */
+function assertReposOnBranch(
+  state: PipelineState,
+  signalRepos: SignalRepoRow[],
+  reportedBranch: string | undefined,
+): void {
+  if (reportedBranch === undefined || reportedBranch === '') return;
+  const scRepos = state.pipeline.source_control?.repos ?? [];
+  for (const row of signalRepos) {
+    if (!row.committed) continue;
+    const intended = scRepos.find(sc => sc.name === row.name)?.branch;
+    if (intended != null && intended !== '' && reportedBranch !== intended) {
+      throw new Error(
+        `task_completed refused: repo '${row.name}' reports a commit on branch ` +
+        `'${reportedBranch}' but its intended task branch is '${intended}'. A commit off ` +
+        `the intended branch is refused at record time — the coder commits on its own task ` +
+        `branch in its own worktree.`
+      );
+    }
   }
 }
 
@@ -131,16 +163,14 @@ export function resolveNodeState(
   }
 
   // scope === 'task'
-  // Iter 11 — phase-level corrective tasks (from phase_review_completed with an
-  // orchestrator-supplied handoff path) now carry pre-seeded task-body nodes
-  // (scaffolded via findTaskLoopBodyDefs + a synthesized completed task_handoff
-  // sub-node). Under the iter-11 invariant this check DOES hit for an active
-  // phase-scope corrective — mutations targeting `task`-scope nodes during a
-  // phase-scope corrective's body walk resolve to that corrective's `nodes`
-  // map. Task-level corrective tasks (from code_review_completed) likewise
-  // populate nodes. Legacy empty-nodes entries from pre-iter-11 state snapshots
-  // (not expected in new runs) still fall through cleanly because `nodeId in
-  // latest.nodes` returns false.
+  // Phase-level corrective tasks (born from phase_review_completed on a
+  // changes_requested verdict) carry pre-seeded task-body nodes (scaffolded via
+  // findTaskLoopBodyDefs). This check DOES hit for an active phase-scope
+  // corrective — mutations targeting `task`-scope nodes during a phase-scope
+  // corrective's body walk resolve to that corrective's `nodes` map. Task-level
+  // corrective tasks (from code_review_completed) likewise populate nodes.
+  // Legacy empty-nodes entries from older state snapshots (not expected in new
+  // runs) still fall through cleanly because `nodeId in latest.nodes` is false.
   if (phaseIteration.corrective_tasks.length > 0) {
     const latest = phaseIteration.corrective_tasks[phaseIteration.corrective_tasks.length - 1];
     if ((latest.status === 'in_progress' || latest.status === 'not_started') && nodeId in latest.nodes) {
@@ -178,7 +208,6 @@ const mutationRegistry = new Map<string, MutationFn>();
 // (e.g. `doc_path`).
 
 const planningCompletedSteps: Array<[string, string]> = [
-  [EVENTS.REQUIREMENTS_COMPLETED, 'requirements'],
   [EVENTS.MASTER_PLAN_COMPLETED, 'master_plan'],
 ];
 
@@ -394,35 +423,13 @@ mutationRegistry.set(EVENTS.PHASE_REVIEW_COMPLETED, (state, context, config, tem
 
   const rawVerdict = context.verdict ?? null;
 
-  // Iter 11 — orchestrator mediation contract (parallels iter-10 code_review).
-  // `effective_outcome` (supplied by the orchestrator's addendum on
-  // `changes_requested` phase reviews) is the routing-authoritative verdict
-  // when present; it overrides the reviewer's raw verdict for state-write
-  // purposes. Approved/rejected verdicts pass through unmediated
-  // (effective_outcome absent). See the iter-11 plan for the full contract.
-  const effectiveOutcome = (context as Record<string, unknown>).effective_outcome as string | undefined;
-  const correctiveHandoffPath = (context as Record<string, unknown>).corrective_handoff_path as string | undefined;
-  const orchestratorMediated = (context as Record<string, unknown>).orchestrator_mediated;
-  // Gate effective_outcome usage to the full frontmatter mediation contract:
-  // raw verdict must be changes_requested AND orchestrator_mediated must be
-  // true AND effective_outcome must be present. Validator enforces the same
-  // contract (orchestrator_mediated required when verdict=changes_requested,
-  // mustBeAbsent otherwise), but this gate is a defense-in-depth guard — if
-  // validation is bypassed (test harness, malformed CLI context, future
-  // refactor), a raw approved review cannot be silently overwritten to
-  // changes_requested by a stray effective_outcome field, and a missing
-  // orchestrator_mediated flag cannot route via the mediation path.
-  const mediationActive = rawVerdict === REVIEW_VERDICTS.CHANGES_REQUESTED
-    && orchestratorMediated === true
-    && effectiveOutcome !== undefined
-    && effectiveOutcome !== null;
-  const verdictForState = mediationActive ? effectiveOutcome : rawVerdict;
+  // PO-4 — route entirely off the reviewer's raw verdict. A coder self-mediates
+  // its own review; the main agent is a dumb router, so there is no
+  // orchestrator-authored mediation contract to consult.
+  (node as StepNodeState).verdict = rawVerdict;
+  mutations_applied.push(`set phase_review.verdict = ${rawVerdict ?? 'null'}`);
 
-  (node as StepNodeState).verdict = verdictForState;
-  mutations_applied.push(`set phase_review.verdict = ${verdictForState ?? 'null'}`);
-
-  // Unknown-verdict halt — evaluates against the raw verdict, since that is
-  // what the reviewer produced and what the halt_reason message is keyed to.
+  // Unknown-verdict halt — the reviewer's raw verdict must be a recognized value.
   if (rawVerdict !== null && !VALID_VERDICTS.has(rawVerdict as string)) {
     cloned.graph.status = 'halted';
     cloned.pipeline.halt_reason = `Unrecognized verdict '${rawVerdict}' in phase_review_completed`;
@@ -435,83 +442,37 @@ mutationRegistry.set(EVENTS.PHASE_REVIEW_COMPLETED, (state, context, config, tem
     };
   }
 
-  // Routing-authoritative verdict for the corrective birth / halt decision.
-  const routingVerdict = verdictForState;
-
-  if (routingVerdict === REVIEW_VERDICTS.CHANGES_REQUESTED) {
+  if (rawVerdict === REVIEW_VERDICTS.CHANGES_REQUESTED) {
+    // Phase review is single-pass — no ancestor resolution, no parent-corrective
+    // finalization. Birth a corrective off the phase iteration directly.
     const iteration = resolvePhaseIteration(cloned, phase);
-    const correctiveCount = iteration.corrective_tasks.length;
-    const maxRetries = config.limits.max_retries_per_task;
-    // Normalize the handoff path via trim so a value like " tasks/foo.md " is
-    // stored without the stray whitespace. The non-empty-after-trim check
-    // still gates the halt branch; the trimmed value is what lands in state.
-    const trimmedHandoffPath = typeof correctiveHandoffPath === 'string'
-      ? correctiveHandoffPath.trim()
-      : '';
-    const hasHandoffPath = trimmedHandoffPath.length > 0;
-
-    // No handoff path supplied — this is the orchestrator's budget-exhausted
-    // halt signal per the corrective-playbook budget-check contract. Produce a
-    // clean halt with a descriptive halt_reason. Note: an orchestrator that
-    // forgot to supply a handoff when budget was available would also land
-    // here, which is acceptable — the halt message names both possibilities
-    // so the operator can investigate. The fail-loud beats silent corruption.
-    if (!hasHandoffPath) {
-      iteration.status = 'halted';
-      cloned.graph.status = 'halted';
-      cloned.pipeline.halt_reason =
-        `phase_review_completed: effective_outcome=changes_requested with no corrective_handoff_path. ` +
-        `Possible causes: (1) budget exhausted ` +
-        `(phase corrective_tasks.length=${correctiveCount}, max_retries_per_task=${maxRetries}) — ` +
-        `this is the expected halt per the corrective-playbook; ` +
-        `(2) orchestrator omitted the handoff path in error — check the review addendum.`;
-      mutations_applied.push('set phase_iteration.status = halted (effective_outcome=changes_requested, no handoff)');
-      mutations_applied.push('set graph.status = halted');
-      mutations_applied.push('set pipeline.halt_reason (budget-exhausted halt signal)');
-      return { state: cloned, mutations_applied };
-    }
-
-    if (correctiveCount >= maxRetries) {
-      // Budget exhausted but a handoff path was supplied — the orchestrator's
-      // soft contract says "do not author a handoff on exhaustion", so this is
-      // a contract violation (either a rogue orchestrator or a stale state).
-      // Hard-error via a halt so the operator sees it, per the plan's
-      // mutation-side backstop requirement.
-      iteration.status = 'halted';
-      cloned.graph.status = 'halted';
-      cloned.pipeline.halt_reason =
-        `Retry budget exhausted for phase (max_retries_per_task=${maxRetries}) but a ` +
-        `corrective_handoff_path was supplied. The orchestrator must not author a ` +
-        `corrective handoff on exhaustion — this is a contract violation.`;
-      mutations_applied.push('set phase_iteration.status = halted (retry budget exhausted; handoff path supplied)');
-      mutations_applied.push('set graph.status = halted');
-      mutations_applied.push('set pipeline.halt_reason (budget exhausted with supplied handoff path)');
-      return { state: cloned, mutations_applied };
-    }
-
-    const bodyDefs = findTaskLoopBodyDefs(template);
-    if (bodyDefs.length === 0) {
-      throw new Error('findTaskLoopBodyDefs: no for_each_task body found in template');
-    }
-    const nodes: Record<string, NodeState> = {};
-    for (const bodyDef of bodyDefs) {
-      nodes[bodyDef.id] = scaffoldNodeState(bodyDef);
-    }
-
-    const entry: CorrectiveTaskEntry = {
-      index: correctiveCount + 1,
+    const birth = buildCorrectiveBirth({
+      correctiveTasks: iteration.corrective_tasks,
+      maxRetries: config.limits.max_retries_per_task,
+      scopeDocPath: iteration.doc_path,
+      reviewReportPath: context.doc_path ?? null,
+      injectedAfter: 'phase_review',
       reason: context.reason ?? 'Phase review requested changes',
-      injected_after: 'phase_review',
-      status: 'not_started',
-      nodes,
-      doc_path: trimmedHandoffPath,
-      repos: [],
-    };
+      template,
+    });
+
+    if (!birth.ok) {
+      iteration.status = 'halted';
+      cloned.graph.status = 'halted';
+      cloned.pipeline.halt_reason = birth.haltReason;
+      mutations_applied.push('set phase_iteration.status = halted (corrective budget exhausted)');
+      mutations_applied.push('set graph.status = halted');
+      mutations_applied.push('set pipeline.halt_reason (corrective budget exhausted)');
+      return { state: cloned, mutations_applied };
+    }
+
+    const entry = birth.entry;
     iteration.corrective_tasks.push(entry);
     mutations_applied.push(`injected phase corrective task ${entry.index} (changes_requested)`);
-    mutations_applied.push(`set phase_corrective_task[${entry.index}].doc_path = ${trimmedHandoffPath}`);
+    mutations_applied.push(`set phase_corrective_task[${entry.index}].doc_path = ${entry.doc_path}`);
+    mutations_applied.push(`set phase_corrective_task[${entry.index}].review_report_path = ${entry.review_report_path ?? 'null'}`);
     mutations_applied.push(`phase corrective_tasks.length = ${iteration.corrective_tasks.length}`);
-  } else if (routingVerdict === REVIEW_VERDICTS.REJECTED) {
+  } else if (rawVerdict === REVIEW_VERDICTS.REJECTED) {
     const iteration = resolvePhaseIteration(cloned, phase);
     iteration.status = 'halted';
     cloned.graph.status = 'halted';
@@ -521,24 +482,8 @@ mutationRegistry.set(EVENTS.PHASE_REVIEW_COMPLETED, (state, context, config, tem
     mutations_applied.push('set phase_iteration.status = halted (rejected verdict)');
     mutations_applied.push('set graph.status = halted');
     mutations_applied.push('set pipeline.halt_reason (reviewer rejected verdict)');
-  } else if (
-    rawVerdict === REVIEW_VERDICTS.CHANGES_REQUESTED &&
-    routingVerdict !== REVIEW_VERDICTS.CHANGES_REQUESTED &&
-    routingVerdict !== REVIEW_VERDICTS.APPROVED
-  ) {
-    // Defensive: raw changes_requested with no / bogus effective_outcome.
-    // The validator should have rejected this; if we hit it, the contract
-    // was bypassed.
-    throw new Error(
-      'phase_review_completed: raw verdict=changes_requested without a valid effective_outcome. ' +
-      'The orchestrator mediation contract was bypassed — ensure the review doc carries ' +
-      'orchestrator_mediated=true and effective_outcome ∈ {approved, changes_requested}.'
-    );
   }
-  // effective_outcome === 'approved' (with raw verdict=changes_requested) and
-  // raw verdict=approved both fall through here with no corrective birth —
-  // the mediation filter-down / raw approved paths are symmetric at the
-  // state-mutation level.
+  // rawVerdict === approved falls through with no corrective birth.
 
   return { state: cloned, mutations_applied };
 });
@@ -579,7 +524,97 @@ mutationRegistry.set(EVENTS.TASK_COMPLETED, (state, context, _config, _template)
     const node = resolveNodeState(cloned, 'task_executor', 'task', phase, task);
     node.status = 'completed';
     mutations_applied.push('set task_executor.status = completed');
-  } catch {
+
+    // ── Commit recording (R3) ─────────────────────────────────────────────
+    // The coder owns its task's commit, so its per-repo hash is recorded here on
+    // task_completed. Recording runs before code_review (which depends on
+    // task_executor), so the reviewer's diff scope stays anchored to the hash.
+    const signalRepos = (context.repos as SignalRepoRow[] | undefined) ?? [];
+    const sc = cloned.pipeline.source_control;
+    const commitExpected = sc != null && sc.auto_commit !== 'never';
+
+    // When commit is on, the coder relays a per-repo result array — even a
+    // "nothing changed" task sends committed:false rows, never an empty array.
+    // An empty/missing payload on the commit path is a relay bug: advancing
+    // would record zero hashes and collapse the reviewer's diff scope to
+    // `git diff HEAD`. When commit is off (auto_commit=never) the task carries
+    // no payload, so recording is skipped entirely — the commit-or-not policy
+    // from source-control state, enforced here at record time.
+    if (commitExpected && signalRepos.length === 0) {
+      throw new Error(
+        `task_completed refused: commit is enabled (auto_commit != never) but no per-repo ` +
+        `result payload was relayed (repos[] is missing or empty). The signal must carry the ` +
+        `coder's commit result array via --repos '<json>'; advancing without it would record ` +
+        `zero commit hashes.`
+      );
+    }
+
+    // Mirror of the guard above (R3 / contract). When commit is off — source_control
+    // is unset, or auto_commit=never — the coder is directed to leave its work
+    // uncommitted, so the task carries NO per-repo payload (see event.task_completed
+    // and action.execute_task). A non-empty repos[] in no-commit mode is a relay bug:
+    // recording hashes that should not exist would silently attach a commit to a task
+    // the policy said not to commit. Refuse it loudly instead of masking the mis-relay.
+    if (!commitExpected && signalRepos.length > 0) {
+      throw new Error(
+        `task_completed refused: commit is disabled (source_control is unset or ` +
+        `auto_commit=never) but a per-repo result payload was relayed (repos[] is non-empty). ` +
+        `In no-commit mode the signal must carry no --repos payload; refusing to record commit ` +
+        `hashes for a task that was not directed to commit.`
+      );
+    }
+
+    if (signalRepos.length > 0) {
+      // Record-time on-branch catch-net (R3 / Security) — refuse a commit
+      // reported off its intended task branch before it is recorded.
+      assertReposOnBranch(cloned, signalRepos, context.branch as string | undefined);
+
+      // Phase-scope-first routing: route the per-repo hashes to the active
+      // phase-scope corrective, else the active task-scope corrective, else the
+      // task iteration, matched by name. Each corrective round owns a fresh entry
+      // (repos:[]), so a retried task records to its own entry and the
+      // immutability guard never has to overwrite a finalized hash.
+      const phaseIteration = resolvePhaseIteration(cloned, phase);
+      const activePhaseCorrective = phaseIteration.corrective_tasks.slice().reverse().find(
+        (ct: CorrectiveTaskEntry) => ct.status === 'in_progress' || ct.status === 'not_started'
+      );
+      if (activePhaseCorrective) {
+        applyPerRepoCommitHashes(
+          activePhaseCorrective.repos,
+          signalRepos,
+          mutations_applied,
+          `phase_corrective_task[${activePhaseCorrective.index}].repos`,
+        );
+      } else {
+        const taskIteration = resolveTaskIteration(cloned, phase, task);
+        const activeCorrective = taskIteration.corrective_tasks.slice().reverse().find(
+          (ct: CorrectiveTaskEntry) => ct.status === 'in_progress' || ct.status === 'not_started'
+        );
+        if (activeCorrective) {
+          applyPerRepoCommitHashes(
+            activeCorrective.repos,
+            signalRepos,
+            mutations_applied,
+            `corrective_task[${activeCorrective.index}].repos`,
+          );
+        } else {
+          applyPerRepoCommitHashes(
+            taskIteration.repos,
+            signalRepos,
+            mutations_applied,
+            `task_iteration[${taskIteration.index}].repos`,
+          );
+        }
+      }
+    }
+  } catch (err) {
+    // Re-throw the loud record-time guards (empty-payload, per-repo hash, and
+    // on-branch — all sharing the `task_completed refused:` prefix) so they
+    // surface as diagnosable rejections instead of being masked by the generic
+    // node-resolution disambiguation below.
+    if (err instanceof Error && /task_completed refused/i.test(err.message)) {
+      throw err;
+    }
     if (context.phase === undefined) {
       const phaseLoopNode = cloned.graph.nodes['phase_loop'] as ForEachPhaseNodeState | undefined;
       const hasInProgressPhase = phaseLoopNode?.iterations?.some(it => it.status === 'in_progress');
@@ -640,6 +675,85 @@ function findTaskLoopBodyDefs(template: PipelineTemplate): NodeDef[] {
     }
   }
   return [];
+}
+
+interface CorrectiveBirthParams {
+  /** The hosting iteration's corrective_tasks array (read-only here; caller pushes the entry). */
+  correctiveTasks: CorrectiveTaskEntry[];
+  /** Budget cap — the sole corrective gate. */
+  maxRetries: number;
+  /** ORIGINAL scope doc (hosting iteration's doc_path). Immutable; carried onto the corrective. */
+  scopeDocPath: string | null | undefined;
+  /** Review report that requested the correction (the completing review's doc_path). */
+  reviewReportPath: string | null | undefined;
+  /** Node ID that triggered injection (e.g. "code_review" | "phase_review"). */
+  injectedAfter: string;
+  /** Human-readable injection reason. */
+  reason: string;
+  /** Template, for scaffolding the corrective's task-loop-body nodes. */
+  template: PipelineTemplate;
+}
+
+type CorrectiveBirthResult =
+  | { ok: true; entry: CorrectiveTaskEntry }
+  | { ok: false; haltReason: string };
+
+/**
+ * Scope-agnostic corrective birth. Enforces the sole budget gate
+ * (`correctiveTasks.length >= maxRetries` → halt) and, when within budget,
+ * scaffolds a fresh corrective entry carrying the ORIGINAL scope doc, the
+ * requesting review report, and a 1-based index.
+ *
+ * An empty `scopeDocPath` is an engine invariant violation (every iteration is
+ * seeded with a doc_path at explosion), so it throws rather than halting —
+ * `processEvent`'s catch turns the throw into a clean `{ error }` envelope with
+ * no state written, which is the correct outcome for a programmer bug.
+ */
+function buildCorrectiveBirth(params: CorrectiveBirthParams): CorrectiveBirthResult {
+  const { correctiveTasks, maxRetries, scopeDocPath, reviewReportPath, injectedAfter, reason, template } = params;
+
+  if (typeof scopeDocPath !== 'string' || scopeDocPath.trim().length === 0) {
+    throw new Error(
+      `buildCorrectiveBirth: scopeDocPath is empty — every iteration is seeded with a doc_path at ` +
+      `explosion, so an empty scope doc is an engine bug (not operator-recoverable). ` +
+      `injected_after=${injectedAfter}.`
+    );
+  }
+
+  const correctiveCount = correctiveTasks.length;
+  if (correctiveCount >= maxRetries) {
+    return {
+      ok: false,
+      haltReason:
+        `Corrective retry budget exhausted (corrective_tasks.length=${correctiveCount}, ` +
+        `max_retries_per_task=${maxRetries}). No further corrective task will be injected — ` +
+        `the pipeline halts for manual intervention.`,
+    };
+  }
+
+  const bodyDefs = findTaskLoopBodyDefs(template);
+  if (bodyDefs.length === 0) {
+    throw new Error('findTaskLoopBodyDefs: no for_each_task body found in template');
+  }
+  const nodes: Record<string, NodeState> = {};
+  for (const bodyDef of bodyDefs) {
+    nodes[bodyDef.id] = scaffoldNodeState(bodyDef);
+  }
+
+  const entry: CorrectiveTaskEntry = {
+    index: correctiveCount + 1,
+    reason,
+    injected_after: injectedAfter,
+    status: 'not_started',
+    nodes,
+    doc_path: scopeDocPath,
+    review_report_path:
+      typeof reviewReportPath === 'string' && reviewReportPath.trim().length > 0
+        ? reviewReportPath
+        : null,
+    repos: [],
+  };
+  return { ok: true, entry };
 }
 
 /**
@@ -729,35 +843,13 @@ mutationRegistry.set(EVENTS.CODE_REVIEW_COMPLETED, (state, context, config, temp
 
   const rawVerdict = context.verdict ?? null;
 
-  // Iter 10 — orchestrator mediation contract. `effective_outcome` (supplied by
-  // the orchestrator's addendum on `changes_requested` reviews) is the
-  // routing-authoritative verdict when present; it overrides the reviewer's
-  // raw verdict for state-write purposes. Approved/rejected verdicts pass
-  // through unmediated (effective_outcome absent). See the iter-10 plan for
-  // the full contract.
-  const effectiveOutcome = (context as Record<string, unknown>).effective_outcome as string | undefined;
-  const correctiveHandoffPath = (context as Record<string, unknown>).corrective_handoff_path as string | undefined;
-  const orchestratorMediated = (context as Record<string, unknown>).orchestrator_mediated;
-  // Gate effective_outcome usage to the full frontmatter mediation contract:
-  // raw verdict must be changes_requested AND orchestrator_mediated must be
-  // true AND effective_outcome must be present. Validator enforces the same
-  // contract (orchestrator_mediated required when verdict=changes_requested,
-  // mustBeAbsent otherwise), but this gate is a defense-in-depth guard — if
-  // validation is bypassed (test harness, malformed CLI context, future
-  // refactor), a raw approved review cannot be silently overwritten to
-  // changes_requested by a stray effective_outcome field, and a missing
-  // orchestrator_mediated flag cannot route via the mediation path.
-  const mediationActive = rawVerdict === REVIEW_VERDICTS.CHANGES_REQUESTED
-    && orchestratorMediated === true
-    && effectiveOutcome !== undefined
-    && effectiveOutcome !== null;
-  const verdictForState = mediationActive ? effectiveOutcome : rawVerdict;
+  // PO-4 — route entirely off the reviewer's raw verdict. A coder self-mediates
+  // its own review; the main agent is a dumb router, so there is no
+  // orchestrator-authored mediation contract to consult.
+  (node as StepNodeState).verdict = rawVerdict;
+  mutations_applied.push(`set code_review.verdict = ${rawVerdict ?? 'null'}`);
 
-  (node as StepNodeState).verdict = verdictForState;
-  mutations_applied.push(`set code_review.verdict = ${verdictForState ?? 'null'}`);
-
-  // Unknown-verdict halt — evaluates against the raw verdict, since that is
-  // what the reviewer produced and what the halt_reason message is keyed to.
+  // Unknown-verdict halt — the reviewer's raw verdict must be a recognized value.
   if (rawVerdict !== null && !VALID_VERDICTS.has(rawVerdict as string)) {
     cloned.graph.status = 'halted';
     cloned.pipeline.halt_reason = `Unrecognized verdict '${rawVerdict}' in code_review_completed`;
@@ -770,29 +862,25 @@ mutationRegistry.set(EVENTS.CODE_REVIEW_COMPLETED, (state, context, config, temp
     };
   }
 
-  // Routing-authoritative verdict for the corrective birth / halt decision.
-  const routingVerdict = verdictForState;
-
-  if (routingVerdict === REVIEW_VERDICTS.CHANGES_REQUESTED) {
-    // Iter 11 — ancestor-derivation. When the completed code_review lives under
-    // an active phase-scope corrective, the new corrective appends to
-    // phaseIter.corrective_tasks; otherwise it appends to taskIter. Preserves
-    // iter-10 task-scope behaviour identically when scope === 'task'.
+  if (rawVerdict === REVIEW_VERDICTS.CHANGES_REQUESTED) {
+    // Ancestor-derivation. When the completed code_review lives under an active
+    // phase-scope corrective, the new corrective appends to
+    // phaseIter.corrective_tasks; otherwise it appends to taskIter (task-scope
+    // behaviour).
     const { iteration, scope } = resolveHostingIteration(cloned, phase, task);
 
     // Corrective-of-a-corrective: when the code_review that just completed lives
     // on the hosting iteration's most recent corrective entry, that parent
     // corrective is now superseded — its review concluded (changes_requested)
     // and a successor corrective takes over. Finalize the parent here, BEFORE
-    // pushing the child (after the push, length-1 is the child, not the parent).
-    // The walker only ever finalizes the LATEST corrective, so without this the
-    // parent is stranded at in_progress inside a later-completed iteration (the
-    // HICCUP-TEST symptom). Uses the hosting iteration, so it covers both
-    // task-scope and phase-scope correctives uniformly. An empty array (the
-    // first corrective, born from an original task's code_review) is a no-op.
-    // phase_review_completed needs no equivalent guard: phase_review is
-    // single-pass and never fires on a corrective, so it has no parent
-    // corrective to finalize.
+    // birthing the child. The walker only ever finalizes the LATEST corrective,
+    // so without this the parent is stranded at in_progress inside a
+    // later-completed iteration (the HICCUP-TEST symptom). Uses the hosting
+    // iteration, so it covers both task-scope and phase-scope correctives
+    // uniformly. An empty array (the first corrective, born from an original
+    // task's code_review) is a no-op. phase_review_completed needs no equivalent
+    // guard: phase_review is single-pass and never fires on a corrective, so it
+    // has no parent corrective to finalize.
     const existingCorrectives = iteration.corrective_tasks;
     if (existingCorrectives.length > 0) {
       const parent = existingCorrectives[existingCorrectives.length - 1];
@@ -804,83 +892,37 @@ mutationRegistry.set(EVENTS.CODE_REVIEW_COMPLETED, (state, context, config, temp
       }
     }
 
-    const correctiveCount = iteration.corrective_tasks.length;
-    const maxRetries = config.limits.max_retries_per_task;
-    // Normalize the handoff path via trim so a value like " tasks/foo.md " is
-    // stored without the stray whitespace. The non-empty-after-trim check
-    // still gates the halt branch; the trimmed value is what lands in state.
-    const trimmedHandoffPath = typeof correctiveHandoffPath === 'string'
-      ? correctiveHandoffPath.trim()
-      : '';
-    const hasHandoffPath = trimmedHandoffPath.length > 0;
-
-    // No handoff path supplied — this is the orchestrator's budget-exhausted
-    // halt signal per the corrective-playbook budget-check contract. Produce a
-    // clean halt with a descriptive halt_reason. Note: an orchestrator that
-    // forgot to supply a handoff when budget was available would also land
-    // here, which is acceptable — the halt message names both possibilities
-    // so the operator can investigate. The fail-loud beats silent corruption.
-    if (!hasHandoffPath) {
-      iteration.status = 'halted';
-      cloned.graph.status = 'halted';
-      cloned.pipeline.halt_reason =
-        `code_review_completed: effective_outcome=changes_requested with no corrective_handoff_path. ` +
-        `Possible causes: (1) budget exhausted ` +
-        `(corrective_tasks.length=${correctiveCount}, max_retries_per_task=${maxRetries}, scope=${scope}) — ` +
-        `this is the expected halt per the corrective-playbook; ` +
-        `(2) orchestrator omitted the handoff path in error — check the review addendum.`;
-      mutations_applied.push(`set ${scope}_iteration.status = halted (effective_outcome=changes_requested, no handoff, scope=${scope})`);
-      mutations_applied.push('set graph.status = halted');
-      mutations_applied.push('set pipeline.halt_reason (budget-exhausted halt signal)');
-      return { state: cloned, mutations_applied };
-    }
-
-    if (correctiveCount >= maxRetries) {
-      // Budget exhausted but a handoff path was supplied — the orchestrator's
-      // soft contract says "do not author a handoff on exhaustion", so this is
-      // a contract violation (either a rogue orchestrator or a stale state).
-      // Hard-error via a halt so the operator sees it, per the plan's
-      // mutation-side backstop requirement.
-      iteration.status = 'halted';
-      cloned.graph.status = 'halted';
-      cloned.pipeline.halt_reason =
-        `Retry budget exhausted for ${scope} (max_retries_per_task=${maxRetries}) but a ` +
-        `corrective_handoff_path was supplied. The orchestrator must not author a ` +
-        `corrective handoff on exhaustion — this is a contract violation.`;
-      mutations_applied.push(`set ${scope}_iteration.status = halted (retry budget exhausted; handoff path supplied, scope=${scope})`);
-      mutations_applied.push('set graph.status = halted');
-      mutations_applied.push('set pipeline.halt_reason (budget exhausted with supplied handoff path)');
-      return { state: cloned, mutations_applied };
-    }
-
-    const bodyDefs = findTaskLoopBodyDefs(template);
-    if (bodyDefs.length === 0) {
-      throw new Error('findTaskLoopBodyDefs: no for_each_task body found in template');
-    }
-    const nodes: Record<string, NodeState> = {};
-    for (const bodyDef of bodyDefs) {
-      nodes[bodyDef.id] = scaffoldNodeState(bodyDef);
-    }
-
-    const entry: CorrectiveTaskEntry = {
-      index: correctiveCount + 1,
+    const birth = buildCorrectiveBirth({
+      correctiveTasks: iteration.corrective_tasks,
+      maxRetries: config.limits.max_retries_per_task,
+      scopeDocPath: iteration.doc_path,
+      reviewReportPath: context.doc_path ?? null,
+      injectedAfter: 'code_review',
       reason: context.reason ?? 'Code review requested changes',
-      injected_after: 'code_review',
-      status: 'not_started',
-      nodes,
-      doc_path: trimmedHandoffPath,
-      repos: [],
-    };
+      template,
+    });
+
+    if (!birth.ok) {
+      iteration.status = 'halted';
+      cloned.graph.status = 'halted';
+      cloned.pipeline.halt_reason = birth.haltReason;
+      mutations_applied.push(`set ${scope}_iteration.status = halted (corrective budget exhausted, scope=${scope})`);
+      mutations_applied.push('set graph.status = halted');
+      mutations_applied.push('set pipeline.halt_reason (corrective budget exhausted)');
+      return { state: cloned, mutations_applied };
+    }
+
+    const entry = birth.entry;
     iteration.corrective_tasks.push(entry);
     mutations_applied.push(`injected corrective task ${entry.index} (changes_requested, scope=${scope})`);
-    mutations_applied.push(`set corrective_task[${entry.index}].doc_path = ${trimmedHandoffPath}`);
+    mutations_applied.push(`set corrective_task[${entry.index}].doc_path = ${entry.doc_path}`);
+    mutations_applied.push(`set corrective_task[${entry.index}].review_report_path = ${entry.review_report_path ?? 'null'}`);
     mutations_applied.push(`corrective_tasks.length = ${iteration.corrective_tasks.length} (scope=${scope})`);
-  } else if (routingVerdict === REVIEW_VERDICTS.REJECTED) {
-    // Iter 11 — the rejected verdict must halt the hosting iteration, not the
-    // task iteration unconditionally. When a phase-scope corrective's code
-    // review returns `rejected`, we halt the phase iteration (its ancestor)
-    // rather than a stale-default task iteration. Uses the same
-    // ancestor-derivation helper that the `changes_requested` branch uses.
+  } else if (rawVerdict === REVIEW_VERDICTS.REJECTED) {
+    // The rejected verdict halts the hosting iteration, not a stale-default task
+    // iteration. When a phase-scope corrective's code review returns `rejected`,
+    // halt the phase iteration (its ancestor). Uses the same ancestor-derivation
+    // helper the `changes_requested` branch uses.
     const { iteration, scope } = resolveHostingIteration(cloned, phase, task);
     iteration.status = 'halted';
     cloned.graph.status = 'halted';
@@ -890,24 +932,8 @@ mutationRegistry.set(EVENTS.CODE_REVIEW_COMPLETED, (state, context, config, temp
     mutations_applied.push(`set ${scope === 'phase' ? 'phase_iteration' : 'task_iteration'}.status = halted (rejected verdict, scope=${scope})`);
     mutations_applied.push('set graph.status = halted');
     mutations_applied.push('set pipeline.halt_reason (reviewer rejected verdict)');
-  } else if (
-    rawVerdict === REVIEW_VERDICTS.CHANGES_REQUESTED &&
-    routingVerdict !== REVIEW_VERDICTS.CHANGES_REQUESTED &&
-    routingVerdict !== REVIEW_VERDICTS.APPROVED
-  ) {
-    // Defensive: raw changes_requested with no / bogus effective_outcome.
-    // The validator should have rejected this; if we hit it, the contract
-    // was bypassed.
-    throw new Error(
-      'code_review_completed: raw verdict=changes_requested without a valid effective_outcome. ' +
-      'The orchestrator mediation contract was bypassed — ensure the review doc carries ' +
-      'orchestrator_mediated=true and effective_outcome ∈ {approved, changes_requested}.'
-    );
   }
-  // effective_outcome === 'approved' (with raw verdict=changes_requested) and
-  // raw verdict=approved both fall through here with no corrective birth —
-  // the mediation filter-down / raw approved paths are symmetric at the
-  // state-mutation level.
+  // rawVerdict === approved falls through with no corrective birth.
 
   return { state: cloned, mutations_applied };
 });
@@ -950,137 +976,6 @@ mutationRegistry.set(EVENTS.FINAL_REVIEW_COMPLETED, (state, context, _config, _t
   return { state: cloned, mutations_applied };
 });
 
-// ── Source control commit mutations ───────────────────────────────────────────
-
-mutationRegistry.set(EVENTS.COMMIT_COMPLETED, (state, context, _config, _template): MutationResult => {
-  const cloned = structuredClone(state);
-  const mutations_applied: string[] = [];
-
-  let phase = context.phase;
-  if (phase === undefined) {
-    try {
-      phase = resolveActivePhaseIndex(cloned);
-    } catch {
-      throw new Error(
-        `Cannot apply mutation for "commit_completed": no active phase could be resolved from state.\n` +
-        `Either no phase is currently in_progress, or multiple phases are in_progress simultaneously.\n` +
-        `Pass --phase <N> to specify the phase explicitly.`
-      );
-    }
-  }
-
-  let task = context.task;
-  if (task === undefined) {
-    try {
-      task = resolveActiveTaskIndex(cloned, phase);
-    } catch {
-      throw new Error(
-        `Cannot apply mutation for "commit_completed": no active task could be resolved from state for phase ${phase}.\n` +
-        `Either no task is currently in_progress, or multiple tasks are in_progress simultaneously.\n` +
-        `Pass --task <N> to specify the task explicitly.`
-      );
-    }
-  }
-
-  try {
-    const node = resolveNodeState(cloned, 'commit', 'task', phase, task);
-    node.status = 'completed';
-    mutations_applied.push('set commit.status = completed');
-
-    const signalRepos = (context.repos as SignalRepoRow[] | undefined) ?? [];
-
-    // A commit_completed signal must relay the source-control agent's per-repo
-    // result array. An empty/missing repos[] would complete the commit node and
-    // advance the walker without recording any hash — a silent correctness hole.
-    // (The legitimate "nothing changed" case is a non-empty array of committed:false
-    // rows, not an empty array, so this never rejects a real clean-skip.)
-    if (signalRepos.length === 0) {
-      throw new Error(
-        `commit_completed refused: no per-repo result payload (repos[] is missing or empty). ` +
-        `The commit signal must relay the source-control agent's result array via --repos '<json>'; ` +
-        `advancing without it would complete the commit step recording zero commit hashes.`
-      );
-    }
-
-    // Iter 12 (P04-T02) — array-shaped signal. The commit CLI emits a per-repo
-    // result array; we fan the hashes into the matching repos[] entry by name,
-    // creating entries that are absent (corrective entries start with repos:[]).
-    // committed=false rows are a no-op (clean skip — not an error).
-    //
-    // Phase-scope-first routing: when a phase-scope corrective is active on
-    // this phase iteration, route the per-repo hashes there before considering
-    // task-scope routing.
-    const phaseIteration = resolvePhaseIteration(cloned, phase);
-    const activePhaseCorrective = phaseIteration.corrective_tasks.slice().reverse().find(
-      (ct: CorrectiveTaskEntry) => ct.status === 'in_progress' || ct.status === 'not_started'
-    );
-
-    if (activePhaseCorrective) {
-      applyPerRepoCommitHashes(
-        activePhaseCorrective.repos,
-        signalRepos,
-        mutations_applied,
-        `phase_corrective_task[${activePhaseCorrective.index}].repos`,
-      );
-      return { state: cloned, mutations_applied };
-    }
-
-    // Write per-repo commit hashes to task IterationEntry or active task-scope
-    // CorrectiveTaskEntry, matched by name.
-    const taskIteration = resolveTaskIteration(cloned, phase, task);
-    const activeCorrective = taskIteration.corrective_tasks.slice().reverse().find(
-      (ct: CorrectiveTaskEntry) => ct.status === 'in_progress' || ct.status === 'not_started'
-    );
-
-    if (activeCorrective) {
-      applyPerRepoCommitHashes(
-        activeCorrective.repos,
-        signalRepos,
-        mutations_applied,
-        `corrective_task[${activeCorrective.index}].repos`,
-      );
-    } else {
-      applyPerRepoCommitHashes(
-        taskIteration.repos,
-        signalRepos,
-        mutations_applied,
-        `task_iteration[${taskIteration.index}].repos`,
-      );
-    }
-
-    return { state: cloned, mutations_applied };
-  } catch (err) {
-    // Re-throw the loud per-repo guards (hash-overwrite via assertHashWritable,
-    // and the malformed committed:false-with-hash rejection) so they propagate
-    // as diagnosable rejections rather than being swallowed by the generic
-    // node-resolution error message below (DD-1, NFR-3). Both share the
-    // `commit_completed refused:` prefix.
-    if (err instanceof Error && /commit_completed refused|immutable|overwrite|already recorded|finalized/i.test(err.message)) {
-      throw err;
-    }
-    if (context.phase === undefined) {
-      const phaseLoopNode = cloned.graph.nodes['phase_loop'] as ForEachPhaseNodeState | undefined;
-      const hasInProgressPhase = phaseLoopNode?.iterations?.some(it => it.status === 'in_progress');
-      if (hasInProgressPhase) {
-        throw new Error(
-          `Cannot apply mutation for "commit_completed": no active task could be resolved from state for phase ${phase}.\n` +
-          `Either no task is currently in_progress, or multiple tasks are in_progress simultaneously.\n` +
-          `Pass --task <N> to specify the task explicitly.`
-        );
-      }
-      throw new Error(
-        `Cannot apply mutation for "commit_completed": no active phase could be resolved from state.\n` +
-        `Either no phase is currently in_progress, or multiple phases are in_progress simultaneously.\n` +
-        `Pass --phase <N> to specify the phase explicitly.`
-      );
-    }
-    throw new Error(
-      `Cannot apply mutation for "commit_completed": no active task could be resolved from state for phase ${phase}.\n` +
-      `Either no task is currently in_progress, or multiple tasks are in_progress simultaneously.\n` +
-      `Pass --task <N> to specify the task explicitly.`
-    );
-  }
-});
 
 // ── Source control PR mutations (final_pr as top-scoped sibling) ──────────────
 

@@ -41,7 +41,6 @@ export const CONDITION_OPERATORS = Object.freeze({
 // ── Next Actions ──────────────────────────────────────────────────────────────
 export const NEXT_ACTIONS = Object.freeze({
   // Planning agent spawns
-  SPAWN_REQUIREMENTS: 'spawn_requirements',
   SPAWN_MASTER_PLAN: 'spawn_master_plan',
 
   // Planning scripts
@@ -61,7 +60,6 @@ export const NEXT_ACTIONS = Object.freeze({
   SPAWN_FINAL_REVIEWER: 'spawn_final_reviewer',
 
   // Source control
-  INVOKE_SOURCE_CONTROL_COMMIT: 'invoke_source_control_commit',
   INVOKE_SOURCE_CONTROL_PR: 'invoke_source_control_pr',
 
   // Terminal states
@@ -77,7 +75,6 @@ export const NEXT_ACTIONS = Object.freeze({
 // because it does not match the `_started` suffix.
 export const EVENTS = Object.freeze({
   // ── Planning step events ──────────────────────────────────────────────
-  REQUIREMENTS_COMPLETED: 'requirements_completed',
   MASTER_PLAN_COMPLETED: 'master_plan_completed',
   EXPLOSION_COMPLETED: 'explosion_completed',
   EXPLOSION_FAILED: 'explosion_failed',
@@ -99,7 +96,6 @@ export const EVENTS = Object.freeze({
   FINAL_REVIEW_COMPLETED: 'final_review_completed',
 
   // ── Source control events ─────────────────────────────────────────────
-  COMMIT_COMPLETED: 'commit_completed',
   PR_REQUESTED: 'pr_requested',
   PR_CREATED: 'pr_created',
 

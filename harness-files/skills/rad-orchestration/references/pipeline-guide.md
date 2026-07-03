@@ -29,7 +29,7 @@ Every successful `radorch pipeline signal` call returns a JSON envelope of this 
 
 The orchestrator reads `data.prompt` as the sole instruction source for the action. The embedded `Signal:` line is authoritative for the event name and its flags — derive nothing else from this skill.
 
-`data.context` carries the action-specific payload (file paths, phase/task identifiers, configuration). When the prompt references a context field by name (e.g., `handoff_doc`, `repository_skills_block`, `worktree_path`), read that field from `data.context`.
+`data.context` carries the action-specific payload (file paths, phase/task identifiers, configuration). When the prompt references a context field by name (e.g., `handoff_doc`, `worktree_path`), read that field from `data.context`.
 
 ## Pipeline Event Loop
 
@@ -54,16 +54,16 @@ node "${PLUGIN_ROOT}/skills/rad-orchestration/scripts/radorch.mjs" pipeline sign
   [--doc-path <path>] \
   [--branch <name>] [--base-branch <name>] [--worktree-path <path>] \
   [--auto-commit <always|never>] [--auto-pr <always|never>] \
-  [--remote-url <url>] [--compare-url <url>] \
+  [--remote-url <url>] \
   [--gate-type <type>] [--reason <text>] [--gate-mode <mode>] \
-  [--commit-hash <hash>] [--pushed <true|false>] [--pr-url <url>] \
+  [--pr-url <url>] \
   [--repos '<json>'] \
   [--parse-error <json>]
 ```
 
 Always invoke from the workspace root. The `--config` flag overrides the default config path. The catalog file for each event documents which flags are required for that event in its `signal_payload` block; the `Signal:` line in `data.prompt` mirrors the same shape.
 
-The `commit_completed` and `pr_created` events carry a single array-shaped `--repos '<json>'` flag whose value is the CLI's structured per-repo result (a JSON array of objects, one per repository); the `--phase` and `--task` flags remain scalar integers as before.
+The `task_completed` and `pr_created` events carry a single array-shaped `--repos '<json>'` flag whose value is the per-repo result (a JSON array of objects, one per repository). On `task_completed` the array is relayed only when the task was directed to commit, together with `--branch` (the branch the coder committed on); the engine records each hash and refuses one reported off its intended branch. The `--phase` and `--task` flags remain scalar integers.
 
 ### First Call
 
@@ -94,9 +94,11 @@ Only these actions pause execution for human input or stop the loop. All other a
 | `gate_phase` | Pause — wait for human approval |
 | `ask_gate_mode` | Pause — wait for operator gate mode selection |
 
-## Corrective Mediation
+## Corrective Flow
 
-When the pipeline returns `data.action` of `spawn_code_reviewer` and the reviewer returns a raw `verdict: changes_requested`, the orchestrator enters an in-session mediation flow **before** signaling `code_review_completed`. The full mediation procedure — per-finding judgment, addendum authoring, corrective Task Handoff creation, and budget enforcement — is defined in [`corrective-playbook.md`](corrective-playbook.md). The same flow fires on `phase_review_completed` with raw `verdict: changes_requested`. When the reviewer returns `approved`, the orchestrator signals the completion event with no mediation fields and propagation is normal. When the reviewer returns `rejected`, the orchestrator signals the completion event immediately (no mediation) and the mutation routes the rejected verdict into a clean pipeline halt. The orchestrator never flips an `approved` verdict to `changes_requested`.
+The orchestrator is a dumb router for corrective cycles — it does not read findings or judge them. When a reviewer (task or phase scope) returns raw `verdict: changes_requested`, signal the completion event (`code_review_completed` / `phase_review_completed`) exactly as you would for any other outcome. The pipeline engine reads the raw verdict off the review doc, births the corrective, and returns the next `execute_task` action carrying the same `handoff_doc` — never re-authored — plus `review_report_path`, the path to the review doc the reviewer just wrote. Relay both into the coder's spawn prompt; the coder self-mediates, fixing real findings and writing a justified disposition for anything it disputes back into that same `review_report_path`. The re-spawned reviewer reopens the same path and re-adjudicates — one running review report per scope, stable across a task's corrective cycles.
+
+`approved` and `rejected` verdicts propagate untouched — signal the completion event with nothing extra; `rejected` routes into a clean pipeline halt. The orchestrator never flips an `approved` verdict to `changes_requested`. See [`corrective-playbook.md`](corrective-playbook.md) for the full flow, and "Coder escalation (break-glass)" below for tier selection on the re-spawn.
 
 ## Error Handling
 
@@ -148,9 +150,53 @@ When the action in `data.prompt` instructs the orchestrator to spawn an agent, p
 4. **Output expectations** — where to save the output document (derive from project naming conventions in `document-conventions.md`).
 
 Example spawn instruction (paraphrased):
-> "Create the requirements for the MYAPP project. If a brainstorming document exists at `~/.radorc/projects/MYAPP/MYAPP-BRAINSTORMING.md`, read that. Save the requirements to `~/.radorc/projects/MYAPP/MYAPP-REQUIREMENTS.md`."
+> "Execute the next task for the MYAPP project. Read the self-contained Task Handoff at the `handoff_doc` path carried on the envelope and implement it."
 
-The action's catalog file (e.g., `action.spawn_requirements.md`) carries the canonical spawn-prompt shape; the composer assembles it into `data.prompt`. Read it from the envelope; do not duplicate it here.
+The action's catalog file (e.g., `action.execute_task.md`) carries the canonical spawn-prompt shape; the composer assembles it into `data.prompt`. Read it from the envelope; do not duplicate it here.
+
+### Coder tier selection
+
+For the `execute_task` action, spawn the right-sized coder for the task. The tier is the task's authored complexity, carried on the envelope as `data.context.complexity` (defaults to `standard` when absent):
+
+| `complexity` | subagent |
+|---|---|
+| `simple` | coder-junior |
+| `standard` | coder |
+| `complex` | coder |
+
+`coder-senior` is **not** an initial tier — it is break-glass, reached only through corrective escalation (see "Coder escalation (break-glass)" below). A `complex` task starts at `coder`; its extra weight buys a task-scope reviewer, not a bigger coder up front.
+
+Authored plans carry `complexity` as a signal only; the tier is resolved here at spawn time and is never written into the Master Plan or Task Handoff.
+
+### Reviewer tier selection
+
+For `spawn_code_reviewer`, spawn the right-sized reviewer from the task's `data.context.complexity`:
+
+| `complexity` | subagent |
+|---|---|
+| `simple` | reviewer-junior |
+| `standard` \| `complex` | reviewer |
+
+`reviewer-junior` is scoped narrowly to simple task-scope reviews. For `spawn_phase_reviewer` and `spawn_final_reviewer`, always spawn `reviewer` — there is no junior tier at phase or final scope.
+
+### Coder escalation (break-glass)
+
+Corrective re-spawns are not pinned to the task's original tier. `coder-senior` is **break-glass** — reserved for escalation as the corrective budget tightens, never a routine choice:
+
+- Read `corrective_index` (the 1-based number of the corrective attempt about to be spawned) and `max_retries_per_task` (from `orchestration.yml`) — the same values that gate the budget.
+- While `corrective_index` sits well under `max_retries_per_task`, keep the task's original tier (`coder-junior` or `coder`) for the re-spawn — repeated findings on a simple task don't by themselves justify coder escalation.
+- As `corrective_index` climbs toward `max_retries_per_task`, escalate one step at a time: `coder-junior` steps up to `coder` first; if the corrective is still failing on the last attempt or two before the budget runs out, escalate to `coder-senior`.
+- Never escalate on a task's first, non-corrective `execute_task` dispatch — escalation applies only to corrective re-spawns.
+- `max_retries_per_task` remains the sole corrective gate. Escalation buys the remaining attempts a stronger coder; it does not extend the budget — when it's exhausted, the pipeline halts regardless of tier.
+
+### Blocked-report triage
+
+A coder cannot talk to the user, so when it cannot proceed it returns a `## Blocked` report **instead of** a completion — carrying `Severity` (medium | high), the specific `Blocker`, what it already `Tried`, and what it `Need`s to proceed. When you receive one, do **not** signal `task_completed`. Triage it up the ladder:
+
+1. Read the tasks `## Execution Notes` section to see if there are more details about what the coder tried and why it failed.
+1. **Resolve from the corpus.** You can read the upstream planning docs the coder cannot — Requirements, Master Plan, phase docs. If the answer is there, re-spawn the same coder with the clarification inlined into its spawn prompt. This counts against `max_retries_per_task`.
+2. **Ask the user (in-session pause).** If the corpus doesn't resolve it or the blast radius is large or risky, pause and ask. Scribe the answer into the handoff body so it is durable, then re-spawn. The task stays `in_progress` — resumable, no halt.
+3. **Halt when truly stuck.** If you cannot resolve it, the run is unattended, or the change is too risky to guess → signal `halt` (the emergency terminal stop) and surface a descriptive, operator-facing reason. Prefer the in-session pause whenever the user is reachable; reach for `halt` only as the last rung.
 
 ## Status Reporting
 

@@ -158,11 +158,23 @@ export function getOrderedDocsV5(
     seenBasenames.add(basename(path));
   };
 
-  // Emit planning steps in canonical order regardless of object key order
+  // Emit planning steps in canonical order regardless of object key order.
+  // Requirements is authored pre-pipeline (no state node since
+  // PLANNING-OVERHAUL-1): work-graph `scanDocs`
+  // (lib/work-graph/src/derive/projects.ts) is the canonical source of the
+  // `${project}-REQUIREMENTS.md` convention this fallback mirrors.
   for (const planId of PLANNING_STEP_ORDER) {
     const node = state.graph.nodes[planId];
     if (node && node.kind === 'step' && node.doc_path != null) {
       push(node.doc_path, STEP_TITLES_V5[planId], 'planning');
+    } else if (planId === 'requirements' && allFiles) {
+      // Dedup guards against a legacy state that still carries the node.
+      const reqFile = allFiles.find(
+        (f) => basename(f) === `${projectName}-REQUIREMENTS.md`,
+      );
+      if (reqFile && !seenBasenames.has(basename(reqFile))) {
+        push(reqFile, STEP_TITLES_V5.requirements, 'planning');
+      }
     }
   }
 

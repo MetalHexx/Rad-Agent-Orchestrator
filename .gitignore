@@ -80,6 +80,15 @@ test-run.log
 !/prompt-tests/execute-coding-task-e2e/output/tdd-slip/baseline-*/lint-report.md
 !/prompt-tests/execute-coding-task-e2e/output/tdd-slip/baseline-*/run-notes.md
 
+# Prompt harness — coder-commit-e2e.
+# Same structure as above: ignore run-folder contents (including the nested
+# sandbox .git/), re-include the inaugural-baseline run-notes.md under baseline-* folders.
+# Two modes share this behavior: solo-commit (isolated) + pipeline-sideproject (real pipeline).
+/prompt-tests/coder-commit-e2e/output/*/*/**
+!/prompt-tests/coder-commit-e2e/output/*/.gitkeep
+!/prompt-tests/coder-commit-e2e/output/solo-commit/baseline-*/run-notes.md
+!/prompt-tests/coder-commit-e2e/output/pipeline-sideproject/baseline-*/run-notes.md
+
 # Prompt harness — repo-skill-discovery-e2e.
 /prompt-tests/repo-skill-discovery-e2e/output/*/*/**
 !/prompt-tests/repo-skill-discovery-e2e/output/*/.gitkeep
@@ -101,6 +110,28 @@ test-run.log
 !/prompt-tests/low-pipeline-e2e/output/*/.gitkeep
 !/prompt-tests/low-pipeline-e2e/output/rainbow-hello-quick/baseline-*/lint-report.md
 !/prompt-tests/low-pipeline-e2e/output/rainbow-hello-quick/baseline-*/run-notes.md
+
+# Prompt harness — rad-plan-benchmark.
+# INVERTED pattern vs the other behaviors: this is an artifact-comparison harness, so the
+# full planning output under each versioned run-N/ folder IS committed (Requirements,
+# Master Plan, exploded phases/tasks, brainstorming copy) for cross-run diffing. Only pure
+# runtime churn is ignored — it adds per-machine/per-run diff noise and isn't an authored
+# artifact.
+/prompt-tests/rad-plan-benchmark/output/run-*/*/state.json
+/prompt-tests/rad-plan-benchmark/output/run-*/*/template.yml
+/prompt-tests/rad-plan-benchmark/output/run-*/*/backups/
+
+# Prompt harness — rad-master-plan-benchmark-v1 / -v2 (master-doc creation step).
+# Same INVERTED pattern as rad-plan-benchmark: the full planning output under each
+# versioned run-N/ folder IS committed (Requirements, Master Plan, audit report, exploded
+# phases/tasks) for cross-run and cross-version (V1 old-ledger vs V2 new-format) diffing.
+# Only pure runtime churn is ignored.
+/prompt-tests/rad-master-plan-benchmark-v1/output/run-*/*/state.json
+/prompt-tests/rad-master-plan-benchmark-v1/output/run-*/*/template.yml
+/prompt-tests/rad-master-plan-benchmark-v1/output/run-*/*/backups/
+/prompt-tests/rad-master-plan-benchmark-v2/output/run-*/*/state.json
+/prompt-tests/rad-master-plan-benchmark-v2/output/run-*/*/template.yml
+/prompt-tests/rad-master-plan-benchmark-v2/output/run-*/*/backups/
 
 # Plugin artifacts
 # NOTE: .claude/ (above) is the gitignored dogfood build output;

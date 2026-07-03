@@ -1,6 +1,6 @@
 # Project Series
 
-When a project is too large for a single pass, split it into a numbered series. Each project in the series has its own brainstorming document, scoped goals, and explicit dependencies on its siblings.
+When a project is too large for a single pass, split it into a numbered series. Each project in the series has its own Requirements document, scoped goals, and explicit dependencies on its siblings.
 
 ## When to Recommend a Split
 
@@ -35,11 +35,11 @@ Fix/follow-up projects use descriptive suffixes, not series numbers: `DAG-VIEW-2
 
 ## Series Document Structure
 
-Each project in a series gets its own `{NAME}-BRAINSTORMING.md` in its own project folder. The template includes series-specific sections:
+Each project in a series gets its own `{NAME}-REQUIREMENTS.md` in its own project folder, carrying series-specific context:
 
 ### Series Context Block
 
-At the top of each brainstorming doc (after Related Projects), include:
+Near the top of each project's Requirements doc (in or just after the preamble), include:
 
 ```markdown
 ## Series Context
@@ -48,13 +48,13 @@ At the top of each brainstorming doc (after Related Projects), include:
 |-------|-------|
 | Series | `{STEM}` |
 | Position | {N} of {total or "ongoing"} |
-| Previous | [{STEM}-{N-1}](../{STEM}-{N-1}/{STEM}-{N-1}-BRAINSTORMING.md) |
-| Next | [{STEM}-{N+1}](../{STEM}-{N+1}/{STEM}-{N+1}-BRAINSTORMING.md) or *not yet planned* |
+| Previous | [{STEM}-{N-1}](../{STEM}-{N-1}/{STEM}-{N-1}-REQUIREMENTS.md) |
+| Next | [{STEM}-{N+1}](../{STEM}-{N+1}/{STEM}-{N+1}-REQUIREMENTS.md) or *not yet planned* |
 ```
 
 - Omit "Previous" for the first project in a series.
 - Use "not yet planned" for Next when future scope is uncertain.
-- Link to the richest available doc (Requirements if it exists, else BRAINSTORMING).
+- Link to the richest available doc (the Requirements doc).
 
 ### Dependency Graph
 
@@ -78,7 +78,7 @@ When the user agrees to a series:
 
 1. **Agree on boundaries** — which goals belong to which project in the series
 2. **Create project folders** — `~/.radorc/projects/{STEM}-1/`, `~/.radorc/projects/{STEM}-2/`, etc.
-3. **Write brainstorming docs** — one per project, each with its own goals, scope, and series context
+3. **Scribe the Requirements docs** — one per project (via `/rad-create-plans`), each with its own goals, scope, and series context
 4. **Cross-link** — ensure prev/next links and dependency sections connect the series
 5. **Focus the session** — after creating the series structure, zoom into whichever project the user wants to start with
 
@@ -88,7 +88,7 @@ When the user arrives saying "X is done, what's next?" or similar:
 
 1. **Orient with `/rad-project`** — run `project show <name>` on the completed project and `project list` filtered to the series stem to see what exists and what state each entry is in. Surface the series position to the user before any brainstorming begins.
 2. **Brainstorm the next entry** — use the live graph context (status, relationships, what was delivered) to inform your questions and proposals.
-3. **Offer to link before scribing** — when you're ready to write the BRAINSTORMING.md, ask once: "Do you want to link this project to an existing one in the work-graph?" Don't assume the relationship type — let the user describe it in their own words, then hand off to `/rad-project` to record it with the right edge. If they decline, move on.
+3. **Offer to link before scribing** — when you're ready to scribe the REQUIREMENTS doc, ask once: "Do you want to link this project to an existing one in the work-graph?" Don't assume the relationship type — let the user describe it in their own words, then hand off to `/rad-project` to record it with the right edge. If they decline, move on.
 
 ## Retrofitting Existing Projects
 

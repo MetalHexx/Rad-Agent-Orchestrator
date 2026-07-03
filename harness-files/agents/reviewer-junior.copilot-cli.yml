@@ -1,0 +1,12 @@
+name: reviewer-junior
+description: "Review code for quality, correctness, and conformance. Junior/haiku-tier reviewer used for task review (Action #6) on straightforward `simple` task-scope work only — phase and final reviews route to the standard reviewer. Uses a dual-pass approach — conformance checking against planning documents followed by an independent quality assessment."
+model: claude-haiku-4.5
+user-invocable: false
+tools:
+  - read
+  - search
+  - edit
+  - execute
+  - todo
+skills:
+  - rad-code-review

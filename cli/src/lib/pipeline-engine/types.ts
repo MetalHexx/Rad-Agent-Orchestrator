@@ -185,8 +185,9 @@ export interface CorrectiveTaskEntry {
   injected_after: string;     // node ID that triggered injection (e.g., "code_review")
   status: NodeStatus;
   nodes: Record<string, NodeState>;
-  doc_path?: string | null;   // corrective task handoff doc (authored pre-injection)
-  repos: RepoCommitEntry[];   // per-repo commit tracking, set by COMMIT_COMPLETED mutation
+  doc_path?: string | null;   // ORIGINAL scope doc (task handoff / phase plan) the corrective re-runs against — copied from the hosting iteration at birth, immutable
+  review_report_path?: string | null; // review report that requested this corrective (the completing review's doc_path)
+  repos: RepoCommitEntry[];   // per-repo commit tracking, set by the task_completed mutation
 }
 
 export interface IterationEntry {
@@ -195,7 +196,8 @@ export interface IterationEntry {
   nodes: Record<string, NodeState>;
   corrective_tasks: CorrectiveTaskEntry[];
   doc_path?: string | null;   // iteration doc (phase plan or task handoff)
-  repos: RepoCommitEntry[];   // per-repo commit tracking, set by COMMIT_COMPLETED mutation
+  repos: RepoCommitEntry[];   // per-repo commit tracking, set by the task_completed mutation
+  complexity?: 'simple' | 'standard' | 'complex'; // authoring complexity signal on task iterations
 }
 
 export interface ForEachPhaseNodeState extends BaseNodeState {
@@ -260,10 +262,7 @@ export interface PipelineState {
   config: {
     gate_mode: string;
     limits: {
-      max_phases: number;
-      max_tasks_per_phase: number;
       max_retries_per_task: number;
-      max_consecutive_review_rejections: number;
     };
     source_control: {
       auto_commit: string;
@@ -344,13 +343,13 @@ export interface EventContext {
   // ── Iter 5 — explosion script recovery payload ──
   parse_error?: ParseErrorDetail;
 
-  // ── Iter 10 — orchestrator mediation contract for code_review_completed ──
-  // Carried on the review doc's frontmatter (appended by orchestrator addendum)
-  // and surfaced onto event context via pre-reads. Only `changes_requested`
-  // raw verdicts carry these; approved/rejected pass through with all three absent.
-  orchestrator_mediated?: boolean;
-  effective_outcome?: string;
-  corrective_handoff_path?: string;
+  // ── PO-4 — corrective routing fields surfaced onto the coder/reviewer spawn ──
+  // `corrective_index` is the active corrective's 1-based attempt number;
+  // `review_report_path` is the review report that requested the correction.
+  // Both are enrichment-derived (from the active CorrectiveTaskEntry), not
+  // caller-supplied.
+  corrective_index?: number;
+  review_report_path?: string;
 
   // ── MR-5 — array-shaped commit/PR signal payload (AD-3) ──
   repos?: Array<Record<string, unknown>>;
@@ -360,10 +359,7 @@ export interface EventContext {
 
 export interface OrchestrationConfig {
   limits: {
-    max_phases: number;
-    max_tasks_per_phase: number;
     max_retries_per_task: number;
-    max_consecutive_review_rejections: number;
   };
   human_gates: {
     after_planning: boolean;

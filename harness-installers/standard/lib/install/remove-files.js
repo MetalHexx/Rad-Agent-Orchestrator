@@ -20,7 +20,7 @@ import { harnessRoot } from './harness-paths.js';
 import { userDataPaths } from './user-data-paths.js';
 
 /**
- * @param {{ files: Array<{ bundlePath: string, destinationPath: string, sha256?: string }> }} manifest
+ * @param {{ files: Array<{ bundlePath: string, destinationPath: string }> }} manifest
  * @param {string} harness
  * @returns {{ removedCount: number, prunedDirs: string[] }}
  */

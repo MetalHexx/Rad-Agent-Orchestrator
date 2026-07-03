@@ -2,9 +2,9 @@
  * engine.integration.test.ts
  *
  * End-to-end behavioral integration tests for the pipeline engine's multi-repo
- * flow. Exercises the full execute → review → commit_completed(repos[]) →
- * pr_created(repos[]) path and verifies that per-repo commit hashes and pr_urls
- * land in the v6 repos[] shape (NFR-6, FR-7).
+ * flow. Exercises the full execute+commit → review → pr_created(repos[]) path
+ * (the coder's per-repo commit result rides task_completed) and verifies that
+ * per-repo commit hashes and pr_urls land in the v6 repos[] shape (NFR-6, FR-7).
  */
 import { describe, it, expect } from 'vitest';
 import { processEvent } from '../../../src/lib/pipeline-engine/engine.js';
@@ -28,9 +28,9 @@ import {
 import type { StepNodeState } from '../../../src/lib/pipeline-engine/types.js';
 
 // Config for the two-repo end-to-end test: deterministic gate flow (no ask_gate_mode
-// dialogs for task/phase gates), always auto-commit and auto-PR so the commit and
-// PR steps fire unconditionally. after_final_review: true is kept to exercise the
-// full template path including final_approval_gate.
+// dialogs for task/phase gates), always auto-commit and auto-PR so the coder commits
+// and the PR step fires unconditionally. after_final_review: true is kept to exercise
+// the full template path including final_approval_gate.
 const TWO_REPO_CONFIG = createConfig({
   source_control: { auto_commit: 'always', auto_pr: 'always' },
   human_gates: { execution_mode: 'task', after_final_review: true },
@@ -53,9 +53,8 @@ function activeTaskIteration(io: MockIO, phase: number, task: number): Iteration
 /**
  * Drives a two-repo project through the full execution loop:
  *   start → plan_approved → (source_control init with two repos) →
- *   task_completed → commit_completed(repos[fake-api, fake-ui]) →
- *   code_review_completed(approved) → phase_review_completed(approved) →
- *   pr_created(repos[fake-api, fake-ui])
+ *   task_completed(repos[fake-api, fake-ui]) → code_review_completed(approved) →
+ *   phase_review_completed(approved) → pr_created(repos[fake-api, fake-ui])
  *
  * Returns MockIO positioned after pr_created, with:
  *   - task iteration repos carrying commit hashes for both repos
@@ -153,7 +152,6 @@ export function driveTwoRepoProjectEndToEnd(): MockIO {
     // Scaffold task-loop body nodes (matches the execution template body order).
     taskIter.nodes = {
       task_executor: { kind: 'step', status: 'in_progress', doc_path: null, retries: 0 },
-      commit_gate:   { kind: 'conditional', status: 'not_started', branch_taken: null },
       code_review:   { kind: 'step', status: 'not_started', doc_path: null, retries: 0 },
       task_gate:     { kind: 'gate', status: 'not_started', gate_active: false },
     };
@@ -163,34 +161,26 @@ export function driveTwoRepoProjectEndToEnd(): MockIO {
     io.writeState(PROJECT_DIR, patched);
   }
 
-  // 1. task_completed: marks task_executor completed; walker fires commit step.
-  const afterTaskCompleted = processEvent(
+  // 1. task_completed with the two-repo commit result: marks task_executor
+  //    completed, records each repo's commit hash on the task iteration, then
+  //    the walker advances to code review.
+  processEvent(
     'task_completed',
     PROJECT_DIR,
-    { phase: 1, task: 1 },
+    {
+      phase: 1,
+      task: 1,
+      branch: 'radorch/PARITY-TEST',
+      repos: [
+        { name: 'fake-api', committed: true, commitHash: 'apihash1', pushed: true },
+        { name: 'fake-ui', committed: true, commitHash: 'uihash1', pushed: true },
+      ],
+    },
     io,
     TEST_PATH_CONTEXT,
   );
 
-  // 2. commit_completed with two-repo repos[] array.
-  if (afterTaskCompleted.action === 'invoke_source_control_commit') {
-    processEvent(
-      'commit_completed',
-      PROJECT_DIR,
-      {
-        phase: 1,
-        task: 1,
-        repos: [
-          { name: 'fake-api', committed: true, commitHash: 'apihash1', pushed: true },
-          { name: 'fake-ui', committed: true, commitHash: 'uihash1', pushed: true },
-        ],
-      },
-      io,
-      TEST_PATH_CONTEXT,
-    );
-  }
-
-  // 3. code_review_completed with approved verdict.
+  // 2. code_review_completed with approved verdict.
   const reviewDoc = codeReviewDoc(1, 1);
   seedDoc(reviewDoc);
   let afterReview = processEvent(
@@ -217,7 +207,7 @@ export function driveTwoRepoProjectEndToEnd(): MockIO {
     );
   }
 
-  // 4. phase_review_completed with approved verdict.
+  // 3. phase_review_completed with approved verdict.
   const prvDoc = phaseReviewDoc(1);
   seedDoc(prvDoc);
   let afterPhaseReview = processEvent(
@@ -244,7 +234,7 @@ export function driveTwoRepoProjectEndToEnd(): MockIO {
     );
   }
 
-  // 5. final_review_completed: the template requires final_review before pr_gate.
+  // 4. final_review_completed: the template requires final_review before pr_gate.
   if (afterPhaseReview.action === 'spawn_final_reviewer') {
     const finalReviewDocPath = PROJECT_DIR + '/final-review.md';
     seedDoc(finalReviewDocPath);
@@ -261,7 +251,7 @@ export function driveTwoRepoProjectEndToEnd(): MockIO {
     );
   }
 
-  // 6. If PR step fires (invoke_source_control_pr), signal pr_created with two repos.
+  // 5. If PR step fires (invoke_source_control_pr), signal pr_created with two repos.
   if (afterPhaseReview.action === 'invoke_source_control_pr') {
     processEvent(
       'pr_created',
@@ -282,9 +272,9 @@ export function driveTwoRepoProjectEndToEnd(): MockIO {
 
 // ── Integration tests ─────────────────────────────────────────────────────────
 
-describe('multi-repo end-to-end: execute → review → commit → PR (NFR-6, FR-7)', () => {
+describe('multi-repo end-to-end: execute+commit → review → PR (NFR-6, FR-7)', () => {
   it('multi-repo run records per-repo commit hashes and pr_urls (NFR-6, FR-7)', () => {
-    const io = driveTwoRepoProjectEndToEnd(); // execute → review → commit_completed(repos[]) → pr_created(repos[])
+    const io = driveTwoRepoProjectEndToEnd(); // execute+commit → review → pr_created(repos[])
     const ti = activeTaskIteration(io, 1, 1);
     expect(ti.repos.map(r => r.commit_hash).filter(Boolean).length).toBe(2);
     const sc = io.currentState!.pipeline.source_control!;

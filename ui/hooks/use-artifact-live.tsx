@@ -45,10 +45,14 @@ export const ArtifactLiveContext = React.createContext<ArtifactLiveValue>(defaul
 export function ArtifactLiveProvider({
   projectName,
   activeFileName,
+  hasTimeline,
   children,
 }: {
   projectName: string | null;
   activeFileName: string | null;
+  /** True when the project has a parsed pipeline state (v5/v6). Suppresses the
+   *  REQUIREMENTS doc from the artifact list since the DAG timeline shows it. */
+  hasTimeline: boolean;
   children: React.ReactNode;
 }) {
   const [files, setFiles] = React.useState<string[]>([]);
@@ -178,8 +182,8 @@ export function ArtifactLiveProvider({
   }, []);
 
   const artifacts = React.useMemo(
-    () => (projectName ? deriveArtifacts(projectName, files) : []),
-    [projectName, files],
+    () => (projectName ? deriveArtifacts(projectName, files, hasTimeline) : []),
+    [projectName, files, hasTimeline],
   );
 
   const value = React.useMemo<ArtifactLiveValue>(

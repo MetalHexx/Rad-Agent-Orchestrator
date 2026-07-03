@@ -6,8 +6,7 @@ Each project lives in its own folder under the configured `base_path`. This page
 
 ```text
 {PROJECT-NAME}/
-├── {NAME}-BRAINSTORMING.md        # Ideation output
-├── {NAME}-REQUIREMENTS.md         # FR/NFR/AD ledger
+├── {NAME}-REQUIREMENTS.md         # Requirement-grouped requirements (R{n})
 ├── {NAME}-MASTER-PLAN.md          # Phase outlines and exit criteria
 ├── {NAME}-ERROR-LOG.md            # Append-only error log
 ├── template.yml                   # Pipeline template for this project
@@ -28,8 +27,7 @@ Each project lives in its own folder under the configured `base_path`. This page
 
 | Pattern | Example | What it is |
 |---------|---------|------------|
-| `{NAME}-BRAINSTORMING.md` | `MYAPP-BRAINSTORMING.md` | Ideation document |
-| `{NAME}-REQUIREMENTS.md` | `MYAPP-REQUIREMENTS.md` | Requirements ledger |
+| `{NAME}-REQUIREMENTS.md` | `MYAPP-REQUIREMENTS.md` | Requirements document |
 | `{NAME}-MASTER-PLAN.md` | `MYAPP-MASTER-PLAN.md` | Phase-level plan |
 | `phases/{NAME}-PHASE-{NN}-{TITLE}.md` | `MYAPP-PHASE-01-CLEANUP.md` | Phase plan file |
 | `tasks/{NAME}-TASK-P{NN}-T{NN}-{TITLE}.md` | `MYAPP-TASK-P01-T01-DELETE-RETIRED-PAGES.md` | Task handoff file |
@@ -42,9 +40,7 @@ Each project lives in its own folder under the configured `base_path`. This page
 
 ## Document Types
 
-**`{NAME}-BRAINSTORMING.md`** — Records validated ideas, scope boundaries, and problem statements produced during the brainstorming stage. Optional; not every project uses this stage.
-
-**`{NAME}-REQUIREMENTS.md`** — A lean ledger of functional requirements (FR-), non-functional requirements (NFR-), architectural decisions (AD-), and design decisions (DD-). Every downstream step traces to IDs defined here.
+**`{NAME}-REQUIREMENTS.md`** — A requirement-grouped document where each `R{n}` is a whole unit of work, co-locating its functional, design, and technical detail. Scribed during brainstorming (via `/rad-create-plans`) and approved at the start of `/rad-plan`; the Master Plan is built from it.
 
 **`{NAME}-MASTER-PLAN.md`** — High-level phase outlines and executable tasks. This document is exploded into the smaller phase and task handoff documents.  Input to the explosion script that generates `phases/` and `tasks/`.
 

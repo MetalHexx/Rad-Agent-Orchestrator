@@ -87,7 +87,6 @@ export const taskLoopIteration: IterationEntry = {
           nodes: {
             task_executor: { kind: 'step', status: 'completed', doc_path: null, retries: 0 },
             code_review: { kind: 'step', status: 'completed', doc_path: 'reviews/r1.md', retries: 0 },
-            commit_gate: { kind: 'conditional', status: 'completed', branch_taken: 'true' },
             task_gate: { kind: 'gate', status: 'completed', gate_active: false },
           },
           corrective_tasks: [],
@@ -103,7 +102,7 @@ export const taskLoopIteration: IterationEntry = {
   repos: [{ name: '', commit_hash: 'abc1234def5678' }],
 };
 
-/** Simplified task loop iteration with a corrective task — omits commit_gate to focus on corrective-task structure */
+/** Simplified task loop iteration with a corrective task — focuses on corrective-task structure */
 export const taskLoopIterationWithCorrective: IterationEntry = {
   index: 0,
   status: 'completed',
@@ -150,5 +149,5 @@ export const compoundNodeIds = {
   threeSegment: 'phase_loop.iter0.phase_planning',
   deeplyNested: 'phase_loop.iter0.task_loop.iter0.code_review',
   loopNode: 'phase_loop.iter0.task_loop',
-  singleWord: 'commit',
+  singleWord: 'requirements',
 } as const;

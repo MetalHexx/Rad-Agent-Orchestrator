@@ -314,7 +314,7 @@ test('computeBranchBadge("false") returns label="No", badgeStatus="skipped", ari
   assert.deepStrictEqual(result, { label: 'No', badgeStatus: 'skipped', ariaLabel: 'Branch taken: No' });
 });
 
-test('shouldRenderBranchIndicator handles generic conditional node id (not hardcoded to commit_gate)', () => {
+test('shouldRenderBranchIndicator handles a generic conditional node id', () => {
   const genericNode: ConditionalNodeState = {
     kind: 'conditional',
     status: 'completed',

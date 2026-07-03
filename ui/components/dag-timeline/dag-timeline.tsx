@@ -7,6 +7,7 @@ import { DAGLoopNode } from './dag-loop-node';
 import { isLoopNode, groupNodesBySection, NODE_SECTION_MAP, shouldRenderTimelineRow, buildIterationItemValue } from './dag-timeline-helpers';
 import type { CompatibleNodeState } from './dag-timeline-helpers';
 import { DAGSectionGroup } from './dag-section-group';
+import { RequirementsPlanningRow } from './requirements-planning-row';
 
 interface DAGTimelineProps {
   nodes: NodesRecord;
@@ -28,6 +29,11 @@ interface DAGTimelineProps {
    *  and before the Execution section group. Used to position the Source
    *  Control panel in the correct on-screen order (FR-2). */
   afterPlanningSlot?: React.ReactNode;
+  /** Bare `${project}-REQUIREMENTS.md` filename resolved from the file list
+   *  (Requirements is authored pre-pipeline, no state node). When present,
+   *  renders a static authored badge as the first row of the Planning
+   *  section group, above the Master Plan row. */
+  requirementsDoc?: string | null;
 }
 
 /**
@@ -104,7 +110,7 @@ function derivePrefixAccordionKeys(compoundKey: string): string[] {
   return result.reverse();
 }
 
-export function DAGTimeline({ nodes, currentNodePath, onDocClick, expandedLoopIds, onAccordionChange, compareUrlByRepo, projectName, phaseLoopStatus, prUrl, afterPlanningSlot }: DAGTimelineProps) {
+export function DAGTimeline({ nodes, currentNodePath, onDocClick, expandedLoopIds, onAccordionChange, compareUrlByRepo, projectName, phaseLoopStatus, prUrl, afterPlanningSlot, requirementsDoc }: DAGTimelineProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const groups = groupNodesBySection(nodes);
   const unmatchedEntries = Object.entries(nodes).filter(([nodeId]) => !Object.hasOwn(NODE_SECTION_MAP, nodeId));
@@ -259,15 +265,18 @@ export function DAGTimeline({ nodes, currentNodePath, onDocClick, expandedLoopId
       {groups.map((group) => (
         <Fragment key={group.label}>
           <DAGSectionGroup label={group.label}>
+            {group.label === 'Planning' && requirementsDoc && !('requirements' in nodes) && (
+              <RequirementsPlanningRow fileName={requirementsDoc} onDocClick={onDocClick} />
+            )}
             {group.entries
-              .filter(([nodeId, node]) => shouldRenderTimelineRow(nodeId, node as CompatibleNodeState, { commitHash: null, prUrl: prUrl ?? null }))
+              .filter(([nodeId, node]) => shouldRenderTimelineRow(nodeId, node as CompatibleNodeState))
               .map(renderNodeEntry)}
           </DAGSectionGroup>
           {group.label === 'Planning' && afterPlanningSlot}
         </Fragment>
       ))}
       {unmatchedEntries
-        .filter(([nodeId, node]) => shouldRenderTimelineRow(nodeId, node as CompatibleNodeState, { commitHash: null, prUrl: prUrl ?? null }))
+        .filter(([nodeId, node]) => shouldRenderTimelineRow(nodeId, node as CompatibleNodeState))
         .map(renderNodeEntry)}
     </div>
   );

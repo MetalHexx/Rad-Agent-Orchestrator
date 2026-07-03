@@ -44,19 +44,11 @@ function mkWorld() {
 }
 
 describe('optimistic in_progress at action-return — top-level steps (FR-5)', () => {
-  it('requirements is in_progress after start', async () => {
-    const w = mkWorld();
-    await driveToNode(w, 'requirements');
-    const s = readPersistedState(w.projectDir);
-    expect(s.graph.nodes.requirements.status).toBe('in_progress');
-  });
-
-  it('master_plan is in_progress after requirements_completed', async () => {
+  it('master_plan is in_progress after start', async () => {
     const w = mkWorld();
     await driveToNode(w, 'master_plan');
     const s = readPersistedState(w.projectDir);
     expect(s.graph.nodes.master_plan.status).toBe('in_progress');
-    expect(s.graph.nodes.requirements.status).toBe('completed');
   });
 
   it('explode_master_plan is in_progress after master_plan_completed', async () => {
@@ -80,14 +72,6 @@ describe('optimistic in_progress at action-return — loop-internal steps (FR-6)
     await driveToNode(w, 'task_executor');
     const s = readPersistedState(w.projectDir);
     expect(s.graph.nodes.phase_loop.iterations[0].nodes.task_loop.iterations[0].nodes.task_executor.status).toBe('in_progress');
-  });
-
-  it('commit is in_progress when auto_commit is enabled', async () => {
-    const w = mkWorld();
-    await driveToNode(w, 'commit');
-    const s = readPersistedState(w.projectDir);
-    const taskIter = s.graph.nodes.phase_loop.iterations[0].nodes.task_loop.iterations[0];
-    expect(taskIter.nodes.commit.status).toBe('in_progress');
   });
 
   it('code_review is in_progress after task_completed', async () => {

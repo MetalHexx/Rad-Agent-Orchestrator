@@ -3,7 +3,7 @@
  *
  * `driveTwoRepoTaskCorrective`: drives the pipeline to a state where phase 1 task 1
  * has an active task-scope corrective entry with `repos: []`. The corrective is born
- * via a `code_review_completed` with `changes_requested` + orchestrator mediation.
+ * via a `code_review_completed` carrying a raw `changes_requested` verdict.
  *
  * `activeCorrective`: returns the latest (active) corrective task entry for a given
  * phase/task from the mock IO state.
@@ -33,18 +33,15 @@ import {
 } from './parity-states.js';
 import type { StepNodeState } from '../../../../src/lib/pipeline-engine/types.js';
 
-// ── Corrective-handoff doc path used by the mediation event ──────────────────
-
-const CORRECTIVE_HANDOFF_PATH = '/tmp/test-project/PARITY-TEST/tasks/corrective-p1-t1.md';
-
 // ── driveTwoRepoTaskCorrective ────────────────────────────────────────────────
 
 /**
  * Drives the pipeline from scaffold through phase 1 task 1, firing
- * `code_review_completed` with `changes_requested` so that a task-scope
- * corrective is born with `repos: []`. Returns MockIO positioned at the
- * corrective-active tier (corrective is `in_progress`, waiting for
- * task_executor to complete).
+ * `code_review_completed` with a raw `changes_requested` verdict so that a
+ * task-scope corrective is born with `repos: []`. The corrective carries the
+ * ORIGINAL task handoff as its `doc_path` and the review report as its
+ * `review_report_path`. Returns MockIO positioned at the corrective-active tier
+ * (corrective is `in_progress`, waiting for task_executor to complete).
  *
  * The source-control state carries two repos (`fake-api` and `fake-ui`) so
  * the corrective tests can assert create-or-match-by-name across both entries
@@ -81,7 +78,7 @@ export function driveTwoRepoTaskCorrective(): MockIO {
     io.currentState!.pipeline.gate_mode = null;
   }
 
-  // Set source control with two repos (fake-api + fake-ui) so commit_completed
+  // Set source control with two repos (fake-api + fake-ui) so task_completed
   // can write to both entries by name via the create-or-match path.
   // Write through io.writeState so the private currentState is updated.
   const withSC = structuredClone(io.currentState!);
@@ -136,10 +133,9 @@ export function driveTwoRepoTaskCorrective(): MockIO {
     taskIter.status = 'in_progress';
 
     // Scaffold the task-loop body nodes that the walker would produce.
-    // The template body order is: task_executor, commit_gate, code_review, task_gate.
+    // The template body order is: task_executor, code_review, task_gate.
     taskIter.nodes = {
       task_executor: { kind: 'step', status: 'in_progress', doc_path: null, retries: 0 },
-      commit_gate:   { kind: 'conditional', status: 'not_started', branch_taken: null },
       code_review:   { kind: 'step', status: 'not_started', doc_path: null, retries: 0 },
       task_gate:     { kind: 'gate', status: 'not_started', gate_active: false },
     };
@@ -152,55 +148,38 @@ export function driveTwoRepoTaskCorrective(): MockIO {
     io.writeState(PROJECT_DIR, patched);
   }
 
-  // ── Drive task 1: task_completed → (commit_completed) → code_review(changes_requested) ──
+  // ── Drive task 1: task_completed (with commit result) → code_review(changes_requested) ──
 
-  // 1. task_completed: advances task_executor → completed; walker fires invoke_source_control_commit.
-  const afterTaskCompleted = processEvent(
+  // 1. task_completed: advances task_executor → completed and records the coder's
+  //    per-repo commit hashes on the task iteration (auto_commit=always), then the
+  //    walker advances to code review.
+  processEvent(
     'task_completed',
     PROJECT_DIR,
-    { phase: 1, task: 1 },
+    {
+      phase: 1,
+      task: 1,
+      branch: 'radorch/p',
+      repos: [
+        { name: 'fake-api', committed: true, commitHash: 'apihash1', pushed: true },
+        { name: 'fake-ui',  committed: true, commitHash: 'uihash1',  pushed: true },
+      ],
+    },
     io,
     TEST_PATH_CONTEXT,
   );
 
-  // 2. If commit step fired, drive commit_completed with empty repos (pre-corrective commit).
-  if (afterTaskCompleted.action === 'invoke_source_control_commit') {
-    processEvent(
-      'commit_completed',
-      PROJECT_DIR,
-      {
-        phase: 1,
-        task: 1,
-        repos: [
-          { name: 'fake-api', committed: true, commitHash: 'apihash1', pushed: true },
-          { name: 'fake-ui',  committed: true, commitHash: 'uihash1',  pushed: true },
-        ],
-      },
-      io,
-      TEST_PATH_CONTEXT,
-    );
-  }
-
-  // 3. Seed the code review doc with changes_requested mediation frontmatter.
+  // 2. Seed the code review doc with a raw changes_requested verdict.
   const reviewDoc = codeReviewDoc(1, 1);
   DOC_STORE[reviewDoc.replace(/\\/g, '/')] = {
     frontmatter: {
       verdict: 'changes_requested',
-      orchestrator_mediated: true,
-      effective_outcome: 'changes_requested',
-      corrective_handoff_path: CORRECTIVE_HANDOFF_PATH,
       reason: 'Code review requested changes — multirepo corrective test',
     },
     content: '# Code Review\n\nRequested changes.',
   };
 
-  // Also seed the corrective handoff doc so doc-resolution doesn't fail.
-  DOC_STORE[CORRECTIVE_HANDOFF_PATH.replace(/\\/g, '/')] = {
-    frontmatter: { type: 'task_handoff', phase: 1, task: 1 },
-    content: '# Corrective Handoff\n\nCorrect the issues.',
-  };
-
-  // 4. Fire code_review_completed with changes_requested to birth the corrective.
+  // 3. Fire code_review_completed with changes_requested to birth the corrective.
   processEvent(
     'code_review_completed',
     PROJECT_DIR,

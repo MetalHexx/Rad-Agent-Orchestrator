@@ -19,15 +19,6 @@ nodes:
 
   # ── Planning Steps ────────────────────────────────────────────────────────
 
-  - id: requirements
-    kind: step
-    label: "Requirements"
-    action: spawn_requirements
-    events: { completed: requirements_completed }
-    context: { step: requirements }
-    doc_output_field: doc_path
-    depends_on: []
-
   - id: master_plan
     kind: step
     label: "Master Plan"
@@ -35,7 +26,7 @@ nodes:
     events: { completed: master_plan_completed }
     context: { step: master_plan }
     doc_output_field: doc_path
-    depends_on: [requirements]
+    depends_on: []
 
   - id: explode_master_plan
     kind: step
@@ -95,31 +86,13 @@ nodes:
             events: { completed: task_completed }
             depends_on: []
 
-          - id: commit_gate
-            kind: conditional
-            label: "Auto-Commit"
-            condition:
-              state_ref: pipeline.source_control.auto_commit
-              operator: neq
-              value: never
-            branches:
-              true:
-                - id: commit
-                  kind: step
-                  label: "Source Control Commit"
-                  action: invoke_source_control_commit
-                  events: { completed: commit_completed }
-                  depends_on: []
-              false: []
-            depends_on: [task_executor]
-
           - id: code_review
             kind: step
             label: "Code Review"
             action: spawn_code_reviewer
             events: { completed: code_review_completed }
             doc_output_field: doc_path
-            depends_on: [commit_gate]
+            depends_on: [task_executor]
 
           - id: task_gate
             kind: gate

@@ -12,19 +12,19 @@ The shipped review-intensity tiers are `extra-high`, `high`, `medium`, and `low`
 
 **When to use it** — Use it before non-trivial work to decide whether the work warrants a project series and to gather linked PRDs, design docs, or screenshots that the planners will read.  It is highly recommended you start every project with a brainstorming session.  It's not required, but it will greatly help you align your intent to produce the best possible planning documents when running `/rad-plan` later.
 
-**What it produces** — `{NAME}-BRAINSTORMING.md` at the project root.  This will be linked to a project series (should you choose to create one).  Relevant docs and additional context will be linked to the brainstorming document and read by the Planner when it authors `{NAME}-REQUIREMENTS.md`.
+**What it produces** — a draft `{NAME}-REQUIREMENTS.md` at the project root, scribed via `/rad-create-plans` as consensus forms.  It can be linked to a project series (should you choose to create one), and relevant docs and additional context are linked into it for `/rad-plan` to build on.
 
 ### /rad-plan
 
-**What it does** — Starts the full planning pipeline. At the start, you pick a review-intensity tier (`extra-high`, `high`, `medium`, `low`) and a Phase/Task Size (`Small`, `Medium`, `Large`, `Extra Large`, or `Custom` prose). The planners then produce a requirements document and an execution plan. If you already have a brainstorming document, your planners will automatically use it to create the formal plans.
+**What it does** — Starts the full planning pipeline from an existing requirements document. At the start you confirm the requirements, then pick a review-intensity tier (`extra-high`, `high`, `medium`, `low`) and a Phase/Task Size (`Small`, `Medium`, `Large`, `Extra Large`, or `Custom` prose). The planner then builds the Master Plan and the execution plan from the approved requirements.
 
 The tier governs review depth — `extra-high` runs per-task code review plus phase review plus final review; `low` runs final review only; `high` and `medium` are intermediate. Phase/Task Size governs task scope and phase scope, with a `(Recommended)` size that moves with the chosen tier.
 
-**When to use it** — Use it after `/rad-brainstorm`, or when you already have planning context and want planning ceremony plus the review depth your project needs.
+**When to use it** — Use it after `/rad-brainstorm` has scribed a requirements document, when you want planning ceremony plus the review depth your project needs.
 
-**How to use it** Typically you type `/rad-plan <PROJECT-NAME>` if you've created a brainstorming document prior.  However, if you have no brainstorming document, you can enter as long of a prompt as you want along with links to any additional documents, resources, images that you want the planners to consider in the final plan.
+**How to use it** — Type `/rad-plan <PROJECT-NAME>` once a requirements document exists for that project.  If none exists yet, `/rad-plan` points you to `/rad-brainstorm` to create one — that's where you bring your prompt and links to any additional documents, resources, or images for the requirements.
 
-**What it produces** — `{NAME}-REQUIREMENTS.md`, `{NAME}-MASTER-PLAN.md`, and the per-phase and per-task files under `phases/` and `tasks/`.
+**What it produces** — `{NAME}-MASTER-PLAN.md` and the per-phase and per-task files under `phases/` and `tasks/`, built from the approved `{NAME}-REQUIREMENTS.md`.
 
 ### /rad-execute
 

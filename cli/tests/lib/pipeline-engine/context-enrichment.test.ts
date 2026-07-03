@@ -1,30 +1,49 @@
-import { describe, it, expect } from 'vitest';
-import fs from 'node:fs';
+import { describe, it, expect, vi } from 'vitest';
 import os from 'node:os';
+import fs from 'node:fs';
 import path from 'node:path';
 import { enrichActionContext, resolveActivePhaseIndex, resolveActiveTaskIndex, type EnrichmentInput } from '../../../src/lib/pipeline-engine/context-enrichment.js';
 import { makeV6State } from '../../helpers/state-factory.js';
 import type { PipelineState, OrchestrationConfig } from '../../../src/lib/pipeline-engine/types.js';
+import { userDataPaths } from '../../../src/lib/paths.js';
 
-function makeTmpRepo() {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pe-'));
-  const skillDir = path.join(root, 'packages/x/skills/demo');
-  fs.mkdirSync(skillDir, { recursive: true });
-  fs.writeFileSync(path.join(skillDir, 'SKILL.md'),
-    '---\nname: demo\ndescription: a demo skill\n---\nbody\n', 'utf8');
-  return root;
+// Module-boundary mock: resolveRequirementsDoc (context-enrichment.ts) reads real
+// paths via userDataPaths() + WorkGraphService, so isolate it here rather than
+// against the developer's real ~/.radorc. No pre-existing paths-mock lived in
+// this test dir — established here, mirroring the temp-dir isolation the sibling
+// composer/engine tests already use.
+vi.mock('../../../src/lib/paths.js', () => ({
+  userDataPaths: vi.fn(),
+}));
+
+function mockUserDataPathsRoot(root: string): void {
+  vi.mocked(userDataPaths).mockReturnValue({
+    root,
+    installJson: path.join(root, 'install.json'),
+    orchestrationYml: path.join(root, 'orchestration.yml'),
+    ui: path.join(root, 'ui'),
+    templates: path.join(root, 'templates'),
+    projects: path.join(root, 'projects'),
+    sideProjects: path.join(root, 'side-projects'),
+    worktrees: path.join(root, 'worktrees'),
+    logs: path.join(root, 'logs'),
+    runtime: path.join(root, 'runtime'),
+    telemetry: path.join(root, 'telemetry'),
+    bootstrapLock: path.join(root, 'runtime', 'bootstrap.lock'),
+    actionEvents: path.join(root, 'action-events'),
+  });
 }
 
-// Minimal runtime input for spawn_requirements — that branch only reads
-// `action`, `walkerContext`, and (transitively) `process.cwd()`. The remaining
-// fields are required structurally on `EnrichmentInput`, so we stub-and-cast
-// rather than fabricate a full `PipelineState`/`OrchestrationConfig`.
+// Minimal runtime input for spawn_master_plan — that branch only reads `action`
+// and `walkerContext` now. The remaining fields are required structurally on
+// `EnrichmentInput`, so we stub-and-cast rather than fabricate a full
+// `PipelineState`/`OrchestrationConfig`.
 function makeInput(): EnrichmentInput {
   return {
-    action: 'spawn_requirements',
+    action: 'spawn_master_plan',
     walkerContext: {},
     state: { graph: { nodes: {} }, pipeline: {} } as unknown as EnrichmentInput['state'],
-    config: { limits: { max_phases: 10, max_tasks_per_phase: 8 } } as unknown as EnrichmentInput['config'],
+    config: { limits: {} } as unknown as EnrichmentInput['config'],
     cliContext: {},
   };
 }
@@ -57,32 +76,17 @@ function makeEnrichmentInput(action: string, state: PipelineState): EnrichmentIn
     action,
     walkerContext: {},
     state,
-    config: { limits: { max_phases: 10, max_tasks_per_phase: 8 } } as unknown as EnrichmentInput['config'],
+    config: { limits: {} } as unknown as EnrichmentInput['config'],
     cliContext: {},
   };
 }
 
-describe('context-enrichment skills block', () => {
-  it('spawn_requirements enrichment emits Repository Skills Available block (no subprocess hop)', () => {
-    const root = makeTmpRepo();
-    const cwd = process.cwd();
-    try {
-      process.chdir(root);
-      const r = enrichActionContext(makeInput());
-      expect(r.repository_skills_block).toMatch(/## Repository Skills Available/);
-      expect(r.repository_skills_block).toMatch(/"name": "demo"/);
-      expect(r.repository_skills_block).toMatch(/Entries above are a catalog\./);
-    } finally { process.chdir(cwd); }
-  });
-
-  it('empty manifest yields empty string', () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pe-empty-'));
-    const cwd = process.cwd();
-    try {
-      process.chdir(root);
-      const r = enrichActionContext(makeInput());
-      expect(r.repository_skills_block).toBe('');
-    } finally { process.chdir(cwd); }
+describe('context-enrichment spawn_master_plan', () => {
+  it('enriches with the planner step only — no limits, no repository_skills_block', () => {
+    const r = enrichActionContext(makeInput());
+    expect(r.step).toBe('master_plan');
+    expect(r).not.toHaveProperty('limits');
+    expect(r).not.toHaveProperty('repository_skills_block');
   });
 });
 
@@ -188,64 +192,7 @@ describe('corrective-aware resolvers (FR-1, FR-2, NFR-1)', () => {
   });
 });
 
-const cfg = { limits: { max_phases: 10, max_tasks_per_phase: 8 } } as unknown as OrchestrationConfig;
-
-function commitState(correctiveActive: boolean): PipelineState {
-  const taskLoop = {
-    kind: 'for_each_task',
-    status: correctiveActive ? 'completed' : 'in_progress',
-    iterations: [
-      { index: 0, status: correctiveActive ? 'completed' : 'in_progress', doc_path: null, repos: [], corrective_tasks: [], nodes: {} },
-    ],
-  };
-  const phase = {
-    index: 3,
-    status: 'in_progress',
-    doc_path: null,
-    repos: [],
-    corrective_tasks: correctiveActive
-      ? [{ index: 1, status: 'in_progress', reason: 'r', injected_after: 'phase_review', nodes: {}, repos: [] }]
-      : [],
-    nodes: { task_loop: taskLoop },
-  };
-  // Pad to 4 phases so phase index 4 is the corrective phase.
-  const pad = (i: number) => ({ index: i, status: 'completed', doc_path: null, repos: [], corrective_tasks: [], nodes: { task_loop: structuredClone(taskLoop) } });
-  return {
-    pipeline: { source_control: { branch: 'PROJECT-GRAPH-2', worktree_path: '/wt' } },
-    graph: { nodes: { phase_loop: { kind: 'for_each_phase', status: 'in_progress', iterations: [pad(0), pad(1), pad(2), phase] } } },
-  } as unknown as PipelineState;
-}
-
-describe('invoke_source_control_commit sentinel parity (FR-3, DD-2)', () => {
-  it('projects the phase-scope sentinel on an active phase corrective (FR-3, DD-2)', () => {
-    const ctx = enrichActionContext({
-      action: 'invoke_source_control_commit',
-      walkerContext: {},
-      state: commitState(true),
-      config: cfg,
-      cliContext: {},
-    });
-    expect(ctx.phase_number).toBe(4);
-    expect(ctx.phase_id).toBe('P04');
-    expect(ctx.task_number).toBeNull();
-    expect(ctx.task_id).toBe('P04-PHASE');
-  });
-
-  it('keeps the resolved task identity on a normal commit (NFR-1)', () => {
-    const ctx = enrichActionContext({
-      action: 'invoke_source_control_commit',
-      walkerContext: {},
-      state: commitState(false),
-      config: cfg,
-      cliContext: {},
-    });
-    expect(ctx.task_number).toBe(1);
-    // commitState(false) has 4 phases with phase 4 in_progress, so the
-    // resolved phase is 4 and task is 1 — P04-T01 (not P01-T01 as the
-    // handoff stated; see Execution Notes for the discrepancy).
-    expect(ctx.task_id).toBe('P04-T01');
-  });
-});
+const cfg = { limits: {} } as unknown as OrchestrationConfig;
 
 import { validateBaseShaChronology } from '../../../src/lib/pipeline-engine/context-enrichment.js';
 
@@ -306,7 +253,7 @@ describe('spawn_final_reviewer base/head SHA derivation — ≤1 commit short-ci
 });
 
 describe('per-action repos[] enrichment (FR-1, FR-2, FR-3)', () => {
-  const DEFAULT_CONFIG = { limits: { max_phases: 10, max_tasks_per_phase: 8 } } as unknown as OrchestrationConfig;
+  const DEFAULT_CONFIG = { limits: {} } as unknown as OrchestrationConfig;
 
   function buildTwoRepoExecState(): PipelineState {
     const taskRepos = [
@@ -423,7 +370,7 @@ describe('enrichment readers migrate to repos[] (FR-21, FR-22)', () => {
 });
 
 describe('execute_task corrective early-return emits repos[] (FR-1)', () => {
-  const DEFAULT_CONFIG = { limits: { max_phases: 10, max_tasks_per_phase: 8 } } as unknown as OrchestrationConfig;
+  const DEFAULT_CONFIG = { limits: {} } as unknown as OrchestrationConfig;
 
   /**
    * Build a state whose active task loop is under a phase-scope corrective that
@@ -498,7 +445,7 @@ describe('execute_task corrective early-return emits repos[] (FR-1)', () => {
 });
 
 describe('spawn_phase_reviewer per-repo SHA grouping (FR-3)', () => {
-  const DEFAULT_CONFIG = { limits: { max_phases: 10, max_tasks_per_phase: 8 } } as unknown as OrchestrationConfig;
+  const DEFAULT_CONFIG = { limits: {} } as unknown as OrchestrationConfig;
 
   /**
    * Build a two-repo, two-task state for spawn_phase_reviewer.
@@ -592,7 +539,7 @@ describe('spawn_phase_reviewer per-repo SHA grouping (FR-3)', () => {
 });
 
 describe('per-repo chronology and final SHAs (FR-3, FR-4)', () => {
-  const DEFAULT_CONFIG = { limits: { max_phases: 10, max_tasks_per_phase: 8 } } as unknown as OrchestrationConfig;
+  const DEFAULT_CONFIG = { limits: {} } as unknown as OrchestrationConfig;
 
   function buildTwoRepoProjectWithCommits(): PipelineState {
     // api: [a1, a2], ui: [u1, u2] — two phases, each with one task iteration carrying two repos
@@ -690,5 +637,109 @@ describe('per-repo chronology and final SHAs (FR-3, FR-4)', () => {
     const ordinal = new Map([['aaaa1111', 2], ['bbbb2222', 1]]);
     const err = validateBaseShaChronology(['aaaa1111', 'bbbb2222'], ordinal, 'fake-api');
     expect(err).toMatch(/fake-api/);
+  });
+});
+
+describe('execute_task surfaces complexity and should_commit to the coder spawn', () => {
+  const DEFAULT_CONFIG = { limits: {} } as unknown as OrchestrationConfig;
+
+  function execStateWithComplexity(complexity?: 'simple' | 'standard' | 'complex'): PipelineState {
+    const taskIter: Record<string, unknown> = {
+      index: 0,
+      status: 'in_progress',
+      doc_path: '/fake/handoff.md',
+      repos: [{ name: 'backend', commit_hash: null }],
+      corrective_tasks: [],
+      nodes: {},
+    };
+    if (complexity !== undefined) taskIter.complexity = complexity;
+    return {
+      graph: {
+        nodes: {
+          phase_loop: {
+            kind: 'for_each_phase',
+            status: 'in_progress',
+            iterations: [
+              {
+                index: 0,
+                status: 'in_progress',
+                doc_path: null,
+                repos: [{ name: 'backend', commit_hash: null }],
+                corrective_tasks: [],
+                nodes: { task_loop: { kind: 'for_each_task', status: 'in_progress', iterations: [taskIter] } },
+              },
+            ],
+          },
+        },
+      },
+      pipeline: {
+        gate_mode: null,
+        current_tier: 'execution',
+        halt_reason: null,
+        source_control: {
+          worktree_name: 'test-project',
+          auto_commit: 'always',
+          auto_pr: 'always',
+          repos: [{ name: 'backend', branch: 'radorch/test', base_branch: 'main', remote_url: null, compare_url: null, pr_url: null }],
+        },
+      },
+      project: { name: 'test-project' },
+    } as unknown as PipelineState;
+  }
+
+  it('reads complexity from the seeded task iteration', () => {
+    const ctx = enrichActionContext({ action: 'execute_task', walkerContext: {}, state: execStateWithComplexity('complex'), config: DEFAULT_CONFIG, cliContext: {} });
+    expect(ctx.complexity).toBe('complex');
+  });
+
+  it('defaults to standard when the task iteration lacks complexity', () => {
+    const ctx = enrichActionContext({ action: 'execute_task', walkerContext: {}, state: execStateWithComplexity(undefined), config: DEFAULT_CONFIG, cliContext: {} });
+    expect(ctx.complexity).toBe('standard');
+  });
+
+  it('surfaces should_commit=true when auto_commit is not never', () => {
+    // execStateWithComplexity seeds source_control.auto_commit = 'always'.
+    const ctx = enrichActionContext({ action: 'execute_task', walkerContext: {}, state: execStateWithComplexity('standard'), config: DEFAULT_CONFIG, cliContext: {} });
+    expect(ctx.should_commit).toBe(true);
+  });
+
+  it('surfaces should_commit=false when auto_commit is never', () => {
+    const state = execStateWithComplexity('standard');
+    state.pipeline.source_control!.auto_commit = 'never';
+    const ctx = enrichActionContext({ action: 'execute_task', walkerContext: {}, state, config: DEFAULT_CONFIG, cliContext: {} });
+    expect(ctx.should_commit).toBe(false);
+  });
+});
+
+describe('spawn_final_reviewer requirements_doc resolution via work-graph (P01-T01)', () => {
+  function stateForProject(projectName: string): PipelineState {
+    return {
+      graph: { nodes: {} },
+      pipeline: {},
+      project: { name: projectName },
+    } as unknown as PipelineState;
+  }
+
+  it('carries requirements_doc as the project-relative filename when the doc exists on disk', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ce-requirements-'));
+    mockUserDataPathsRoot(root);
+    const projectName = 'REQ-DOC-PRESENT';
+    const projectDir = path.join(root, 'projects', projectName);
+    fs.mkdirSync(projectDir, { recursive: true });
+    fs.writeFileSync(path.join(projectDir, `${projectName}-REQUIREMENTS.md`), '# requirements');
+
+    const ctx = enrichActionContext(makeEnrichmentInput('spawn_final_reviewer', stateForProject(projectName)));
+    expect(ctx.requirements_doc).toBe(`${projectName}-REQUIREMENTS.md`);
+  });
+
+  it('carries requirements_doc as null when the project has no requirements doc', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ce-requirements-'));
+    mockUserDataPathsRoot(root);
+    const projectName = 'REQ-DOC-ABSENT';
+    const projectDir = path.join(root, 'projects', projectName);
+    fs.mkdirSync(projectDir, { recursive: true });
+
+    const ctx = enrichActionContext(makeEnrichmentInput('spawn_final_reviewer', stateForProject(projectName)));
+    expect(ctx.requirements_doc).toBeNull();
   });
 });

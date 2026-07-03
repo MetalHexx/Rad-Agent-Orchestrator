@@ -16,7 +16,7 @@ function makeStubIO(_result: PipelineResult): { io: IOAdapter; calls: unknown[] 
   const io: IOAdapter = {
     readState: () => null,
     writeState: () => { calls.push('writeState'); },
-    readConfig: () => ({ limits: { max_phases: 10, max_tasks_per_phase: 8, max_retries_per_task: 3, max_consecutive_review_rejections: 3 },
+    readConfig: () => ({ limits: { max_retries_per_task: 3 },
                         human_gates: { after_planning: true, execution_mode: 'task', after_final_review: true },
                         source_control: { auto_commit: 'never', auto_pr: 'never' },
                         default_template: 'medium' }),
@@ -35,7 +35,7 @@ const pathContext: PathContext = {
 
 describe('pipelineSignal core function', () => {
   it('projects engine result into { action, context, prompt, completion_event, has_custom_instructions } on success (FR-7)', async () => {
-    const { io } = makeStubIO({ action: 'spawn_requirements', context: {} });
+    const { io } = makeStubIO({ action: 'spawn_master_plan', context: {} });
     const r = await pipelineSignal({ event: 'start', projectDir: '/tmp/proj', context: {}, io, pathContext });
     expect(r.ok).toBe(true);
     if (r.ok) {
@@ -122,7 +122,7 @@ function seedCatalogNoOverlay(): string {
 }
 
 const DEFAULT_CONFIG: OrchestrationConfig = {
-  limits: { max_phases: 10, max_tasks_per_phase: 8, max_retries_per_task: 3, max_consecutive_review_rejections: 3 },
+  limits: { max_retries_per_task: 3 },
   human_gates: { after_planning: true, execution_mode: 'task', after_final_review: true },
   source_control: { auto_commit: 'never', auto_pr: 'never' },
   default_template: SIGNAL_CORE_TEMPLATE_ID,

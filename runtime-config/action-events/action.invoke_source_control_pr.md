@@ -2,13 +2,13 @@
 kind: action
 name: invoke_source_control_pr
 title: Invoke source control PR
-description: Spawn the source-control agent to open a pull request for the completed project branch.
+description: Open a pull request for the completed project branch directly, following the PR reference.
 category: source-control
 completion_event: pr_created
 ---
 
-Spawn `rad-orc:source-control` in PR mode.
+Open the pull request(s) yourself — do not spawn an agent. Follow the `rad-source-control` PR reference (`working-with-prs.md`) for existing-PR detection, the body sourced from `state.final_review.doc_path`, and sibling cross-linking.
 
-The envelope carries `data.context.repos[]` — an array where each entry has `name`, `path`, and `branch`. Inline the `repos[]` array verbatim into the source-control agent spawn prompt, along with the project name and `state.final_review.doc_path` as the PR body file. The agent composes one PR description per repo and runs `radorch git pr --repos '<json>'` with the full array as a single JSON argument.
+The envelope carries `data.context.repos[]` — an array where each entry has `name`, `path`, `branch`, and `base_branch`. For each repo, open one PR from `branch` against `base_branch`, running `gh` in that repo's `path`.
 
-The orchestrator relays the agent's structured `[{name, pr_url}]` result array into one array-shaped `pr_created` signal via `--repos '<json>'`. If a repo's `pr_url` is non-null, the signal carries the URL; if `pr_url` is `null` (creation failed or a pre-condition was unmet), that entry's URL is omitted so the pipeline records the attempt as `null` and proceeds to the human gate.
+Relay the resulting `[{ name, pr_url }]` array into one array-shaped `pr_created` signal via `--repos '<json>'`. Give every entry an explicit `pr_url`: the URL when creation succeeded, or `pr_url: null` when it failed or a pre-condition was unmet. The pipeline records each entry's `pr_url` as given (a `null` records the attempt as unavailable) and proceeds to the human gate.

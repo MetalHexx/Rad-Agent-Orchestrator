@@ -61,33 +61,12 @@
           "type": "object",
           "additionalProperties": false,
           "required": [
-            "max_phases",
-            "max_tasks_per_phase",
-            "max_retries_per_task",
-            "max_consecutive_review_rejections"
+            "max_retries_per_task"
           ],
           "properties": {
-            "max_phases": {
-              "title": "Max Phases",
-              "description": "Maximum number of phases allowed per pipeline run.",
-              "type": "integer",
-              "minimum": 1
-            },
-            "max_tasks_per_phase": {
-              "title": "Max Tasks Per Phase",
-              "description": "Maximum number of tasks allowed in a single phase.",
-              "type": "integer",
-              "minimum": 1
-            },
             "max_retries_per_task": {
               "title": "Max Retries Per Task",
               "description": "Maximum number of retry attempts per task.",
-              "type": "integer",
-              "minimum": 0
-            },
-            "max_consecutive_review_rejections": {
-              "title": "Max Consecutive Review Rejections",
-              "description": "Maximum number of consecutive review rejections before the pipeline halts.",
               "type": "integer",
               "minimum": 0
             }
@@ -413,6 +392,12 @@
               "commit_hash": { "oneOf": [{ "type": "string" }, { "type": "null" }] }
             }
           }
+        },
+        "complexity": {
+          "title": "Task Complexity",
+          "description": "Authoring complexity signal for task iterations (simple|standard|complex). Absent on phase iterations.",
+          "type": "string",
+          "enum": ["simple", "standard", "complex"]
         }
       }
     },
@@ -451,7 +436,12 @@
         },
         "doc_path": {
           "title": "Corrective Task Doc Path",
-          "description": "Relative path to the corrective task handoff doc. Optional; absent on entries that have not yet been authored.",
+          "description": "Relative path to the ORIGINAL scope doc (task handoff or phase plan) this corrective re-runs against — copied from the hosting iteration at birth and immutable. Optional; absent on entries that have not yet been authored.",
+          "type": ["string", "null"]
+        },
+        "review_report_path": {
+          "title": "Review Report Path",
+          "description": "Relative path to the review report that requested this corrective (the completing review's doc_path). Optional; null when unavailable.",
           "type": ["string", "null"]
         },
         "repos": {

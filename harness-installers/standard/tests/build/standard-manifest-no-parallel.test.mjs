@@ -18,12 +18,13 @@ for (const h of HARNESSES) {
       `${h}: no skills/rad-execute-parallel/* entries may survive`);
   });
 
-  test(`${h} manifest carries rad-execute SKILL.md with sha256 (FR-18, AD-4)`, () => {
+  test(`${h} manifest carries rad-execute SKILL.md entry (FR-18, AD-4)`, () => {
     const m = JSON.parse(fs.readFileSync(file, 'utf8'));
     const exec = m.files.find((e) =>
       e.bundlePath === 'skills/rad-execute/SKILL.md');
     assert.ok(exec, `${h}: skills/rad-execute/SKILL.md entry present`);
-    assert.match(exec.sha256, /^[a-f0-9]{64}$/,
-      `${h}: rad-execute SKILL.md carries a sha256`);
+    assert.strictEqual(exec.destinationPath,
+      '${HARNESS_ROOT}/skills/rad-execute/SKILL.md',
+      `${h}: rad-execute SKILL.md installs under the per-harness root`);
   });
 }

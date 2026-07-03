@@ -22,7 +22,7 @@ const afterCodeReviewStartedState = {
   project: { name: 'cli-behavioral', created: '2024-01-01T00:00:00.000Z', updated: '2024-01-01T00:00:00.000Z' },
   config: {
     gate_mode: 'task',
-    limits: { max_phases: 10, max_tasks_per_phase: 8, max_retries_per_task: 3, max_consecutive_review_rejections: 3 },
+    limits: { max_retries_per_task: 3 },
     source_control: { auto_commit: 'never', auto_pr: 'never' },
   },
   pipeline: { gate_mode: 'task', source_control: null, current_tier: 'execution', halt_reason: null },
@@ -119,8 +119,8 @@ describe('code_review_completed event with verdict=approved (FR-3, FR-7, DD-2, D
 // the engine's next action is `spawn_code_reviewer` — whose completion event
 // (`code_review_completed`) drives custom-slot composition. Firing
 // code_review_completed instead advances PAST the code_review step, so the
-// composed prompt would target the NEXT step's event (e.g. commit_completed),
-// which would miss the custom-slot wiring being exercised here.
+// composed prompt would target a later step's event, which would miss the
+// custom-slot wiring being exercised here.
 describe('code_review prompt composition — custom slots (FR-5, FR-9, AD-7, NFR-7)', () => {
   // State that puts the walker at task_executor completed, code_review pending
   // — i.e. firing task_completed leaves the next action as spawn_code_reviewer.

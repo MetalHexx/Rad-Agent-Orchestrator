@@ -57,13 +57,13 @@ The orchestration system uses a state machine to keep track of exactly where you
 
 ## Brainstorming & Project Series
 
-The brainstormer is optional but recommended. `/rad-plan` will accept planning context directly if you'd rather skip ahead, but a short brainstorming session usually pays for itself with better planning output.
+Brainstorming is the first step in planning a project — it's a collaborative session that converges on scope and scribes the requirements document `/rad-plan` builds on.
 
-When you do brainstorm, the agent produces a `{NAME}-BRAINSTORMING.md` document in your project folder. `/rad-plan` picks that file up automatically — it's the formal handoff into planning, and whatever you capture there is what the Planner reads when it authors `{NAME}-REQUIREMENTS.md`.
+When you brainstorm, the session scribes a draft `{NAME}-REQUIREMENTS.md` in your project folder (via `/rad-create-plans`). `/rad-plan` picks that file up automatically — it's the formal handoff into planning, and whatever you capture there is what the Master Plan is built from.
 
-The brainstormer is also a BYO-context surface. It helps you build a doc that links to existing PRDs, design docs, RFCs, screenshots, or any other artifacts the planner should be aware of — so the planning agents start grounded in your reality, not a blank page.
+Brainstorming is also a BYO-context surface. It helps you build a requirements doc that links to existing PRDs, design docs, RFCs, screenshots, or any other artifacts the planner should be aware of — so the planning agents start grounded in your reality, not a blank page.
 
-For larger ideas, consider a **project series**: a numbered `{STEM}-N` sequence (for example `MY-FEATURE-1`, `MY-FEATURE-2`, `MY-FEATURE-3`) where each project declares an explicit *Receives From* / *Delivers To* relationship with its neighbors. Splitting into a series keeps individual projects smaller, planning sharp, and execution reviewable. The brainstormer helps you decide whether an idea is one project or a series, and if it's a series, what the boundaries between projects should be.
+For larger ideas, consider a **project series**: a numbered `{STEM}-N` sequence (for example `MY-FEATURE-1`, `MY-FEATURE-2`, `MY-FEATURE-3`) where each project declares an explicit *Receives From* / *Delivers To* relationship with its neighbors. Splitting into a series keeps individual projects smaller, planning sharp, and execution reviewable. Brainstorming helps you decide whether an idea is one project or a series, and if it's a series, what the boundaries between projects should be.
 
 ## Next Steps
 

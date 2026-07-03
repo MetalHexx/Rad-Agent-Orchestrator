@@ -1,6 +1,6 @@
 ---
 name: rad-execute
-description: "Run a project through the rad orc execution pipeline. Use it when after /rad-plan has completed and ready to execute or when the user indicates they want to execute or run a project.  It can also be used when resuming a project that was previouisly executed but not completed."
+description: "Run a project through the rad orc execution pipeline. Use it when after /rad-plan has completed and ready to execute or when the user indicates they want to execute or run a project.  It can also be used when resuming a rad-orc project that was previouisly executed but not completed."
 user-invocable: true
 ---
 

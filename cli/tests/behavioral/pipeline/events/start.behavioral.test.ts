@@ -25,7 +25,7 @@ const taskExecutorInProgressState = {
   project: { name: 'cli-behavioral', created: '2024-01-01T00:00:00.000Z', updated: '2024-01-01T00:00:00.000Z' },
   config: {
     gate_mode: 'task',
-    limits: { max_phases: 10, max_tasks_per_phase: 8, max_retries_per_task: 3, max_consecutive_review_rejections: 3 },
+    limits: { max_retries_per_task: 3 },
     source_control: { auto_commit: 'never', auto_pr: 'never' },
   },
   // Source control is always initialized by the time a task is the frontier;
@@ -90,7 +90,7 @@ const taskExecutorInProgressState = {
 };
 
 describe('start event (FR-3, DD-2)', () => {
-  it('start event with a synthetic planning template writes state.json and returns action=spawn_requirements', async () => {
+  it('start event with a synthetic planning template writes state.json and returns action=spawn_master_plan', async () => {
     const w = buildWorld({
       template: { id: 'syn-planning', body: PLANNING_TEMPLATE_BODY },
       state: null,
@@ -108,13 +108,13 @@ describe('start event (FR-3, DD-2)', () => {
     });
     assertEnvelopeStateSideFiles(env, {
       projectDir: w.projectDir,
-      envelope: { ok: true, data: { action: 'spawn_requirements' } },
-      state: { $schema: 'orchestration-state-v6', graph: { template_id: 'syn-planning', nodes: { requirements: { status: 'in_progress' } } } },
+      envelope: { ok: true, data: { action: 'spawn_master_plan' } },
+      state: { $schema: 'orchestration-state-v6', graph: { template_id: 'syn-planning', nodes: { master_plan: { status: 'in_progress' } } } },
       sideFiles: [],
     });
-    // FR-4, FR-23 — engine composes the spawn_requirements prompt with
-    // completion_event=requirements_completed (per the action catalog).
-    assertPromptForEvent(env, 'requirements_completed');
+    // FR-4, FR-23 — engine composes the spawn_master_plan prompt with
+    // completion_event=master_plan_completed (per the action catalog).
+    assertPromptForEvent(env, 'master_plan_completed');
   });
 
   it('start event resumes an in-progress task_executor by re-emitting action=execute_task', async () => {

@@ -43,19 +43,15 @@ async function scaffoldToPlanApprovalGate(dir: string): Promise<void> {
 
   processEvent('start', dir, { template: 'medium' }, io, pathContext);
 
-  // Mark requirements + master_plan + explode steps as completed with doc paths.
-  // requirement_count is required by the requirements_completed frontmatter
-  // validator; omitting it makes the event silently fail validation and the
-  // mutation never lands, leaving requirements stuck in_progress.
-  const reqDoc = path.join(dir, 'requirements.md');
-  fs.writeFileSync(reqDoc, '---\nproject: gate-test\ntype: requirements\nrequirement_count: 1\n---\n# requirements\n');
+  // Mark master_plan + explode steps as completed with doc paths. master_plan is
+  // the first node now (requirements is no longer a pipeline step), so `start`
+  // lands master_plan in_progress directly.
   const mpDoc = path.join(dir, 'master-plan.md');
   fs.writeFileSync(mpDoc, '---\nproject: gate-test\ntype: master_plan\ntotal_phases: 1\ntotal_tasks: 1\n---\n# master plan\n');
   // Per FR-11, `_started` events are no longer accepted. Step nodes transition
   // to in_progress via the optimistic write in processEvent (FR-10), so
   // dispatching only `_completed` events is sufficient to advance the planner
-  // chain from requirements → master_plan → explode_master_plan.
-  processEvent('requirements_completed', dir, { doc_path: reqDoc }, io, pathContext);
+  // chain from master_plan → explode_master_plan.
   processEvent('master_plan_completed', dir, { doc_path: mpDoc }, io, pathContext);
   processEvent('explosion_completed', dir, {}, io, pathContext);
   // After explosion_completed walkDAG should reach plan_approval_gate and
