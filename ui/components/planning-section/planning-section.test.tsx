@@ -122,20 +122,49 @@ test('reuses the DagStateCard and PlanningDocsList rather than reimplementing th
 // ─── Spacing regression fix ─────────────────────────────────────────────────
 
 test('wraps the docs-list rows in an inner div so they are not direct gap-4 flex children', () => {
-  // The structure should be: <Card><div className="py-2"><PlanningDocsList /></div></Card>
+  // The structure should be: <Card ...><div className="...py-2..."><PlanningDocsList /></div></Card>
   // This prevents the rows from being direct children of the Card's gap-4 flex container.
-  const innerDivPattern = /<div className="py-2">\s*<PlanningDocsList/;
+  const innerDivPattern = /<div className=\{cn\("py-2"/;
   assert.ok(
     innerDivPattern.test(source),
-    'PlanningDocsList is wrapped in an inner div with py-2 class',
+    'PlanningDocsList is wrapped in an inner div carrying py-2',
   );
 });
 
-test('the inner wrapper div has py-2 padding, not relying on the Card gap-4 for row spacing', () => {
-  // Verify the inner div exists and uses py-2 to control padding
-  const cardWithInnerDiv = /<Card[^>]*>\s*<div className="py-2">/;
+test('the inner wrapper div carries py-2 padding, not relying on the Card gap-4 for row spacing', () => {
+  // Verify the docs Card wraps a py-2 inner div (rather than spacing rows via the Card's own gap-4).
+  const cardWithInnerDiv = /<Card className=\{cn\("py-2"[^}]*\}>\s*<div className=\{cn\("py-2"/;
   assert.ok(
     cardWithInnerDiv.test(source),
-    'inner py-2 div wraps PlanningDocsList inside Card',
+    'py-2 inner div wraps PlanningDocsList inside the docs Card',
   );
+});
+
+// ─── Equal-height row with internal scroll ─────────────────────────────────
+
+test('the docs column and the card both carry the shared lg+ row height in the two-up row', () => {
+  const html = render({ ...baseProps, artifacts, state: makeState('some_unmapped_node') });
+  const matches = html.match(/lg:h-\[168px\]/g) ?? [];
+  assert.equal(matches.length, 2, `expected the shared height class on both the docs column and the card, found ${matches.length}`);
+});
+
+test('the docs list container scrolls internally rather than growing the shared row height', () => {
+  const html = render({ ...baseProps, artifacts, state: makeState('some_unmapped_node') });
+  assert.match(html, /overflow-y-auto/, 'the docs list wrapper carries overflow-y-auto for internal scroll');
+});
+
+test('the card centers its content within the shared height rather than stretching to fill it', () => {
+  const html = render({ ...baseProps, artifacts, state: makeState('some_unmapped_node') });
+  assert.match(html, /justify-center/, 'the card wrapper centers its content instead of stretching');
+});
+
+test('a solo docs column (no card) keeps its natural height — no fixed height or internal scroll', () => {
+  const html = render({ ...baseProps, artifacts, state: makeState(null, 'not_started') });
+  assert.ok(!html.includes('lg:h-[168px]'), 'no shared row height outside the two-up row');
+  assert.ok(!html.includes('overflow-y-auto'), 'no forced internal scroll outside the two-up row');
+});
+
+test('a solo card (no docs) keeps its natural height — no fixed height or centering wrapper', () => {
+  const html = render({ ...baseProps, artifacts: [], state: makeState('some_unmapped_node') });
+  assert.ok(!html.includes('lg:h-[168px]'), 'no shared row height outside the two-up row');
 });

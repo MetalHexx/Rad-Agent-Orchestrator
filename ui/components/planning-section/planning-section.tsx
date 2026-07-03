@@ -2,11 +2,20 @@
 
 import * as React from "react";
 import { Card } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 import { SECTION_LABEL_CLASSES } from "@/components/dag-timeline/dag-section-group";
 import { DagStateCard } from "@/components/dag-widget";
 import { PlanningDocsList } from "./planning-docs-list";
 import type { Artifact } from "@/lib/artifact-model";
 import type { ProjectStateV5, ProjectStateV6 } from "@/types/state";
+
+/**
+ * Shared fixed height for the docs column and the card in the two-up row on
+ * `lg`+ — tall enough to show ~3 doc rows before the docs column's own
+ * `overflow-y-auto` kicks in. Unset below `lg`, where the columns stack and
+ * relax to natural content height instead of clipping.
+ */
+const PLANNING_ROW_HEIGHT_CLASS = "lg:h-[168px]";
 
 /**
  * Whether the right-hand DAG-state card has anything to render for `state`.
@@ -62,9 +71,14 @@ export function PlanningSection({
   const hasDocs = artifacts.length > 0;
   if (!hasDocs && !showCard) return null;
 
+  // Only the combined two-up row gets the shared fixed height and the docs
+  // column's internal scroll — a solo docs column or solo card (the two
+  // degraded single-column cases below) keeps its natural content height.
+  const isRow = hasDocs && showCard;
+
   const docsColumn = (
-    <Card className="py-2">
-      <div className="py-2">
+    <Card className={cn("py-2", isRow && PLANNING_ROW_HEIGHT_CLASS)}>
+      <div className={cn("py-2", isRow && "min-h-0 flex-1 overflow-y-auto")}>
         <PlanningDocsList
           artifacts={artifacts}
           requirementsStatus={requirementsStatus}
@@ -77,7 +91,7 @@ export function PlanningSection({
     </Card>
   );
 
-  const card = (
+  const dagStateCard = (
     <DagStateCard
       state={state}
       onDocClick={onDocClick}
@@ -85,11 +99,16 @@ export function PlanningSection({
       projectName={projectName}
     />
   );
+  const card = isRow ? (
+    <div className={cn("flex flex-col justify-center", PLANNING_ROW_HEIGHT_CLASS)}>{dagStateCard}</div>
+  ) : (
+    dagStateCard
+  );
 
   return (
     <div role="group" aria-label="Planning section">
       <div aria-hidden="true" className={SECTION_LABEL_CLASSES}>Planning</div>
-      {hasDocs && showCard ? (
+      {isRow ? (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
           {docsColumn}
           {card}
