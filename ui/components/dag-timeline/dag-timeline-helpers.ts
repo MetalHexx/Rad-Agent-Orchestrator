@@ -216,7 +216,7 @@ export function getRowButtonDescriptor(
 
 // ─── Section Types ────────────────────────────────────────────────────────────
 
-export type SectionLabel = 'Planning' | 'Execution' | 'Completion';
+export type SectionLabel = 'Execution' | 'Completion';
 
 export interface SectionGroup {
   label: SectionLabel;
@@ -226,21 +226,31 @@ export interface SectionGroup {
 // ─── Section Constants ────────────────────────────────────────────────────────
 
 export const NODE_SECTION_MAP: Record<string, SectionLabel> = {
-  prd: 'Planning',
-  research: 'Planning',
-  design: 'Planning',
-  architecture: 'Planning',
-  requirements: 'Planning',
-  master_plan: 'Planning',
-  explode_master_plan: 'Planning',
-  plan_approval_gate: 'Planning',
-  gate_mode_selection: 'Planning',
   phase_loop: 'Execution',
   final_review: 'Completion',
   pr_gate: 'Completion',
   final_approval_gate: 'Completion',
   final_pr: 'Completion',
 };
+
+/**
+ * Former Planning-section node ids. The timeline's Planning group is
+ * retired — this progress now lives in the Planning card + docs list
+ * (`components/planning-section`). Kept as an explicit set so DAGTimeline's
+ * unmatched-node tail (a forward-compat catch-all for node ids the UI
+ * doesn't yet categorize) doesn't resurface these as ungrouped rows.
+ */
+export const RETIRED_PLANNING_NODE_IDS: ReadonlySet<string> = new Set([
+  'prd',
+  'research',
+  'design',
+  'architecture',
+  'requirements',
+  'master_plan',
+  'explode_master_plan',
+  'plan_approval_gate',
+  'gate_mode_selection',
+]);
 
 // ─── Doc-link label table (AD-6) ────────────────────────────────────────────
 
@@ -331,7 +341,7 @@ export function parseTaskNameFromDocPath(
 }
 
 export function groupNodesBySection(nodes: NodesRecord): SectionGroup[] {
-  const sectionOrder: SectionLabel[] = ['Planning', 'Execution', 'Completion'];
+  const sectionOrder: SectionLabel[] = ['Execution', 'Completion'];
   const buckets = new Map<SectionLabel, Array<[string, NodeState]>>();
 
   for (const label of sectionOrder) {

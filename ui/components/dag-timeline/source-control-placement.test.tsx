@@ -6,8 +6,9 @@ import type { NodesRecord } from '@/types/state';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 (globalThis as any).React = React;
 
-// Minimal nodes graph: 'requirements' → Planning bucket, 'phase_loop' → Execution bucket.
-// This produces both a Planning section group and an Execution section group in DAGTimeline.
+// 'requirements' is a retired Planning-section node id — it must render
+// nowhere in the timeline (the Planning card + docs list own it now).
+// 'phase_loop' → Execution bucket, 'final_review' → Completion bucket.
 const nodes: NodesRecord = {
   requirements: { kind: 'step', status: 'not_started', doc_path: null, retries: 0 },
   phase_loop: {
@@ -15,6 +16,7 @@ const nodes: NodesRecord = {
     status: 'not_started',
     iterations: [],
   },
+  final_review: { kind: 'step', status: 'not_started', doc_path: null, retries: 0 },
 };
 
 const html = renderToStaticMarkup(
@@ -32,13 +34,16 @@ const html = renderToStaticMarkup(
   })
 );
 
-const planningIdx = html.indexOf('Planning');
+assert.ok(!html.includes('Planning'), 'the timeline must no longer render a Planning section');
+assert.ok(!html.includes('Requirements'), 'the retired requirements node must not render anywhere in the timeline');
+
 const slotIdx = html.indexOf('sc-slot');
 const executionIdx = html.indexOf('Execution');
+const completionIdx = html.indexOf('Completion');
 
-assert.ok(planningIdx >= 0 && slotIdx >= 0 && executionIdx >= 0,
-  `Expected Planning (${planningIdx}), sc-slot (${slotIdx}), and Execution (${executionIdx}) to all be present`);
-assert.ok(planningIdx < slotIdx && slotIdx < executionIdx,
-  'Source Control slot must render between Planning and Execution');
+assert.ok(slotIdx >= 0 && executionIdx >= 0 && completionIdx >= 0,
+  `Expected sc-slot (${slotIdx}), Execution (${executionIdx}), and Completion (${completionIdx}) to all be present`);
+assert.ok(slotIdx < executionIdx && executionIdx < completionIdx,
+  'Source Control slot must render above Execution, which stays above Completion');
 
 console.log('source-control-placement ✓');
