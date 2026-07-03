@@ -39,9 +39,9 @@ export interface PlanningDocsListProps {
  * Left-column list of the ordered Planning-section root documents. Purely
  * presentational — it does no fetching, sorting, or fs access; the caller
  * (fed by `deriveArtifacts` + the Requirements status endpoint) owns that.
- * Row treatment mirrors `BrainstormingSection` (icon badge, sibling
- * open/delete `<button>`s, roving-tabindex-friendly), swapping the mono
- * filename for a muted type label and adding the Requirements Draft pill.
+ * Each row carries an icon badge with sibling open/delete `<button>`s
+ * (roving-tabindex-friendly), a muted type label, and the Requirements
+ * Draft pill.
  */
 export function PlanningDocsList({ artifacts, requirementsStatus, onOpen, onDelete, unseen, activePulse }: PlanningDocsListProps) {
   if (artifacts.length === 0) return null;

@@ -11,7 +11,7 @@ export const SECTION_LABEL_CLASSES = 'text-xs font-medium uppercase tracking-wid
 export const CARD_SHELL_CLASSES = 'border border-border rounded-md bg-card';
 
 export function isCardSection(label: string): boolean {
-  return label === 'Planning' || label === 'Completion';
+  return label === 'Completion';
 }
 
 export function computeAriaLabel(label: string): string {
