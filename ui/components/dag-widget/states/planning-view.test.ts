@@ -12,14 +12,15 @@ test('planning view id is "planning"', () => {
   assert.equal(planningView.id, 'planning');
 });
 
-test('planning view renders the "Building Plan" heading with no meta line', () => {
-  assert.match(source, /heading = 'Building Plan'/);
+test('planning view renders the "Building Execution Plan" heading with no meta line', () => {
+  assert.match(source, /heading = 'Building Execution Plan'/);
   assert.match(source, /<HeadingSlot\s+heading=\{heading\}\s+hasMeta=\{meta !== null\}\s*\/>/);
   assert.match(source, /<MetaSlot\s+meta=\{meta\}\s*\/>/);
 });
 
-test('planning view renders an indeterminate ring', () => {
+test('planning view renders an indeterminate ring at "md" size', () => {
   assert.match(source, /mode="indeterminate"/);
+  assert.match(source, /size="md"/);
 });
 
 test('planning view tints its ring to the blue planning tier', () => {

@@ -118,6 +118,13 @@ test('normalizeNodePath is a no-op on a bracket-free top-level id', () => {
   assert.equal(normalizeNodePath('plan_approval_gate'), 'plan_approval_gate');
 });
 
+test('normalizeNodePath strips a conditional branch prefix so the flat child leaf resolves', () => {
+  // pr_gate is a conditional; final_pr lives flat in the root record, not nested
+  // under pr_gate. Dropping the `pr_gate.branches.true.` prefix lets walkPath find it.
+  assert.equal(normalizeNodePath('pr_gate.branches.true.final_pr'), 'final_pr');
+  assert.equal(normalizeNodePath('pr_gate.branches.false.final_pr'), 'final_pr');
+});
+
 // ─── resolveStateId with real (bracket-format) engine paths ─────────────────
 // The engine writes current_node_path in bracket-index notation; these guard
 // the actual bug (bracketed paths falling to fallback) rather than only the
@@ -188,6 +195,13 @@ test('pr_gate folds into final-review, not the fallback', () => {
 
 test('final_pr folds into final-review, not the fallback', () => {
   assert.equal(resolveStateId(makeState('final_pr')), 'final-review');
+});
+
+test('the real conditional-branch final_pr path folds into final-review, not the gray fallback', () => {
+  // The production path the engine writes — pr_gate is a conditional, so
+  // final_pr is routed via `.branches.true.`. This is the exact shape that used
+  // to abort walkPath and paint the fallback (the live DAG-WIDGET-2 bug).
+  assert.equal(resolveStateId(makeState('pr_gate.branches.true.final_pr')), 'final-review');
 });
 
 // ─── corrective — the Blocker-class regression guard ─────────────────────────
@@ -276,6 +290,16 @@ test('resolveStateView returns the registered planning view (not fallback) for e
 
 test('resolveStateView returns the registered final-review view (not fallback) for final_pr', () => {
   const { view, ctx } = resolveStateView(makeState('final_pr'), undefined, noopDeps);
+  assert.equal(ctx.stateId, 'final-review');
+  assert.equal(view.id, 'final-review');
+});
+
+test('resolveStateView returns the final-review view for the real pr_gate.branches.true.final_pr path', () => {
+  const { view, ctx } = resolveStateView(
+    makeState('pr_gate.branches.true.final_pr'),
+    undefined,
+    noopDeps,
+  );
   assert.equal(ctx.stateId, 'final-review');
   assert.equal(view.id, 'final-review');
 });

@@ -11,9 +11,10 @@ const TIER_CSS_VAR = '--tier-execution';
 /**
  * The Coding work-state view (`task_executor`). Amber tier. Ring center shows
  * the current task number under a "TASK" sublabel; its arc plots task
- * progress within the active phase. Heading/meta are the task title and
- * `Phase N · Task M`. Controls surface the task's handoff doc and a commit
- * chip for the iteration's repos.
+ * progress within the active phase. Heading is `Coding: <task title>` (via
+ * `deriveCardHeading`'s state-name prefix); meta is `Phase N · Task M`.
+ * Controls surface the task's handoff doc and a commit chip for the
+ * iteration's repos.
  */
 export const codingView: StateView = {
   id: 'coding',
@@ -40,7 +41,7 @@ export const codingView: StateView = {
               onDocClick={ctx.onDocClick}
               iconCssVar={TIER_CSS_VAR}
             />
-            <CommitChips repos={ctx.repos} compareUrlByRepo={ctx.compareUrlByRepo} singleRepo={singleRepo} />
+            <CommitChips repos={ctx.repos} compareUrlByRepo={ctx.compareUrlByRepo} singleRepo={singleRepo} variant="button" iconCssVar={TIER_CSS_VAR} />
           </CardControlsRow>
         </ControlsSlot>
       </>

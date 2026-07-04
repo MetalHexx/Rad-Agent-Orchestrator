@@ -4,7 +4,7 @@ import { useRef, useCallback } from 'react';
 import { cn } from '@/lib/utils';
 import { NodeStatusBadge } from './node-status-badge';
 import { DocumentLink, ExternalLink } from '@/components/documents';
-import { ApproveGateButton, ExecutePlanButton } from '@/components/dashboard';
+import { ExecutePlanButton } from '@/components/dashboard';
 import { getDisplayName, getRowButtonDescriptor, deriveGateBadgeStatusAndLabel, getDocLinkLabel, resolveStageBadge } from './dag-timeline-helpers';
 import type { CompatibleNodeState } from './dag-timeline-helpers';
 import type { NodeStatus } from '@/types/state';
@@ -35,7 +35,12 @@ export function DAGNodeRow({ nodeId, node, currentNodePath, onDocClick, depth = 
     node.kind === 'gate' && projectName !== undefined
       ? getRowButtonDescriptor(nodeId, node, phaseLoopStatus)
       : { kind: 'none' as const };
-  const hasActionButton = descriptor.kind !== 'none';
+  // The DAG-state card (dag-widget) now renders its own Approve action for
+  // the active plan/final-approval gate, so a row-level 'approve' descriptor
+  // is intentionally not rendered below — it would be a redundant second
+  // Approve button. `hasActionButton` is gated the same way so keyboard
+  // activation doesn't think a button is present when nothing renders.
+  const hasActionButton = descriptor.kind === 'execute';
   const isFinalPrRow = nodeId === 'final_pr' && prUrl != null && prUrl !== '';
 
   // FR-1, FR-2, FR-4, FR-6, AD-2, AD-4, DD-1, DD-2 — resolve stage-aware
@@ -102,17 +107,6 @@ export function DAGNodeRow({ nodeId, node, currentNodePath, onDocClick, depth = 
       )}
       {nodeId === 'final_pr' && prUrl != null && prUrl !== '' && (
         <ExternalLink href={prUrl} label="Pull Request" icon="github" tabIndex={-1} />
-      )}
-      {descriptor.kind === 'approve' && (
-        <ApproveGateButton
-          ref={actionButtonRef}
-          gateEvent={descriptor.event}
-          projectName={projectName!}
-          documentName={projectName!}
-          label={descriptor.label}
-          className="ml-auto"
-          tabIndex={-1}
-        />
       )}
       {descriptor.kind === 'execute' && (
         <ExecutePlanButton

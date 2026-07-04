@@ -53,3 +53,18 @@ export function deriveFinalReviewInfo(state: AnyProjectState): { docPath: string
   if (!node || node.kind !== 'step') return { docPath: null, verdict: null };
   return { docPath: node.doc_path, verdict: node.verdict ?? null };
 }
+
+/**
+ * True when the run is parked awaiting the human's final approval — the
+ * `final_approval_gate` is active and not yet completed. The Final Review card
+ * folds the whole completion phase (`final_review`, `pr_gate`, `final_pr`,
+ * `final_approval_gate`), so it must gate its Approve action on this rather than
+ * render it unconditionally like the plan-approval card. Mirrors the exact
+ * predicate the timeline uses in `getRowButtonDescriptor`
+ * (`dag-timeline-helpers.ts`) — deliberately independent of the review verdict,
+ * since the gate stays active for a `changes_requested` verdict too.
+ */
+export function deriveFinalGatePending(state: AnyProjectState): boolean {
+  const node = state.graph.nodes['final_approval_gate'];
+  return node?.kind === 'gate' && node.gate_active === true && node.status !== 'completed';
+}

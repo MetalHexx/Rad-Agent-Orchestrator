@@ -6,6 +6,16 @@ import { deriveTaskNumber } from './shared';
 const WORK_STATE_IDS: ReadonlySet<StateId> = new Set(['coding', 'reviewing', 'corrective']);
 
 /**
+ * `"{prefix}: "` prepended to the work-state heading, naming the activity
+ * rather than leaving a bare task title.
+ */
+const WORK_STATE_HEADING_PREFIX: Partial<Record<StateId, string>> = {
+  coding: 'Coding',
+  reviewing: 'Reviewing',
+  corrective: 'Correcting',
+};
+
+/**
  * Strips a `parseTaskNameFromDocPath` / `parsePhaseNameFromDocPath` result
  * down to its title, splitting on the " — " separator and keeping the
  * remainder. Returns the string unchanged — the bare "Task N" / "Phase N" —
@@ -34,12 +44,14 @@ function parsePhaseNumberFromName(phaseName: string | null): number | null {
  * - Work states (Coding/Reviewing/Corrective) — heading is the task title
  *   (from the task iteration's handoff doc path) stripped of its
  *   "Task N — " prefix, falling back to the bare "Task N" when the doc path
- *   carries no parseable title. Meta is "Phase {phaseNumber} · Task
- *   {taskNumber}"; the phase number is parsed from `ctx.phaseName` (the only
- *   phase signal a work state's context carries) and omitted when it can't
- *   be parsed.
- * - Phase Review — same "strip the prefix" treatment off the phase title;
- *   meta is "Phase {n}" from the phase iteration's own 1-based index.
+ *   carries no parseable title, then prefixed with its own state name via
+ *   `WORK_STATE_HEADING_PREFIX` ("Coding: <title>" / "Reviewing: <title>" /
+ *   "Correcting: <title>"). Meta is "Phase {phaseNumber} · Task {taskNumber}";
+ *   the phase number is parsed from `ctx.phaseName` (the only phase signal a
+ *   work state's context carries) and omitted when it can't be parsed.
+ * - Phase Review — same "strip the prefix" treatment off the phase title,
+ *   prefixed "Phase Review: <title>"; meta is "Phase {n}" from the phase
+ *   iteration's own 1-based index.
  * - Every other state — heading falls back to the active node's display
  *   name; meta is always `null`.
  */
@@ -53,8 +65,11 @@ export function deriveCardHeading(ctx: StateViewContext): CardHeading {
     if (phaseNumber !== null) metaParts.push(`Phase ${phaseNumber}`);
     if (taskNumber !== null) metaParts.push(`Task ${taskNumber}`);
 
+    const title = stripDocTitlePrefix(taskName);
+    const prefix = WORK_STATE_HEADING_PREFIX[ctx.stateId];
+
     return {
-      heading: stripDocTitlePrefix(taskName),
+      heading: prefix ? `${prefix}: ${title}` : title,
       meta: metaParts.length > 0 ? metaParts.join(' · ') : null,
     };
   }
@@ -64,10 +79,15 @@ export function deriveCardHeading(ctx: StateViewContext): CardHeading {
     const phaseNumber = ctx.iteration ? ctx.iteration.index + 1 : null;
 
     return {
-      heading: stripDocTitlePrefix(phaseName),
+      heading: `Phase Review: ${stripDocTitlePrefix(phaseName)}`,
       meta: phaseNumber !== null ? `Phase ${phaseNumber}` : null,
     };
   }
 
+  // Defensive default for any non-work / non-phase-review state. The current
+  // caller set (coding, reviewing, corrective, phase-review views) never
+  // actually reaches this branch, but it keeps the function total: an
+  // unexpected state gets a sensible display name rather than an undefined
+  // return. Do not remove — it preserves the CardHeading return contract.
   return { heading: getDisplayName(ctx.nodeId), meta: null };
 }

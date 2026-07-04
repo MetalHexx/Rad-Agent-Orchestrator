@@ -48,12 +48,25 @@ test('indeterminate mode renders a rotating conic sweep, not an svg arc', () => 
 test('both modes occupy the identical fixed diameter', () => {
   const det = render({ value: 4, max: 10, color: 'var(--tier-execution)', mode: 'determinate' });
   const indet = render({ value: 0, max: 1, color: 'var(--tier-review)', mode: 'indeterminate' });
-  const size = /width:\s*72px;\s*height:\s*72px/;
-  assert.match(det, size, 'determinate ring is 72px square');
-  assert.match(indet, size, 'indeterminate ring is 72px square');
+  const size = /width:\s*96px;\s*height:\s*96px/;
+  assert.match(det, size, 'determinate ring is 96px square');
+  assert.match(indet, size, 'indeterminate ring is 96px square');
 });
 
-// ─── rendered geometry (fills the 72px box, not just a 72px prop) ───────────
+test('named size renders at its mapped fraction of the diameter with a proportionally scaled stroke', () => {
+  const sm = render({ value: 0, max: 1, color: 'var(--tier-planning)', mode: 'indeterminate', size: 'sm' });
+  assert.match(sm, /width:\s*48px;\s*height:\s*48px/, '"sm" (0.5) → 48px square (half of the 96px box)');
+  // round(24 * 0.28) = 7 — the same RING_STROKE_FRACTION applied to the halved radius, not a separate geometry.
+  assert.ok(sm.includes('7px'), '"sm" ring stroke resolves from the shared RING_STROKE_FRACTION');
+  assert.ok(!sm.includes('13px'), '"sm" ring does not reuse the full-size 13px stroke');
+});
+
+test('"md" size renders at 60% of the diameter', () => {
+  const md = render({ value: 0, max: 1, color: 'var(--tier-planning)', mode: 'indeterminate', size: 'md' });
+  assert.match(md, /width:\s*58px;\s*height:\s*58px/, '"md" (0.6) → round(96 * 0.6) = 58px square');
+});
+
+// ─── rendered geometry (fills the 96px box, not just a 96px prop) ───────────
 
 /**
  * recharts bakes the arc's actual radii into the sector `<path>`'s `d`
@@ -72,13 +85,13 @@ function extractSectorRadii(html: string): { outer: number; inner: number } {
   return { outer: Math.max(...radii), inner: Math.min(...radii) };
 }
 
-test('determinate ring geometry fills the 72px box: outer edge at the box radius, band at the shared stroke fraction', () => {
+test('determinate ring geometry fills the 96px box: outer edge at the box radius, band at the shared stroke fraction', () => {
   const html = render({ value: 4, max: 10, color: 'var(--tier-execution)', mode: 'determinate' });
   const { outer, inner } = extractSectorRadii(html);
-  const boxRadius = 36; // RING_DIAMETER / 2
+  const boxRadius = 48; // RING_DIAMETER / 2
   const strokeFraction = 0.28; // mirrors ring.tsx's RING_STROKE_FRACTION
   const expectedStroke = Math.round(boxRadius * strokeFraction);
-  assert.equal(outer, boxRadius, 'the rendered arc reaches the ring box radius (72px diameter), not a shrunk recharts default');
+  assert.equal(outer, boxRadius, 'the rendered arc reaches the ring box radius (96px diameter), not a shrunk recharts default');
   assert.equal(outer - inner, expectedStroke, 'the band thickness matches RING_STROKE_FRACTION of the box radius');
 });
 
@@ -97,8 +110,8 @@ test('determinate mode also carries the muted track fill', () => {
 
 test('indeterminate mask stroke matches the determinate band thickness fraction (28% of radius)', () => {
   const html = render({ value: 0, max: 1, color: 'var(--tier-review)', mode: 'indeterminate' });
-  // RING_DIAMETER (72) / 2 * 0.28, rounded — kept in lockstep with determinate's innerRadius via one shared fraction.
-  assert.ok(html.includes('10px'), 'indeterminate stroke resolves from the shared RING_STROKE_FRACTION');
+  // RING_DIAMETER (96) / 2 * 0.28 = 13.44, rounded to 13 — kept in lockstep with determinate's innerRadius via one shared fraction.
+  assert.ok(html.includes('13px'), 'indeterminate stroke resolves from the shared RING_STROKE_FRACTION');
 });
 
 // ─── sublabel ─────────────────────────────────────────────────────────────────

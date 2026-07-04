@@ -41,33 +41,38 @@ function makeState(verdict: string | null, docPath: string | null, prUrl: string
 
 // ─── deriveVerdictTone ────────────────────────────────────────────────────────
 
-test('deriveVerdictTone maps "approved" to the approved tone', () => {
+test('deriveVerdictTone maps "approved" to a green "Review Passed" ring label + detail sentence', () => {
   const tone = deriveVerdictTone('approved');
-  assert.equal(tone.label, 'Approved');
+  assert.equal(tone.label, 'Review Passed');
+  assert.equal(tone.detail, 'The reviewer approved the work.');
   assert.equal(tone.cssVar, '--verdict-approved');
 });
 
-test('deriveVerdictTone maps "changes_requested" to the changes-requested tone', () => {
+test('deriveVerdictTone maps "changes_requested" to a short "Needs Work" ring label + an issues detail sentence', () => {
   const tone = deriveVerdictTone('changes_requested');
-  assert.equal(tone.label, 'Changes Requested');
+  assert.equal(tone.label, 'Needs Work');
+  assert.equal(tone.detail, 'The reviewer found issues.');
   assert.equal(tone.cssVar, '--verdict-changes-requested');
 });
 
 test('deriveVerdictTone maps "rejected" to the rejected tone', () => {
   const tone = deriveVerdictTone('rejected');
   assert.equal(tone.label, 'Rejected');
+  assert.equal(tone.detail, 'The reviewer rejected the work.');
   assert.equal(tone.cssVar, '--verdict-rejected');
 });
 
 test('deriveVerdictTone falls back safely on an unrecognized verdict string', () => {
   const tone = deriveVerdictTone('some-future-verdict');
   assert.equal(tone.label, 'some-future-verdict');
+  assert.equal(tone.detail, 'Review complete.');
   assert.equal(tone.cssVar, '--status-not-started');
 });
 
 test('deriveVerdictTone falls back to Pending on a null verdict (not yet reviewed)', () => {
   const tone = deriveVerdictTone(null);
   assert.equal(tone.label, 'Pending');
+  assert.equal(tone.detail, 'Review in progress.');
 });
 
 // ─── source shape ─────────────────────────────────────────────────────────────
@@ -80,9 +85,12 @@ test('final review view plots phase progress (the run-wide milestone position)',
   assert.match(source, /deriveRingArc\(ctx\.phaseProgress\)/);
 });
 
-test('final review view renders a determinate ring tinted to the green complete tier with the verdict label as its sublabel', () => {
+test('final review view renders a determinate ring tinted to the verdict color with the short verdict label as its sublabel', () => {
   assert.match(source, /mode="determinate"/);
-  assert.match(source, /--tier-complete/);
+  // The ring (and the control icons) are tinted to the verdict tone, not a fixed
+  // tier — green when passed, amber when it needs work, red when rejected.
+  assert.match(source, /color=\{`var\(\$\{tone\.cssVar\}\)`\}/);
+  assert.ok(!source.includes('--tier-complete'), 'the fixed green tier tint is retired in favor of the verdict color');
   assert.match(source, /sublabel=\{tone\.label\}/);
 });
 
@@ -92,9 +100,9 @@ test('final review view reads the report + verdict from the top-level final_revi
   assert.ok(!codeWithoutComments.includes('ctx.node'), 'must not read the resolved leaf node — it may be final_pr, not final_review');
 });
 
-test('final review view heading is the fixed "Final Review" phrase; meta is the verdict label', () => {
+test('final review view heading is the fixed "Final Review" phrase; meta is the verdict detail sentence', () => {
   assert.match(source, /heading = 'Final Review'/);
-  assert.match(source, /const meta = tone\.label/);
+  assert.match(source, /const meta = tone\.detail/);
   assert.match(source, /<HeadingSlot\s+heading=\{heading\}\s+hasMeta=\{meta !== null\}\s*\/>/);
   assert.match(source, /<MetaSlot\s+meta=\{meta\}\s*\/>/);
 });
@@ -164,7 +172,7 @@ test('Final Review reads the report + verdict from the top-level final_review no
   };
 
   const html = renderToStaticMarkup(createElement('div', null, finalReviewView.render(ctx)));
-  assert.match(html, />Approved</, 'verdict comes from the top-level final_review node, not the final_pr leaf');
+  assert.match(html, />Review Passed</, 'verdict comes from the top-level final_review node, not the final_pr leaf');
   const buttonCount = (html.match(/<button/g) ?? []).length;
   assert.equal(buttonCount, 1, 'the Report button is active — its doc_path came from final_review, not the null final_pr leaf');
 });
@@ -202,8 +210,72 @@ for (const leafPath of ['final_pr', 'final_approval_gate', 'pr_gate']) {
     assert.equal(view.id, 'final-review');
 
     const html = renderToStaticMarkup(createElement('div', null, view.render(ctx)));
-    assert.match(html, />Approved</, 'verdict is read through to the real final_review node regardless of which leaf is live');
+    assert.match(html, />Review Passed</, 'verdict is read through to the real final_review node regardless of which leaf is live');
+    // The gate is active in this fixture, so both the Approve action and the
+    // Report doc button render as active buttons.
+    assert.match(html, />Approve</, 'the Approve action renders while the final gate is pending');
     const buttonCount = (html.match(/<button/g) ?? []).length;
-    assert.equal(buttonCount, 1, 'the Report doc button is active from the real final_review doc_path');
+    assert.equal(buttonCount, 2, 'Approve + Report render while the final-approval gate is pending');
   });
 }
+
+// ─── the real production path — the gray-fallback bug this work fixes ────────
+// The engine writes final_pr as a conditional branch child of pr_gate, so the
+// live current_node_path is `pr_gate.branches.true.final_pr`. This is the exact
+// path that used to fall to the gray fallback card.
+
+test('the real pr_gate.branches.true.final_pr path renders the Final Review card with Approve + Report', () => {
+  const { view, ctx } = resolveStateView(
+    makeStateWithLeaf('pr_gate.branches.true.final_pr', 'changes_requested', 'reviews/FINAL.md'),
+    undefined,
+    { onDocClick: () => {}, compareUrlByRepo: {}, projectName: 'demo' },
+  );
+  assert.equal(ctx.stateId, 'final-review');
+  assert.equal(view.id, 'final-review');
+  const html = renderToStaticMarkup(createElement('div', null, view.render(ctx)));
+  assert.match(html, />Needs Work</, 'the ring shows the short "Needs Work" verdict label');
+  assert.match(html, />The reviewer found issues\.</, 'the meta line shows the descriptive verdict sentence');
+  assert.match(html, />Approve</);
+});
+
+// ─── Approve gating — the button follows the final-approval gate, not the view ──
+
+test('Final Review shows Approve only while the final-approval gate is active', () => {
+  const state = makeStateWithLeaf('pr_gate.branches.true.final_pr', 'changes_requested', 'reviews/FINAL.md');
+  const { view, ctx } = resolveStateView(state, undefined, {
+    onDocClick: () => {},
+    compareUrlByRepo: {},
+    projectName: 'demo',
+  });
+  const html = renderToStaticMarkup(createElement('div', null, view.render(ctx)));
+  assert.match(html, />Approve</, 'the Approve action renders when gate_active is true and status is not completed');
+});
+
+test('Final Review hides Approve once the final-approval gate is completed (approved)', () => {
+  const state = makeStateWithLeaf('pr_gate.branches.true.final_pr', 'approved', 'reviews/FINAL.md');
+  // The human has approved: the gate is completed and no longer active.
+  state.graph.nodes['final_approval_gate'] = { kind: 'gate', status: 'completed', gate_active: false };
+  const { view, ctx } = resolveStateView(state, undefined, {
+    onDocClick: () => {},
+    compareUrlByRepo: {},
+    projectName: 'demo',
+  });
+  const html = renderToStaticMarkup(createElement('div', null, view.render(ctx)));
+  assert.ok(!html.includes('>Approve<'), 'no Approve action once the gate has been approved');
+  // The Report doc button is still active — the card degrades to report-only.
+  const buttonCount = (html.match(/<button/g) ?? []).length;
+  assert.equal(buttonCount, 1, 'only the Report doc button remains');
+});
+
+test('Final Review shows no Approve during the final_review step, before the gate becomes active', () => {
+  // At the final_review step the gate node exists but is not yet active.
+  const state = makeState('changes_requested', 'reviews/FINAL.md', null);
+  state.graph.nodes['final_approval_gate'] = { kind: 'gate', status: 'not_started', gate_active: false };
+  const { view, ctx } = resolveStateView(state, undefined, {
+    onDocClick: () => {},
+    compareUrlByRepo: {},
+    projectName: 'demo',
+  });
+  const html = renderToStaticMarkup(createElement('div', null, view.render(ctx)));
+  assert.ok(!html.includes('>Approve<'), 'no Approve action until the final-approval gate is active');
+});

@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { Loader2 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useApproveGate } from "@/hooks/use-approve-gate";
 import { ConfirmApprovalDialog } from "@/components/dashboard/confirm-approval-dialog";
@@ -27,6 +28,23 @@ export interface ApproveGateButtonProps {
    * Defaults to undefined — existing call sites render identically to today.
    */
   tabIndex?: number;
+  /**
+   * House Button visual weight. Defaults to `"default"` (the filled primary
+   * used by the timeline and standalone dashboard). The dag-widget cards pass
+   * `"outline"` so Approve matches the card's other outline+icon controls.
+   */
+  variant?: "default" | "outline" | "secondary";
+  /**
+   * Optional leading icon (e.g. a `Check`) shown before the label when idle.
+   * Omit for the icon-less default. Hidden while a request is pending (the
+   * spinner takes its place).
+   */
+  icon?: LucideIcon;
+  /**
+   * CSS custom property (e.g. `--verdict-approved`) tinting the leading icon.
+   * Omit to inherit the button's own foreground color.
+   */
+  iconCssVar?: string;
 }
 
 const DIALOG_TITLES: Record<GateEvent, string> = {
@@ -43,7 +61,7 @@ export const ApproveGateButton = React.forwardRef<
   HTMLButtonElement,
   ApproveGateButtonProps
 >(function ApproveGateButton(
-  { gateEvent, projectName, documentName, label, className, tabIndex },
+  { gateEvent, projectName, documentName, label, className, tabIndex, variant = "default", icon: Icon, iconCssVar },
   ref,
 ) {
   const { approveGate, isPending, error, clearError } = useApproveGate();
@@ -68,9 +86,9 @@ export const ApproveGateButton = React.forwardRef<
     <div className={className}>
       <Button
         ref={ref}
-        variant="default"
+        variant={variant}
         size="sm"
-        className={cn("w-full sm:w-auto")}
+        className={cn(variant === "default" && "w-full sm:w-auto")}
         disabled={isPending}
         aria-busy={isPending ? "true" : undefined}
         aria-disabled={isPending ? "true" : undefined}
@@ -83,7 +101,15 @@ export const ApproveGateButton = React.forwardRef<
             Approving…
           </>
         ) : (
-          label
+          <>
+            {Icon && (
+              <Icon
+                style={iconCssVar ? { color: `var(${iconCssVar})` } : undefined}
+                aria-hidden="true"
+              />
+            )}
+            {label}
+          </>
         )}
       </Button>
       <ConfirmApprovalDialog

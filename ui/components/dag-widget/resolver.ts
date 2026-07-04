@@ -164,11 +164,19 @@ function walkPath(rootNodes: NodesRecord, path: string): PathWalkResult {
  * remaining `[N]` loop-iteration brackets (0-based) become `.iterN` — otherwise
  * the corrective container's own bracket would be consumed by the generic rule
  * first. A no-op on paths that are already segment form or bracket-free.
+ *
+ * A `conditional` node's branch children (e.g. `pr_gate` → `final_pr`) live
+ * FLAT in the enclosing nodes record, not nested under the conditional — unlike
+ * a `parallel` node, a conditional exposes no child record for `walkPath` to
+ * descend into, so a raw `<cond>.branches.<true|false>.<child>` path aborts the
+ * walk before the leaf mapping is consulted (painting the gray fallback). Strip
+ * the routing prefix so the child leaf resolves against that flat record.
  */
 export function normalizeNodePath(path: string): string {
   return path
     .replace(/\.corrective_tasks\[(\d+)\]/g, '.ct$1')
-    .replace(/\[(\d+)\]/g, '.iter$1');
+    .replace(/\[(\d+)\]/g, '.iter$1')
+    .replace(/[^.]+\.branches\.(?:true|false)\./g, '');
 }
 
 function normalizeFocus(focus: string | undefined, currentNodePath: string | null): string | null {

@@ -41,10 +41,10 @@ test('phase review view id is "phase-review"', () => {
   assert.equal(phaseReviewView.id, 'phase-review');
 });
 
-test('phase review view renders a determinate ring tinted to the purple review tier with a "PHASE" sublabel', () => {
+test('phase review view renders a determinate ring tinted to the purple review tier with a "PHASE REVIEW" sublabel', () => {
   assert.match(source, /mode="determinate"/);
   assert.match(source, /--tier-review/);
-  assert.match(source, /sublabel="PHASE"/);
+  assert.match(source, /sublabel="PHASE REVIEW"/);
 });
 
 test('phase review view heading/meta are sourced from deriveCardHeading, not composed inline', () => {

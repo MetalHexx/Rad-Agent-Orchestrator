@@ -156,3 +156,47 @@ test('motion allowed keeps the crossfade animation on the mounted content', asyn
   const allowed = await clientRenderClassName(false);
   assert.ok(allowed.includes('animate-in'), 'fade animation present when motion is allowed');
 });
+
+test('a state change crossfades: the outgoing state fades OUT while the incoming fades IN — both mounted at once', async () => {
+  const dom = new JSDOM('<!doctype html><div id="root"></div>');
+  const win = dom.window as unknown as Window & typeof globalThis;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (win as any).matchMedia = (query: string) => ({
+    matches: false, // motion allowed → crossfade runs
+    media: query,
+    addEventListener: () => {}, removeEventListener: () => {},
+    addListener: () => {}, removeListener: () => {}, onchange: null, dispatchEvent: () => false,
+  });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (globalThis as any).window = win;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (globalThis as any).document = win.document;
+  // base-ui's useButton checks the global HTMLElement when the coding view's buttons mount.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (globalThis as any).HTMLElement = win.HTMLElement;
+
+  const { createRoot } = await import('react-dom/client');
+  const { act } = await import('react');
+  const container = win.document.getElementById('root')!;
+  const root = createRoot(container);
+
+  // Mount in the fallback state.
+  await act(async () => {
+    root.render(createElement(DagStateCard, { ...baseProps, state: makeState('some_unmapped_node') }));
+  });
+  assert.ok(container.querySelector('.animate-in'), 'incoming content mounts with a fade-in');
+  assert.ok(!container.querySelector('.animate-out'), 'nothing is fading out on the very first mount');
+
+  // Switch to the coding state on the SAME mounted card — this is the real crossfade trigger.
+  await act(async () => {
+    root.render(createElement(DagStateCard, { ...baseProps, state: makeBracketState('phase_loop[0].task_loop[0].task_executor') }));
+  });
+
+  assert.ok(container.querySelector('.animate-in'), 'the incoming (coding) state fades in');
+  assert.ok(container.querySelector('.animate-out'), 'the outgoing (fallback) state stays mounted and fades out');
+  // Both contents are genuinely present in the DOM during the crossfade:
+  assert.ok(container.textContent!.includes('Task Handoff'), 'incoming coding content is present');
+  assert.ok(container.textContent!.includes('Pipeline node'), 'outgoing fallback content is still present mid-crossfade');
+
+  await act(async () => { root.unmount(); });
+});

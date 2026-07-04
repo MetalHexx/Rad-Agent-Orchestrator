@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { tierTintStyle, deriveRingArc, deriveTaskNumber, parsePrLabel, deriveFinalReviewInfo } from './shared';
+import { tierTintStyle, deriveRingArc, deriveTaskNumber, parsePrLabel, deriveFinalReviewInfo, deriveFinalGatePending } from './shared';
 import type { AnyProjectState, IterationEntry, NodesRecord } from '@/types/state';
 
 function makeIteration(overrides: Partial<IterationEntry> = {}): IterationEntry {
@@ -90,4 +90,31 @@ test('deriveFinalReviewInfo ignores an unrelated resolved leaf (e.g. final_pr) �
     final_pr: { kind: 'step', status: 'in_progress', doc_path: null, retries: 0 },
   });
   assert.deepEqual(deriveFinalReviewInfo(state), { docPath: 'reviews/FINAL.md', verdict: 'approved' });
+});
+
+// ─── deriveFinalGatePending ───────────────────────────────────────────────────
+
+test('deriveFinalGatePending is true when the final_approval_gate is active and not completed', () => {
+  const state = makeStateWithNodes({
+    final_approval_gate: { kind: 'gate', status: 'in_progress', gate_active: true },
+  });
+  assert.equal(deriveFinalGatePending(state), true);
+});
+
+test('deriveFinalGatePending is false when the gate is not active (still at the final_review step)', () => {
+  const state = makeStateWithNodes({
+    final_approval_gate: { kind: 'gate', status: 'not_started', gate_active: false },
+  });
+  assert.equal(deriveFinalGatePending(state), false);
+});
+
+test('deriveFinalGatePending is false once the gate is completed (already approved), even if the flag lingers', () => {
+  const state = makeStateWithNodes({
+    final_approval_gate: { kind: 'gate', status: 'completed', gate_active: true },
+  });
+  assert.equal(deriveFinalGatePending(state), false);
+});
+
+test('deriveFinalGatePending is false when the final_approval_gate node is absent from the tree', () => {
+  assert.equal(deriveFinalGatePending(makeStateWithNodes({})), false);
 });

@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import React, { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { CardControlsRow, DocButton } from './card-controls';
+import { CardControlsRow, DocButton, ExternalLinkButton } from './card-controls';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 (globalThis as any).React = React;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -103,6 +103,29 @@ test('clicking DocButton fires onDocClick with the button\'s own path', async ()
   assert.deepStrictEqual(clicked, ['tasks/T01.md'], 'onDocClick fired once with the resolved path');
 
   await act(async () => { root.unmount(); });
+});
+
+// ─── ExternalLinkButton — the outbound-link counterpart to DocButton ────────
+
+test('ExternalLinkButton renders an anchor carrying DocButton\'s outline chrome, opening safely in a new tab', () => {
+  const html = renderToStaticMarkup(
+    createElement(ExternalLinkButton, { href: 'https://github.com/o/r/pull/164', label: 'PR #164', iconCssVar: '--tier-complete' }),
+  );
+  assert.match(html, /^<a /, 'renders a real anchor, not a text link or a plain button');
+  assert.ok(html.includes('href="https://github.com/o/r/pull/164"'), 'href points at the external URL');
+  assert.ok(html.includes('target="_blank"') && html.includes('rel="noopener noreferrer"'), 'opens safely in a new tab');
+  assert.match(html, /class="[^"]*bg-background[^"]*"/, "shares DocButton's outline house-button chrome so the row stays uniform");
+  assert.ok(html.includes('PR #164'), 'visible label present');
+  assert.match(html, /<svg[^>]*style="[^"]*color:var\(--tier-complete\)/, 'leading pull-request icon is tinted by the tier var');
+});
+
+test('ExternalLinkButton omits the icon tint when no iconCssVar is supplied', () => {
+  const html = renderToStaticMarkup(
+    createElement(ExternalLinkButton, { href: 'https://x/y', label: 'PR #1' }),
+  );
+  const svgMatch = html.match(/<svg[^>]*>/);
+  assert.ok(svgMatch, 'icon renders');
+  assert.ok(!svgMatch![0].includes('style='), 'no inline color override — inherits the button foreground');
 });
 
 test('clicking a null-path DocButton never calls onDocClick', async () => {

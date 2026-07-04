@@ -6,7 +6,7 @@ import type { CardSlotProps, HeadingSlotProps, MetaSlotProps } from './types';
  * value so the ring occupies identical space in every state — the alignment
  * guarantee the card frame promises.
  */
-export const RING_DIAMETER = 72;
+export const RING_DIAMETER = 96;
 
 /**
  * The card's slot wrappers own their geometry so state views never do. Each
@@ -16,20 +16,21 @@ export const RING_DIAMETER = 72;
  * resolver / shell imports) so the shell, resolver, and views can all depend
  * on it without an import cycle.
  *
- * `ring`'s named area spans only the heading and meta rows, never the
- * controls row: its fixed 72px height is what forces those two flexible
- * rows to sum to exactly 72px (a grid item with a fixed block size inside a
- * `minmax(0, 1fr)` track drives that track's flex-fraction resolution), so
- * the heading/meta block's own center always lands on the ring's center
- * regardless of the controls row's height. Spanning the controls row too
- * would tie that 72px sum to the controls row's height as well, pulling the
- * heading off-center whenever a meta line isn't present to fill the second
- * row (see `HeadingSlot`).
+ * `ring`'s named area spans the full height of the card (every row, including
+ * the flexible spacer rows above and below the heading/meta/controls stack),
+ * and the ring `alignSelf: center`s within that span so it sits vertically
+ * centered against the whole card on the left. The shell's grid template
+ * (`dag-state-card.tsx`) flanks the heading/meta/controls trio with equal
+ * `1fr` spacer rows, so that content block is centered too — the ring's
+ * center and the content block's center coincide at the card's vertical
+ * middle. The ring's fixed diameter sets the card's minimum height, so an
+ * empty-controls state can never render shorter than the ring (R8's
+ * identical-footprint guarantee).
  */
 export function RingSlot({ children, className }: CardSlotProps) {
   return (
     <div
-      style={{ gridArea: 'ring', width: RING_DIAMETER, height: RING_DIAMETER, alignSelf: 'start' }}
+      style={{ gridArea: 'ring', width: RING_DIAMETER, height: RING_DIAMETER, alignSelf: 'center' }}
       className={cn('relative flex shrink-0 items-center justify-center', className)}
     >
       {children}
@@ -41,21 +42,23 @@ export function RingSlot({ children, className }: CardSlotProps) {
  * Single-line heading: `truncate`s and carries the full text as a `title`
  * attribute so a long title never wraps or widens the card.
  *
- * With `hasMeta`, it anchors to the end (bottom) of its own flexible row —
- * paired with `MetaSlot` anchored to the start of the row beneath it, the
- * two sit flush against each other across the shared row boundary, which
- * sits exactly at the ring's center (see `RingSlot`).
+ * With `hasMeta`, it anchors to the end (bottom) of its own row — paired with
+ * `MetaSlot` anchored to the start of the row beneath it, the two sit flush
+ * against each other across the shared row boundary, reading as a tight
+ * title/subtitle pair.
  *
- * Without a meta line, anchoring alone in the heading row leaves it
- * off-center (the meta row still claims its share of the ring-driven 72px
- * split even though nothing renders there). Instead it spans both the
- * heading and meta rows and centers within their combined height, landing
- * on the same ring-center boundary a heading+meta pair would meet at.
+ * Without a meta line, anchoring alone in the heading row would leave the
+ * heading floating above the card's center (the empty meta and controls rows
+ * still claim their share of the height below it). Instead it spans all three
+ * content rows — heading, meta, and controls — and centers within them, so a
+ * heading-only state (Planning, fallback: no meta, empty controls) sits
+ * vertically centered on the ring beside it rather than riding high. Such
+ * states never render controls, so nothing is overlapped.
  */
 export function HeadingSlot({ heading, hasMeta = false, className }: HeadingSlotProps) {
   const style = hasMeta
     ? { gridArea: 'heading', alignSelf: 'end' as const }
-    : { gridArea: 'heading-start / heading-start / meta-end / heading-end', alignSelf: 'center' as const };
+    : { gridArea: 'heading-start / heading-start / controls-end / heading-end', alignSelf: 'center' as const };
   return (
     <div style={style} className={cn('min-w-0', className)}>
       <span className="block truncate text-base font-medium text-foreground" title={heading}>
@@ -72,30 +75,11 @@ export function HeadingSlot({ heading, hasMeta = false, className }: HeadingSlot
  * anchoring against an empty row. See `HeadingSlot` for the centering
  * mechanics.
  */
-export function MetaSlot({ meta, className }: MetaSlotProps) {
+export function MetaSlot({ meta, title, className }: MetaSlotProps) {
   if (meta === null) return null;
   return (
     <div style={{ gridArea: 'meta', alignSelf: 'start' }} className={cn('min-w-0', className)}>
-      <span className="block truncate text-xs text-muted-foreground">{meta}</span>
-    </div>
-  );
-}
-
-/**
- * Backward-compat shim for the retired combined title+meta slot. Existing
- * per-state views (rewritten in Phase 2 to compose `HeadingSlot` /
- * `MetaSlot` directly) keep compiling unchanged. It never renders alongside
- * a `MetaSlot`, so it always uses the heading's solo layout — spanning both
- * the heading and meta rows and centering within their combined height —
- * the same centering `HeadingSlot({ hasMeta: false })` gets.
- */
-export function TitleSlot({ children, className }: CardSlotProps) {
-  return (
-    <div
-      style={{ gridArea: 'heading-start / heading-start / meta-end / heading-end', alignSelf: 'center' }}
-      className={cn('flex min-w-0 flex-col justify-center gap-1', className)}
-    >
-      {children}
+      <span className="block truncate text-xs text-muted-foreground" title={title}>{meta}</span>
     </div>
   );
 }
@@ -106,10 +90,22 @@ export function TitleSlot({ children, className }: CardSlotProps) {
  * coordinates stay identical whether or not a state surfaces controls;
  * unlike the ring, it plays no part in sizing the heading/meta rows above it
  * (see `RingSlot`).
+ *
+ * `min-w-0` — like the other content slots — lets this flex row actually
+ * shrink inside its `minmax(0, 1fr)` grid track. Without it a wide controls
+ * cluster (a multi-repo commit-chip row plus doc buttons) refuses to shrink
+ * and overruns the card edge instead of wrapping (see `CommitChips`, whose
+ * own row also wraps).
+ *
+ * `mt-2` breaks the action row away from the heading/meta pair above it: the
+ * title and subtitle sit flush as one unit, then a uniform 8px gap (matching
+ * the row's own `gap-2`) sets the buttons apart so they never crowd the meta
+ * line. On a state with no controls the empty row's margin is invisible, so
+ * the footprint stays identical (R8).
  */
 export function ControlsSlot({ children, className }: CardSlotProps) {
   return (
-    <div style={{ gridArea: 'controls' }} className={cn('flex min-h-8 items-center gap-2', className)}>
+    <div style={{ gridArea: 'controls' }} className={cn('mt-2 flex min-h-8 min-w-0 items-center gap-2', className)}>
       {children}
     </div>
   );

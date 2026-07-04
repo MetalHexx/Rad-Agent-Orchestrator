@@ -109,10 +109,11 @@ test('corrective view renders no badge', () => {
   assert.ok(!source.includes('SpinnerBadge'), 'the badge is retired in favor of the heading/meta anatomy');
 });
 
-test('corrective view heading is sourced from deriveCardHeading and meta folds in the corrective reason', () => {
+test('corrective view heading is sourced from deriveCardHeading; the reason surfaces as the meta hover title, not the visible line', () => {
   assert.match(source, /deriveCardHeading\(ctx\)/);
   assert.match(source, /<HeadingSlot\s+heading=\{heading\}/);
   assert.match(source, /correctiveEntry\?\.reason/);
+  assert.match(source, /<MetaSlot\s+meta=\{meta\}\s+title=\{metaWithReason/);
 });
 
 test('corrective view wraps its controls in CardControlsRow and uses DocButton, not DocumentLink', () => {
@@ -250,7 +251,12 @@ test('Corrective renders both doc links and a commit chip from a realistic itera
   // Retry budget (1/2) is display-only text in the ring center, never interactive.
   assert.match(html, />1\/2</);
 
-  // The "RETRY" sublabel and the corrective's own reason both surface.
+  // The "RETRY" sublabel surfaces, and the visible meta line stays the short
+  // "Phase N · Task M" — the corrective's own reason does not overrun it.
   assert.match(html, />RETRY</);
-  assert.match(html, /code review found issues/);
+  assert.match(html, />Phase 1 · Task 1</);
+  assert.ok(!html.includes('>Phase 1 · Task 1 — code review found issues<'), 'the reason is not folded into the visible text');
+
+  // The full "meta — reason" string still surfaces as the meta's hover title.
+  assert.match(html, /title="Phase 1 · Task 1 — code review found issues"/);
 });

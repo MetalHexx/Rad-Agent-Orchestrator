@@ -2,8 +2,8 @@
 
 import type { ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
-import { FileText } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { FileText, GitPullRequest } from 'lucide-react';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 export interface CardControlsRowProps {
@@ -89,5 +89,53 @@ export function DocButton({
       <Icon style={iconStyle} aria-hidden="true" />
       {label}
     </Button>
+  );
+}
+
+export interface ExternalLinkButtonProps {
+  /** Full external URL; opens in a new tab. */
+  href: string;
+  /** Visible button label (e.g., "PR #164"). */
+  label: string;
+  /** Leading icon; defaults to the pull-request glyph. */
+  icon?: LucideIcon;
+  /**
+   * CSS custom property (e.g. `--tier-complete`) tinting the leading icon.
+   * Omit to inherit the button's own foreground color. Mirrors `DocButton`.
+   */
+  iconCssVar?: string;
+  /** Optional tabIndex override; defaults to the natural tab order. */
+  tabIndex?: number;
+}
+
+/**
+ * The external-link counterpart to `DocButton`: an `<a>` carrying the exact
+ * house `Button` outline chrome (via `buttonVariants`) so a card's outbound
+ * link (a PR, a commit) reads as the same button as its doc controls, while
+ * still being a real anchor that opens in a new tab. Card controls are
+ * deliberately uniform — every affordance is an outline+icon button — so this
+ * shares `DocButton`'s look rather than the borderless text-link
+ * `DocumentLink`/`ExternalLink` used elsewhere.
+ */
+export function ExternalLinkButton({
+  href,
+  label,
+  icon: Icon = GitPullRequest,
+  iconCssVar,
+  tabIndex,
+}: ExternalLinkButtonProps) {
+  const iconStyle = iconCssVar ? { color: `var(${iconCssVar})` } : undefined;
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      tabIndex={tabIndex}
+      aria-label={label}
+      className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))}
+    >
+      <Icon style={iconStyle} aria-hidden="true" />
+      {label}
+    </a>
   );
 }

@@ -1,8 +1,7 @@
 import { Check } from 'lucide-react';
-import { ExternalLink } from '@/components/documents';
 import { Ring } from '../ring';
 import { RingSlot, HeadingSlot, MetaSlot, ControlsSlot } from '../card-slots';
-import { CardControlsRow, DocButton } from '../card-controls';
+import { CardControlsRow, DocButton, ExternalLinkButton } from '../card-controls';
 import type { StateView } from '../types';
 import { parsePrLabel, deriveFinalReviewInfo } from './shared';
 
@@ -58,7 +57,7 @@ export const completeView: StateView = {
           <CardControlsRow>
             <DocButton path={docPath} label="Report" onDocClick={ctx.onDocClick} iconCssVar={TIER_CSS_VAR} />
             {ctx.prUrl !== null && (
-              <ExternalLink href={ctx.prUrl} label={parsePrLabel(ctx.prUrl)} icon="git-pull-request" />
+              <ExternalLinkButton href={ctx.prUrl} label={parsePrLabel(ctx.prUrl)} iconCssVar={TIER_CSS_VAR} />
             )}
           </CardControlsRow>
         </ControlsSlot>

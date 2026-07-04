@@ -60,13 +60,6 @@ test('plan approval view renders a full determinate ring, not a partial arc, wit
   assert.match(source, /sublabel="READY"/);
 });
 
-test('plan approval view renders the "Ready for Approval" heading with the plan doc path as meta', () => {
-  assert.match(source, /heading = 'Ready for Approval'/);
-  assert.match(source, /const meta = planDocPath \?\? 'Master Plan'/);
-  assert.match(source, /<HeadingSlot\s+heading=\{heading\}\s+hasMeta=\{meta !== null\}\s*\/>/);
-  assert.match(source, /<MetaSlot\s+meta=\{meta\}\s*\/>/);
-});
-
 test('plan approval view wraps its controls in CardControlsRow and uses DocButton, not DocumentLink', () => {
   assert.match(source, /CardControlsRow/);
   assert.match(source, /DocButton/);
@@ -102,4 +95,20 @@ test('Plan Approval renders the ApproveGateButton and the Master Plan doc link f
   // Two active controls: Approve + Master Plan doc link.
   const buttonCount = (html.match(/<button/g) ?? []).length;
   assert.equal(buttonCount, 2, 'both the Approve action and the Master Plan doc link render as active buttons');
+
+  // Heading text, asserted against rendered output rather than source. No meta
+  // line — the heading already says what a subtitle would just repeat.
+  assert.match(html, />Execution Plan Ready</);
+
+  // Ring center icon is the same checkmark Final Review uses for its approved
+  // verdict (lucide's generated class name), not the retired document-check glyph.
+  assert.ok(html.includes('lucide-check'), 'ring centers on the checkmark glyph');
+  assert.ok(!html.includes('lucide-file-check'), 'the document-checkmark icon is retired');
+
+  // The heading anchors in its own row (paired layout) rather than centering
+  // across the whole heading/meta/controls block — with real controls below
+  // it, the centered layout would push the heading text down into the button
+  // row. Asserted on the rendered style, not the source's hasMeta expression.
+  assert.match(html, /grid-area:heading;align-self:end/, 'heading anchors in its own row, leaving the controls row clear');
+  assert.ok(!html.includes('controls-end'), 'heading does not span into the controls row');
 });
