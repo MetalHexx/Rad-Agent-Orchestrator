@@ -140,12 +140,26 @@ test('the inner wrapper div carries py-2 padding, not relying on the Card gap-4 
   );
 });
 
-// ─── Equal-height row with internal scroll ─────────────────────────────────
+// ─── Card-governed row height via grid stretch (no fixed height) ──────────
 
-test('the docs column and the card both carry the shared lg+ row height in the two-up row', () => {
+test('the two-up grid relies on default stretch alignment — no items-start override, no fixed height utility anywhere in source', () => {
+  assert.ok(
+    !source.includes('items-start'),
+    'the grid keeps the default align-items: stretch instead of overriding to start',
+  );
+  assert.ok(
+    !/h-\[\d+px\]/.test(source),
+    'no hand-picked pixel height utility governs the row — the card governs it via natural content height',
+  );
+  assert.ok(
+    !source.includes('PLANNING_ROW_HEIGHT_CLASS'),
+    'the fixed-height constant has been removed entirely, not just unused',
+  );
+});
+
+test('the grid className carries exactly grid-cols-1 lg:grid-cols-2 gap-4 — no alignment override', () => {
   const html = render({ ...baseProps, artifacts, state: makeState('some_unmapped_node') });
-  const matches = html.match(/lg:h-\[180px\]/g) ?? [];
-  assert.equal(matches.length, 2, `expected the shared height class on both the docs column and the card, found ${matches.length}`);
+  assert.match(html, /class="grid grid-cols-1 lg:grid-cols-2 gap-4"/, 'the two-up grid carries no extra alignment classes');
 });
 
 test('the docs list container scrolls internally rather than growing the shared row height', () => {
@@ -153,27 +167,10 @@ test('the docs list container scrolls internally rather than growing the shared 
   assert.match(html, /overflow-y-auto/, 'the docs list wrapper carries overflow-y-auto for internal scroll');
 });
 
-test('the card centers its content within the shared height rather than stretching to fill it', () => {
+test('the card renders directly in the grid row with no scroll-fallback wrapper around it', () => {
   const html = render({ ...baseProps, artifacts, state: makeState('some_unmapped_node') });
-  assert.match(html, /justify-content:safe_center/, 'the card wrapper safe-centers its content instead of stretching');
-});
-
-test('the card wrapper scrolls an over-height card rather than clipping it out of reach', () => {
-  const html = render({ ...baseProps, artifacts, state: makeState('some_unmapped_node') });
-  const wrapper = /<div class="flex flex-col overflow-y-auto \*:shrink-0 \[justify-content:safe_center\] lg:h-\[180px\]"/.exec(html);
-  assert.ok(wrapper, 'the card wrapper carries overflow-y-auto, not overflow-hidden, alongside the fixed row height');
-  assert.ok(
-    // The house `Card` primitive's own base style always carries its own
-    // `overflow-hidden` (with a `gap-4` between it and `flex-col`) — this
-    // checks the *wrapper div* specifically, which has no `gap-4`.
-    !html.includes('flex flex-col overflow-hidden'),
-    'the shared-height card wrapper never silently discards over-height content via overflow-hidden',
-  );
-  // `*:shrink-0` matters as much as `overflow-y-auto` here: without it, the
-  // card (a flex item whose own root already carries `overflow-hidden`)
-  // would get flex-shrunk to fit the box instead of overflowing it, so this
-  // wrapper's own scroll would never even see anything to scroll.
-  assert.match(html, /\*:shrink-0/, 'the card is pinned to its natural height so it can genuinely overflow the box');
+  assert.ok(!html.includes('*:shrink-0'), 'no shrink-0 scroll-fallback wrapper around the card');
+  assert.ok(!html.includes('safe_center'), 'no centering scroll-fallback wrapper around the card');
 });
 
 test('the docs scroll container carries tabIndex so it is keyboard-focusable independent of its descendants', () => {
@@ -181,26 +178,25 @@ test('the docs scroll container carries tabIndex so it is keyboard-focusable ind
   assert.match(html, /tabindex="0"/, 'the scrollable docs container is directly reachable via Tab');
 });
 
-test('a solo docs column (no card) keeps its natural height — no fixed height or internal scroll', () => {
+test('a solo docs column (no card) keeps its natural height — no forced internal scroll', () => {
   const html = render({ ...baseProps, artifacts, state: makeState(null, 'not_started') });
-  assert.ok(!html.includes('lg:h-[180px]'), 'no shared row height outside the two-up row');
   assert.ok(!html.includes('overflow-y-auto'), 'no forced internal scroll outside the two-up row');
   assert.ok(!html.includes('tabindex="0"'), 'no forced tabindex outside the two-up row\'s scrollable case');
 });
 
-test('a solo card (no docs) keeps its natural height — no fixed height or centering wrapper', () => {
+test('a solo card (no docs) keeps its natural height — no scroll-fallback wrapper', () => {
   const html = render({ ...baseProps, artifacts: [], state: makeState('some_unmapped_node') });
-  assert.ok(!html.includes('lg:h-[180px]'), 'no shared row height outside the two-up row');
+  assert.ok(!html.includes('*:shrink-0'), 'no scroll-fallback wrapper outside the two-up row');
 });
 
-// ─── Realistic content-bearing card in the shared-height row ──────────────
+// ─── Realistic content-bearing card in the card-governed row ──────────────
 //
 // The empty-controls fallback view (`makeState('some_unmapped_node')` above)
-// never exercises the shared-height/scroll contract against a state view
-// that actually renders controls. A `corrective` state — the state with the
-// most controls (two doc buttons plus a multi-repo commit-chip group) —
-// carries real, non-trivial content through the full `PlanningSection` /
-// `DagStateCard` composition instead.
+// never exercises the composition against a state view that actually renders
+// controls. A `corrective` state — the state with the most controls (two doc
+// buttons plus a multi-repo commit-chip group) — carries real, non-trivial
+// content through the full `PlanningSection` / `DagStateCard` composition
+// instead.
 
 const CORRECTIVE_NODES: NodesRecord = {
   phase_loop: {
@@ -300,11 +296,8 @@ test('a realistic corrective card (real repos, real reason string, real doc path
   assert.match(html, /a1b2c3d4/, "the corrective's second repo commit chip renders");
   assert.match(html, /F-6 drift in AGENTS\.md/, "the real corrective reason string renders in the card's meta line");
 
-  // The shared-height wrapper around this content-bearing card scrolls
-  // rather than clips — the fix for the phase-review's driving finding.
-  assert.match(html, /flex flex-col overflow-y-auto \*:shrink-0 \[justify-content:safe_center\] lg:h-\[180px\]/);
-  assert.ok(
-    !html.includes('flex flex-col overflow-hidden'),
-    'a realistic corrective card is never silently clipped by the shared row height',
-  );
+  // The card is never wrapped in scroll-fallback machinery — the row's
+  // height comes from the card's own natural size, so there is nothing for
+  // it to overflow in the first place.
+  assert.ok(!html.includes('*:shrink-0'), 'a realistic corrective card carries no scroll-fallback wrapper');
 });
