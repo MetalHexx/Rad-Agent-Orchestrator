@@ -66,7 +66,8 @@ don't improvise menu answers, or you break comparability.
 ### Comparing runs
 
 - **Spend:** open the two sessions in the observability dashboard
-  (`http://localhost:3000/observability/session/<id>`) and compare.
+  (`http://localhost:1337/observability/session/<id>`, the dashboard's configurable
+  default port — see `ui.port` in `orchestration.yml`) and compare.
 - **Artifacts:** `diff -r output/run-1/RAD-PLAN-BENCH output/run-2/RAD-PLAN-BENCH`.
   Filenames are identical across runs because the project name is fixed.
 

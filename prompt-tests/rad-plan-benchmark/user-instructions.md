@@ -45,7 +45,8 @@ Use it to baseline the pipeline today, refactor `/rad-plan`, run it again, and c
    - the run folder path,
    - a one-line census (requirement / phase / task counts),
    - the **observability session URL**:
-     `http://localhost:3000/observability/session/<your-session-id>`.
+     `http://localhost:1337/observability/session/<your-session-id>` (the dashboard's
+     configurable default port, per `ui.port` in `orchestration.yml`).
 
 Typical duration: a few minutes (two planner calls + audit + explosion).
 
