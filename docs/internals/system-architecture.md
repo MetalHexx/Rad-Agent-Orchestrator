@@ -71,7 +71,7 @@ flowchart TD
 
 **Project data** — `state.json` (per-project pipeline state), the planning and execution markdown documents, and `orchestration.yml` (system configuration).
 
-**Dashboard** — read-only Next.js UI at `:3000`. Reads project data via filesystem API routes and pushes live updates over SSE driven by a `chokidar` file watcher. Never mutates state — every write to `state.json` flows through the pipeline engine, which gives the dashboard a single-writer guarantee without locking.
+**Dashboard** — read-only Next.js UI, configurable via `ui.port` in `orchestration.yml` (default 1337). Reads project data via filesystem API routes and pushes live updates over SSE driven by a `chokidar` file watcher. Never mutates state — every write to `state.json` flows through the pipeline engine, which gives the dashboard a single-writer guarantee without locking.
 
 The `radorch pipeline signal` subcommand and the main agent share one entry point through the pipeline engine: every `--event` invocation reads state, applies a mutation, walks the DAG to the next action, runs validation on both sides of the mutation, writes state, and returns the action plus context. Out-of-band events (rejections, halts, configuration mutations) bypass the event index but use the same read-mutate-validate-write loop.
 

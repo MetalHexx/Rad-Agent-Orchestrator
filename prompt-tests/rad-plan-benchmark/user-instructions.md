@@ -26,7 +26,7 @@ Use it to baseline the pipeline today, refactor `/rad-plan`, run it again, and c
 - Orchestration scripts installed once:
   `cd .claude/skills/rad-orchestration/scripts && npm install && cd -`
 - The dashboard running if you want the session link to resolve — start it with
-  `/rad-ui-start` (check with `/rad-ui-status`). It serves on `http://localhost:3000`.
+  `/rad-ui-start` (check with `/rad-ui-status`). It serves on a configurable port (default 1337, via `ui.port` in `orchestration.yml`).
 
 ## Run it
 
