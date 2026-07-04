@@ -53,6 +53,35 @@ test('both modes occupy the identical fixed diameter', () => {
   assert.match(indet, size, 'indeterminate ring is 72px square');
 });
 
+// ─── rendered geometry (fills the 72px box, not just a 72px prop) ───────────
+
+/**
+ * recharts bakes the arc's actual radii into the sector `<path>`'s `d`
+ * attribute at render time (pure math, independent of browser layout), so
+ * even a server-rendered string carries the true rendered geometry — unlike
+ * a CSS width/height, which SSR can't verify without a real layout engine.
+ * Extracts the two `A r,r,0 ...` elliptical-arc radii recharts' `Sector`
+ * emits for a full-circle background band: the larger is the outer edge,
+ * the smaller the inner edge.
+ */
+function extractSectorRadii(html: string): { outer: number; inner: number } {
+  const match = html.match(/recharts-radial-bar-background-sector"[^>]*\sd="([^"]+)"/);
+  assert.ok(match, 'background sector path renders with a d attribute');
+  const radii = Array.from(match![1].matchAll(/A\s*([\d.]+),([\d.]+),0/g)).map((m) => Number(m[1]));
+  assert.ok(radii.length >= 2, 'background sector path carries an outer and inner arc radius');
+  return { outer: Math.max(...radii), inner: Math.min(...radii) };
+}
+
+test('determinate ring geometry fills the 72px box: outer edge at the box radius, band at the shared stroke fraction', () => {
+  const html = render({ value: 4, max: 10, color: 'var(--tier-execution)', mode: 'determinate' });
+  const { outer, inner } = extractSectorRadii(html);
+  const boxRadius = 36; // RING_DIAMETER / 2
+  const strokeFraction = 0.28; // mirrors ring.tsx's RING_STROKE_FRACTION
+  const expectedStroke = Math.round(boxRadius * strokeFraction);
+  assert.equal(outer, boxRadius, 'the rendered arc reaches the ring box radius (72px diameter), not a shrunk recharts default');
+  assert.equal(outer - inner, expectedStroke, 'the band thickness matches RING_STROKE_FRACTION of the box radius');
+});
+
 // ─── unified track + stroke ───────────────────────────────────────────────────
 
 test('indeterminate mode renders an underlaid muted full-circle track behind the sweep', () => {

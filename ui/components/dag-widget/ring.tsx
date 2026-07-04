@@ -20,17 +20,32 @@ export interface RingProps {
 /**
  * Radial thickness of the arc/track band as a fraction of the ring radius —
  * the single source both modes derive their stroke from so they can't drift
- * apart. Determinate expresses it as `innerRadius` (recharts computes the
- * band from `outerRadius - innerRadius`); indeterminate expresses it as a
- * pixel stroke for its CSS mask/border. Both read this one constant.
+ * apart. Determinate expresses it as `innerRadius`/`outerRadius` pixel radii
+ * (see below); indeterminate expresses it as a pixel stroke for its CSS
+ * mask/border. Both read this one constant.
  */
 const RING_STROKE_FRACTION = 0.28;
-const INNER_RADIUS = `${Math.round((1 - RING_STROKE_FRACTION) * 100)}%`;
-const OUTER_RADIUS = '100%';
+const RING_RADIUS = RING_DIAMETER / 2;
 const ARC_CORNER_RADIUS = 6;
 /** Sweep of the indeterminate arc, in degrees (a partial ring, not a full circle). */
 const INDETERMINATE_SWEEP_DEG = 300;
-const RING_STROKE = Math.round((RING_DIAMETER / 2) * RING_STROKE_FRACTION);
+const RING_STROKE = Math.round(RING_RADIUS * RING_STROKE_FRACTION);
+
+/**
+ * `innerRadius`/`outerRadius` fed to `<RadialBarChart>`, in pixels (not the
+ * `%` strings recharts examples typically use). recharts positions a radial
+ * chart's sole bar via an implicit, single-category `radiusAxis` band; with
+ * exactly one bar (our gauge always has one), it renders the arc *centered*
+ * on the band's declared inner edge — inset by half the band's own
+ * thickness — rather than literally spanning `[innerRadius, outerRadius]` as
+ * declared. Declaring a band centered on the ring's true outer radius
+ * (`RING_RADIUS`) instead of its true inner radius pre-compensates for that
+ * shift, so the rendered arc lands exactly on `[RING_RADIUS - RING_STROKE,
+ * RING_RADIUS]` — flush with the ring's 72px box. Confirmed against
+ * rendered SVG geometry, not just recharts' prop docs (see `ring.test.tsx`).
+ */
+const INNER_RADIUS = RING_RADIUS - RING_STROKE / 2;
+const OUTER_RADIUS = RING_RADIUS + RING_STROKE / 2;
 
 /**
  * Clamps an arc value into `[0, max]` so out-of-range input (a negative or an
@@ -60,6 +75,8 @@ export function Ring({ value, max, color, mode, children, sublabel }: RingProps)
         <RadialBarChart
           width={RING_DIAMETER}
           height={RING_DIAMETER}
+          margin={{ top: 0, right: 0, bottom: 0, left: 0 }}
+          barCategoryGap={0}
           cx="50%"
           cy="50%"
           innerRadius={INNER_RADIUS}
