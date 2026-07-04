@@ -40,6 +40,27 @@ export interface PlanningSectionProps {
 }
 
 /**
+ * Tracks whether the viewport is at Tailwind's `lg` breakpoint (≥ 1024px) or
+ * wider — the width at which the Planning grid switches from a single stacked
+ * column to its two-up row. Starts `false` for a stable SSR / first-paint value
+ * (the stacked layout), then syncs on mount and on viewport change. Mirrors
+ * `usePrefersReducedMotion` in `dag-state-card.tsx`; `1024px` is Tailwind's
+ * default `lg`, the same breakpoint the grid's own `lg:grid-cols-2` resolves
+ * against.
+ */
+function useIsTwoUpViewport(): boolean {
+  const [twoUp, setTwoUp] = React.useState(false);
+  React.useEffect(() => {
+    const mql = window.matchMedia("(min-width: 1024px)");
+    const onChange = () => setTwoUp(mql.matches);
+    onChange();
+    mql.addEventListener("change", onChange);
+    return () => mql.removeEventListener("change", onChange);
+  }, []);
+  return twoUp;
+}
+
+/**
  * The unified Planning section: the ordered docs list beside the live
  * DAG-state card in a responsive two-up row. Equal `1fr` tracks on `lg`+,
  * stacking to a single column (docs above card) below it. When the card has no
@@ -61,12 +82,19 @@ export function PlanningSection({
 }: PlanningSectionProps) {
   const showCard = shouldShowStateCard(state);
   const hasDocs = artifacts.length > 0;
-  if (!hasDocs && !showCard) return null;
 
   // Only the combined two-up row pairs the docs column and the card as
   // siblings in one grid row — a solo docs column or solo card (the two
   // degraded single-column cases below) keeps its own natural content height.
   const isRow = hasDocs && showCard;
+
+  // The card-height mirroring below is a real layout constraint, so it must
+  // only apply where the two columns actually share a grid row — at `lg`+.
+  // `isTwoUp` tracks that same breakpoint; below `lg` the grid stacks into
+  // independent rows and the docs column must keep its natural, uncapped
+  // height (capping it there would clip/force-scroll the docs list in a
+  // layout that is supposed to size to its own content).
+  const isTwoUp = useIsTwoUpViewport();
 
   // Plain grid `stretch` sizes the row's `auto` track to whichever child is
   // naturally taller. That's correct when the card is taller (the common
@@ -77,7 +105,9 @@ export function PlanningSection({
   // contribution to that row-sizing calculation to at most the card's
   // height, so the row always resolves to the card's height regardless of
   // which child is naturally taller; the docs column's existing internal
-  // `overflow-y-auto` then engages whenever its content exceeds that cap.
+  // `overflow-y-auto` then engages whenever its content exceeds that cap. The
+  // cap is only applied at `lg`+ (gated on `isTwoUp`) — never in the stacked
+  // layout, where the two columns no longer share a row.
   const cardWrapperRef = React.useRef<HTMLDivElement>(null);
   const [cardHeight, setCardHeight] = React.useState<number | null>(null);
 
@@ -92,18 +122,19 @@ export function PlanningSection({
     return () => observer.disconnect();
   }, [isRow]);
 
-  // `isRow` gates the docs list's scroll/tabIndex machinery on the two-up
-  // composition being active, not on the `lg` breakpoint itself. Below `lg`
-  // the grid collapses to one column, so the docs column and the card no
-  // longer share a row track — each sits alone in its own auto row, sized to
-  // its own content, so `flex-1`/`overflow-y-auto` have no shorter container
-  // to overflow and `tabIndex` is a harmless no-op stop rather than a real
-  // scroll region. Making it viewport-exact would need a client-side
-  // matchMedia check (see `usePrefersReducedMotion` in `dag-state-card.tsx`)
-  // purely to gate one attribute — not worth the added SSR/hydration mismatch
-  // risk for a cosmetic tab stop.
+  if (!hasDocs && !showCard) return null;
+
+  // The card-height cap (`maxHeight`) is `isTwoUp`-gated above so it never
+  // constrains the stacked (below-`lg`) layout, where the docs column and the
+  // card no longer share a row track — each sits alone in its own auto row,
+  // sized to its own content. There `flex-1`/`overflow-y-auto` have no shorter
+  // container to overflow and `tabIndex` is a harmless no-op stop rather than
+  // a real scroll region. The tab stop itself stays gated on `isRow` alone
+  // (not `isTwoUp`): it is a cosmetic focus target, not a layout constraint,
+  // so its off-breakpoint presence is a harmless no-op and not worth an extra
+  // viewport-conditional render.
   const docsColumn = (
-    <Card className={cn("py-2")} style={isRow && cardHeight != null ? { maxHeight: cardHeight } : undefined}>
+    <Card className={cn("py-2")} style={isRow && isTwoUp && cardHeight != null ? { maxHeight: cardHeight } : undefined}>
       <div className={cn("py-2", isRow && "min-h-0 flex-1 overflow-y-auto")} tabIndex={isRow ? 0 : undefined}>
         <PlanningDocsList
           artifacts={artifacts}

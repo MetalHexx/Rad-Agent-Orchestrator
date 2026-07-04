@@ -184,6 +184,27 @@ test('the docs column carries no inline max-height before the card has been meas
   assert.ok(!html.includes('max-height'), 'no max-height is present until ResizeObserver has measured the card client-side');
 });
 
+test('the card-mirrored max-height is viewport-gated to the lg breakpoint, never clipping the stacked below-lg layout', () => {
+  // renderToStaticMarkup has no concept of CSS breakpoints, so this pins the
+  // *gating mechanism* rather than the runtime effect — the actual below-lg
+  // behavior is covered by the manual/CDP real-browser verification. Below lg
+  // the grid collapses to one column and each cell owns its natural height, so
+  // the card-height cap must not apply there (it would clip/force-scroll the
+  // docs list). A matchMedia(min-width: 1024px) check (mirroring
+  // usePrefersReducedMotion) gates the applied style on that breakpoint rather
+  // than on the isRow data predicate alone.
+  assert.match(
+    source,
+    /matchMedia\(\s*["'][^"']*min-width:\s*1024px[^"']*["']\s*\)/,
+    'a matchMedia lg-breakpoint check gates the card-height cap',
+  );
+  assert.match(
+    source,
+    /style=\{isRow && \w+ && cardHeight/,
+    'the max-height style depends on the viewport flag, not on isRow alone',
+  );
+});
+
 test('the grid className carries exactly grid-cols-1 lg:grid-cols-2 gap-4 — no alignment override', () => {
   const html = render({ ...baseProps, artifacts, state: makeState('some_unmapped_node') });
   assert.match(html, /class="grid grid-cols-1 lg:grid-cols-2 gap-4"/, 'the two-up grid carries no extra alignment classes');
