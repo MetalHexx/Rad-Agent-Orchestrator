@@ -133,14 +133,23 @@ test('wraps the docs-list rows in an inner div so they are not direct gap-4 flex
 
 test('the inner wrapper div carries py-2 padding, not relying on the Card gap-4 for row spacing', () => {
   // Verify the docs Card wraps a py-2 inner div (rather than spacing rows via the Card's own gap-4).
-  const cardWithInnerDiv = /<Card className=\{cn\("py-2"[^}]*\}>\s*<div className=\{cn\("py-2"/;
+  // `[^>]*` (rather than requiring `}>` immediately) tolerates the docs Card
+  // carrying additional attributes (e.g. the card-governed-height `style`)
+  // alongside `className`.
+  const cardWithInnerDiv = /<Card className=\{cn\("py-2"\)\}[^>]*>\s*<div className=\{cn\("py-2"/;
   assert.ok(
     cardWithInnerDiv.test(source),
     'py-2 inner div wraps PlanningDocsList inside the docs Card',
   );
 });
 
-// ─── Card-governed row height via grid stretch (no fixed height) ──────────
+// ─── Card-governed row height via ResizeObserver mirroring (no fixed height) ─
+//
+// Plain grid stretch alone only caps the row to the card's height when the
+// card is the taller sibling; when the docs list is naturally taller, the
+// row instead grows to fit it. The docs column's `max-height` is mirrored
+// from the card's own measured height via `ResizeObserver` so the row is
+// capped to the card's height in both directions.
 
 test('the two-up grid relies on default stretch alignment — no items-start override, no fixed height utility anywhere in source', () => {
   assert.ok(
@@ -155,6 +164,24 @@ test('the two-up grid relies on default stretch alignment — no items-start ove
     !source.includes('PLANNING_ROW_HEIGHT_CLASS'),
     'the fixed-height constant has been removed entirely, not just unused',
   );
+});
+
+test('the docs column mirrors the card\'s measured height via ResizeObserver rather than a static class', () => {
+  assert.ok(source.includes('ResizeObserver'), 'a ResizeObserver measures the card to cap the docs column height');
+  assert.ok(source.includes('cardWrapperRef'), 'the card wrapper is the ResizeObserver target');
+  assert.ok(/style=\{isRow[^}]*cardHeight[^}]*maxHeight:\s*cardHeight/.test(source), 'the docs column applies the measured height as an inline max-height, isRow-gated');
+});
+
+test('the card wrapper is self-start aligned so its measured height reflects its own content, not the stretched row', () => {
+  assert.ok(
+    /ref=\{cardWrapperRef\}\s+className="self-start"/.test(source),
+    'the measuring wrapper opts out of stretch so ResizeObserver reads the card\'s true natural height',
+  );
+});
+
+test('the docs column carries no inline max-height before the card has been measured (no hardcoded number ships in the initial render)', () => {
+  const html = render({ ...baseProps, artifacts, state: makeState('some_unmapped_node') });
+  assert.ok(!html.includes('max-height'), 'no max-height is present until ResizeObserver has measured the card client-side');
 });
 
 test('the grid className carries exactly grid-cols-1 lg:grid-cols-2 gap-4 — no alignment override', () => {

@@ -68,6 +68,30 @@ export function PlanningSection({
   // degraded single-column cases below) keeps its own natural content height.
   const isRow = hasDocs && showCard;
 
+  // Plain grid `stretch` sizes the row's `auto` track to whichever child is
+  // naturally taller. That's correct when the card is taller (the common
+  // case), but when the docs list is naturally taller, the row would grow to
+  // fit it instead of the card — leaving the card with dead space and the
+  // docs column with nothing to scroll. Mirroring the card's own rendered
+  // height onto the docs column's `max-height` caps the docs column's
+  // contribution to that row-sizing calculation to at most the card's
+  // height, so the row always resolves to the card's height regardless of
+  // which child is naturally taller; the docs column's existing internal
+  // `overflow-y-auto` then engages whenever its content exceeds that cap.
+  const cardWrapperRef = React.useRef<HTMLDivElement>(null);
+  const [cardHeight, setCardHeight] = React.useState<number | null>(null);
+
+  React.useEffect(() => {
+    if (!isRow) return;
+    const el = cardWrapperRef.current;
+    if (!el) return;
+    const measure = () => setCardHeight(el.getBoundingClientRect().height);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [isRow]);
+
   // `isRow` gates the docs list's scroll/tabIndex machinery on the two-up
   // composition being active, not on the `lg` breakpoint itself. Below `lg`
   // the grid collapses to one column, so the docs column and the card no
@@ -79,7 +103,7 @@ export function PlanningSection({
   // purely to gate one attribute — not worth the added SSR/hydration mismatch
   // risk for a cosmetic tab stop.
   const docsColumn = (
-    <Card className={cn("py-2")}>
+    <Card className={cn("py-2")} style={isRow && cardHeight != null ? { maxHeight: cardHeight } : undefined}>
       <div className={cn("py-2", isRow && "min-h-0 flex-1 overflow-y-auto")} tabIndex={isRow ? 0 : undefined}>
         <PlanningDocsList
           artifacts={artifacts}
@@ -93,7 +117,7 @@ export function PlanningSection({
     </Card>
   );
 
-  const card = (
+  const cardElement = (
     <DagStateCard
       state={state}
       onDocClick={onDocClick}
@@ -102,16 +126,30 @@ export function PlanningSection({
     />
   );
 
+  // Only the two-up row needs the measuring wrapper. Default grid `stretch`
+  // would otherwise size this wrapper to the row's own (pre-cap) height, so
+  // `ResizeObserver` would measure the stretched box instead of the card's
+  // true natural height on the very first, uncapped render — `self-start`
+  // keeps the wrapper pinned to its own content size regardless of the row's
+  // current height, so every measurement reflects the card alone.
+  const card = isRow ? (
+    <div ref={cardWrapperRef} className="self-start">
+      {cardElement}
+    </div>
+  ) : (
+    cardElement
+  );
+
   return (
     <div role="group" aria-label="Planning section">
       <div aria-hidden="true" className={SECTION_LABEL_CLASSES}>Planning</div>
       {isRow ? (
-        // Default `align-items: stretch` (no override) makes both grid cells
-        // share the row's auto height — resolved from the taller child, in
-        // practice the card — rather than a hand-picked pixel constant. The
-        // card can never overflow a row sized to its own natural height, so
-        // it needs no scroll-fallback machinery of its own; only the docs
-        // column can end up shorter than its content and scrolls internally.
+        // Default `align-items: stretch` (no override) makes the docs column
+        // fill the row's auto height — resolved to the card's height via the
+        // `max-height` mirroring above — down to that height, so its own
+        // `overflow-y-auto` scrolls past it. The card can never overflow a
+        // row sized to its own natural height, so it needs no scroll-fallback
+        // machinery of its own.
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {docsColumn}
           {card}
