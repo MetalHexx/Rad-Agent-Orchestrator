@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { JSDOM } from 'jsdom';
 import { PlanningSection, shouldShowStateCard } from './planning-section';
 import type { Artifact } from '@/lib/artifact-model';
 import type { ProjectStateV5, GraphStatus, NodesRecord } from '@/types/state';
@@ -179,20 +180,16 @@ test('the card wrapper is self-start aligned so its measured height reflects its
   );
 });
 
-test('the docs column carries no inline max-height before the card has been measured (no hardcoded number ships in the initial render)', () => {
-  const html = render({ ...baseProps, artifacts, state: makeState('some_unmapped_node') });
-  assert.ok(!html.includes('max-height'), 'no max-height is present until ResizeObserver has measured the card client-side');
-});
-
 test('the card-mirrored max-height is viewport-gated to the lg breakpoint, never clipping the stacked below-lg layout', () => {
   // renderToStaticMarkup has no concept of CSS breakpoints, so this pins the
-  // *gating mechanism* rather than the runtime effect — the actual below-lg
-  // behavior is covered by the manual/CDP real-browser verification. Below lg
-  // the grid collapses to one column and each cell owns its natural height, so
-  // the card-height cap must not apply there (it would clip/force-scroll the
-  // docs list). A matchMedia(min-width: 1024px) check (mirroring
-  // usePrefersReducedMotion) gates the applied style on that breakpoint rather
-  // than on the isRow data predicate alone.
+  // *gating mechanism*'s source shape rather than the runtime effect — the
+  // jsdom client-render tests below exercise the actual below-lg behavior
+  // against a real matchMedia stub. Below lg the grid collapses to one column
+  // and each cell owns its natural height, so the card-height cap must not
+  // apply there (it would clip/force-scroll the docs list). A
+  // matchMedia(min-width: 1024px) check (mirroring usePrefersReducedMotion)
+  // gates the applied style on that breakpoint rather than on the isRow data
+  // predicate alone.
   assert.match(
     source,
     /matchMedia\(\s*["'][^"']*min-width:\s*1024px[^"']*["']\s*\)/,
@@ -203,6 +200,133 @@ test('the card-mirrored max-height is viewport-gated to the lg breakpoint, never
     /style=\{isRow && \w+ && cardHeight/,
     'the max-height style depends on the viewport flag, not on isRow alone',
   );
+});
+
+// ─── Real client-render verification — ResizeObserver + matchMedia in jsdom ──
+//
+// The source-shape tests above pin identifiers and gating predicates but
+// never execute them: renderToStaticMarkup never runs useEffect. These mount
+// PlanningSection in a real JSDOM via createRoot/act — mirroring
+// dag-state-card.test.tsx's clientRenderClassName for usePrefersReducedMotion
+// — stub window.matchMedia and window.ResizeObserver (jsdom ships neither),
+// and assert the docs column's actual computed style.maxHeight: the thing the
+// mechanism exists to produce, not just the source that claims to produce it.
+
+class StubResizeObserver implements ResizeObserver {
+  static instances: StubResizeObserver[] = [];
+  private readonly callback: ResizeObserverCallback;
+  private target: Element | null = null;
+
+  constructor(callback: ResizeObserverCallback) {
+    this.callback = callback;
+    StubResizeObserver.instances.push(this);
+  }
+
+  observe(target: Element): void {
+    this.target = target;
+  }
+
+  unobserve(): void {}
+  disconnect(): void {}
+
+  /** Simulates a real ResizeObserver firing after the observed element resizes. */
+  trigger(): void {
+    if (!this.target) return;
+    this.callback([{ target: this.target } as ResizeObserverEntry], this as unknown as ResizeObserver);
+  }
+}
+
+/**
+ * Mounts PlanningSection in a real jsdom document with `matchMedia` and
+ * `ResizeObserver` stubbed, runs `interact` against the live DOM, then unmounts.
+ * `matches` controls the stubbed `(min-width: 1024px)` result (the `lg`
+ * gate); `initialHeight` seeds the card wrapper's stubbed
+ * `getBoundingClientRect().height` for the first measurement.
+ */
+async function withClientRender<T>(
+  matches: boolean,
+  initialHeight: number,
+  interact: (ctx: {
+    container: HTMLElement;
+    setHeight: (height: number) => void;
+    triggerResize: () => Promise<void>;
+  }) => Promise<T> | T,
+): Promise<T> {
+  const dom = new JSDOM('<!doctype html><div id="root"></div>');
+  const win = dom.window as unknown as Window & typeof globalThis;
+  let height = initialHeight;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (win as any).matchMedia = (query: string) => ({
+    matches: matches && query.includes('min-width'),
+    media: query,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    addListener: () => {},
+    removeListener: () => {},
+    onchange: null,
+    dispatchEvent: () => false,
+  });
+  win.HTMLElement.prototype.getBoundingClientRect = function () {
+    return { width: 0, height, top: 0, left: 0, right: 0, bottom: height, x: 0, y: 0, toJSON() { return this; } } as unknown as DOMRect;
+  };
+  StubResizeObserver.instances.length = 0;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (win as any).ResizeObserver = StubResizeObserver;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (globalThis as any).window = win;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (globalThis as any).document = win.document;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (globalThis as any).ResizeObserver = StubResizeObserver;
+
+  const { createRoot } = await import('react-dom/client');
+  const { act } = await import('react');
+  const container = win.document.getElementById('root')!;
+  const root = createRoot(container);
+  await act(async () => {
+    root.render(createElement(PlanningSection, { ...baseProps, artifacts, state: makeState('some_unmapped_node') }));
+  });
+
+  const result = await interact({
+    container,
+    setHeight: (next: number) => { height = next; },
+    triggerResize: async () => {
+      await act(async () => {
+        StubResizeObserver.instances[StubResizeObserver.instances.length - 1]?.trigger();
+      });
+    },
+  });
+
+  await act(async () => { root.unmount(); });
+  return result;
+}
+
+function docsCardMaxHeight(container: HTMLElement): string {
+  const docsCard = container.querySelectorAll('[data-slot="card"]')[0] as HTMLElement;
+  return docsCard.style.maxHeight;
+}
+
+test('client render, at the lg breakpoint: the docs column mirrors the card\'s measured height as its max-height', async () => {
+  const maxHeight = await withClientRender(true, 240, ({ container }) => docsCardMaxHeight(container));
+  assert.equal(maxHeight, '240px', 'the docs column\'s inline max-height mirrors the ResizeObserver-measured card height');
+});
+
+test('client render, below the lg breakpoint: the docs column carries no max-height even though the card is measured', async () => {
+  const maxHeight = await withClientRender(false, 240, ({ container }) => docsCardMaxHeight(container));
+  assert.equal(maxHeight, '', 'the stacked below-lg layout never receives the card-height cap, regardless of measurement');
+});
+
+test('client render: a live ResizeObserver callback re-measures the card and updates the mirrored max-height', async () => {
+  const { before, after } = await withClientRender(true, 240, async ({ container, setHeight, triggerResize }) => {
+    const before = docsCardMaxHeight(container);
+    setHeight(360);
+    await triggerResize();
+    const after = docsCardMaxHeight(container);
+    return { before, after };
+  });
+  assert.equal(before, '240px', 'the initial mount measurement applies immediately');
+  assert.equal(after, '360px', 'a ResizeObserver callback re-measuring the card updates the mirrored max-height');
 });
 
 test('the grid className carries exactly grid-cols-1 lg:grid-cols-2 gap-4 — no alignment override', () => {
