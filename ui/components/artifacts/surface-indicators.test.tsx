@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import React, { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { ArtifactTile } from './artifact-tile';
-import { BrainstormingSection } from '@/components/dag-timeline/brainstorming-section';
+import { PlanningDocsList } from '@/components/planning-section/planning-docs-list';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 (globalThis as any).React = React;
 
@@ -19,8 +19,8 @@ test('a tile with an unseen file shows the change badge and pulses when active (
 });
 
 test('a DAG row uses the row-background pulse variant (DD-2)', () => {
-  const html = renderToStaticMarkup(createElement(BrainstormingSection, {
-    artifacts: [ART], onOpen: () => {}, onDelete: () => {},
+  const html = renderToStaticMarkup(createElement(PlanningDocsList, {
+    artifacts: [ART], requirementsStatus: null, onOpen: () => {}, onDelete: () => {},
     unseen: new Set(['A.html']), activePulse: new Set(['A.html']),
   } as never));
   assert.ok(html.includes('live-pulse-row'), 'row pulse variant on DAG rows');

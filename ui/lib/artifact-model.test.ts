@@ -122,9 +122,75 @@ test('surfaces REQUIREMENTS with a locked "Requirements" label when there is no 
   assert.equal(arts[0].title, null);
 });
 
-test('suppresses REQUIREMENTS from the list when a pipeline timeline exists (DAG renders it instead)', () => {
+test('pins REQUIREMENTS first when a pipeline timeline exists, with the requirements category', () => {
   const arts = deriveArtifacts(PROJECT, ['DEMO-REQUIREMENTS.md'], true);
-  assert.deepEqual(arts, []);
+  assert.deepEqual(arts.map((a) => a.fileName), ['DEMO-REQUIREMENTS.md']);
+  assert.equal(arts[0].label, 'Requirements');
+  assert.equal(arts[0].pinned, true);
+  assert.equal(arts[0].category, 'requirements');
+});
+
+test('timeline context: Requirements then Master Plan pin first (fixed order), Error Log/Plan Audit surface in the normal group, none of the four pipeline docs are missing', () => {
+  const files = [
+    'DEMO-REQUIREMENTS.md',
+    'DEMO-MASTER-PLAN.md',
+    'DEMO-ERROR-LOG.md',
+    'DEMO-PLAN-AUDIT.md',
+    'DEMO-WIREFRAME-LAUNCH-SCREEN.html',
+    'DEMO-ARCHITECTURE.md',
+  ];
+  const arts = deriveArtifacts(PROJECT, files, true);
+  assert.deepEqual(arts.map((a) => a.fileName), [
+    'DEMO-REQUIREMENTS.md',
+    'DEMO-MASTER-PLAN.md',
+    'DEMO-ARCHITECTURE.md',
+    'DEMO-ERROR-LOG.md',
+    'DEMO-PLAN-AUDIT.md',
+    'DEMO-WIREFRAME-LAUNCH-SCREEN.html',
+  ]);
+
+  const byName = Object.fromEntries(arts.map((a) => [a.fileName, a]));
+  assert.equal(byName['DEMO-REQUIREMENTS.md'].pinned, true);
+  assert.equal(byName['DEMO-REQUIREMENTS.md'].category, 'requirements');
+  assert.equal(byName['DEMO-MASTER-PLAN.md'].pinned, true);
+  assert.equal(byName['DEMO-MASTER-PLAN.md'].category, 'master-plan');
+  assert.equal(byName['DEMO-MASTER-PLAN.md'].label, 'Master Plan');
+  assert.equal(byName['DEMO-ERROR-LOG.md'].label, 'Error Log');
+  assert.equal(byName['DEMO-ERROR-LOG.md'].category, 'error-log');
+  assert.equal(byName['DEMO-ERROR-LOG.md'].pinned, undefined);
+  assert.equal(byName['DEMO-PLAN-AUDIT.md'].label, 'Plan Audit');
+  assert.equal(byName['DEMO-PLAN-AUDIT.md'].category, 'plan-audit');
+});
+
+test('timeline context: Master Plan still pins even when Requirements is absent', () => {
+  const arts = deriveArtifacts(PROJECT, ['DEMO-MASTER-PLAN.md', 'DEMO-ERROR-LOG.md'], true);
+  assert.deepEqual(arts.map((a) => a.fileName), ['DEMO-MASTER-PLAN.md', 'DEMO-ERROR-LOG.md']);
+  assert.equal(arts[0].pinned, true);
+});
+
+test('regression: hasTimeline === false returns exactly what deriveArtifacts returned before the timeline-context surfacing existed', () => {
+  const files = [
+    'DEMO-REQUIREMENTS.md',
+    'DEMO-MASTER-PLAN.md',
+    'DEMO-ERROR-LOG.md',
+    'DEMO-PLAN-AUDIT.md',
+    'DEMO-BRAINSTORMING.md',
+    'DEMO-BRAINSTORM.html',
+    'DEMO-WIREFRAME-LAUNCH-SCREEN.html',
+    'DEMO-ARCHITECTURE.md',
+  ];
+  const arts = deriveArtifacts(PROJECT, files, false);
+  assert.deepEqual(arts, [
+    { fileName: 'DEMO-ARCHITECTURE.md', kind: 'markdown', label: 'Doc', title: 'Architecture', isMarkdown: true },
+    { fileName: 'DEMO-BRAINSTORMING.md', kind: 'markdown', label: 'Brainstorm', title: null, isMarkdown: true },
+    { fileName: 'DEMO-REQUIREMENTS.md', kind: 'markdown', label: 'Requirements', title: null, isMarkdown: true },
+    { fileName: 'DEMO-BRAINSTORM.html', kind: 'visual', label: 'Brainstorm Visual', title: null, isMarkdown: false },
+    { fileName: 'DEMO-WIREFRAME-LAUNCH-SCREEN.html', kind: 'wireframe', label: 'Wireframe', title: 'Launch Screen', isMarkdown: false },
+  ]);
+  // Master Plan / Plan Audit / Error Log stay hidden via the denylist, unchanged.
+  assert.ok(!arts.some((a) => a.fileName === 'DEMO-MASTER-PLAN.md'));
+  assert.ok(!arts.some((a) => a.fileName === 'DEMO-ERROR-LOG.md'));
+  assert.ok(!arts.some((a) => a.fileName === 'DEMO-PLAN-AUDIT.md'));
 });
 
 test('keeps pipeline denylist excluded while still surfacing REQUIREMENTS + a generic root .md (no timeline)', () => {

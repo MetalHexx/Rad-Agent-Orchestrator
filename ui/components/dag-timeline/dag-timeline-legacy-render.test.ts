@@ -165,23 +165,15 @@ test('(A) legacy task iteration: iteration name parsed from task_handoff.doc_pat
   assert.strictEqual(name, 'Task 1 \u2014 Auth');
 });
 
-test('(A) legacy top-level nodes: groupNodesBySection emits Planning/Execution/Completion with gate rows in Planning', () => {
+test('(A) legacy top-level nodes: groupNodesBySection emits Execution/Completion only — former-Planning ids no longer group', () => {
   const iterations = [makeLegacyPhaseIteration(0)];
   const nodes = makeTopLevelNodes(iterations);
   const groups = groupNodesBySection(nodes);
 
+  const labels: string[] = groups.map((g) => g.label);
+  assert.deepStrictEqual(labels, ['Execution', 'Completion']);
+
   const byLabel = new Map(groups.map((g) => [g.label, g]));
-  assert.ok(byLabel.has('Planning'));
-  assert.ok(byLabel.has('Execution'));
-  assert.ok(byLabel.has('Completion'));
-
-  const planningIds = byLabel.get('Planning')!.entries.map(([id]) => id);
-  assert.ok(planningIds.includes('requirements'));
-  assert.ok(planningIds.includes('master_plan'));
-  assert.ok(planningIds.includes('explode_master_plan'));
-  assert.ok(planningIds.includes('plan_approval_gate'));
-  assert.ok(planningIds.includes('gate_mode_selection'));
-
   const executionIds = byLabel.get('Execution')!.entries.map(([id]) => id);
   assert.deepStrictEqual(executionIds, ['phase_loop']);
 });
@@ -222,16 +214,15 @@ test('(B) forward-compat task iteration without task_handoff: fallback returns "
   assert.strictEqual(name, 'Task 1');
 });
 
-test('(B) forward-compat top-level nodes: groupNodesBySection emits the 3-section contract', () => {
+test('(B) forward-compat top-level nodes: groupNodesBySection emits the 2-section contract', () => {
   const iterations = [makePostIter8PhaseIteration(0)];
   const nodes = makeTopLevelNodes(iterations);
   const groups = groupNodesBySection(nodes);
   const labels = groups.map((g) => g.label);
-  assert.deepStrictEqual(labels, ['Planning', 'Execution', 'Completion']);
+  assert.deepStrictEqual(labels, ['Execution', 'Completion']);
 
-  const planningIds = groups.find((g) => g.label === 'Planning')!.entries.map(([id]) => id);
-  assert.ok(planningIds.includes('plan_approval_gate'));
-  assert.ok(planningIds.includes('gate_mode_selection'));
+  const executionIds = groups.find((g) => g.label === 'Execution')!.entries.map(([id]) => id);
+  assert.deepStrictEqual(executionIds, ['phase_loop']);
 });
 
 test('(A) legacy state renders with no thrown exceptions even when phase_planning.doc_path is null', () => {
@@ -246,7 +237,7 @@ test('(A) legacy state renders with no thrown exceptions even when phase_plannin
 
 // ─── Iter-8 tests — phase_report legacy rendering + new-shape rendering ──────
 
-test('(Iter-8 legacy) iteration fixture preserves completed phase_report body node and top-level grouping uses the 3-section contract', () => {
+test('(Iter-8 legacy) iteration fixture preserves completed phase_report body node and top-level grouping uses the 2-section contract', () => {
   // Post-Iter-8 state.json from a pre-Iter-8 project run still carries
   // phase_report as a body node. This is a pure-logic test (no DOM): it
   // verifies the fixture shape the UI renderer will see, and that top-level
@@ -264,14 +255,13 @@ test('(Iter-8 legacy) iteration fixture preserves completed phase_report body no
   const nodes = makeTopLevelNodes(iterations);
   const groups = groupNodesBySection(nodes);
   const labels = groups.map((g) => g.label);
-  assert.deepStrictEqual(labels, ['Planning', 'Execution', 'Completion']);
+  assert.deepStrictEqual(labels, ['Execution', 'Completion']);
 
-  const planningIds = groups.find((g) => g.label === 'Planning')!.entries.map(([id]) => id);
-  assert.ok(planningIds.includes('plan_approval_gate'));
-  assert.ok(planningIds.includes('gate_mode_selection'));
+  const executionIds = groups.find((g) => g.label === 'Execution')!.entries.map(([id]) => id);
+  assert.deepStrictEqual(executionIds, ['phase_loop']);
 });
 
-test('(Iter-8 new shape) iteration WITHOUT phase_report body node renders cleanly under the 3-section contract', () => {
+test('(Iter-8 new shape) iteration WITHOUT phase_report body node renders cleanly under the 2-section contract', () => {
   // Post-Iter-8 new-shape state.json omits phase_report entirely. Only
   // phase_review + phase_gate remain as post-task-loop body nodes.
   const iteration = makePostIter8PhaseIteration(0);
@@ -287,16 +277,15 @@ test('(Iter-8 new shape) iteration WITHOUT phase_report body node renders cleanl
   assert.ok(bodyNodeIds.includes('phase_review'));
   assert.ok(bodyNodeIds.includes('phase_gate'));
 
-  // Top-level grouping uses the 3-section contract.
+  // Top-level grouping uses the 2-section contract.
   const iterations = [iteration];
   const nodes = makeTopLevelNodes(iterations);
   const groups = groupNodesBySection(nodes);
   const labels = groups.map((g) => g.label);
-  assert.deepStrictEqual(labels, ['Planning', 'Execution', 'Completion']);
+  assert.deepStrictEqual(labels, ['Execution', 'Completion']);
 
-  const planningIds = groups.find((g) => g.label === 'Planning')!.entries.map(([id]) => id);
-  assert.ok(planningIds.includes('plan_approval_gate'));
-  assert.ok(planningIds.includes('gate_mode_selection'));
+  const executionIds = groups.find((g) => g.label === 'Execution')!.entries.map(([id]) => id);
+  assert.deepStrictEqual(executionIds, ['phase_loop']);
 });
 
 // ─── Iter-11 tests — phase-scope corrective rendering ────────────────────────
@@ -387,18 +376,14 @@ test('(Iter-11) phase-scope corrective has scaffolded code_review body node', ()
   assert.strictEqual(codeReview.status, 'not_started');
 });
 
-test('(Iter-11) phase-scope corrective iteration: top-level groupNodesBySection emits Planning/Execution/Completion', () => {
+test('(Iter-11) phase-scope corrective iteration: top-level groupNodesBySection emits Execution/Completion', () => {
   // Regression guard: adding a phase-scope corrective iteration must not affect
   // the top-level section grouping (phase_loop stays in Execution).
   const iterations = [makePhaseCorrectiveIteration(0)];
   const nodes = makeTopLevelNodes(iterations);
   const groups = groupNodesBySection(nodes);
   const labels = groups.map((g) => g.label);
-  assert.deepStrictEqual(labels, ['Planning', 'Execution', 'Completion']);
-
-  const planningIds = groups.find((g) => g.label === 'Planning')!.entries.map(([id]) => id);
-  assert.ok(planningIds.includes('plan_approval_gate'));
-  assert.ok(planningIds.includes('gate_mode_selection'));
+  assert.deepStrictEqual(labels, ['Execution', 'Completion']);
 
   const executionIds = groups.find((g) => g.label === 'Execution')!.entries.map(([id]) => id);
   assert.deepStrictEqual(executionIds, ['phase_loop']);

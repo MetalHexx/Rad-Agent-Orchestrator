@@ -100,10 +100,6 @@ import { isCardSection, CARD_SHELL_CLASSES } from './dag-section-group';
 
 console.log("DAGSectionGroup card-variant tests\n");
 
-test("FR-13 Planning is a card section (DD-9)", () => {
-  assert.strictEqual(isCardSection("Planning"), true);
-});
-
 test("FR-14 Completion is a card section (DD-9)", () => {
   assert.strictEqual(isCardSection("Completion"), true);
 });
@@ -126,7 +122,6 @@ test("CARD_SHELL_CLASSES carries no bottom margin so the flex gap is the sole in
 });
 
 test("isCardSection + CARD_SHELL_CLASSES applies shell classes only to card sections (DD-9, DD-10)", () => {
-  assert.strictEqual((isCardSection("Planning") ? CARD_SHELL_CLASSES : ""), CARD_SHELL_CLASSES);
   assert.strictEqual((isCardSection("Completion") ? CARD_SHELL_CLASSES : ""), CARD_SHELL_CLASSES);
   assert.strictEqual((isCardSection("Execution") ? CARD_SHELL_CLASSES : ""), "");
 });

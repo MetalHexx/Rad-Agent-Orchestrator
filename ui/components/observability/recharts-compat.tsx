@@ -7,6 +7,8 @@ import {
   YAxis as RYAxis,
   Legend as RLegend,
   Area as RArea,
+  RadialBar as RRadialBar,
+  PolarAngleAxis as RPolarAngleAxis,
 } from 'recharts';
 import type { ComponentType } from 'react';
 
@@ -15,4 +17,6 @@ export const XAxis = RXAxis as unknown as ComponentType<any>;
 export const YAxis = RYAxis as unknown as ComponentType<any>;
 export const Legend = RLegend as unknown as ComponentType<any>;
 export const Area = RArea as unknown as ComponentType<any>;
+export const RadialBar = RRadialBar as unknown as ComponentType<any>;
+export const PolarAngleAxis = RPolarAngleAxis as unknown as ComponentType<any>;
 /* eslint-enable @typescript-eslint/no-explicit-any */

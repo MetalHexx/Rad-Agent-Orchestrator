@@ -50,8 +50,9 @@ export function ArtifactLiveProvider({
 }: {
   projectName: string | null;
   activeFileName: string | null;
-  /** True when the project has a parsed pipeline state (v5/v6). Suppresses the
-   *  REQUIREMENTS doc from the artifact list since the DAG timeline shows it. */
+  /** True when the project has a parsed pipeline state (v5/v6); pins
+   *  Requirements/Master Plan into this list instead of the (retired)
+   *  DAG-timeline Planning rendering. */
   hasTimeline: boolean;
   children: React.ReactNode;
 }) {

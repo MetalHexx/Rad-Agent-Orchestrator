@@ -15,7 +15,8 @@ import { deleteArtifact } from "@/hooks/use-project-artifacts";
 import { DocumentDrawer } from "@/components/documents";
 import { ConfirmApprovalDialog } from "@/components/dashboard";
 import { ConfigEditorPanel } from "@/components/config";
-import { DAGTimeline, DAGTimelineSkeleton, ProjectHeader, HaltReasonBanner, BrainstormingSection, SourceControlPanel, deriveCurrentPhase, derivePhaseProgress } from "@/components/dag-timeline";
+import { DAGTimeline, DAGTimelineSkeleton, ProjectHeader, HaltReasonBanner, SourceControlPanel, deriveCurrentPhase, derivePhaseProgress } from "@/components/dag-timeline";
+import { PlanningSection } from "@/components/planning-section";
 import { hasSourceControlRepos, selectSourceControlRepos } from "@/components/dag-timeline/source-control-helpers";
 import { buildBindLookup } from "@/components/dag-timeline/source-control-bind";
 import { useRegistryStore } from "@/components/repo-registry/use-registry-store";
@@ -55,7 +56,7 @@ interface ProjectsPageContentProps {
   onActiveFileNameChange: (fileName: string | null) => void;
   registerOnDeleted: (fn: () => void) => void;
   urlDoc: string | null;
-  requirementsDoc: string | null;
+  requirementsStatus: string | null;
 }
 
 function ProjectsPageContent({
@@ -75,7 +76,7 @@ function ProjectsPageContent({
   onActiveFileNameChange,
   registerOnDeleted,
   urlDoc,
-  requirementsDoc,
+  requirementsStatus,
 }: ProjectsPageContentProps) {
   const live = useArtifactLive();
   const artifacts = live.artifacts;
@@ -222,12 +223,17 @@ function ProjectsPageContent({
           <div className="px-6 py-4 flex flex-col gap-3">
             {filesLoaded ? (
               <>
-                <BrainstormingSection
+                <PlanningSection
                   artifacts={artifacts}
+                  requirementsStatus={requirementsStatus}
                   onOpen={(index) => openArtifactModal(artifacts[index].fileName)}
                   onDelete={(a) => setPendingDelete(a)}
                   unseen={live.unseen}
                   activePulse={live.activePulse}
+                  state={v5State}
+                  onDocClick={openDocument}
+                  compareUrlByRepo={v5Derivations.compareUrlByRepo}
+                  projectName={selected.name}
                 />
                 <DAGTimeline
                   nodes={v5State.graph.nodes}
@@ -239,7 +245,6 @@ function ProjectsPageContent({
                   projectName={selected.name}
                   phaseLoopStatus={v5Derivations.phaseLoopStatus}
                   prUrl={v5State.pipeline.source_control?.repos?.[0]?.pr_url ?? null}
-                  requirementsDoc={requirementsDoc}
                   afterPlanningSlot={
                     hasSourceControlRepos(v5State.pipeline.source_control) && (
                       <SourceControlPanel
@@ -369,6 +374,10 @@ export default function ProjectsPage() {
 
   const [fileList, setFileList] = useState<string[]>([]);
   const [filesLoaded, setFilesLoaded] = useState(false);
+  // Requirements-doc frontmatter status, captured here because it rides the
+  // /files response (not the artifact live store) and cannot be derived from
+  // filenames. Threaded down to the Planning docs list for its Draft pill.
+  const [requirementsStatus, setRequirementsStatus] = useState<string | null>(null);
 
   const v6State: ProjectStateV6 | null =
     projectState && isV6State(projectState) ? projectState : null;
@@ -425,13 +434,6 @@ export default function ProjectsPage() {
     return [];
   }, [v5State, selectedProject, fileList]);
 
-  // Root docs arrive as bare filenames in fileList, matching the
-  // `${PROJECT}-REQUIREMENTS.md` convention document-ordering.ts keys off of.
-  const requirementsDoc = useMemo(
-    () => fileList.find((f) => f === `${selectedProject}-REQUIREMENTS.md`) ?? null,
-    [fileList, selectedProject],
-  );
-
   // Reset the files-loaded gate on project change ONLY (not on fileRefetch),
   // so deleting an artifact — which bumps fileRefetch — doesn't flash the
   // timeline body back to a skeleton.
@@ -440,6 +442,7 @@ export default function ProjectsPage() {
   useEffect(() => {
     if (!selectedProject) {
       setFileList([]);
+      setRequirementsStatus(null);
       return;
     }
     let cancelled = false;
@@ -448,17 +451,19 @@ export default function ProjectsPage() {
         if (!res.ok) throw new Error("Failed to fetch files");
         return res.json();
       })
-      .then((data: { files: string[]; mtimes?: Record<string, number> }) => {
+      .then((data: { files: string[]; mtimes?: Record<string, number>; requirementsStatus?: string | null }) => {
         if (!cancelled) {
           setFileList(data.files);
+          setRequirementsStatus(data.requirementsStatus ?? null);
           setFilesLoaded(true);
         }
       })
       .catch(() => {
         if (!cancelled) {
           setFileList([]);
-          // Mark loaded even on failure so the DAG still reveals (brainstorming
-          // just stays empty) rather than hanging on the skeleton forever.
+          setRequirementsStatus(null);
+          // Mark loaded even on failure so the DAG still reveals (the Planning
+          // docs just stay empty) rather than hanging on the skeleton forever.
           setFilesLoaded(true);
         }
       });
@@ -520,7 +525,7 @@ export default function ProjectsPage() {
                 onActiveFileNameChange={setActiveFileName}
                 registerOnDeleted={registerOnDeleted}
                 urlDoc={urlDoc}
-                requirementsDoc={requirementsDoc}
+                requirementsStatus={requirementsStatus}
               />
             </ArtifactLiveProvider>
           ) : (

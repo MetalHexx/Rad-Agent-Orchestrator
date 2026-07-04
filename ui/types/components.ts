@@ -59,4 +59,7 @@ export interface OrderedDoc {
 /** Response from GET /api/projects/[name]/files */
 export interface FilesResponse {
   files: string[];
+  mtimes: Record<string, number>;
+  /** Requirements frontmatter `status` (lowercased/trimmed); null when the doc or field is absent. */
+  requirementsStatus: string | null;
 }
