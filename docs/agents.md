@@ -1,38 +1,24 @@
 # Agents
 
-The orchestration system ships seven agents, each with a defined role, scoped tool access, and a narrow write surface. 
+The orchestration system ships five agents, each with a defined role, scoped tool access, and a narrow write surface.
 
-In Github copilot, you can optionally choose the Orchestrator agent.  Or simply use the slash commands with the default agent.
+Agents are not directly invoked by users — your main agent (Claude Code or GitHub Copilot) drives the pipeline via slash commands and dispatches work to the right agent at the right time. Brainstorming, planning, and pipeline orchestration itself run as skills directly on your main agent; only execution and review are handed off to the specialized agents below.
 
-In Claude Code, you always work with the default agent and simply use the slash commands.
-
-Other than the Orchestrator (in Github copilot only), the agents are not directly invoked by users — operators interact via slash commands and the pipeline routes work to the right agent. Brainstorming runs as the `/rad-brainstorm` skill on your main agent.
-
-Typically, the agents will be capped at the highest model tier you have selected in your main agent chat.  So even if the Planner defaults to Opus, if you're using Sonnet in your main chat, your Planner will run with Sonnet.
+Typically, dispatched agents are capped at the highest model tier you have selected in your main agent chat. So even if Coder-Senior defaults to Opus, if you're using Sonnet in your main chat, your Coder-Senior will run with Sonnet.
 
 ## Model Routing
 
 | Agent | Model |
 |-------|-------|
-| Orchestrator | opus |
-| Planner | opus |
 | Coder-Junior | haiku |
 | Coder | sonnet |
 | Coder-Senior | opus |
+| Reviewer-Junior | haiku |
 | Reviewer | sonnet |
-| Source Control | haiku |
 
-The three Coder tiers exist to route tasks between haiku, sonnet, and opus by complexity — junior for straightforward changes, default for typical work, senior for complex or high-stakes work.
+The three Coder tiers exist to route tasks between haiku, sonnet, and opus by complexity — junior for straightforward changes, default for typical work, senior for complex or high-stakes work. The two Reviewer tiers follow the same idea: Reviewer-Junior handles simple, task-scope reviews; Reviewer handles standard and complex tasks plus every phase and final review.
 
 ## Agent Details
-
-### Orchestrator
-
-The Orchestrator reads the pipeline state file on every event and dispatches the right agent at the right time. When a review comes back with changes requested, it reads the review document, judges the findings, and authors corrective task handoffs that send the Coder back to fix only what matters. Its write surface is intentionally narrow — it never writes project source code or tests.  It is recommended you run the Orchestrator with Sonnet or Opus.  The Orchestrator is only usable in Github Copilot, in claude code, the main agent acts as the Orchestrator.
-
-### Planner
-
-The Planner authors `{NAME}-MASTER-PLAN.md` from the approved `{NAME}-REQUIREMENTS.md` and any user-supplied context. When authoring the plan, it pulls in domain skills already present in your repository — anything you have already authored as a skill in your repo is picked up automatically and shapes the resulting plan influenced by your skills. This is how the pipeline adapts to your existing work rather than generating a generic plan.  Currently, Opus 4.7 is the model this agent will use.
 
 ### Coder-Junior
 
@@ -48,11 +34,11 @@ Coder-Senior executes one task end-to-end from a self-contained task handoff, fo
 
 ### Reviewer
 
-The Reviewer reads the task output against the requirement audit and produces a structured review document. Its quality pass may flag speculative additions and pattern duplication when they appear; it does not prescribe implementation style beyond what the requirements specify. Review findings drive corrective task handoffs when changes are needed.  Currently, Opus 4.7 is the model this agent will use.
+The Reviewer reads the task output against the requirement audit and produces a structured review document. Its quality pass may flag speculative additions and pattern duplication when they appear; it does not prescribe implementation style beyond what the requirements specify. Review findings drive corrective task handoffs when changes are needed.  Currently, Sonnet 4.6 is the model this agent will use.
 
-### Source Control
+### Reviewer-Junior
 
-Source Control is a thin wrapper for git commit, push, and pull-request creation. Commit messages are built from task metadata. Failures are logged and never block the pipeline from continuing.  Currently, Haiku 4.5 is the model this agent will use.
+Reviewer-Junior evaluates code the same way the Reviewer does — reading the task output against the requirement audit and producing a structured review document — but is scoped narrowly to simple, task-scope reviews. There is no junior tier at phase or final scope; those always run on Reviewer.  Currently, Haiku 4.5 is the model this agent will use.
 
 ## Next Steps
 

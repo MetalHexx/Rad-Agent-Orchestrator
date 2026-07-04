@@ -155,8 +155,7 @@ export async function runBuild(opts) {
   // (only runtime CLAUDE_PLUGIN_ROOT env reads).
   await step('expand-tokens', async () => {
     const agentNames = fs.readdirSync(path.join(out, 'agents'))
-      .filter((f) => f.endsWith('.md')).map((f) => f.replace(/\.md$/, ''))
-      .filter((n) => n !== 'orchestrator');
+      .filter((f) => f.endsWith('.md')).map((f) => f.replace(/\.md$/, ''));
     const tokenMap = {
       '${SKILLS_ROOT}': '${CLAUDE_PLUGIN_ROOT}/skills',
       '${PLUGIN_ROOT}': '${CLAUDE_PLUGIN_ROOT}',

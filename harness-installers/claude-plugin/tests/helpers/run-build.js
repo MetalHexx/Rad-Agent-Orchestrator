@@ -28,8 +28,8 @@ function stageFixture(root) {
   fs.mkdirSync(agentsDir, { recursive: true });
   fs.mkdirSync(skillsDir, { recursive: true });
   fs.writeFileSync(
-    path.join(agentsDir, 'orchestrator.md'),
-    '---\nname: orchestrator\ndescription: test\n---\nSpawn **coder** agent. See ${SKILLS_ROOT}/rad-orchestration/SKILL.md.\n',
+    path.join(agentsDir, 'reviewer.md'),
+    '---\nname: reviewer\ndescription: test\n---\nSpawn **coder** agent. See ${SKILLS_ROOT}/rad-orchestration/SKILL.md.\n',
   );
   fs.writeFileSync(
     path.join(agentsDir, 'coder.md'),
@@ -64,7 +64,7 @@ function stageFixture(root) {
 
   // canonical agents.
   fs.mkdirSync(path.join(root, 'harness-files/agents'), { recursive: true });
-  fs.writeFileSync(path.join(root, 'harness-files/agents/orchestrator.md'), 'Spawn **coder** agent.\n');
+  fs.writeFileSync(path.join(root, 'harness-files/agents/reviewer.md'), 'Spawn **coder** agent.\n');
   fs.writeFileSync(path.join(root, 'harness-files/agents/coder.md'), '# Coder\n');
 
   // installer source: hooks/, .claude-plugin/, manifests/, package.json

@@ -35,10 +35,10 @@ test('removeManifestFiles deletes every entry and prunes any ancestor that ends 
     const home = path.join(tmp, 'home');
     process.env.HOME = home; process.env.USERPROFILE = home;
     const sub = path.join(home, '.claude/agents'); fs.mkdirSync(sub, { recursive: true });
-    fs.writeFileSync(path.join(sub, 'orchestrator.md'), 'x');
-    const manifest = { files: [ { bundlePath: 'agents/orchestrator.md', destinationPath: '${HARNESS_ROOT}/agents/orchestrator.md', sha256: 'x' } ] };
+    fs.writeFileSync(path.join(sub, 'coder.md'), 'x');
+    const manifest = { files: [ { bundlePath: 'agents/coder.md', destinationPath: '${HARNESS_ROOT}/agents/coder.md', sha256: 'x' } ] };
     removeManifestFiles(manifest, 'claude');
-    assert.strictEqual(fs.existsSync(path.join(sub, 'orchestrator.md')), false);
+    assert.strictEqual(fs.existsSync(path.join(sub, 'coder.md')), false);
     assert.strictEqual(fs.existsSync(sub), false, 'emptied parent dir pruned');
   } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
 });
@@ -50,11 +50,11 @@ test('removeManifestFiles preserves ancestor dirs that still contain non-manifes
     process.env.HOME = home; process.env.USERPROFILE = home;
     const agents = path.join(home, '.claude/agents');
     fs.mkdirSync(agents, { recursive: true });
-    fs.writeFileSync(path.join(agents, 'orchestrator.md'), 'x');           // in manifest → removed
+    fs.writeFileSync(path.join(agents, 'coder.md'), 'x');                  // in manifest → removed
     fs.writeFileSync(path.join(agents, 'my-personal-agent.md'), 'mine');   // not in manifest → preserved
-    const manifest = { files: [ { bundlePath: 'agents/orchestrator.md', destinationPath: '${HARNESS_ROOT}/agents/orchestrator.md', sha256: 'x' } ] };
+    const manifest = { files: [ { bundlePath: 'agents/coder.md', destinationPath: '${HARNESS_ROOT}/agents/coder.md', sha256: 'x' } ] };
     removeManifestFiles(manifest, 'claude');
-    assert.strictEqual(fs.existsSync(path.join(agents, 'orchestrator.md')), false, 'manifest file removed');
+    assert.strictEqual(fs.existsSync(path.join(agents, 'coder.md')), false, 'manifest file removed');
     assert.strictEqual(fs.existsSync(path.join(agents, 'my-personal-agent.md')), true, 'user file preserved');
     assert.strictEqual(fs.existsSync(agents), true, 'agents/ kept alive by the user file');
   } finally { fs.rmSync(tmp, { recursive: true, force: true }); }

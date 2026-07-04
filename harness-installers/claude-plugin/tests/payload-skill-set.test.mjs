@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 // the suite would fail under CI) and, in the claude suite, is concurrently
 // wiped/rebuilt by build-e2e under `node --test`'s parallel file execution (a
 // race). The copy mechanics that carry the source into the payload are covered
-// by build-orchestrator.test.mjs.
+// by build-payload.test.mjs.
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const SKILLS_SRC = path.join(REPO_ROOT, 'harness-files/skills');
 

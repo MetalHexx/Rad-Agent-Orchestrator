@@ -10,7 +10,7 @@ import { emitUiBundle } from '../emit-ui-bundle.js';
 // execute real Next.js inside unit tests. The helper's responsibility under
 // test is the orchestration: invoke the build runner, stage standalone+static+public,
 // pack into a single tarball at `target`, then clean up source `.next/`. Real
-// Next.js invocation is exercised by P05's build-orchestrator smoke test.
+// Next.js invocation is exercised by P05's build-payload smoke test.
 test('emitUiBundle packs standalone, static, public into a tarball and removes .next after build', async () => {
   const tmpRoot = fs.mkdtempSync(join(os.tmpdir(), 'emit-ui-'));
   try {

@@ -129,7 +129,7 @@ function buildClaudeArgs(prompt: string, permissionMode: PermissionMode, addDir:
 
 /** Build the inner command arg list for copilot. Returns an array of literal args. */
 function buildCopilotArgs(prompt: string, addDir: string): string[] {
-  return ['copilot', '--agent', 'orchestrator', '--add-dir', addDir, '--allow-tool=shell', '-i', prompt];
+  return ['copilot', '--add-dir', addDir, '--allow-tool=shell', '-i', prompt];
 }
 
 export function worktreeLaunch(opts: WorktreeLaunchOptions): WorktreeLaunchResult {

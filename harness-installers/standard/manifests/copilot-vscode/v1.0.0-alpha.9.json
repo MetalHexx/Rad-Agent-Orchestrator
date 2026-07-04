@@ -155,10 +155,6 @@
       "destinationPath": "${HARNESS_ROOT}/agents/coder.agent.md"
     },
     {
-      "bundlePath": "agents/orchestrator.agent.md",
-      "destinationPath": "${HARNESS_ROOT}/agents/orchestrator.agent.md"
-    },
-    {
       "bundlePath": "agents/reviewer-junior.agent.md",
       "destinationPath": "${HARNESS_ROOT}/agents/reviewer-junior.agent.md"
     },
