@@ -12,4 +12,4 @@ Invoke the bundled CLI to launch the radorch dashboard UI:
 node "${PLUGIN_ROOT}/skills/rad-orchestration/scripts/radorch.mjs" ui start
 ```
 
-The CLI emits a single JSON envelope on stdout. On success the envelope's `data.url` field contains the URL the user should open in a browser; report it directly to the user. On failure the envelope's `error.message` describes the cause (typical case: every port 3000-3010 is taken) — relay it verbatim.
+The CLI emits a single JSON envelope on stdout. On success, compare `data.requested_port` (the configured port the CLI tried first) against `data.port` (the port actually bound): if they differ, tell the user the dashboard came up on a different port than configured, then report `data.url` — the URL to open in a browser. On failure the envelope's `error.message` describes the cause (typical case: every port in the configured scan range is taken, anchored at the deployed `ui.port` or its default) — relay it verbatim.

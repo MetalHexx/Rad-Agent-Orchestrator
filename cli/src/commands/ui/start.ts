@@ -1,16 +1,42 @@
+import fs from 'node:fs';
 import path from 'node:path';
 import { resolveInstallRoot, installPaths } from '../../lib/paths.js';
 import { ensureDir } from '../../lib/fs-helpers.js';
+import { parseYaml } from '../../lib/yaml.js';
 import { readPidFile, removePidFile, writePidFile, isPidAlive } from './pid-file.js';
 import { probePortFree as defaultProbe, openLogFd, spawn as defaultSpawn } from './spawn.js';
 import { UserError, SystemError } from '../../framework/errors.js';
 
-const PORT_LO = 3000;
-const PORT_HI = 3010;
+const DEFAULT_UI_PORT = 1337;
+const SCAN_WIDTH = 11; // preserves today's 11-port window (e.g. 3000-3010)
+
+interface OrchestrationUiConfig {
+  ui?: { port?: unknown };
+}
+
+// Only the deployed ~/.radorc/orchestration.yml is read here — never the
+// repo's runtime-config/orchestration.yml (that file is an install-time seed
+// only). An absent section/key, or a non-integer / out-of-range (1-65535)
+// value, degrades to DEFAULT_UI_PORT; start must never crash on bad config.
+export function resolveUiPort(root: string): number {
+  const configPath = path.join(root, 'orchestration.yml');
+  if (!fs.existsSync(configPath)) return DEFAULT_UI_PORT;
+  try {
+    const parsed = parseYaml<OrchestrationUiConfig>(fs.readFileSync(configPath, 'utf8'));
+    const port = parsed?.ui?.port;
+    if (typeof port === 'number' && Number.isInteger(port) && port >= 1 && port <= 65535) {
+      return port;
+    }
+    return DEFAULT_UI_PORT;
+  } catch {
+    return DEFAULT_UI_PORT;
+  }
+}
 
 export interface StartResult {
   pid: number;
   port: number;
+  requested_port: number;
   url: string;
   started_at: string;
 }
@@ -33,16 +59,19 @@ export async function runStart(opts: {
       return {
         pid: existing.pid,
         port: existing.port,
+        requested_port: existing.port,
         url: `http://localhost:${existing.port}`,
         started_at: existing.started_at,
       };
     }
     await removePidFile(p.uiPidFile);
   }
+  const basePort = resolveUiPort(root);
+  const portHi = basePort + SCAN_WIDTH - 1;
   const probe = opts._probePortFree ?? defaultProbe;
   let chosenPort: number | null = null;
   const tried: number[] = [];
-  for (let port = PORT_LO; port <= PORT_HI; port++) {
+  for (let port = basePort; port <= portHi; port++) {
     tried.push(port);
     if (await probe(port)) {
       chosenPort = port;
@@ -51,7 +80,7 @@ export async function runStart(opts: {
   }
   if (chosenPort === null) {
     throw new UserError(
-      `every port ${PORT_LO}-${PORT_HI} is taken (tried ${tried.join(', ')}); free one and retry`,
+      `every port ${basePort}-${portHi} is taken (tried ${tried.join(', ')}); free one and retry`,
     );
   }
   // UI dir resolution: the bootstrap (SessionStart hook) copies ui/ from the
@@ -93,5 +122,11 @@ export async function runStart(opts: {
   child.unref();
   const started_at = new Date().toISOString();
   await writePidFile(p.uiPidFile, { pid: child.pid, port: chosenPort, started_at });
-  return { pid: child.pid, port: chosenPort, url: `http://localhost:${chosenPort}`, started_at };
+  return {
+    pid: child.pid,
+    port: chosenPort,
+    requested_port: basePort,
+    url: `http://localhost:${chosenPort}`,
+    started_at,
+  };
 }

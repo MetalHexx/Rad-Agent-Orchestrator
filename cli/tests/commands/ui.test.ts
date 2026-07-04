@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { runStart } from '../../src/commands/ui/start.js';
+import { runStart, resolveUiPort } from '../../src/commands/ui/start.js';
 import { runStop } from '../../src/commands/ui/stop.js';
 import { runStatus } from '../../src/commands/ui/status.js';
 import { writePidFile, readPidFile } from '../../src/commands/ui/pid-file.js';
@@ -22,6 +22,12 @@ afterEach(async () => {
 // installPaths(root).uiPidFile = path.join(home, '.radorc', 'runtime', 'ui.pid')
 function pidFilePath(): string { return path.join(home, '.radorc', 'runtime', 'ui.pid'); }
 function runtimeDir(): string { return path.join(home, '.radorc', 'runtime'); }
+function orchestrationYmlPath(): string { return path.join(home, '.radorc', 'orchestration.yml'); }
+
+async function writeUiPortConfig(body: string): Promise<void> {
+  await fs.mkdir(path.join(home, '.radorc'), { recursive: true });
+  await fs.writeFile(orchestrationYmlPath(), body);
+}
 
 describe('pid-file', () => {
   it('writes and reads {pid, port, started_at}', async () => {
@@ -115,9 +121,9 @@ describe('ui stop', () => {
 });
 
 describe('ui start (with mocked spawn)', () => {
-  it('emits user_error when every port 3000-3010 is taken', async () => {
+  it('emits user_error when every port 1337-1347 is taken', async () => {
     const probe = vi.fn().mockResolvedValue(false); // no port free
-    await expect(runStart({ env: process.env, _probePortFree: probe })).rejects.toThrow(/3000.*3010/);
+    await expect(runStart({ env: process.env, _probePortFree: probe })).rejects.toThrow(/1337.*1347/);
     expect(probe).toHaveBeenCalledTimes(11);
   });
   it('writes pid file with {pid, port, started_at} on successful spawn', async () => {
@@ -128,11 +134,13 @@ describe('ui start (with mocked spawn)', () => {
       _probePortFree: probe,
       _spawn: fakeSpawn as never,
     });
-    expect(r.url).toBe('http://localhost:3000');
+    expect(r.url).toBe('http://localhost:1337');
     expect(r.pid).toBe(4242);
+    expect(r.port).toBe(1337);
+    expect(r.requested_port).toBe(1337);
     const pidFile = await readPidFile(pidFilePath());
     expect(pidFile?.pid).toBe(4242);
-    expect(pidFile?.port).toBe(3000);
+    expect(pidFile?.port).toBe(1337);
     // verify env-bridge: in plugin mode ~/.radorc IS the canonical workspace
     // and orch root in one, so WORKSPACE_ROOT=root, ORCH_ROOT=".". The UI's
     // path-resolver then reads orchestration.yml at <root>/skills/...
@@ -159,6 +167,7 @@ describe('ui start (with mocked spawn)', () => {
     expect(probe).not.toHaveBeenCalled();
     expect(r.pid).toBe(process.pid);
     expect(r.port).toBe(3007);
+    expect(r.requested_port).toBe(3007);
     expect(r.url).toBe('http://localhost:3007');
     expect(r.started_at).toBe('2026-05-08T00:00:00.000Z');
   });
@@ -175,7 +184,8 @@ describe('ui start (with mocked spawn)', () => {
     });
     expect(fakeSpawn).toHaveBeenCalledTimes(1);
     expect(r.pid).toBe(5151);
-    expect(r.port).toBe(3000);
+    expect(r.port).toBe(1337);
+    expect(r.requested_port).toBe(1337);
   });
   it('spawns the server entry at the nested ui/server.js path (standalone layout)', async () => {
     const uiDir = path.join(home, 'fake-ui');
@@ -188,5 +198,100 @@ describe('ui start (with mocked spawn)', () => {
     });
     const spawnedServerJs: string = fakeSpawn.mock.calls[0][1][0];
     expect(spawnedServerJs).toBe(path.join(uiDir, 'ui', 'server.js'));
+  });
+
+  describe('configured ui.port anchoring', () => {
+    it('with no ui section in config, scans from 1337 and reports requested_port: 1337', async () => {
+      await writeUiPortConfig('source_control:\n  auto_commit: ask\n');
+      const probe = vi.fn().mockResolvedValue(true);
+      const fakeSpawn = vi.fn().mockReturnValue({ pid: 1001, unref: () => {} });
+      const r = await runStart({
+        env: { ...process.env, RADORCH_UI_DIR: path.join(home, 'fake-ui') },
+        _probePortFree: probe,
+        _spawn: fakeSpawn as never,
+      });
+      expect(r.requested_port).toBe(1337);
+      expect(r.port).toBe(1337);
+      expect(probe).toHaveBeenCalledWith(1337);
+    });
+
+    it('anchors the scan at a configured ui.port when that port is free', async () => {
+      await writeUiPortConfig('ui:\n  port: 4000\n');
+      const probe = vi.fn().mockResolvedValue(true);
+      const fakeSpawn = vi.fn().mockReturnValue({ pid: 1002, unref: () => {} });
+      const r = await runStart({
+        env: { ...process.env, RADORCH_UI_DIR: path.join(home, 'fake-ui') },
+        _probePortFree: probe,
+        _spawn: fakeSpawn as never,
+      });
+      expect(r.requested_port).toBe(4000);
+      expect(r.port).toBe(4000);
+      expect(probe).toHaveBeenCalledWith(4000);
+    });
+
+    it('reports a fallback distinctly when the configured port is taken but a nearby one is free', async () => {
+      await writeUiPortConfig('ui:\n  port: 4000\n');
+      const probe = vi.fn()
+        .mockResolvedValueOnce(false) // 4000 taken
+        .mockResolvedValueOnce(true); // 4001 free
+      const fakeSpawn = vi.fn().mockReturnValue({ pid: 1003, unref: () => {} });
+      const r = await runStart({
+        env: { ...process.env, RADORCH_UI_DIR: path.join(home, 'fake-ui') },
+        _probePortFree: probe,
+        _spawn: fakeSpawn as never,
+      });
+      expect(r.requested_port).toBe(4000);
+      expect(r.port).toBe(4001);
+      expect(r.port).not.toBe(r.requested_port);
+    });
+
+    it('degrades to the default port when ui.port is malformed', async () => {
+      await writeUiPortConfig('ui:\n  port: "not-a-number"\n');
+      const probe = vi.fn().mockResolvedValue(true);
+      const fakeSpawn = vi.fn().mockReturnValue({ pid: 1004, unref: () => {} });
+      const r = await runStart({
+        env: { ...process.env, RADORCH_UI_DIR: path.join(home, 'fake-ui') },
+        _probePortFree: probe,
+        _spawn: fakeSpawn as never,
+      });
+      expect(r.requested_port).toBe(1337);
+    });
+
+    it('degrades to the default port when ui.port is out of range', async () => {
+      await writeUiPortConfig('ui:\n  port: 70000\n');
+      const probe = vi.fn().mockResolvedValue(true);
+      const fakeSpawn = vi.fn().mockReturnValue({ pid: 1005, unref: () => {} });
+      const r = await runStart({
+        env: { ...process.env, RADORCH_UI_DIR: path.join(home, 'fake-ui') },
+        _probePortFree: probe,
+        _spawn: fakeSpawn as never,
+      });
+      expect(r.requested_port).toBe(1337);
+    });
+
+    it('degrades to the default port when orchestration.yml is malformed YAML', async () => {
+      await writeUiPortConfig('ui:\n  port: [unterminated\n');
+      const probe = vi.fn().mockResolvedValue(true);
+      const fakeSpawn = vi.fn().mockReturnValue({ pid: 1006, unref: () => {} });
+      const r = await runStart({
+        env: { ...process.env, RADORCH_UI_DIR: path.join(home, 'fake-ui') },
+        _probePortFree: probe,
+        _spawn: fakeSpawn as never,
+      });
+      expect(r.requested_port).toBe(1337);
+    });
+
+    it('exhausting the resolved range throws UserError naming the resolved range', async () => {
+      await writeUiPortConfig('ui:\n  port: 4000\n');
+      const probe = vi.fn().mockResolvedValue(false);
+      await expect(runStart({ env: process.env, _probePortFree: probe })).rejects.toThrow(/4000.*4010/);
+      expect(probe).toHaveBeenCalledTimes(11);
+    });
+  });
+});
+
+describe('resolveUiPort', () => {
+  it('returns the default when no config file exists', () => {
+    expect(resolveUiPort(path.join(home, '.radorc'))).toBe(1337);
   });
 });
