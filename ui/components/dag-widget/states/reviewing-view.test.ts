@@ -34,8 +34,8 @@ test('reviewing view surfaces no corrective-only doc control', () => {
   assert.ok(!source.includes('Review Report'));
 });
 
-test('reviewing view ring center carries a "TASK" sublabel', () => {
-  assert.match(source, /sublabel="TASK"/);
+test('reviewing view ring center carries a "TASK REVIEW" sublabel', () => {
+  assert.match(source, /sublabel="TASK REVIEW"/);
 });
 
 test('reviewing view plots task progress, not phase completion', () => {

@@ -30,7 +30,7 @@ test('the shell owns the four-region geometry and imports the resolver', () => {
 test('state views are geometry-free — the fallback sets no slot geometry', () => {
   assert.ok(!/gridArea|gridTemplate|grid-template/.test(fallback), 'fallback view sets no grid geometry');
   assert.ok(!fallback.includes('RING_DIAMETER'), 'fallback view does not size the ring slot');
-  assert.match(fallback, /RingSlot|TitleSlot/, 'fallback view fills slots via the shared slot wrappers');
+  assert.match(fallback, /RingSlot/, 'fallback view fills slots via the shared slot wrappers');
 });
 
 test('slot geometry lives once in the slot module', () => {
@@ -79,16 +79,26 @@ test('reduced motion is honored by the shell', () => {
   assert.match(shell, /prefers-reduced-motion/, 'shell reads the reduced-motion preference');
 });
 
+test('the shell crossfades content in AND out across a state change, then unmounts the outgoing layer', () => {
+  // A true crossfade, not a one-sided fade-in: the incoming state fades in
+  // while the previous state's frozen snapshot fades out beneath it, stacked
+  // in one overlap cell so the frame never jumps.
+  assert.match(shell, /animate-in\s+fade-in/, 'incoming content fades in');
+  assert.match(shell, /animate-out\s+fade-out/, 'outgoing content fades out');
+  assert.match(shell, /onAnimationEnd/, 'the outgoing layer unmounts once its fade completes');
+  assert.match(shell, /!reduced/, 'the whole crossfade is gated on the reduced-motion preference');
+});
+
 test('the ring routes its recharts primitives through the compat shim', () => {
   assert.match(ring, /recharts-compat/, 'RadialBar / PolarAngleAxis come from the FC-typed shim');
   assert.ok(!/as\s+unknown\s+as|as\s+any/.test(ring), 'no ad-hoc casts in the ring');
 });
 
-test('the heading/meta block floats between the pinned ring and controls anchors, not a fixed-height floor', () => {
-  assert.ok(!cardSlots.includes('min-h-16'), 'the fixed title-row floor is retired for the pinned-anchor centering model');
+test('the heading/meta block anchors as a tight pair beside the full-height centered ring, not a fixed-height floor', () => {
+  assert.ok(!cardSlots.includes('min-h-16'), 'the fixed title-row floor is retired for the centered-ring model');
   assert.match(cardSlots, /export function HeadingSlot/, 'card-slots exports the single-line HeadingSlot');
   assert.match(cardSlots, /export function MetaSlot/, 'card-slots exports the MetaSlot');
-  assert.match(cardSlots, /gridArea:\s*'ring'[^}]*alignSelf:\s*'start'/, 'RingSlot pins to the start of its spanning row');
+  assert.match(cardSlots, /gridArea:\s*'ring'[^}]*alignSelf:\s*'center'/, 'RingSlot centers vertically within its full-height spanning column');
   assert.match(cardSlots, /gridArea:\s*'heading'[^}]*alignSelf:\s*'end'/, 'HeadingSlot anchors to the end of its flexible row');
   assert.match(cardSlots, /gridArea:\s*'meta'[^}]*alignSelf:\s*'start'/, 'MetaSlot anchors to the start of its flexible row, flush against the heading');
 });

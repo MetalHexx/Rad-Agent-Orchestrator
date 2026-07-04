@@ -20,10 +20,10 @@ export function derivePhaseNumber(iteration: { index: number } | undefined): num
 
 /**
  * The Phase Review milestone view (`phase_review`). Purple tier, determinate
- * ring showing phase position across the run with a "PHASE" sublabel.
- * Heading/meta come from `deriveCardHeading` — the phase title and
- * "Phase N". Controls surface only the phase review report — no commit
- * chip at this milestone.
+ * ring showing phase position across the run with a "PHASE REVIEW" sublabel.
+ * Heading/meta come from `deriveCardHeading`: heading is
+ * `Phase Review: <phase title>`, meta is "Phase N". Controls surface only the
+ * phase review report — no commit chip at this milestone.
  */
 export const phaseReviewView: StateView = {
   id: 'phase-review',
@@ -36,7 +36,7 @@ export const phaseReviewView: StateView = {
     return (
       <>
         <RingSlot>
-          <Ring value={arc.value} max={arc.max} color={`var(${TIER_CSS_VAR})`} mode="determinate" sublabel="PHASE">
+          <Ring value={arc.value} max={arc.max} color={`var(${TIER_CSS_VAR})`} mode="determinate" sublabel="PHASE REVIEW">
             <span className="text-lg font-semibold text-foreground">{phaseNumber ?? '—'}</span>
           </Ring>
         </RingSlot>

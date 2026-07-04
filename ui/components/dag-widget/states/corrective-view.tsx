@@ -63,10 +63,15 @@ export function deriveRetryArc(
  * the work-state views, this arc is deliberately not task/phase progress,
  * since the center already renders the exact ratio the ring visualizes and a
  * mismatched source would read as a fill disconnected from the number beside
- * it. Heading is the task title; meta folds the corrective's own short
- * reason in alongside `Phase N · Task M`. Controls surface the corrective's
- * own task handoff, the review report that triggered it, and a commit chip
- * scoped to the corrective's own repos.
+ * it. Heading is `Correcting: <task title>` (via `deriveCardHeading`'s
+ * state-name prefix); the visible meta line stays the short `Phase N · Task
+ * M` — a corrective's own reason is free text and can run long (e.g. "Fix
+ * the null dereference in the auth guard that review flagged, and add a
+ * regression test"), which overran the card when folded into the visible
+ * line. The full `meta — reason` string still surfaces as the meta's hover
+ * title, so the detail isn't lost, just not forced onto the card face.
+ * Controls surface the corrective's own task handoff, the review report that
+ * triggered it, and a commit chip scoped to the corrective's own repos.
  */
 export const correctiveView: StateView = {
   id: 'corrective',
@@ -88,8 +93,8 @@ export const correctiveView: StateView = {
             <span className="text-sm font-semibold text-foreground">{retryBudget ?? '—'}</span>
           </Ring>
         </RingSlot>
-        <HeadingSlot heading={heading} hasMeta={metaWithReason !== null} />
-        <MetaSlot meta={metaWithReason} />
+        <HeadingSlot heading={heading} hasMeta={meta !== null} />
+        <MetaSlot meta={meta} title={metaWithReason ?? undefined} />
         <ControlsSlot>
           <CardControlsRow>
             <DocButton
@@ -104,7 +109,7 @@ export const correctiveView: StateView = {
               onDocClick={ctx.onDocClick}
               iconCssVar={TIER_CSS_VAR}
             />
-            <CommitChips repos={ctx.repos} compareUrlByRepo={ctx.compareUrlByRepo} singleRepo={singleRepo} />
+            <CommitChips repos={ctx.repos} compareUrlByRepo={ctx.compareUrlByRepo} singleRepo={singleRepo} variant="button" iconCssVar={TIER_CSS_VAR} />
           </CardControlsRow>
         </ControlsSlot>
       </>

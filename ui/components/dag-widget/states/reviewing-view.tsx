@@ -10,10 +10,11 @@ const TIER_CSS_VAR = '--tier-review';
 
 /**
  * The Reviewing work-state view (`code_review`). Purple tier. Ring center
- * shows the current task number under a "TASK" sublabel; its arc plots task
- * progress within the active phase. Heading/meta are the task title and
- * `Phase N · Task M`. Controls surface the task handoff, the task's own
- * code-review doc, and a commit chip for the iteration's repos.
+ * shows the current task number under a "TASK REVIEW" sublabel; its arc
+ * plots task progress within the active phase. Heading is
+ * `Reviewing: <task title>` (via `deriveCardHeading`'s state-name prefix);
+ * meta is `Phase N · Task M`. Controls surface the task handoff, the task's
+ * own code-review doc, and a commit chip for the iteration's repos.
  */
 export const reviewingView: StateView = {
   id: 'reviewing',
@@ -28,7 +29,7 @@ export const reviewingView: StateView = {
     return (
       <>
         <RingSlot>
-          <Ring value={arc.value} max={arc.max} color={`var(${TIER_CSS_VAR})`} mode="determinate" sublabel="TASK">
+          <Ring value={arc.value} max={arc.max} color={`var(${TIER_CSS_VAR})`} mode="determinate" sublabel="TASK REVIEW">
             <span className="text-lg font-semibold text-foreground">{taskNumber ?? '—'}</span>
           </Ring>
         </RingSlot>
@@ -48,7 +49,7 @@ export const reviewingView: StateView = {
               onDocClick={ctx.onDocClick}
               iconCssVar={TIER_CSS_VAR}
             />
-            <CommitChips repos={ctx.repos} compareUrlByRepo={ctx.compareUrlByRepo} singleRepo={singleRepo} />
+            <CommitChips repos={ctx.repos} compareUrlByRepo={ctx.compareUrlByRepo} singleRepo={singleRepo} variant="button" iconCssVar={TIER_CSS_VAR} />
           </CardControlsRow>
         </ControlsSlot>
       </>

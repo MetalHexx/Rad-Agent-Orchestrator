@@ -61,7 +61,7 @@ function makeWorkStateNodes(
   };
 }
 
-test('deriveCardHeading strips the "Task N — " prefix from a work-state task title', () => {
+test('deriveCardHeading strips the "Task N — " prefix and prepends "Coding: " for the Coding state', () => {
   const nodes = makeWorkStateNodes(
     'tasks/DEMO-TASK-P01-T03-INSTALLER-MANIFESTS.md',
     2,
@@ -71,17 +71,110 @@ test('deriveCardHeading strips the "Task N — " prefix from a work-state task t
   const state = makeState(nodes, 'phase_loop.iter0.task_loop.iter2.task_executor');
   const { ctx } = resolveStateView(state, undefined, noopDeps);
   assert.equal(ctx.stateId, 'coding');
-  assert.deepEqual(deriveCardHeading(ctx), { heading: 'Installer Manifests', meta: 'Phase 1 · Task 3' });
+  assert.deepEqual(deriveCardHeading(ctx), { heading: 'Coding: Installer Manifests', meta: 'Phase 1 · Task 3' });
 });
 
-test('deriveCardHeading falls back to the bare "Task N" when the doc path carries no parseable title', () => {
+test('deriveCardHeading falls back to the bare "Task N" (still prefixed) when the doc path carries no parseable title', () => {
   const nodes = makeWorkStateNodes(null, 0, 'phases/DEMO-PHASE-01-SETUP.md', 0);
   const state = makeState(nodes, 'phase_loop.iter0.task_loop.iter0.task_executor');
   const { ctx } = resolveStateView(state, undefined, noopDeps);
-  assert.deepEqual(deriveCardHeading(ctx), { heading: 'Task 1', meta: 'Phase 1 · Task 1' });
+  assert.deepEqual(deriveCardHeading(ctx), { heading: 'Coding: Task 1', meta: 'Phase 1 · Task 1' });
 });
 
-test('deriveCardHeading strips the "Phase N — " prefix for the Phase Review state', () => {
+test('deriveCardHeading prepends "Reviewing: " for the Reviewing state', () => {
+  const nodes: NodesRecord = {
+    phase_loop: {
+      kind: 'for_each_phase',
+      status: 'in_progress',
+      iterations: [
+        {
+          index: 0,
+          status: 'in_progress',
+          doc_path: 'phases/DEMO-PHASE-01-SETUP.md',
+          corrective_tasks: [],
+          repos: [],
+          nodes: {
+            task_loop: {
+              kind: 'for_each_task',
+              status: 'in_progress',
+              iterations: [
+                {
+                  index: 2,
+                  status: 'in_progress',
+                  doc_path: 'tasks/DEMO-TASK-P01-T03-INSTALLER-MANIFESTS.md',
+                  corrective_tasks: [],
+                  repos: [],
+                  nodes: {
+                    task_executor: { kind: 'step', status: 'completed', doc_path: null, retries: 0 },
+                    code_review: { kind: 'step', status: 'in_progress', doc_path: null, retries: 0, verdict: null },
+                  },
+                },
+              ],
+            },
+          },
+        },
+      ],
+    },
+  };
+  const state = makeState(nodes, 'phase_loop.iter0.task_loop.iter2.code_review');
+  const { ctx } = resolveStateView(state, undefined, noopDeps);
+  assert.equal(ctx.stateId, 'reviewing');
+  assert.deepEqual(deriveCardHeading(ctx), { heading: 'Reviewing: Installer Manifests', meta: 'Phase 1 · Task 3' });
+});
+
+test('deriveCardHeading prepends "Correcting: " for the Corrective state', () => {
+  const nodes: NodesRecord = {
+    phase_loop: {
+      kind: 'for_each_phase',
+      status: 'in_progress',
+      iterations: [
+        {
+          index: 0,
+          status: 'in_progress',
+          doc_path: 'phases/DEMO-PHASE-01-SETUP.md',
+          corrective_tasks: [],
+          repos: [],
+          nodes: {
+            task_loop: {
+              kind: 'for_each_task',
+              status: 'in_progress',
+              iterations: [
+                {
+                  index: 0,
+                  status: 'in_progress',
+                  doc_path: 'tasks/DEMO-TASK-P01-T01-AUTH-GUARD.md',
+                  repos: [],
+                  corrective_tasks: [
+                    {
+                      index: 1,
+                      status: 'in_progress',
+                      doc_path: 'tasks/DEMO-CT-P01-T01.md',
+                      reason: 'fix it',
+                      injected_after: 'code_review',
+                      repos: [],
+                      nodes: {
+                        task_executor: { kind: 'step', status: 'in_progress', doc_path: null, retries: 0 },
+                      },
+                    },
+                  ],
+                  nodes: {
+                    task_executor: { kind: 'step', status: 'completed', doc_path: null, retries: 0 },
+                  },
+                },
+              ],
+            },
+          },
+        },
+      ],
+    },
+  };
+  const state = makeState(nodes, 'phase_loop.iter0.task_loop.iter0.ct1.task_executor');
+  const { ctx } = resolveStateView(state, undefined, noopDeps);
+  assert.equal(ctx.stateId, 'corrective');
+  assert.deepEqual(deriveCardHeading(ctx), { heading: 'Correcting: Auth Guard', meta: 'Phase 1 · Task 1' });
+});
+
+test('deriveCardHeading strips the "Phase N — " prefix and prepends "Phase Review: " for the Phase Review state', () => {
   const nodes: NodesRecord = {
     phase_loop: {
       kind: 'for_each_phase',
@@ -103,7 +196,7 @@ test('deriveCardHeading strips the "Phase N — " prefix for the Phase Review st
   const state = makeState(nodes, 'phase_loop.iter1.phase_review');
   const { ctx } = resolveStateView(state, undefined, noopDeps);
   assert.equal(ctx.stateId, 'phase-review');
-  assert.deepEqual(deriveCardHeading(ctx), { heading: 'Overview Facet', meta: 'Phase 2' });
+  assert.deepEqual(deriveCardHeading(ctx), { heading: 'Phase Review: Overview Facet', meta: 'Phase 2' });
 });
 
 test('deriveCardHeading carries no meta for a milestone state', () => {

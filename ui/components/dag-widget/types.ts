@@ -103,10 +103,13 @@ export interface HeadingSlotProps {
 /**
  * Props for `MetaSlot`. `meta: null` renders nothing — a heading-only state
  * leaves no empty meta row behind for the anchor/centering layout to account
- * for.
+ * for. `title` sets the hover-to-read `title` attribute on the (truncated)
+ * meta text — pass the full, untruncated string so a clipped meta line (e.g.
+ * a long corrective reason) stays readable on hover.
  */
 export interface MetaSlotProps {
   meta: string | null;
+  title?: string;
   className?: string;
 }
 

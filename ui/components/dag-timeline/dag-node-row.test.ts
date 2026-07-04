@@ -625,34 +625,41 @@ test("Enter on step row with doc_path returns 'open-doc'", () => {
 // ─── Tests: row descriptor branching (FR-1, FR-2, FR-3, AD-1, AD-2) ──────────
 
 /**
- * Mirrors the `DAGNodeRow` post-descriptor render decision:
- * 'approve' → ApproveGateButton; 'execute' → ExecutePlanButton; 'none' → no button.
+ * Mirrors the `DAGNodeRow` post-descriptor render decision. The DAG-state
+ * card (dag-widget) now owns the Approve action for the active plan/final-
+ * approval gate, so the row intentionally renders nothing for a descriptor's
+ * `'approve'` kind — only `'execute'` → ExecutePlanButton still renders here.
  */
 function renderKindFor(
   nodeId: string,
   node: GateNodeState,
   phaseLoopStatus: NodeStatus | undefined,
   projectName: string | undefined,
-): 'approve' | 'execute' | 'none' {
+): 'execute' | 'none' {
   if (projectName === undefined) return 'none';
   if (node.kind !== 'gate') return 'none';
   const desc = getRowButtonDescriptor(nodeId, node, phaseLoopStatus);
-  return desc.kind;
+  return desc.kind === 'execute' ? 'execute' : 'none';
 }
 
-test("FR-1: gate_active=false on plan_approval_gate → 'none' (regression: POEMS-1 in requirements step)", () => {
+test("gate_active=false on plan_approval_gate → 'none' (regression: POEMS-1 in requirements step)", () => {
   const node: GateNodeState = { kind: 'gate', status: 'not_started', gate_active: false };
   assert.strictEqual(renderKindFor('plan_approval_gate', node, 'not_started', 'POEMS-1'), 'none');
 });
 
-test("FR-1: gate_active=false on final_approval_gate → 'none'", () => {
+test("gate_active=false on final_approval_gate → 'none'", () => {
   const node: GateNodeState = { kind: 'gate', status: 'not_started', gate_active: false };
   assert.strictEqual(renderKindFor('final_approval_gate', node, 'not_started', 'POEMS-1'), 'none');
 });
 
-test("FR-1: gate_active=true on plan_approval_gate → 'approve'", () => {
+test("gate_active=true on plan_approval_gate → 'none' (Approve now owned by the DAG-state card, not this row)", () => {
   const node: GateNodeState = { kind: 'gate', status: 'not_started', gate_active: true };
-  assert.strictEqual(renderKindFor('plan_approval_gate', node, 'not_started', 'POEMS-1'), 'approve');
+  assert.strictEqual(renderKindFor('plan_approval_gate', node, 'not_started', 'POEMS-1'), 'none');
+});
+
+test("gate_active=true on final_approval_gate → 'none' (Approve now owned by the DAG-state card, not this row)", () => {
+  const node: GateNodeState = { kind: 'gate', status: 'not_started', gate_active: true };
+  assert.strictEqual(renderKindFor('final_approval_gate', node, 'not_started', 'POEMS-1'), 'none');
 });
 
 test("FR-2: plan_approval_gate completed AND phase_loop not_started → 'execute'", () => {
@@ -663,12 +670,6 @@ test("FR-2: plan_approval_gate completed AND phase_loop not_started → 'execute
 test("FR-2: plan_approval_gate completed AND phase_loop in_progress → 'none'", () => {
   const node: GateNodeState = { kind: 'gate', status: 'completed', gate_active: true };
   assert.strictEqual(renderKindFor('plan_approval_gate', node, 'in_progress', 'POEMS-1'), 'none');
-});
-
-test("FR-3 mutex: completed gate never renders 'approve'", () => {
-  const node: GateNodeState = { kind: 'gate', status: 'completed', gate_active: true };
-  const k = renderKindFor('plan_approval_gate', node, 'not_started', 'POEMS-1');
-  assert.notStrictEqual(k, 'approve');
 });
 
 test("FR-7: task_gate compound id never renders any row button", () => {
@@ -731,7 +732,7 @@ test2('dag-node-row.tsx keeps the compact py-2 px-3 typography on the row contai
   );
 });
 
-test2('dag-node-row.tsx still renders the action button container with ml-auto so descriptor.kind === "approve" / "execute" align right (FR-11 — no behavior change)', () => {
+test2('dag-node-row.tsx still renders the execute button container with ml-auto so it aligns right (FR-11 — no behavior change)', () => {
   assert.ok(/className="ml-auto"/.test(dagNodeRowSource), 'action-button right-alignment classes must be preserved (FR-11)');
 });
 

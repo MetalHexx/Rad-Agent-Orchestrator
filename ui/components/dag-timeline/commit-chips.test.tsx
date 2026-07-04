@@ -67,6 +67,17 @@ const compareUrlByRepo = { 'fake-api': 'https://github.com/o/fake-api/compare/ma
   assert.ok(!html.includes('<svg'), 'no icon — chip fully suppressed');
 }
 
+// The outer chip row wraps (flex-wrap) so a multi-repo cluster breaks onto its
+// own lines once the controls row runs out of width, instead of overrunning the
+// card edge (which the card's overflow-hidden would otherwise crop).
+{
+  const html = renderToStaticMarkup(createElement(CommitChips, {
+    repos: [{ name: 'fake-api', commit_hash: 'abc1234def' }, { name: 'fake-ui', commit_hash: '9f8e7d6c' }],
+    compareUrlByRepo, singleRepo: false,
+  }));
+  assert.match(html, /class="inline-flex flex-wrap items-center gap-3"/, 'outer chip row wraps instead of clipping');
+}
+
 // DD-7: full SHA + "View commit on GitHub" in tooltip (TooltipContent renders only if portal is SSR-available;
 //        assert on aria-label which always renders as a proxy for the chip content contract)
 {
@@ -78,6 +89,41 @@ const compareUrlByRepo = { 'fake-api': 'https://github.com/o/fake-api/compare/ma
   assert.ok(html.includes('href="https://github.com/o/fake-api/commit/abc1234def5678901234"'), 'full SHA in href (DD-7)');
   // TooltipTrigger renders on the chip (NFR-6)
   assert.ok(html.includes('data-slot="tooltip-trigger"'), 'TooltipTrigger renders on chip (NFR-6)');
+}
+
+// ── button variant (dag-widget card): each repo renders as an outline+icon button ──
+// Scoped to the card via variant="button"; the timeline keeps the chip variant above.
+{
+  const html = renderToStaticMarkup(createElement(CommitChips, {
+    repos: [{ name: 'fake-api', commit_hash: 'abc1234def' }, { name: 'fake-ui', commit_hash: '9f8e7d6c' }],
+    compareUrlByRepo, singleRepo: false, variant: 'button', iconCssVar: '--tier-execution',
+  }));
+  assert.ok(html.includes('href="https://github.com/o/fake-api/commit/abc1234def"'), 'button-variant linkable chip is still a real commit link');
+  assert.match(html, /class="[^"]*bg-background[^"]*"/, 'button-variant chip carries the outline house-button chrome (matches DocButton)');
+  assert.match(html, /class="[^"]*\bh-7\b[^"]*"/, 'button-variant chip is the sm button height, aligning with sibling doc buttons');
+  assert.ok(html.includes('fake-api: abc1234'), 'multi-repo button shows "name: hash"');
+  assert.ok(html.includes('var(--tier-execution)'), 'git icon is tinted with the state tier var');
+  assert.match(html, /class="inline-flex flex-wrap items-center gap-2"/, 'button cluster uses the controls-row gap-2, not the chip gap-3');
+}
+
+// button variant, single-repo → just the hash on the button (no repo name)
+{
+  const html = renderToStaticMarkup(createElement(CommitChips, {
+    repos: [{ name: 'fake-api', commit_hash: 'abc1234def' }], compareUrlByRepo, singleRepo: true, variant: 'button',
+  }));
+  assert.match(html, /class="[^"]*bg-background[^"]*"/, 'single-repo button still uses outline chrome');
+  assert.ok(html.includes('abc1234'), 'hash present');
+  assert.ok(!html.includes('fake-api:'), 'no repo name for single-repo button');
+}
+
+// button variant, multi-repo not-linkable → non-interactive (disabled-look) button, still shows the landed hash
+{
+  const html = renderToStaticMarkup(createElement(CommitChips, {
+    repos: [{ name: 'fake-api', commit_hash: 'abc1234def' }], compareUrlByRepo: { 'fake-api': null }, singleRepo: false, variant: 'button',
+  }));
+  assert.ok(!html.includes('<a '), 'not-linkable button is not an anchor');
+  assert.match(html, /class="[^"]*opacity-60[^"]*"/, 'not-linkable button reads as disabled');
+  assert.ok(html.includes('abc1234'), 'a landed-but-unlinkable commit still shows its hash, not "no commit yet"');
 }
 
 console.log('CommitChips ✓');
