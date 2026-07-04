@@ -8,6 +8,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import {
   resolveMaxRetriesPerTask,
   deriveRetryBudgetLabel,
+  deriveRetryArc,
   correctiveView,
   DEFAULT_MAX_RETRIES_PER_TASK,
 } from './corrective-view';
@@ -82,6 +83,22 @@ test('deriveRetryBudgetLabel is null when no corrective entry resolved', () => {
   assert.equal(deriveRetryBudgetLabel(undefined, makeState(2)), null);
 });
 
+// ─── deriveRetryArc ───────────────────────────────────────────────────────────
+
+test('deriveRetryArc plots the retry budget as { value, max }, not a completion ratio', () => {
+  const arc = deriveRetryArc(makeCorrectiveEntry({ index: 1 }), makeState(5));
+  assert.deepEqual(arc, { value: 1, max: 5 });
+});
+
+test('deriveRetryArc uses the fallback max when the snapshot omits it', () => {
+  const arc = deriveRetryArc(makeCorrectiveEntry({ index: 1 }), makeState(undefined));
+  assert.deepEqual(arc, { value: 1, max: DEFAULT_MAX_RETRIES_PER_TASK });
+});
+
+test('deriveRetryArc falls back to the degenerate-safe { 0, 1 } domain when no corrective entry resolved', () => {
+  assert.deepEqual(deriveRetryArc(undefined, makeState(5)), { value: 0, max: 1 });
+});
+
 // ─── source shape ─────────────────────────────────────────────────────────────
 
 test('corrective view id is "corrective"', () => {
@@ -108,9 +125,10 @@ test('corrective view ring center carries a "RETRY" sublabel', () => {
   assert.match(source, /sublabel="RETRY"/);
 });
 
-test('corrective view plots task progress, not phase completion', () => {
-  assert.match(source, /deriveRingArc\(ctx\.taskProgress\)/);
-  assert.ok(!source.includes('ctx.phaseProgress'), 'the work-state ring must not read phase progress');
+test('corrective view plots the retry budget, not task or phase completion', () => {
+  assert.match(source, /deriveRetryArc\(ctx\.correctiveEntry, ctx\.state\)/);
+  assert.ok(!source.includes('ctx.taskProgress'), 'the retry ring must not read task progress');
+  assert.ok(!source.includes('ctx.phaseProgress'), 'the retry ring must not read phase progress');
 });
 
 test('corrective view renders a commit chip', () => {
