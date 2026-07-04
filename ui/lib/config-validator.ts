@@ -56,5 +56,14 @@ export function validateConfig(config: OrchestrationConfig): ConfigValidationErr
     }
   }
 
+  // 11. ui (optional section)
+  if (config.ui !== undefined) {
+    if (!isSection(config.ui)
+        || !Number.isInteger(config.ui.port)
+        || config.ui.port < 1 || config.ui.port > 65535) {
+      errors['ui.port'] = 'Must be a whole number between 1 and 65535';
+    }
+  }
+
   return errors;
 }

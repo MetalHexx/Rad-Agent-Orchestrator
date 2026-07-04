@@ -230,6 +230,60 @@ test('validator accepts a boolean and rejects a non-boolean (FR-6)', () => {
   assert.ok(validateConfig({ ...base, telemetry: { enabled: 'yes' } } as any)['telemetry.enabled']);
 });
 
+// --- ui.port (Dashboard) ---
+
+test('a UI Port number field exists for ui.port', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { CONFIG_FIELDS } = require('./config-field-meta');
+  const f = (CONFIG_FIELDS as Array<{ key: string; controlType: string; section: string; min?: number }>).find((x) => x.key === 'ui.port');
+  assert.ok(f, 'field present');
+  assert.strictEqual(f!.controlType, 'number');
+  assert.strictEqual(f!.section, 'ui');
+  assert.strictEqual(f!.min, 1);
+});
+
+test('absent ui section produces no validation error', () => {
+  const cfg = makeValidConfig();
+  const result = validateConfig(cfg);
+  assert.strictEqual(result['ui.port'], undefined);
+});
+
+test('ui.port valid integer in range is valid', () => {
+  const cfg = makeValidConfig();
+  cfg.ui = { port: 1337 };
+  const result = validateConfig(cfg);
+  assert.strictEqual(result['ui.port'], undefined);
+});
+
+test('ui.port non-integer returns error', () => {
+  const cfg = makeValidConfig();
+  cfg.ui = { port: 1.5 };
+  const result = validateConfig(cfg);
+  assert.strictEqual(result['ui.port'], 'Must be a whole number between 1 and 65535');
+});
+
+test('ui.port below range (0) returns error', () => {
+  const cfg = makeValidConfig();
+  cfg.ui = { port: 0 };
+  const result = validateConfig(cfg);
+  assert.strictEqual(result['ui.port'], 'Must be a whole number between 1 and 65535');
+});
+
+test('ui.port above range (65536) returns error', () => {
+  const cfg = makeValidConfig();
+  cfg.ui = { port: 65536 };
+  const result = validateConfig(cfg);
+  assert.strictEqual(result['ui.port'], 'Must be a whole number between 1 and 65535');
+});
+
+test('ui.port missing while ui section present returns error', () => {
+  const cfg = makeValidConfig();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  cfg.ui = {} as any;
+  const result = validateConfig(cfg);
+  assert.strictEqual(result['ui.port'], 'Must be a whole number between 1 and 65535');
+});
+
 // --- Summary ---
 
 console.log(`\n  ${passed} passed, ${failed} failed\n`);

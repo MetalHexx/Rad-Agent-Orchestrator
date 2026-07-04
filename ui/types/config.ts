@@ -29,6 +29,7 @@ export interface OrchestrationConfig {
   };
   default_template?: string;
   telemetry?: { enabled: boolean };
+  ui?: { port: number };
 }
 
 /** Editor mode */
