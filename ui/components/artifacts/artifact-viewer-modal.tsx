@@ -16,9 +16,10 @@ import { ModalShell } from "@/components/modal/modal-shell";
 import type { ModalDoc } from "@/lib/modal-doc-model";
 import type { DocumentFrontmatter } from "@/types/components";
 
-// Only one instance of the modal is ever mounted at a time, so a fixed id is
-// safe for aria-labelledby.
+// Only one instance of the modal is ever mounted at a time, so fixed ids are
+// safe for aria-labelledby / aria-controls.
 const TITLE_ID = "artifact-viewer-modal-title";
+const STAGE_PANEL_ID = "artifact-viewer-modal-stage";
 
 export interface ArtifactViewerModalProps {
   projectName: string;
@@ -64,11 +65,18 @@ export function ArtifactViewerModal({
   unseen, activePulse, mtimes, dataState = "open",
 }: ArtifactViewerModalProps) {
   const active = artifacts.find((a) => a.path === activePath);
+  const activeIndex = active ? artifacts.indexOf(active) : -1;
   // Mirrors DocumentMetadata's own "any real entries" check (document-metadata.tsx)
   // so "has frontmatter" means the same thing everywhere in the app — otherwise
   // the toggle would appear for markdown docs with an empty/absent frontmatter
   // block and open onto an empty panel.
   const hasFrontmatter = !!frontmatter && Object.entries(frontmatter).some(([, v]) => v !== null && v !== undefined);
+  // The delete API only allows unlinking root-level artifact files (see
+  // ui/app/api/projects/[name]/delete/route.ts) — nested spine docs (phase
+  // plans, task handoffs, reviews, the error log) are pipeline-managed and
+  // deliberately not user-deletable. Hide the control there instead of
+  // surfacing a delete request that the server will always reject.
+  const canDelete = !!active && !/[\\/]/.test(active.path);
 
   const [shareState, setShareState] = React.useState<'idle' | 'copied' | 'failed'>('idle');
   const shareTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -147,18 +155,20 @@ export function ArtifactViewerModal({
             <ChevronRight className="size-4" aria-hidden="true" />
           </Button>
           <div ref={stripRef as React.RefObject<HTMLDivElement>} role="tablist" aria-label="Artifacts" className="flex items-end gap-2 overflow-x-auto px-8">
-          {artifacts.map((artifact) => {
+          {artifacts.map((artifact, index) => {
             const pulsing = activePulse?.has(artifact.path) ?? false;
             const isActive = artifact.path === activePath;
             return (
             <ActivePulse key={artifact.path} active={pulsing} variant="frame" className="rounded-md">
             <div
               data-filmstrip-cell
+              id={`filmstrip-tab-${index}`}
               ref={isActive ? activeCellRef : undefined}
               role="tab"
               tabIndex={isActive ? 0 : -1}
               aria-label={`View ${artifact.title}`}
               aria-selected={isActive}
+              aria-controls={STAGE_PANEL_ID}
               onClick={() => onSelect(artifact.path)}
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(artifact.path); } }}
               className={cn(
@@ -205,7 +215,12 @@ export function ArtifactViewerModal({
         </footer>
       }
     >
-      <div className="relative h-full w-full bg-muted">
+      <div
+        className="relative h-full w-full bg-muted"
+        role="tabpanel"
+        id={STAGE_PANEL_ID}
+        aria-labelledby={activeIndex >= 0 ? `filmstrip-tab-${activeIndex}` : undefined}
+      >
         <BufferedStage
           projectName={projectName}
           artifact={active}
@@ -261,19 +276,21 @@ export function ArtifactViewerModal({
             } />
             <TooltipContent>Next artifact</TooltipContent>
           </Tooltip>
-          <Tooltip>
-            <TooltipTrigger render={
-              <button type="button" aria-label="Delete artifact" onClick={onRequestDelete}
-                className={cn(buttonVariants({
-                  variant: "ghost",
-                  size: "icon",
-                  className: "absolute bottom-3 right-3 z-10 cursor-pointer rounded-full bg-background/70 text-muted-foreground hover:bg-background hover:text-destructive",
-                }))}>
-                <Trash2 className="size-4" aria-hidden="true" />
-              </button>
-            } />
-            <TooltipContent>Delete artifact</TooltipContent>
-          </Tooltip>
+          {canDelete && (
+            <Tooltip>
+              <TooltipTrigger render={
+                <button type="button" aria-label="Delete artifact" onClick={onRequestDelete}
+                  className={cn(buttonVariants({
+                    variant: "ghost",
+                    size: "icon",
+                    className: "absolute bottom-3 right-3 z-10 cursor-pointer rounded-full bg-background/70 text-muted-foreground hover:bg-background hover:text-destructive",
+                  }))}>
+                  <Trash2 className="size-4" aria-hidden="true" />
+                </button>
+              } />
+              <TooltipContent>Delete artifact</TooltipContent>
+            </Tooltip>
+          )}
           {active.isMarkdown && onToggleFrontmatter && hasFrontmatter && (
             <Tooltip>
               <TooltipTrigger render={

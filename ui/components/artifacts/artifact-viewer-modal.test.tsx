@@ -59,6 +59,24 @@ test('exposes full-screen, delete, and close controls; omits new-tab/counter/leg
   assert.ok(!/\b1\s*\/\s*3\b/.test(html), 'no position counter');
 });
 
+test('hides the delete control for a nested (subfolder) doc — the delete API only allows root artifacts (regression)', () => {
+  const nested: ModalDoc[] = [
+    ...arts,
+    { path: 'phases/PHASE-1-PLAN.md', kind: 'markdown', title: 'Phase 1 Plan', isMarkdown: true },
+  ];
+  const html = render({ ...base, artifacts: nested, activePath: 'phases/PHASE-1-PLAN.md' });
+  assert.ok(!html.includes('aria-label="Delete artifact"'), 'delete control absent for a nested doc');
+});
+
+test('still shows the delete control for a root-level doc alongside nested docs (regression)', () => {
+  const nested: ModalDoc[] = [
+    ...arts,
+    { path: 'phases/PHASE-1-PLAN.md', kind: 'markdown', title: 'Phase 1 Plan', isMarkdown: true },
+  ];
+  const html = render({ ...base, artifacts: nested, activePath: 'DEMO-BRAINSTORMING.md' });
+  assert.ok(html.includes('aria-label="Delete artifact"'), 'delete control present for a root doc');
+});
+
 test('applies the full-screen layout class when isFullScreen is true (FR-17)', () => {
   const html = render({ ...base, activePath: 'DEMO-WIREFRAME-X.html', isFullScreen: true });
   assert.ok(html.includes('w-screen'), 'full-screen panel spans the viewport width');
@@ -131,6 +149,15 @@ test('marks the filmstrip as a tablist of keyboard-accessible tabs with roving t
   assert.equal(tabbables.length, 1, 'exactly one filmstrip cell carries tabindex="0"');
   const inert = cells.filter((c) => c.includes('tabindex="-1"'));
   assert.equal(inert.length, 2, 'the remaining filmstrip cells carry tabindex="-1"');
+});
+
+test('wires every tab to the stage panel via aria-controls, and the panel back to the active tab (PR #168 review)', () => {
+  const html = render({ ...base, activePath: 'DEMO-BRAINSTORMING.md' });
+  assert.ok(html.includes('role="tabpanel"'), 'stage container carries role="tabpanel"');
+  const controls = (html.match(/aria-controls="artifact-viewer-modal-stage"/g) ?? []).length;
+  assert.equal(controls, 3, 'every tab points aria-controls at the stage panel');
+  assert.ok(html.includes('id="artifact-viewer-modal-stage"'), 'stage panel carries the id its tabs reference');
+  assert.ok(html.includes('aria-labelledby="filmstrip-tab-0"'), 'stage panel is labelled by the active (first) tab');
 });
 
 test('marks exactly one filmstrip cell as selected (Issue A)', () => {
