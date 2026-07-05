@@ -209,3 +209,68 @@ test('the stage iframe uses the dark backstop color, not white — no first-open
   assert.ok(!/bg-white/.test(html), 'stage iframe does not use a white background');
   assert.ok(/bg-background/.test(html), 'stage iframe uses the dark app backstop color');
 });
+
+test('renders the frontmatter card above the markdown body when showFrontmatter is on (P02-T01)', () => {
+  const html = renderToStaticMarkup(createElement(BufferedStage, {
+    projectName: 'DEMO', artifact: MD, markdownContent: '# Hi',
+    frontmatter: { status: 'active' }, showFrontmatter: true, activePulse: false,
+  } as never));
+  const cardIdx = html.indexOf('data-slot="card"');
+  const bodyIdx = html.search(/>Hi</);
+  assert.ok(cardIdx >= 0 && bodyIdx >= 0 && cardIdx < bodyIdx, 'frontmatter card precedes the markdown body in DOM order');
+});
+
+test('omits the frontmatter card when showFrontmatter is off, even with frontmatter present (P02-T01)', () => {
+  const html = renderToStaticMarkup(createElement(BufferedStage, {
+    projectName: 'DEMO', artifact: MD, markdownContent: '# Hi',
+    frontmatter: { status: 'active' }, showFrontmatter: false, activePulse: false,
+  } as never));
+  assert.ok(!html.includes('data-slot="card"'), 'no frontmatter card while the toggle is off');
+});
+
+test('omits the frontmatter card while the body is still loading, even with showFrontmatter on (P02-T01)', () => {
+  const html = renderToStaticMarkup(createElement(BufferedStage, {
+    projectName: 'DEMO', artifact: MD, markdownContent: null,
+    frontmatter: { status: 'active' }, showFrontmatter: true, activePulse: false,
+  } as never));
+  assert.ok(!html.includes('data-slot="card"'), 'no frontmatter card renders ahead of its own body');
+  assert.ok(/role="status"/.test(html), 'the loading spinner still renders in its place');
+});
+
+test('frontmatter is gated by the same active-file identity as the body — no stale card on md→md navigation (P02-T01)', async () => {
+  const dom = new JSDOM('<!doctype html><div id="root"></div>');
+  const { window } = dom;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (globalThis as any).window = window;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (globalThis as any).document = window.document;
+  const { createRoot } = await import('react-dom/client');
+  const { act } = await import('react');
+  const A = { path: 'A.md', kind: 'markdown' as const, title: 'Doc', isMarkdown: true };
+  const B = { path: 'B.md', kind: 'markdown' as const, title: 'Doc', isMarkdown: true };
+  const root = createRoot(window.document.getElementById('root')!);
+  // A is open, its own frontmatter shown.
+  await act(async () => {
+    root.render(createElement(BufferedStage, {
+      projectName: 'DEMO', artifact: A, markdownContent: '# Alpha', markdownContentFileName: 'A.md',
+      frontmatter: { status: 'alpha' }, showFrontmatter: true, activePulse: false, liveMtime: 0,
+    } as never));
+  });
+  await act(async () => {});
+  const showingA = window.document.getElementById('root')!;
+  assert.equal((showingA.innerHTML.match(/data-slot="card"/g) ?? []).length, 1, 'A shows exactly its own frontmatter card');
+  // Navigate to B, but B's fetch has NOT resolved: markdownContent/frontmatter/fileName
+  // still hold A's values. The incoming B layer must not inherit A's frontmatter card —
+  // it should stay in its loading state, same as the body (BUG 1's guard, extended).
+  await act(async () => {
+    root.render(createElement(BufferedStage, {
+      projectName: 'DEMO', artifact: B, markdownContent: '# Alpha', markdownContentFileName: 'A.md',
+      frontmatter: { status: 'alpha' }, showFrontmatter: true, activePulse: false, liveMtime: 0,
+    } as never));
+  });
+  await act(async () => {});
+  const midNav = window.document.getElementById('root')!;
+  assert.equal((midNav.innerHTML.match(/data-slot="card"/g) ?? []).length, 1,
+    'still exactly one frontmatter card (A\'s front slot) — no second card leaked onto the not-yet-loaded B slot');
+  await act(async () => { root.unmount(); });
+});

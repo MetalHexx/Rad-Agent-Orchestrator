@@ -22,7 +22,7 @@ import { SSEStatusBanner } from "@/components/badges";
 import { isV5State, isV6State } from "@/types/state";
 import type { ProjectStateV5, ProjectStateV6, GraphStatus, GateMode, NodeStatus } from "@/types/state";
 import type { SSEConnectionStatus } from "@/types/events";
-import type { ProjectSummary } from "@/types/components";
+import type { ProjectSummary, DocumentFrontmatter } from "@/types/components";
 import { ArtifactViewerModal } from "@/components/artifacts";
 import { useArtifactModal, markdownPathForActive, deleteTargetForActive } from "@/hooks/use-artifact-modal";
 import { ArtifactLiveProvider, useArtifactLive } from "@/hooks/use-artifact-live";
@@ -112,6 +112,13 @@ function ProjectsPageContent({
   // resolves; null while clearing/loading. Lets the stage withhold a stale body
   // from a freshly-navigated md layer until its own fetch lands (BUG 1).
   const [modalMarkdownFileName, setModalMarkdownFileName] = useState<string | null>(null);
+  // Fetched alongside modalMarkdown, from the same /document response — gated
+  // by the same modalMarkdownFileName identity so a stale doc's frontmatter
+  // never renders against a freshly-navigated body.
+  const [modalFrontmatter, setModalFrontmatter] = useState<DocumentFrontmatter | null>(null);
+  // Owned here (not in the modal) so it persists across prev/next/select and is
+  // reset only when the modal itself closes. Default false: frontmatter starts hidden.
+  const [showFrontmatter, setShowFrontmatter] = useState(false);
 
   // Active path is the modal's own identity — single choke point, no
   // longer derived from a (mutable) array index.
@@ -124,13 +131,17 @@ function ProjectsPageContent({
     onActivePathChange(activePath);
   }, [activePath, live, onActivePathChange]);
 
-  useEffect(() => { if (!modal.open) setIsFullScreen(false); }, [modal.open]);
+  // Frontmatter toggle resets whenever the modal itself closes (regardless of
+  // how — close button, deferred-unmount handler, or delete-driven auto-close)
+  // so reopening always starts hidden again.
+  useEffect(() => { if (!modal.open) { setIsFullScreen(false); setShowFrontmatter(false); } }, [modal.open]);
 
   useEffect(() => {
     const mdPath = markdownPathForActive(modalDocs, modal.activePath);
     if (!modal.open || !mdPath || !selectedProject) {
       setModalMarkdown(null);
       setModalMarkdownFileName(null);
+      setModalFrontmatter(null);
       return;
     }
     // Note: we intentionally leave the prior body/owner in place while the new fetch
@@ -143,14 +154,24 @@ function ProjectsPageContent({
         if (!res.ok) throw new Error("Failed to fetch markdown");
         return res.json();
       })
-      .then((data: { content: string }) => {
-        if (!cancelled) { setModalMarkdown(data.content); setModalMarkdownFileName(mdPath); }
+      .then((data: { content: string; frontmatter: DocumentFrontmatter }) => {
+        if (!cancelled) {
+          setModalMarkdown(data.content);
+          setModalFrontmatter(data.frontmatter);
+          setModalMarkdownFileName(mdPath);
+        }
       })
       .catch(() => {
-        if (!cancelled) { setModalMarkdown(''); setModalMarkdownFileName(mdPath); }
+        if (!cancelled) {
+          setModalMarkdown('');
+          setModalFrontmatter({});
+          setModalMarkdownFileName(mdPath);
+        }
       });
     return () => { cancelled = true; };
   }, [modal.open, modal.activePath, modalDocs, selectedProject]);
+
+  const handleToggleFrontmatter = useCallback(() => setShowFrontmatter((v) => !v), []);
 
   const handleModalClose = useCallback(() => {
     setModalClosing(true);
@@ -284,6 +305,9 @@ function ProjectsPageContent({
           activePath={modal.activePath}
           markdownContent={modalMarkdown}
           markdownContentFileName={modalMarkdownFileName}
+          frontmatter={modalFrontmatter}
+          showFrontmatter={showFrontmatter}
+          onToggleFrontmatter={handleToggleFrontmatter}
           onClose={handleModalClose}
           dataState={modalClosing ? "closed" : "open"}
           onPrev={modal.goPrev}

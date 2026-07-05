@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ChevronLeft, ChevronRight, Trash2, FileText } from "lucide-react";
+import { ChevronLeft, ChevronRight, Trash2, FileText, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { copyTextToClipboard } from "@/lib/clipboard";
 import { buildDocDeepLink } from "@/lib/deep-link";
@@ -13,6 +13,7 @@ import { ChangeBadge } from "@/components/badges";
 import { cn } from "@/lib/utils";
 import { ModalShell } from "@/components/modal/modal-shell";
 import type { ModalDoc } from "@/lib/modal-doc-model";
+import type { DocumentFrontmatter } from "@/types/components";
 
 export interface ArtifactViewerModalProps {
   projectName: string;
@@ -27,6 +28,13 @@ export interface ArtifactViewerModalProps {
   /** Which path `markdownContent` belongs to — lets the stage withhold a stale
    *  body from a freshly-navigated md layer until its own fetch resolves (BUG 1). */
   markdownContentFileName?: string | null;
+  /** The active markdown doc's frontmatter — gated to `markdownContentFileName`
+   *  the same way `markdownContent` is (BUG-1-style stale-doc guard). */
+  frontmatter?: DocumentFrontmatter | null;
+  /** Whether the frontmatter card is currently toggled on. Default false (hidden). */
+  showFrontmatter?: boolean;
+  /** Toggles frontmatter visibility. Omitted → the header toggle button is not rendered. */
+  onToggleFrontmatter?: () => void;
   onClose: () => void;
   onPrev: () => void;
   onNext: () => void;
@@ -46,6 +54,7 @@ export interface ArtifactViewerModalProps {
 
 export function ArtifactViewerModal({
   projectName, artifacts, activePath, markdownContent, markdownContentFileName,
+  frontmatter, showFrontmatter = false, onToggleFrontmatter,
   onClose, onPrev, onNext, onSelect, onRequestDelete, isFullScreen, onToggleFullScreen,
   unseen, activePulse, mtimes, dataState = "open",
 }: ArtifactViewerModalProps) {
@@ -96,6 +105,19 @@ export function ArtifactViewerModal({
           <span className="text-sm font-medium text-foreground">{friendly}</span>
           <span title={active.path} className="truncate text-xs text-muted-foreground">{active.path}</span>
         </>
+      }
+      headerActions={
+        active.isMarkdown && onToggleFrontmatter ? (
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={showFrontmatter ? "Hide frontmatter" : "Show frontmatter"}
+            className="cursor-pointer"
+            onClick={onToggleFrontmatter}
+          >
+            <Info className="size-4" aria-hidden="true" />
+          </Button>
+        ) : undefined
       }
       onClose={onClose}
       onPrev={onPrev}
@@ -182,6 +204,8 @@ export function ArtifactViewerModal({
           artifact={active}
           markdownContent={markdownContent}
           markdownContentFileName={markdownContentFileName ?? undefined}
+          frontmatter={frontmatter ?? null}
+          showFrontmatter={showFrontmatter}
           activePulse={activePulse?.has(active.path) ?? false}
           liveMtime={mtimes?.[active.path] ?? 0}
         />

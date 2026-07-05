@@ -170,6 +170,36 @@ test('the DocumentDrawer and its hook are fully unwired from the page (drawer re
   assert.ok(!pageSrc.includes('orderedDocs'), 'the drawer-only orderedDocs plumbing is removed');
 });
 
+test('the frontmatter toggle state is owned by the page, defaults to false, and is threaded into the modal (P02-T01)', () => {
+  assert.ok(/const\s*\[showFrontmatter,\s*setShowFrontmatter\]\s*=\s*useState\(false\)/.test(pageSrc),
+    'showFrontmatter starts hidden by default');
+  assert.ok(pageSrc.includes('showFrontmatter={showFrontmatter}'), 'the modal receives the toggle state');
+  assert.ok(pageSrc.includes('onToggleFrontmatter={handleToggleFrontmatter}'), 'the modal receives the toggle handler');
+});
+
+test('the frontmatter toggle resets to false whenever the modal closes (P02-T01)', () => {
+  const resetIdx = pageSrc.indexOf('if (!modal.open)');
+  assert.ok(resetIdx >= 0, 'a reset effect keyed on modal.open exists');
+  const resetLine = pageSrc.slice(resetIdx, pageSrc.indexOf('\n', resetIdx));
+  assert.ok(resetLine.includes('setShowFrontmatter(false)'),
+    'closing the modal (modal.open becoming false) resets showFrontmatter to false');
+});
+
+test('frontmatter is fetched alongside the markdown body from the same /document response (P02-T01)', () => {
+  assert.ok(pageSrc.includes('setModalFrontmatter(data.frontmatter)'),
+    'the fetch effect captures frontmatter from the same response as the body');
+  assert.ok(pageSrc.includes('frontmatter={modalFrontmatter}'),
+    'the modal receives the captured frontmatter');
+});
+
+test('frontmatter is cleared alongside the body when there is no active markdown doc (path-gating symmetry) (P02-T01)', () => {
+  const clearIdx = pageSrc.indexOf('setModalMarkdown(null)');
+  assert.ok(clearIdx >= 0, 'the clearing branch exists');
+  const clearBlock = pageSrc.slice(clearIdx, pageSrc.indexOf('return;', clearIdx));
+  assert.ok(clearBlock.includes('setModalFrontmatter(null)'),
+    'frontmatter is cleared in the same branch that clears modalMarkdown/modalMarkdownFileName');
+});
+
 test('the same open-by-path opener and not-found guard serve both the DAG and the planning tiles (single funnel, no doc-source-specific branch)', () => {
   // Both entry points call the identical `openArtifactModal` identifier — the
   // page has no separate "DAG doc" vs "planning doc" open path, so a DAG path

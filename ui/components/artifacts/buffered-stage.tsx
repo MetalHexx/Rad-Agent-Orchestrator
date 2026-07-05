@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { MarkdownRenderer } from "@/components/documents/markdown-renderer";
+import { DocumentMetadata } from "@/components/documents/document-metadata";
 import { StageIframe } from "./iframe-preview";
 import { ActivePulse } from "./active-pulse";
 import {
@@ -13,6 +14,7 @@ import {
   type SlotIndex,
 } from "./stage-transition";
 import type { ModalDoc } from "@/lib/modal-doc-model";
+import type { DocumentFrontmatter } from "@/types/components";
 import { cn } from "@/lib/utils";
 
 /** How long the cross-fade runs before the incoming slot is promoted and the
@@ -25,9 +27,14 @@ const CROSSFADE_MS = 320;
  *  to the DOM — a deterministic signal that does NOT depend on a <div onLoad>,
  *  which never fires for a markdown subtree (DD-7/FR-16). */
 export function MarkdownLayer({
-  content, scrollRef, onReady,
+  content, frontmatter = null, showFrontmatter = false, scrollRef, onReady,
 }: {
   content: string | null;
+  /** The doc's frontmatter, gated to this slot's fileName by the caller — null
+   *  when absent or when it belongs to a different doc. */
+  frontmatter?: DocumentFrontmatter | null;
+  /** Whether the frontmatter card should render above the body. */
+  showFrontmatter?: boolean;
   scrollRef: React.RefObject<HTMLDivElement>;
   onReady?: () => void;
 }) {
@@ -37,7 +44,10 @@ export function MarkdownLayer({
   return (
     <div ref={scrollRef} className="h-full overflow-auto bg-background p-6">
       {content !== null ? (
-        <MarkdownRenderer content={content} />
+        <div className="space-y-4">
+          {showFrontmatter && frontmatter && <DocumentMetadata frontmatter={frontmatter} />}
+          <MarkdownRenderer content={content} />
+        </div>
       ) : (
         <div role="status" aria-label="Loading document" className="flex h-full items-center justify-center">
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-muted border-t-primary" />
@@ -49,6 +59,7 @@ export function MarkdownLayer({
 
 export function BufferedStage({
   projectName, artifact, markdownContent, markdownContentFileName, activePulse, liveMtime = 0,
+  frontmatter = null, showFrontmatter = false,
 }: {
   projectName: string;
   /** The active document — identified by `path`, which is the raw/document API's `?path=` value. */
@@ -64,6 +75,12 @@ export function BufferedStage({
    *  change advances it, even repeats inside the pulse-settle window — which the
    *  pulse rising edge alone misses (BUG 2). */
   liveMtime?: number;
+  /** The active document's frontmatter — gated to `markdownContentFileName` the
+   *  same way `markdownContent` is, so a stale doc's metadata never flashes over
+   *  a freshly-navigated body. */
+  frontmatter?: DocumentFrontmatter | null;
+  /** Whether the frontmatter card is currently toggled on. */
+  showFrontmatter?: boolean;
 }) {
   const [stage, setStage] = React.useState(() => initStage(artifact.path));
   // One stable scroll container per physical slot so two markdown bodies can be
@@ -124,12 +141,13 @@ export function BufferedStage({
     // Only the incoming (back) slot reports ready; the foreground is already shown.
     const reportReady = isIncoming ? onReady : undefined;
     // Only apply the shared markdown body to the slot it actually belongs to (BUG 1);
-    // when the prop is omitted, fall back to "content always applies".
+    // when the prop is omitted, fall back to "content always applies". Frontmatter
+    // rides the same gate — it was fetched and set alongside the body, so a slot
+    // only ever shows metadata for the doc it's currently displaying.
     const isMd = fileName?.endsWith(".md") ?? false;
-    const layerContent =
-      markdownContentFileName === undefined || fileName === markdownContentFileName
-        ? markdownContent
-        : null;
+    const matchesActiveFile = markdownContentFileName === undefined || fileName === markdownContentFileName;
+    const layerContent = matchesActiveFile ? markdownContent : null;
+    const layerFrontmatter = matchesActiveFile ? frontmatter : null;
     return (
       <div
         key={slotIdx}
@@ -147,7 +165,13 @@ export function BufferedStage({
         )}
       >
         {fileName === null ? null : isMd ? (
-          <MarkdownLayer content={layerContent} scrollRef={scrollRefs[slotIdx]} onReady={reportReady} />
+          <MarkdownLayer
+            content={layerContent}
+            frontmatter={layerFrontmatter}
+            showFrontmatter={showFrontmatter}
+            scrollRef={scrollRefs[slotIdx]}
+            onReady={reportReady}
+          />
         ) : (
           <StageIframe
             projectName={projectName}

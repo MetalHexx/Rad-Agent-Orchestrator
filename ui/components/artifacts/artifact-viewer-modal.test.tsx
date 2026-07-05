@@ -204,6 +204,57 @@ test('overflow edge fades are non-interactive and end chevrons are labelled', ()
   assert.ok(html.includes('pointer-events-none'), 'edge fades do not block cell interaction');
 });
 
+test('shows a frontmatter toggle for a markdown doc, labelled by the hidden state (P02-T01)', () => {
+  const html = render({ ...base, activePath: 'DEMO-BRAINSTORMING.md', showFrontmatter: false, onToggleFrontmatter: noop });
+  assert.ok(html.includes('aria-label="Show frontmatter"'), 'toggle carries the hidden-state label');
+  assert.ok(!html.includes('aria-label="Hide frontmatter"'), 'the shown-state label is absent while hidden');
+});
+
+test('the frontmatter toggle aria-label flips to the shown state (P02-T01)', () => {
+  const html = render({ ...base, activePath: 'DEMO-BRAINSTORMING.md', showFrontmatter: true, onToggleFrontmatter: noop });
+  assert.ok(html.includes('aria-label="Hide frontmatter"'), 'toggle carries the shown-state label');
+  assert.ok(!html.includes('aria-label="Show frontmatter"'), 'the hidden-state label is absent while shown');
+});
+
+test('omits the frontmatter toggle for a non-markdown artifact (P02-T01)', () => {
+  const html = render({ ...base, activePath: 'DEMO-BRAINSTORM.html', onToggleFrontmatter: noop });
+  assert.ok(!html.includes('Show frontmatter') && !html.includes('Hide frontmatter'), 'no frontmatter toggle for an HTML artifact');
+});
+
+test('omits the frontmatter toggle when no onToggleFrontmatter handler is supplied (P02-T01)', () => {
+  const html = render({ ...base, activePath: 'DEMO-BRAINSTORMING.md' });
+  assert.ok(!html.includes('Show frontmatter') && !html.includes('Hide frontmatter'), 'no toggle button without a handler wired');
+});
+
+test('the frontmatter toggle renders left of Share in header order (P02-T01)', () => {
+  const html = render({ ...base, activePath: 'DEMO-BRAINSTORMING.md', onToggleFrontmatter: noop });
+  const toggleIdx = html.indexOf('aria-label="Show frontmatter"');
+  const shareIdx = html.indexOf('aria-label="Share / copy link"');
+  assert.ok(toggleIdx >= 0 && shareIdx >= 0 && toggleIdx < shareIdx, 'frontmatter toggle appears before the Share control');
+});
+
+test('renders the frontmatter card above the body only when toggled on (P02-T01)', () => {
+  const shown = render({
+    ...base, activePath: 'DEMO-BRAINSTORMING.md',
+    showFrontmatter: true, frontmatter: { status: 'active' }, onToggleFrontmatter: noop,
+  });
+  assert.ok(shown.includes('data-slot="card"'), 'frontmatter card renders when shown and present');
+
+  const hidden = render({
+    ...base, activePath: 'DEMO-BRAINSTORMING.md',
+    showFrontmatter: false, frontmatter: { status: 'active' }, onToggleFrontmatter: noop,
+  });
+  assert.ok(!hidden.includes('data-slot="card"'), 'frontmatter card is absent while the toggle is off');
+});
+
+test('renders no frontmatter card for an HTML artifact even if frontmatter/showFrontmatter are set (P02-T01)', () => {
+  const html = render({
+    ...base, activePath: 'DEMO-BRAINSTORM.html',
+    showFrontmatter: true, frontmatter: { status: 'active' },
+  });
+  assert.ok(!html.includes('data-slot="card"'), 'no frontmatter card renders on a non-markdown stage');
+});
+
 test('share feedback timer is captured in a ref and cleared on unmount (FR-6, NFR-1)', () => {
   const src = readFileSync(
     path.join(process.cwd(), 'components', 'artifacts', 'artifact-viewer-modal.tsx'),
