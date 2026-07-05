@@ -75,20 +75,20 @@ test('shouldShowStateCard: false when the current node path is an empty string',
 test('mounts docs and the DAG-state card together in the responsive two-up grid', () => {
   const html = render({ ...baseProps, artifacts, state: makeState('some_unmapped_node') });
   assert.ok(html.includes('grid-cols-1 lg:grid-cols-2'), 'renders the responsive two-up grid');
-  assert.ok(html.includes('DEMO-REQUIREMENTS.md'), 'the docs list is present (left track)');
+  assert.ok(/>Requirements</.test(html), 'the docs list is present (left track)');
   assert.match(html, /<svg/, 'the DAG-state card is present (right track renders a node icon)');
   assert.ok(html.includes('Planning'), 'the section carries its Planning label');
 });
 
 test('degrades to a docs-only column (no two-up grid) when the card has no node to show', () => {
   const html = render({ ...baseProps, artifacts, state: makeState(null, 'not_started') });
-  assert.ok(html.includes('DEMO-REQUIREMENTS.md'), 'the docs list still renders');
+  assert.ok(/>Requirements</.test(html), 'the docs list still renders');
   assert.ok(!html.includes('grid-cols-1 lg:grid-cols-2'), 'no two-up grid when the card is absent');
 });
 
 test('renders the card alone when there are no docs but a node resolves', () => {
   const html = render({ ...baseProps, artifacts: [], state: makeState('some_unmapped_node') });
-  assert.ok(!html.includes('DEMO-REQUIREMENTS.md'), 'no docs rows');
+  assert.ok(!/>Requirements</.test(html), 'no docs rows');
   assert.ok(!html.includes('grid-cols-1 lg:grid-cols-2'), 'no two-up grid with a single column');
   assert.match(html, /<svg/, 'the card renders on its own');
 });

@@ -80,9 +80,12 @@ test('omits the Draft badge when requirementsStatus is null', () => {
 
 test('renders one row per artifact, in the given order, with no re-sorting', () => {
   const html = render({ artifacts, requirementsStatus: null, onOpen: noop, onDelete: noop });
-  const reqIdx = html.indexOf('DEMO-REQUIREMENTS.md');
-  const mpIdx = html.indexOf('DEMO-MASTER-PLAN.md');
-  const notesIdx = html.indexOf('DEMO-NOTES.md');
+  // Rows no longer render the filename anywhere (the duplicated label span that
+  // carried it is gone), so ordering is verified against each row's visible
+  // title text instead — still unique per row and still position-stable.
+  const reqIdx = html.indexOf('Requirements');
+  const mpIdx = html.indexOf('Master Plan');
+  const notesIdx = html.indexOf('Notes');
   assert.ok(reqIdx !== -1 && mpIdx !== -1 && notesIdx !== -1, 'all three rows rendered');
   assert.ok(reqIdx < mpIdx && mpIdx < notesIdx, 'rows preserve incoming array order (Requirements, Master Plan, then the rest)');
 });
@@ -97,6 +100,24 @@ test('open and delete controls are real sibling <button>s, not a nested role="bu
   const deleteButtons = (html.match(/<button[^>]*aria-label="Delete artifact"/g) ?? []).length;
   assert.equal(deleteButtons, 3, 'one delete control per row');
   assert.ok(!html.includes('role="button"'), 'no synthetic role="button" controls');
+});
+
+test('no duplicated label renders next to the delete button', () => {
+  const html = render({ artifacts, requirementsStatus: null, onOpen: noop, onDelete: noop });
+  // Match visible text nodes only (the exact `>text<` tag-boundary fragment) —
+  // a raw substring count would also catch the open button's aria-label and
+  // the icon badge's own aria-label (set via SpinnerBadge's `label` prop even
+  // when `hideLabel` suppresses its visible span), which never lands on "1"
+  // even after the fix.
+  const visibleMasterPlanTextNodes = (html.match(/>Master Plan</g) ?? []).length;
+  assert.equal(visibleMasterPlanTextNodes, 1, 'Master Plan renders as a visible text node exactly once — no duplicated label sits next to the delete button');
+});
+
+test('the open control uses the full-row overlay technique (absolute inset-0)', () => {
+  const html = render({ artifacts, requirementsStatus: null, onOpen: noop, onDelete: noop });
+  const openButtonMatch = html.match(/<button[^>]*aria-label="Master Plan"[^>]*><\/button>/);
+  assert.ok(openButtonMatch, 'the Master Plan open button renders as a self-closing full-row overlay');
+  assert.match(openButtonMatch![0], /class="[^"]*\babsolute inset-0\b[^"]*"/, 'open button stretches over the whole row via absolute inset-0');
 });
 
 // ─── Interaction — callbacks fire with the correct index/artifact ─────────
@@ -159,6 +180,39 @@ test('clicking a row delete control invokes onDelete with that row\'s artifact',
   });
 
   assert.deepStrictEqual(deleted, [otherDoc], 'onDelete fired once with the third row\'s artifact');
+
+  await act(async () => { root.unmount(); });
+});
+
+test('clicking the delete button does not also invoke onOpen', async () => {
+  const { JSDOM } = await import('jsdom');
+  const dom = new JSDOM('<!doctype html><div id="root"></div>');
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (globalThis as any).window = dom.window;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (globalThis as any).document = dom.window.document;
+
+  const { createRoot } = await import('react-dom/client');
+  const { act } = await import('react');
+
+  const opened: number[] = [];
+  const deleted: Artifact[] = [];
+  const container = dom.window.document.getElementById('root')!;
+  const root = createRoot(container);
+  await act(async () => {
+    root.render(createElement(PlanningDocsList, {
+      artifacts, requirementsStatus: null, onOpen: (i) => opened.push(i), onDelete: (a) => deleted.push(a),
+    }));
+  });
+
+  const buttons = container.querySelectorAll('button[aria-label="Delete artifact"]');
+  assert.equal(buttons.length, 3, 'one delete control per row');
+  await act(async () => {
+    (buttons[1] as HTMLButtonElement).click();
+  });
+
+  assert.deepStrictEqual(deleted, [masterPlan], 'onDelete fired for the clicked row\'s artifact');
+  assert.deepStrictEqual(opened, [], 'onOpen never fires from a delete-button click, even though the open control overlays the whole row beneath it');
 
   await act(async () => { root.unmount(); });
 });

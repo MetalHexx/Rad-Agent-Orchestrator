@@ -5,7 +5,6 @@ import { FileText, Image as ImageIcon, LayoutTemplate, Trash2 } from "lucide-rea
 import { NodeStatusBadge } from "@/components/dag-timeline/node-status-badge";
 import { SpinnerBadge, ChangeBadge } from "@/components/badges";
 import { ActivePulse } from "@/components/artifacts/active-pulse";
-import { cn } from "@/lib/utils";
 import type { Artifact, ArtifactKind } from "@/lib/artifact-model";
 
 const PLANNING_TIER = "--tier-planning";
@@ -39,9 +38,10 @@ export interface PlanningDocsListProps {
  * Left-column list of the ordered Planning-section root documents. Purely
  * presentational — it does no fetching, sorting, or fs access; the caller
  * (fed by `deriveArtifacts` + the Requirements status endpoint) owns that.
- * Each row carries an icon badge with sibling open/delete `<button>`s
- * (roving-tabindex-friendly), a muted type label, and the Requirements
- * Draft pill.
+ * Each row is a full click/hover target (a full-row overlay `<button>`)
+ * carrying an icon badge, title, and the Requirements Draft pill, with a
+ * sibling delete `<button>` — never nested inside the open control — so
+ * assistive tech and keyboard nav reach both as distinct stops.
  */
 export function PlanningDocsList({ artifacts, requirementsStatus, onOpen, onDelete, unseen, activePulse }: PlanningDocsListProps) {
   if (artifacts.length === 0) return null;
@@ -54,19 +54,21 @@ export function PlanningDocsList({ artifacts, requirementsStatus, onOpen, onDele
         const showDraft = showsDraftBadge(artifact, requirementsStatus);
         return (
           <ActivePulse key={artifact.fileName} active={isActive} variant="row">
-            <div className="flex items-center gap-2 py-2 pr-3 pl-3 rounded-md hover:bg-accent/50">
+            <div className="relative flex items-center gap-2 py-2 pr-3 pl-3 rounded-md hover:bg-accent/50">
               {/* Primary "open" control and the delete control are sibling
                   real <button>s — never nested — so assistive tech targets
-                  each correctly and Space/Enter activate natively. */}
+                  each correctly and Space/Enter activate natively. The open
+                  button is a full-row overlay (absolute inset-0) so the whole
+                  row is clickable/hoverable; the delete button comes after it
+                  in DOM order so it naturally paints and receives clicks on
+                  top, with no explicit z-index needed. */}
               <button
                 type="button"
-                aria-label={`${friendly} — ${artifact.label}`}
+                aria-label={friendly}
                 onClick={() => onOpen(index)}
-                className={cn(
-                  "flex min-w-0 flex-1 items-center gap-2 cursor-pointer text-left rounded-md",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                )}
-              >
+                className="absolute inset-0 rounded-md cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              />
+              <div className="pointer-events-none flex min-w-0 flex-1 items-center gap-2">
                 {isUnseen ? (
                   <ChangeBadge />
                 ) : (
@@ -82,20 +84,15 @@ export function PlanningDocsList({ artifacts, requirementsStatus, onOpen, onDele
                 {showDraft && (
                   <SpinnerBadge label="Draft" cssVar={PLANNING_TIER} isSpinning={false} />
                 )}
-              </button>
-              <div className="flex min-w-0 shrink-0 items-center gap-3">
-                <span title={artifact.fileName} className="truncate text-xs text-muted-foreground">
-                  {artifact.label}
-                </span>
-                <button
-                  type="button"
-                  aria-label="Delete artifact"
-                  onClick={() => onDelete(artifact)}
-                  className="cursor-pointer rounded-md p-1.5 text-muted-foreground hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <Trash2 className="size-3.5" aria-hidden="true" />
-                </button>
               </div>
+              <button
+                type="button"
+                aria-label="Delete artifact"
+                onClick={() => onDelete(artifact)}
+                className="relative cursor-pointer rounded-md p-1.5 text-muted-foreground hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <Trash2 className="size-3.5" aria-hidden="true" />
+              </button>
             </div>
           </ActivePulse>
         );
