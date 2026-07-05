@@ -264,6 +264,25 @@ test('the frontmatter toggle floats over the top-right of the content stage, not
   assert.ok(html.includes('top-3') && html.includes('right-3'), 'toggle uses the floating top-right corner position');
 });
 
+test('previous, next, delete, and frontmatter toggle share one cohesive, accessible button treatment', () => {
+  const html = render({
+    ...base, activePath: 'DEMO-BRAINSTORMING.md', onToggleFrontmatter: noop, frontmatter: { status: 'active' },
+  });
+  // group/button is a static class literal baked into buttonVariants (see the header-controls
+  // test above) — its presence proves a button was built on buttonVariants, not a raw
+  // hand-styled <button>. All four floating stage buttons should now render on it.
+  const slots = (html.match(/group\/button/g) ?? []).length;
+  assert.ok(slots >= 4, 'previous, next, delete, and the frontmatter toggle all render on the shared buttonVariants styling');
+  // The old ad hoc p-2/size-5 treatment is gone entirely from the stage overlay — every
+  // floating icon there now uses the same size-4 sizing as the frontmatter toggle. Scoped
+  // to just the stage (between the header and the footer) since the filmstrip's own
+  // FileText cell icon legitimately still uses size-5.
+  const stageOnly = html.slice(html.indexOf('</header>'), html.indexOf('<footer'));
+  assert.ok(!stageOnly.includes('size-5'), 'no floating stage button falls back to the old oversized icon');
+  assert.ok(html.includes('aria-label="Previous artifact"'), 'previous control still present and labelled');
+  assert.ok(html.includes('aria-label="Next artifact"'), 'next control still present and labelled');
+});
+
 test('renders the frontmatter card above the body only when toggled on (P02-T01)', () => {
   const shown = render({
     ...base, activePath: 'DEMO-BRAINSTORMING.md',

@@ -223,44 +223,77 @@ export function ArtifactViewerModal({
             (activePulse?.has(active.path) ?? false) && "live-pulse-stage",
           )}
         />
-        <button type="button" aria-label="Previous artifact" onClick={onPrev}
-          className="absolute left-2 top-1/2 -translate-y-1/2 cursor-pointer rounded-full bg-background/70 p-2 text-foreground hover:bg-background">
-          <ChevronLeft className="size-5" aria-hidden="true" />
-        </button>
-        <button type="button" aria-label="Next artifact" onClick={onNext}
-          className="absolute right-2 top-1/2 -translate-y-1/2 cursor-pointer rounded-full bg-background/70 p-2 text-foreground hover:bg-background">
-          <ChevronRight className="size-5" aria-hidden="true" />
-        </button>
-        <button type="button" aria-label="Delete artifact" onClick={onRequestDelete}
-          className="absolute bottom-3 right-3 z-10 cursor-pointer rounded-full bg-background/70 p-2 text-muted-foreground hover:bg-background hover:text-destructive">
-          <Trash2 className="size-5" aria-hidden="true" />
-        </button>
-        {active.isMarkdown && onToggleFrontmatter && hasFrontmatter && (
-          <TooltipProvider>
+        {/* All four floating stage buttons share one look: buttonVariants ghost/icon on a
+            native <button> (never the Button component — it isn't wrapped in React.forwardRef,
+            so TooltipTrigger's ref never reaches the real DOM node and the tooltip fails to
+            close on blur, confirmed live). Each dims to text-muted-foreground until hovered/
+            focused, matching the frontmatter toggle; only Delete's hover color differs (red,
+            to signal destructiveness) — everything else about it is identical.
+            Wrapped in cn(): buttonVariants alone just concatenates strings, so the ghost
+            variant's own hover:bg-muted/hover:text-foreground would otherwise sit in the
+            compiled CSS after our hover:bg-background/hover:text-destructive overrides and
+            silently win (equal specificity, later source order) — cn()'s tailwind-merge
+            drops the earlier conflicting utility instead of leaving it to source order. */}
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger render={
+              <button type="button" aria-label="Previous artifact" onClick={onPrev}
+                className={cn(buttonVariants({
+                  variant: "ghost",
+                  size: "icon",
+                  className: "absolute left-2 top-1/2 z-10 -translate-y-1/2 cursor-pointer rounded-full bg-background/70 text-muted-foreground hover:bg-background hover:text-foreground",
+                }))}>
+                <ChevronLeft className="size-4" aria-hidden="true" />
+              </button>
+            } />
+            <TooltipContent>Previous artifact</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger render={
+              <button type="button" aria-label="Next artifact" onClick={onNext}
+                className={cn(buttonVariants({
+                  variant: "ghost",
+                  size: "icon",
+                  className: "absolute right-2 top-1/2 z-10 -translate-y-1/2 cursor-pointer rounded-full bg-background/70 text-muted-foreground hover:bg-background hover:text-foreground",
+                }))}>
+                <ChevronRight className="size-4" aria-hidden="true" />
+              </button>
+            } />
+            <TooltipContent>Next artifact</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger render={
+              <button type="button" aria-label="Delete artifact" onClick={onRequestDelete}
+                className={cn(buttonVariants({
+                  variant: "ghost",
+                  size: "icon",
+                  className: "absolute bottom-3 right-3 z-10 cursor-pointer rounded-full bg-background/70 text-muted-foreground hover:bg-background hover:text-destructive",
+                }))}>
+                <Trash2 className="size-4" aria-hidden="true" />
+              </button>
+            } />
+            <TooltipContent>Delete artifact</TooltipContent>
+          </Tooltip>
+          {active.isMarkdown && onToggleFrontmatter && hasFrontmatter && (
             <Tooltip>
-              {/* A native <button> instead of the shared Button component: Button isn't
-                  wrapped in React.forwardRef, so TooltipTrigger's ref never reaches the
-                  real DOM node and the tooltip fails to close on blur (confirmed live —
-                  it stays open after Tab moves focus away). buttonVariants gives the same
-                  styling on a host element, which always accepts refs. */}
               <TooltipTrigger render={
                 <button
                   type="button"
                   aria-label={showFrontmatter ? "Hide frontmatter" : "Show frontmatter"}
                   onClick={onToggleFrontmatter}
-                  className={buttonVariants({
+                  className={cn(buttonVariants({
                     variant: "ghost",
                     size: "icon",
                     className: "absolute right-3 top-3 z-10 cursor-pointer rounded-full bg-background/70 text-muted-foreground hover:bg-background hover:text-foreground",
-                  })}
+                  }))}
                 >
                   <PanelTop className="size-4" aria-hidden="true" />
                 </button>
               } />
               <TooltipContent>{showFrontmatter ? "Hide frontmatter" : "Show frontmatter"}</TooltipContent>
             </Tooltip>
-          </TooltipProvider>
-        )}
+          )}
+        </TooltipProvider>
         {shareState !== 'idle' && (
           <div role="status" aria-live="polite"
             className="absolute right-4 top-12 z-10 rounded-md border border-border bg-popover px-2.5 py-1.5 text-xs text-popover-foreground shadow-md">
