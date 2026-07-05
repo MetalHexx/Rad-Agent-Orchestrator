@@ -2,12 +2,15 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import { JSDOM } from 'jsdom';
 import React, { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { ArtifactViewerModal } from './artifact-viewer-modal';
 import type { ModalDoc } from '@/lib/modal-doc-model';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 (globalThis as any).React = React;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+(globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
 
 const arts: ModalDoc[] = [
   { path: 'DEMO-BRAINSTORMING.md', kind: 'markdown', title: 'Brainstorm', isMarkdown: true },
@@ -78,8 +81,8 @@ test('idle (no activePulse): active cell carries grey ring, no lavender glow cla
   // Active cell carries the grey ring
   assert.ok(html.includes('ring-ring'), 'active cell carries ring-ring grey ring');
   assert.ok(html.includes('border-ring'), 'active cell carries border-ring grey ring');
-  // Active cell has aria-current
-  assert.ok(html.includes('aria-current="true"'), 'active cell has aria-current="true"');
+  // Active cell is the selected tab
+  assert.ok(html.includes('aria-selected="true"'), 'active cell has aria-selected="true"');
 });
 
 test('writing (activePulse contains active file): stage pulses lavender, lavender frame on cell, grey ring absent (Fix 5)', () => {
@@ -92,12 +95,12 @@ test('writing (activePulse contains active file): stage pulses lavender, lavende
   assert.ok(html.includes('live-pulse-stage'), 'stage overlay carries live-pulse-stage while writing');
   // The active cell's ActivePulse wrapper is active — renders live-pulse-frame (lavender)
   assert.ok(html.includes('live-pulse-frame'), 'active cell ActivePulse wrapper carries live-pulse-frame');
-  // The grey selection ring (ring-2 ring-ring) must NOT appear on the aria-current cell.
-  // We locate the aria-current cell's opening tag and confirm it lacks ring-2.
+  // The grey selection ring (ring-2 ring-ring) must NOT appear on the selected tab cell.
+  // We locate the aria-selected cell's opening tag and confirm it lacks ring-2.
   // (focus-visible:ring-ring appears on every cell as a focus style — we only care about
   // the persistent selection ring-2 which is not added when pulsing.)
-  const currentCellMatch = html.match(/data-filmstrip-cell[^>]*aria-current="true"[^>]*class="([^"]+)"/);
-  assert.ok(currentCellMatch, 'aria-current cell found in markup');
+  const currentCellMatch = html.match(/data-filmstrip-cell[^>]*aria-selected="true"[^>]*class="([^"]+)"/);
+  assert.ok(currentCellMatch, 'aria-selected cell found in markup');
   const cellClasses = currentCellMatch![1];
   // The grey selection ring adds "ring-2 ring-ring border-ring" as a group.
   // focus-visible:ring-2 and focus-visible:ring-ring are focus styles present on every cell
@@ -116,39 +119,45 @@ test('renders a label caption for every filmstrip cell (DD-8)', () => {
   assert.ok(brainstormCount >= 2, 'Brainstorm label appears in both header and filmstrip');
 });
 
-test('makes every filmstrip cell a keyboard-accessible button (Issue A)', () => {
+test('marks the filmstrip as a tablist of keyboard-accessible tabs with roving tabindex (Issue A, P02-T02)', () => {
   const html = render({ ...base, activePath: 'DEMO-BRAINSTORMING.md' });
-  const roleButtons = (html.match(/role="button"/g) ?? []).length;
-  assert.ok(roleButtons >= 3, 'at least one role="button" per filmstrip cell');
-  const tabbables = (html.match(/tabindex="0"/g) ?? []).length;
-  assert.ok(tabbables >= 3, 'at least one tabindex="0" per filmstrip cell');
+  assert.ok(html.includes('role="tablist"'), 'strip container carries role="tablist"');
+  // Scope to the filmstrip cells themselves — the shell's own header buttons
+  // (Share, Full screen, Close, paging chevrons) also carry tabindex="0".
+  const cells = html.match(/<div data-filmstrip-cell="true"[^>]*>/g) ?? [];
+  assert.equal(cells.length, 3, 'three filmstrip cells rendered');
+  assert.ok(cells.every((c) => c.includes('role="tab"')), 'every filmstrip cell carries role="tab"');
+  const tabbables = cells.filter((c) => c.includes('tabindex="0"'));
+  assert.equal(tabbables.length, 1, 'exactly one filmstrip cell carries tabindex="0"');
+  const inert = cells.filter((c) => c.includes('tabindex="-1"'));
+  assert.equal(inert.length, 2, 'the remaining filmstrip cells carry tabindex="-1"');
 });
 
-test('marks exactly one filmstrip cell as the current artifact (Issue A)', () => {
+test('marks exactly one filmstrip cell as selected (Issue A)', () => {
   const html = render({ ...base, activePath: 'DEMO-BRAINSTORMING.md' });
-  const current = (html.match(/aria-current="true"/g) ?? []).length;
-  assert.equal(current, 1, 'exactly one cell carries aria-current="true"');
+  const current = (html.match(/aria-selected="true"/g) ?? []).length;
+  assert.equal(current, 1, 'exactly one cell carries aria-selected="true"');
 });
 
-test('aria-current tracks the active filename, not a fixed array slot, after a reorder (regression)', () => {
+test('aria-selected tracks the active filename, not a fixed array slot, after a reorder (regression)', () => {
   // The user is focused on the html visual. Render once in the original order…
   const before = render({ ...base, activePath: 'DEMO-BRAINSTORM.html' });
-  // …then with the array reordered underneath the modal. The aria-current cell
+  // …then with the array reordered underneath the modal. The selected cell
   // must still be the SAME document (the one whose label is its own), never the
   // file that happens to sit at the old index.
   const reordered: ModalDoc[] = [arts[2], arts[1], arts[0]];
   const after = render({ ...base, artifacts: reordered, activePath: 'DEMO-BRAINSTORM.html' });
-  // Exactly one current cell in each render.
-  assert.equal((before.match(/aria-current="true"/g) ?? []).length, 1);
-  assert.equal((after.match(/aria-current="true"/g) ?? []).length, 1);
+  // Exactly one selected cell in each render.
+  assert.equal((before.match(/aria-selected="true"/g) ?? []).length, 1);
+  assert.equal((after.match(/aria-selected="true"/g) ?? []).length, 1);
   // The dialog still identifies the active doc by its own filename in both.
   assert.ok(before.includes('DEMO-BRAINSTORM.html'));
   assert.ok(after.includes('DEMO-BRAINSTORM.html'));
-  // The aria-current cell carries the active file's own label ("Brainstorm Visual"),
+  // The selected cell carries the active file's own label ("Brainstorm Visual"),
   // proving the highlight follows the filename through the reorder.
   for (const html of [before, after]) {
-    const m = html.match(/aria-current="true"[^>]*aria-label="View ([^"]+)"|aria-label="View ([^"]+)"[^>]*aria-current="true"/);
-    assert.ok(m, 'current cell exposes its view label');
+    const m = html.match(/aria-selected="true"[^>]*aria-label="View ([^"]+)"|aria-label="View ([^"]+)"[^>]*aria-selected="true"/);
+    assert.ok(m, 'selected cell exposes its view label');
     assert.equal(m![1] ?? m![2], 'Brainstorm Visual', 'highlight stays on the active document');
   }
 });
@@ -253,6 +262,76 @@ test('renders no frontmatter card for an HTML artifact even if frontmatter/showF
     showFrontmatter: true, frontmatter: { status: 'active' },
   });
   assert.ok(!html.includes('data-slot="card"'), 'no frontmatter card renders on a non-markdown stage');
+});
+
+// Focus-follows-active (P02-T02) — jsdom + createRoot harness, since focus
+// location can't be observed from renderToStaticMarkup. All-markdown docs
+// keep the fixture free of IframePreview/ResizeObserver concerns.
+const mdOnly: ModalDoc[] = [
+  { path: 'A.md', kind: 'markdown', title: 'Alpha', isMarkdown: true },
+  { path: 'B.md', kind: 'markdown', title: 'Beta', isMarkdown: true },
+  { path: 'C.md', kind: 'markdown', title: 'Gamma', isMarkdown: true },
+];
+
+function setupFocusFollowDom() {
+  const dom = new JSDOM('<!doctype html><div id="root"></div>');
+  const { window } = dom;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (globalThis as any).window = window;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (globalThis as any).document = window.document;
+  // base-ui's useButton checks the global HTMLElement when the header/footer buttons mount.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (globalThis as any).HTMLElement = window.HTMLElement;
+  return { container: window.document.getElementById('root')! };
+}
+
+test('focus follows the newly-active filmstrip cell when focus is already in the strip (P02-T02)', async () => {
+  const { container } = setupFocusFollowDom();
+  const { createRoot } = await import('react-dom/client');
+  const { act } = await import('react');
+  const root = createRoot(container);
+  const props = { ...base, artifacts: mdOnly, activePath: 'A.md' };
+  await act(async () => {
+    root.render(createElement(ArtifactViewerModal, props));
+  });
+  const activeCell = () => container.querySelector('[data-filmstrip-cell][aria-selected="true"]') as HTMLElement | null;
+  const firstCell = activeCell();
+  assert.ok(firstCell, 'the active cell for A.md is rendered');
+  firstCell!.focus();
+  assert.equal(document.activeElement, firstCell, 'focus is on the A.md cell');
+
+  await act(async () => {
+    root.render(createElement(ArtifactViewerModal, { ...props, activePath: 'B.md' }));
+  });
+  const secondCell = activeCell();
+  assert.ok(secondCell && secondCell !== firstCell, 'the B.md cell is now the selected one');
+  assert.equal(document.activeElement, secondCell, 'focus followed onto the newly-active cell — not stranded on the now tabindex=-1 A.md cell');
+
+  await act(async () => { root.unmount(); });
+});
+
+test('focus-follow does not steal focus from outside the filmstrip (P02-T02 guard)', async () => {
+  const { container } = setupFocusFollowDom();
+  const { createRoot } = await import('react-dom/client');
+  const { act } = await import('react');
+  const root = createRoot(container);
+  const props = { ...base, artifacts: mdOnly, activePath: 'A.md' };
+  await act(async () => {
+    root.render(createElement(ArtifactViewerModal, props));
+  });
+  // Simulate a reader whose focus is elsewhere (e.g. the markdown body), not in the filmstrip.
+  const outside = document.createElement('button');
+  document.body.appendChild(outside);
+  outside.focus();
+  assert.equal(document.activeElement, outside);
+
+  await act(async () => {
+    root.render(createElement(ArtifactViewerModal, { ...props, activePath: 'B.md' }));
+  });
+  assert.equal(document.activeElement, outside, 'navigating the active doc does not yank focus away from outside the filmstrip');
+
+  await act(async () => { root.unmount(); });
 });
 
 test('share feedback timer is captured in a ref and cleared on unmount (FR-6, NFR-1)', () => {

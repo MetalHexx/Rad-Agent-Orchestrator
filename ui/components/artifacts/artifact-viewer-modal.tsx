@@ -15,6 +15,10 @@ import { ModalShell } from "@/components/modal/modal-shell";
 import type { ModalDoc } from "@/lib/modal-doc-model";
 import type { DocumentFrontmatter } from "@/types/components";
 
+// Only one instance of the modal is ever mounted at a time, so a fixed id is
+// safe for aria-labelledby.
+const TITLE_ID = "artifact-viewer-modal-title";
+
 export interface ArtifactViewerModalProps {
   projectName: string;
   artifacts: ModalDoc[];
@@ -80,6 +84,13 @@ export function ArtifactViewerModal({
     const c = stripRef.current, cell = activeCellRef.current;
     if (!c || !cell) return;
     c.scrollLeft = centerScrollLeft(c.clientWidth, cell.offsetLeft, cell.clientWidth);
+    // Roving tabindex means the newly-active cell is the only tab stop; follow
+    // focus onto it so the keyboard user isn't stranded on the now-inert
+    // previous cell. Only when focus is already inside the filmstrip — never
+    // steal focus from the markdown body a reader is scrolling.
+    if (c.contains(document.activeElement)) {
+      cell.focus();
+    }
   }, [activePath]);
 
   React.useEffect(() => {
@@ -100,9 +111,11 @@ export function ArtifactViewerModal({
   return (
     <ModalShell
       ariaLabel={`${friendly} — ${active.path}`}
+      titleId={TITLE_ID}
+      announcement={friendly}
       title={
         <>
-          <span className="text-sm font-medium text-foreground">{friendly}</span>
+          <span id={TITLE_ID} className="text-sm font-medium text-foreground">{friendly}</span>
           <span title={active.path} className="truncate text-xs text-muted-foreground">{active.path}</span>
         </>
       }
@@ -140,18 +153,19 @@ export function ArtifactViewerModal({
             onClick={() => { const c = stripRef.current; if (c) c.scrollBy({ left: pageScrollDelta(c.clientWidth) }); }}>
             <ChevronRight className="size-4" aria-hidden="true" />
           </Button>
-          <div ref={stripRef as React.RefObject<HTMLDivElement>} className="flex items-end gap-2 overflow-x-auto px-8">
+          <div ref={stripRef as React.RefObject<HTMLDivElement>} role="tablist" aria-label="Artifacts" className="flex items-end gap-2 overflow-x-auto px-8">
           {artifacts.map((artifact) => {
             const pulsing = activePulse?.has(artifact.path) ?? false;
+            const isActive = artifact.path === activePath;
             return (
             <ActivePulse key={artifact.path} active={pulsing} variant="frame" className="rounded-md">
             <div
               data-filmstrip-cell
-              ref={artifact.path === activePath ? activeCellRef : undefined}
-              role="button"
-              tabIndex={0}
+              ref={isActive ? activeCellRef : undefined}
+              role="tab"
+              tabIndex={isActive ? 0 : -1}
               aria-label={`View ${artifact.title}`}
-              aria-current={artifact.path === activePath ? 'true' : undefined}
+              aria-selected={isActive}
               onClick={() => onSelect(artifact.path)}
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(artifact.path); } }}
               className={cn(
@@ -159,7 +173,7 @@ export function ArtifactViewerModal({
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 // Grey neutral ring marks the SELECTED doc; while it's being written the
                 // ActivePulse lavender glow takes over (supersedes grey), so drop the grey then.
-                !pulsing && artifact.path === activePath
+                !pulsing && isActive
                   ? "border-2 ring-2 ring-ring border-ring"
                   : "border-border",
               )}
