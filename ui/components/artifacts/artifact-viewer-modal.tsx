@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { ChevronLeft, ChevronRight, Trash2, FileText, PanelTop } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { copyTextToClipboard } from "@/lib/clipboard";
 import { buildDocDeepLink } from "@/lib/deep-link";
@@ -238,16 +238,24 @@ export function ArtifactViewerModal({
         {active.isMarkdown && onToggleFrontmatter && hasFrontmatter && (
           <TooltipProvider>
             <Tooltip>
+              {/* A native <button> instead of the shared Button component: Button isn't
+                  wrapped in React.forwardRef, so TooltipTrigger's ref never reaches the
+                  real DOM node and the tooltip fails to close on blur (confirmed live —
+                  it stays open after Tab moves focus away). buttonVariants gives the same
+                  styling on a host element, which always accepts refs. */}
               <TooltipTrigger render={
-                <Button
-                  variant="ghost"
-                  size="icon"
+                <button
+                  type="button"
                   aria-label={showFrontmatter ? "Hide frontmatter" : "Show frontmatter"}
                   onClick={onToggleFrontmatter}
-                  className="absolute right-3 top-3 z-10 cursor-pointer rounded-full bg-background/70 text-muted-foreground hover:bg-background hover:text-foreground"
+                  className={buttonVariants({
+                    variant: "ghost",
+                    size: "icon",
+                    className: "absolute right-3 top-3 z-10 cursor-pointer rounded-full bg-background/70 text-muted-foreground hover:bg-background hover:text-foreground",
+                  })}
                 >
                   <PanelTop className="size-4" aria-hidden="true" />
-                </Button>
+                </button>
               } />
               <TooltipContent>{showFrontmatter ? "Hide frontmatter" : "Show frontmatter"}</TooltipContent>
             </Tooltip>

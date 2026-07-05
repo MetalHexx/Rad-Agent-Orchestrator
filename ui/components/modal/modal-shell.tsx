@@ -1,7 +1,7 @@
 "use client";
 import * as React from "react";
 import { Maximize2, X, Share2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { modalKeyAction } from "@/hooks/use-artifact-modal";
@@ -127,27 +127,35 @@ export function ModalShell({
             <TooltipProvider>
               {onShare && (
                 <Tooltip>
+                  {/* A native <button> instead of the shared Button component: Button isn't
+                      wrapped in React.forwardRef, so TooltipTrigger's ref never reaches the
+                      real DOM node and the tooltip fails to close on blur (confirmed live —
+                      it stays open after Tab moves focus away). buttonVariants gives the same
+                      styling on a host element, which always accepts refs. */}
                   <TooltipTrigger render={
-                    <Button variant="ghost" size="icon" aria-label="Share / copy link" className="cursor-pointer" onClick={onShare}>
+                    <button type="button" aria-label="Share / copy link" onClick={onShare}
+                      className={buttonVariants({ variant: "ghost", size: "icon", className: "cursor-pointer" })}>
                       <Share2 className="size-4" aria-hidden="true" />
-                    </Button>
+                    </button>
                   } />
                   <TooltipContent>Copy a shareable link to this document</TooltipContent>
                 </Tooltip>
               )}
               <Tooltip>
                 <TooltipTrigger render={
-                  <Button variant="ghost" size="icon" aria-label={isFullScreen ? "Exit full screen" : "Full screen"} className="cursor-pointer" onClick={onToggleFullScreen}>
+                  <button type="button" aria-label={isFullScreen ? "Exit full screen" : "Full screen"} onClick={onToggleFullScreen}
+                    className={buttonVariants({ variant: "ghost", size: "icon", className: "cursor-pointer" })}>
                     <Maximize2 className="size-4" aria-hidden="true" />
-                  </Button>
+                  </button>
                 } />
                 <TooltipContent>{isFullScreen ? "Exit full screen" : "Enter full screen"}</TooltipContent>
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger render={
-                  <Button variant="ghost" size="icon" aria-label="Close" className="cursor-pointer" onClick={onClose}>
+                  <button type="button" aria-label="Close" onClick={onClose}
+                    className={buttonVariants({ variant: "ghost", size: "icon", className: "cursor-pointer" })}>
                     <X className="size-4" aria-hidden="true" />
-                  </Button>
+                  </button>
                 } />
                 <TooltipContent>Close</TooltipContent>
               </Tooltip>
