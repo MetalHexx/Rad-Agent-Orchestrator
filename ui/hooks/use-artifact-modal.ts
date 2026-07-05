@@ -68,6 +68,19 @@ export function fileNameAfterDelete(docs: ModalDoc[], current: string | null): s
   return remaining[Math.min(i, remaining.length - 1)]?.path ?? null;
 }
 
+/**
+ * The doc to delete when the user confirms Delete on the currently active
+ * modal doc, resolved against the unified `ModalDoc[]` list — never a
+ * root-only list — so a subfolder doc (a phase plan, task handoff, review, or
+ * the error log) resolves just as reliably as a root doc. Returns null when
+ * the active path isn't in the list (nothing to delete).
+ */
+export function deleteTargetForActive(docs: ModalDoc[], activePath: string | null): { fileName: string } | null {
+  if (activePath === null) return null;
+  const d = docs.find((doc) => doc.path === activePath);
+  return d ? { fileName: d.path } : null;
+}
+
 export function openNavMode(isOpen: boolean): 'push' | 'replace' { return isOpen ? 'replace' : 'push'; }
 export function closeNavMode(openedViaPush: boolean): 'back' | 'replace' { return openedViaPush ? 'back' : 'replace'; }
 

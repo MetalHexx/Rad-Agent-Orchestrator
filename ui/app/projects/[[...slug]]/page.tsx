@@ -24,7 +24,7 @@ import type { ProjectStateV5, ProjectStateV6, GraphStatus, GateMode, NodeStatus 
 import type { SSEConnectionStatus } from "@/types/events";
 import type { ProjectSummary } from "@/types/components";
 import { ArtifactViewerModal } from "@/components/artifacts";
-import { useArtifactModal, markdownPathForActive } from "@/hooks/use-artifact-modal";
+import { useArtifactModal, markdownPathForActive, deleteTargetForActive } from "@/hooks/use-artifact-modal";
 import { ArtifactLiveProvider, useArtifactLive } from "@/hooks/use-artifact-live";
 import { buildModalDocs, type ModalDoc } from "@/lib/modal-doc-model";
 
@@ -49,7 +49,7 @@ interface ProjectsPageContentProps {
   sseStatus: SSEConnectionStatus;
   reconnect: () => void;
   filesLoaded: boolean;
-  setPendingDelete: (a: import("@/lib/artifact-model").Artifact | null) => void;
+  setPendingDelete: (a: { fileName: string } | null) => void;
   onActivePathChange: (path: string | null) => void;
   registerOnDeleted: (fn: () => void) => void;
   urlDoc: string | null;
@@ -289,7 +289,7 @@ function ProjectsPageContent({
           onPrev={modal.goPrev}
           onNext={modal.goNext}
           onSelect={(path) => modal.openByName(path)}
-          onRequestDelete={() => { const a = artifacts.find((x) => x.fileName === modal.activePath); if (a) setPendingDelete(a); }}
+          onRequestDelete={() => { const d = deleteTargetForActive(modalDocs, modal.activePath); if (d) setPendingDelete(d); }}
           isFullScreen={isFullScreen}
           onToggleFullScreen={() => setIsFullScreen((v) => !v)}
           unseen={live.unseen}
@@ -394,7 +394,7 @@ export default function ProjectsPage() {
     [projects, selectedProject],
   );
 
-  const [pendingDelete, setPendingDelete] = useState<import("@/lib/artifact-model").Artifact | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<{ fileName: string } | null>(null);
   const [deletePending, setDeletePending] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [fileRefetch, setFileRefetch] = useState(0);

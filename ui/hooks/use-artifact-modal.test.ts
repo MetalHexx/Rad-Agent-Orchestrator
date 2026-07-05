@@ -8,6 +8,7 @@ import {
   markdownPathForActive,
   fileNameAtOffset,
   fileNameAfterDelete,
+  deleteTargetForActive,
   openNavMode,
   closeNavMode,
 } from './use-artifact-modal';
@@ -123,6 +124,32 @@ test('fileNameAfterDelete returns null when the only file is removed so the moda
 
 test('fileNameAfterDelete returns null when the active filename is absent', () => {
   assert.equal(fileNameAfterDelete(arts, 'GONE.md'), null);
+});
+
+// ─── deleteTargetForActive — resolves against the unified doc list, not a root-only one (FR-19) ──
+
+test('deleteTargetForActive resolves a root doc by its bare filename', () => {
+  assert.deepEqual(deleteTargetForActive(arts, 'A.md'), { fileName: 'A.md' });
+});
+
+test('deleteTargetForActive resolves a subfolder doc by its full path (regression: must not depend on a root-only list)', () => {
+  const withSubfolder: ModalDoc[] = [
+    ...arts,
+    { path: 'phases/PHASE-2-PLAN.md', kind: 'markdown', title: 'Phase 2 Plan', isMarkdown: true, category: 'phase' },
+  ];
+  assert.deepEqual(
+    deleteTargetForActive(withSubfolder, 'phases/PHASE-2-PLAN.md'),
+    { fileName: 'phases/PHASE-2-PLAN.md' },
+  );
+});
+
+test('deleteTargetForActive returns null when the active path is absent from the list', () => {
+  assert.equal(deleteTargetForActive(arts, 'GONE.md'), null);
+  assert.equal(deleteTargetForActive(arts, 'phases/PHASE-2-PLAN.md'), null);
+});
+
+test('deleteTargetForActive returns null when there is no active path', () => {
+  assert.equal(deleteTargetForActive(arts, null), null);
 });
 
 test('openNavMode pushes when opening from closed and replaces when switching', () => {

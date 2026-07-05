@@ -6,6 +6,7 @@ import {
   markdownPathForActive,
   fileNameAtOffset,
   fileNameAfterDelete,
+  deleteTargetForActive,
 } from '@/hooks/use-artifact-modal';
 import type { ModalDoc } from '@/lib/modal-doc-model';
 
@@ -57,10 +58,29 @@ test('prev/next are wired to the path-based navigation handlers (FR-14)', () => 
   assert.equal(fileNameAtOffset(arts, 'DEMO-BRAINSTORMING.md', -1), 'DEMO-WIREFRAME-X.html');
 });
 
-test('delete resolves the pending artifact by the active path (FR-19)', () => {
+test('delete resolves the pending target from modalDocs (the unified list), not the root-only artifacts list (FR-19)', () => {
+  // Regression: this must read modalDocs (path-keyed, includes subfolder docs),
+  // never the root-only `artifacts` list keyed by bare fileName — that mismatch
+  // silently no-ops Delete for every subfolder doc (phase plan, task handoff,
+  // review, error log) reachable through the unified modal.
   assert.ok(
-    pageSrc.includes('artifacts.find((x) => x.fileName === modal.activePath)'),
-    'delete finds the active artifact by path',
+    pageSrc.includes('deleteTargetForActive(modalDocs, modal.activePath)'),
+    'delete resolves its target from modalDocs via deleteTargetForActive',
+  );
+  assert.ok(
+    !/artifacts\.find\(\(x\)\s*=>\s*x\.fileName\s*===\s*modal\.activePath\)/.test(pageSrc),
+    'the old root-only artifacts lookup must be gone',
+  );
+  // Exercise the actual resolution behavior (not just a source-string match):
+  // a subfolder path — the exact class of content this phase newly routes
+  // through the modal — must resolve to a real delete target.
+  const withSubfolder: ModalDoc[] = [
+    ...arts,
+    { path: 'phases/PHASE-2-PLAN.md', kind: 'markdown', title: 'Phase 2 Plan', isMarkdown: true, category: 'phase' },
+  ];
+  assert.deepEqual(
+    deleteTargetForActive(withSubfolder, 'phases/PHASE-2-PLAN.md'),
+    { fileName: 'phases/PHASE-2-PLAN.md' },
   );
   // onDeleted clamp semantics, in path terms.
   assert.equal(fileNameAfterDelete(arts, 'DEMO-WIREFRAME-X.html'), 'DEMO-BRAINSTORM.html');
