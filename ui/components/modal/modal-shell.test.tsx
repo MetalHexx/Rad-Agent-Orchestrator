@@ -43,6 +43,17 @@ const base = {
 }
 console.log('\nAll ModalShell tests passed');
 
+// Full-screen aria-label flips with state, mirroring the frontmatter toggle's
+// own hidden/shown label convention (artifact-viewer-modal.tsx)
+{
+  const html = renderToStaticMarkup(
+    <ModalShell {...base} isFullScreen={true}><div>BODY</div></ModalShell>,
+  );
+  assert.ok(html.includes('aria-label="Exit full screen"'), 'Full screen label flips once isFullScreen is true');
+  assert.ok(!html.includes('aria-label="Full screen"'), 'the entering-state label is absent while already full screen');
+  console.log('✓ shell: Full screen aria-label flips with isFullScreen state');
+}
+
 // aria-labelledby wiring (P02-T02) — a title id supersedes the aria-label fallback
 {
   const html = renderToStaticMarkup(
@@ -67,6 +78,9 @@ function setupDom(): { container: HTMLDivElement } {
   Object.defineProperty(globalThis, 'navigator', { value: dom.window.navigator, writable: true, configurable: true });
   // base-ui's useButton checks the global HTMLElement when its buttons mount.
   Object.defineProperty(globalThis, 'HTMLElement', { value: dom.window.HTMLElement, writable: true, configurable: true });
+  // base-ui's tooltip hover-interaction hook (via @floating-ui/utils's isElement)
+  // checks the global Element when a TooltipTrigger mounts.
+  Object.defineProperty(globalThis, 'Element', { value: dom.window.Element, writable: true, configurable: true });
   const container = dom.window.document.getElementById('root') as HTMLDivElement;
   return { container };
 }

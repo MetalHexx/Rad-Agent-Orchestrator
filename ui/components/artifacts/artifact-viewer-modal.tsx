@@ -1,8 +1,9 @@
 "use client";
 
 import * as React from "react";
-import { ChevronLeft, ChevronRight, Trash2, FileText, Info } from "lucide-react";
+import { ChevronLeft, ChevronRight, Trash2, FileText, PanelTop } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { copyTextToClipboard } from "@/lib/clipboard";
 import { buildDocDeepLink } from "@/lib/deep-link";
 import { centerScrollLeft, pageScrollDelta, shouldHijackWheel } from "@/lib/filmstrip-scroll";
@@ -37,7 +38,7 @@ export interface ArtifactViewerModalProps {
   frontmatter?: DocumentFrontmatter | null;
   /** Whether the frontmatter card is currently toggled on. Default false (hidden). */
   showFrontmatter?: boolean;
-  /** Toggles frontmatter visibility. Omitted → the header toggle button is not rendered. */
+  /** Toggles frontmatter visibility. Omitted → the floating toggle button is not rendered. */
   onToggleFrontmatter?: () => void;
   onClose: () => void;
   onPrev: () => void;
@@ -63,6 +64,11 @@ export function ArtifactViewerModal({
   unseen, activePulse, mtimes, dataState = "open",
 }: ArtifactViewerModalProps) {
   const active = artifacts.find((a) => a.path === activePath);
+  // Mirrors DocumentMetadata's own "any real entries" check (document-metadata.tsx)
+  // so "has frontmatter" means the same thing everywhere in the app — otherwise
+  // the toggle would appear for markdown docs with an empty/absent frontmatter
+  // block and open onto an empty panel.
+  const hasFrontmatter = !!frontmatter && Object.entries(frontmatter).some(([, v]) => v !== null && v !== undefined);
 
   const [shareState, setShareState] = React.useState<'idle' | 'copied' | 'failed'>('idle');
   const shareTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -118,19 +124,6 @@ export function ArtifactViewerModal({
           <span id={TITLE_ID} className="text-sm font-medium text-foreground">{friendly}</span>
           <span title={active.path} className="truncate text-xs text-muted-foreground">{active.path}</span>
         </>
-      }
-      headerActions={
-        active.isMarkdown && onToggleFrontmatter ? (
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label={showFrontmatter ? "Hide frontmatter" : "Show frontmatter"}
-            className="cursor-pointer"
-            onClick={onToggleFrontmatter}
-          >
-            <Info className="size-4" aria-hidden="true" />
-          </Button>
-        ) : undefined
       }
       onClose={onClose}
       onPrev={onPrev}
@@ -242,6 +235,24 @@ export function ArtifactViewerModal({
           className="absolute bottom-3 right-3 z-10 cursor-pointer rounded-full bg-background/70 p-2 text-muted-foreground hover:bg-background hover:text-destructive">
           <Trash2 className="size-5" aria-hidden="true" />
         </button>
+        {active.isMarkdown && onToggleFrontmatter && hasFrontmatter && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger render={
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={showFrontmatter ? "Hide frontmatter" : "Show frontmatter"}
+                  onClick={onToggleFrontmatter}
+                  className="absolute right-3 top-3 z-10 cursor-pointer rounded-full bg-background/70 text-muted-foreground hover:bg-background hover:text-foreground"
+                >
+                  <PanelTop className="size-4" aria-hidden="true" />
+                </Button>
+              } />
+              <TooltipContent>{showFrontmatter ? "Hide frontmatter" : "Show frontmatter"}</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
         {shareState !== 'idle' && (
           <div role="status" aria-live="polite"
             className="absolute right-4 top-12 z-10 rounded-md border border-border bg-popover px-2.5 py-1.5 text-xs text-popover-foreground shadow-md">

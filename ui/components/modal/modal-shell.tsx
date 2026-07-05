@@ -2,6 +2,7 @@
 import * as React from "react";
 import { Maximize2, X, Share2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { modalKeyAction } from "@/hooks/use-artifact-modal";
 
@@ -123,17 +124,34 @@ export function ModalShell({
           {title}
           <div className="ml-auto flex items-center gap-1">
             {headerActions}
-            {onShare && (
-              <Button variant="ghost" size="icon" aria-label="Share / copy link" className="cursor-pointer" onClick={onShare}>
-                <Share2 className="size-4" aria-hidden="true" />
-              </Button>
-            )}
-            <Button variant="ghost" size="icon" aria-label="Full screen" className="cursor-pointer" onClick={onToggleFullScreen}>
-              <Maximize2 className="size-4" aria-hidden="true" />
-            </Button>
-            <Button variant="ghost" size="icon" aria-label="Close" className="cursor-pointer" onClick={onClose}>
-              <X className="size-4" aria-hidden="true" />
-            </Button>
+            <TooltipProvider>
+              {onShare && (
+                <Tooltip>
+                  <TooltipTrigger render={
+                    <Button variant="ghost" size="icon" aria-label="Share / copy link" className="cursor-pointer" onClick={onShare}>
+                      <Share2 className="size-4" aria-hidden="true" />
+                    </Button>
+                  } />
+                  <TooltipContent>Copy a shareable link to this document</TooltipContent>
+                </Tooltip>
+              )}
+              <Tooltip>
+                <TooltipTrigger render={
+                  <Button variant="ghost" size="icon" aria-label={isFullScreen ? "Exit full screen" : "Full screen"} className="cursor-pointer" onClick={onToggleFullScreen}>
+                    <Maximize2 className="size-4" aria-hidden="true" />
+                  </Button>
+                } />
+                <TooltipContent>{isFullScreen ? "Exit full screen" : "Enter full screen"}</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger render={
+                  <Button variant="ghost" size="icon" aria-label="Close" className="cursor-pointer" onClick={onClose}>
+                    <X className="size-4" aria-hidden="true" />
+                  </Button>
+                } />
+                <TooltipContent>Close</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
         </header>
         <div className="relative flex-1 overflow-hidden">{children}</div>

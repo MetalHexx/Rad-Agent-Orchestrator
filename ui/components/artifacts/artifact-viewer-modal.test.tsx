@@ -193,7 +193,10 @@ test('renders a Share control on the shared ghost button in the header', () => {
 
 test('header controls use the shared button slot while preserving their labels', () => {
   const html = render({ ...base, activePath: 'DEMO-BRAINSTORMING.md' });
-  const slots = (html.match(/data-slot="button"/g) ?? []).length;
+  // The tooltip wrapper's own merged `data-slot="tooltip-trigger"` overwrites the
+  // Button's own `data-slot="button"` marker, so `group/button` (a static class
+  // literal baked into buttonVariants) is the survives-the-wrap fingerprint instead.
+  const slots = (html.match(/group\/button/g) ?? []).length;
   assert.ok(slots >= 3, 'Share, Full screen, and Close all render on the shared Button');
   assert.ok(html.includes('aria-label="Full screen"'), 'Full screen label preserved');
   assert.ok(html.includes('aria-label="Close"'), 'Close label preserved');
@@ -213,33 +216,52 @@ test('overflow edge fades are non-interactive and end chevrons are labelled', ()
   assert.ok(html.includes('pointer-events-none'), 'edge fades do not block cell interaction');
 });
 
-test('shows a frontmatter toggle for a markdown doc, labelled by the hidden state (P02-T01)', () => {
-  const html = render({ ...base, activePath: 'DEMO-BRAINSTORMING.md', showFrontmatter: false, onToggleFrontmatter: noop });
+test('shows a frontmatter toggle for a markdown doc with frontmatter, labelled by the hidden state (P02-T01)', () => {
+  const html = render({
+    ...base, activePath: 'DEMO-BRAINSTORMING.md',
+    showFrontmatter: false, onToggleFrontmatter: noop, frontmatter: { status: 'active' },
+  });
   assert.ok(html.includes('aria-label="Show frontmatter"'), 'toggle carries the hidden-state label');
   assert.ok(!html.includes('aria-label="Hide frontmatter"'), 'the shown-state label is absent while hidden');
 });
 
 test('the frontmatter toggle aria-label flips to the shown state (P02-T01)', () => {
-  const html = render({ ...base, activePath: 'DEMO-BRAINSTORMING.md', showFrontmatter: true, onToggleFrontmatter: noop });
+  const html = render({
+    ...base, activePath: 'DEMO-BRAINSTORMING.md',
+    showFrontmatter: true, onToggleFrontmatter: noop, frontmatter: { status: 'active' },
+  });
   assert.ok(html.includes('aria-label="Hide frontmatter"'), 'toggle carries the shown-state label');
   assert.ok(!html.includes('aria-label="Show frontmatter"'), 'the hidden-state label is absent while shown');
 });
 
 test('omits the frontmatter toggle for a non-markdown artifact (P02-T01)', () => {
-  const html = render({ ...base, activePath: 'DEMO-BRAINSTORM.html', onToggleFrontmatter: noop });
+  const html = render({ ...base, activePath: 'DEMO-BRAINSTORM.html', onToggleFrontmatter: noop, frontmatter: { status: 'active' } });
   assert.ok(!html.includes('Show frontmatter') && !html.includes('Hide frontmatter'), 'no frontmatter toggle for an HTML artifact');
 });
 
 test('omits the frontmatter toggle when no onToggleFrontmatter handler is supplied (P02-T01)', () => {
-  const html = render({ ...base, activePath: 'DEMO-BRAINSTORMING.md' });
+  const html = render({ ...base, activePath: 'DEMO-BRAINSTORMING.md', frontmatter: { status: 'active' } });
   assert.ok(!html.includes('Show frontmatter') && !html.includes('Hide frontmatter'), 'no toggle button without a handler wired');
 });
 
-test('the frontmatter toggle renders left of Share in header order (P02-T01)', () => {
+test('omits the frontmatter toggle when the markdown doc has no frontmatter entries', () => {
+  const html = render({ ...base, activePath: 'DEMO-BRAINSTORMING.md', onToggleFrontmatter: noop, frontmatter: {} });
+  assert.ok(!html.includes('Show frontmatter') && !html.includes('Hide frontmatter'), 'no toggle when frontmatter is an empty object');
+});
+
+test('omits the frontmatter toggle when frontmatter is absent, even for a markdown doc with a handler wired', () => {
   const html = render({ ...base, activePath: 'DEMO-BRAINSTORMING.md', onToggleFrontmatter: noop });
+  assert.ok(!html.includes('Show frontmatter') && !html.includes('Hide frontmatter'), 'no toggle when frontmatter was never supplied');
+});
+
+test('the frontmatter toggle floats over the top-right of the content stage, not in the header', () => {
+  const html = render({
+    ...base, activePath: 'DEMO-BRAINSTORMING.md', onToggleFrontmatter: noop, frontmatter: { status: 'active' },
+  });
+  const headerEnd = html.indexOf('</header>');
   const toggleIdx = html.indexOf('aria-label="Show frontmatter"');
-  const shareIdx = html.indexOf('aria-label="Share / copy link"');
-  assert.ok(toggleIdx >= 0 && shareIdx >= 0 && toggleIdx < shareIdx, 'frontmatter toggle appears before the Share control');
+  assert.ok(headerEnd >= 0 && toggleIdx > headerEnd, 'frontmatter toggle renders after the header closes, not inside it');
+  assert.ok(html.includes('top-3') && html.includes('right-3'), 'toggle uses the floating top-right corner position');
 });
 
 test('renders the frontmatter card above the body only when toggled on (P02-T01)', () => {
@@ -283,6 +305,10 @@ function setupFocusFollowDom() {
   // base-ui's useButton checks the global HTMLElement when the header/footer buttons mount.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (globalThis as any).HTMLElement = window.HTMLElement;
+  // base-ui's tooltip hover-interaction hook (via @floating-ui/utils's isElement)
+  // checks the global Element when a TooltipTrigger mounts.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (globalThis as any).Element = window.Element;
   return { container: window.document.getElementById('root')! };
 }
 
