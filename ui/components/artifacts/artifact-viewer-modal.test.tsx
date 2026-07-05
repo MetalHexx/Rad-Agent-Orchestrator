@@ -5,14 +5,14 @@ import path from 'node:path';
 import React, { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { ArtifactViewerModal } from './artifact-viewer-modal';
-import type { Artifact } from '@/lib/artifact-model';
+import type { ModalDoc } from '@/lib/modal-doc-model';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 (globalThis as any).React = React;
 
-const arts: Artifact[] = [
-  { fileName: 'DEMO-BRAINSTORMING.md', kind: 'markdown', label: 'Brainstorm', title: null, isMarkdown: true },
-  { fileName: 'DEMO-BRAINSTORM.html', kind: 'visual', label: 'Brainstorm Visual', title: null, isMarkdown: false },
-  { fileName: 'DEMO-WIREFRAME-X.html', kind: 'wireframe', label: 'Wireframe', title: 'X', isMarkdown: false },
+const arts: ModalDoc[] = [
+  { path: 'DEMO-BRAINSTORMING.md', kind: 'markdown', title: 'Brainstorm', isMarkdown: true },
+  { path: 'DEMO-BRAINSTORM.html', kind: 'visual', title: 'Brainstorm Visual', isMarkdown: false },
+  { path: 'DEMO-WIREFRAME-X.html', kind: 'wireframe', title: 'X', isMarkdown: false },
 ];
 const noop = () => {};
 function render(props: Parameters<typeof ArtifactViewerModal>[0]): string {
@@ -25,30 +25,30 @@ const base = {
 } as const;
 
 test('renders the active html artifact in a sandboxed iframe on the stage (FR-13, NFR-1)', () => {
-  const html = render({ ...base, activeFileName: 'DEMO-BRAINSTORM.html' });
+  const html = render({ ...base, activePath: 'DEMO-BRAINSTORM.html' });
   assert.ok(html.includes('/api/projects/DEMO/raw?path=DEMO-BRAINSTORM.html'), 'stage iframe targets raw route');
   assert.ok(!html.includes('allow-scripts'), 'stage iframe has no allow-scripts');
 });
 
 test('renders BRAINSTORMING.md via the markdown renderer, not an iframe (FR-13, AD-8)', () => {
-  const html = render({ ...base, activeFileName: 'DEMO-BRAINSTORMING.md' });
+  const html = render({ ...base, activePath: 'DEMO-BRAINSTORMING.md' });
   assert.ok(html.includes('Hello'), 'markdown content rendered on the stage');
   assert.ok(!html.includes('/raw?path=DEMO-BRAINSTORMING.md'), 'md is not iframed');
 });
 
 test('renders a filmstrip cell per artifact, all mounted (FR-18, NFR-4)', () => {
-  const html = render({ ...base, activeFileName: 'DEMO-BRAINSTORMING.md' });
+  const html = render({ ...base, activePath: 'DEMO-BRAINSTORMING.md' });
   const cells = (html.match(/data-filmstrip-cell/g) ?? []).length;
   assert.equal(cells, 3, 'one filmstrip cell per artifact');
 });
 
 test('renders nothing when the active filename is absent from the list (FR-19)', () => {
-  assert.equal(render({ ...base, activeFileName: 'GONE.html' }), '');
-  assert.equal(render({ ...base, activeFileName: null }), '');
+  assert.equal(render({ ...base, activePath: 'GONE.html' }), '');
+  assert.equal(render({ ...base, activePath: null }), '');
 });
 
 test('exposes full-screen, delete, and close controls; omits new-tab/counter/legend (FR-15, FR-17, DD-7)', () => {
-  const html = render({ ...base, activeFileName: 'DEMO-WIREFRAME-X.html' });
+  const html = render({ ...base, activePath: 'DEMO-WIREFRAME-X.html' });
   assert.ok(html.includes('aria-label="Full screen"'), 'full-screen control present');
   assert.ok(html.includes('aria-label="Delete artifact"'), 'delete control present');
   assert.ok(html.includes('aria-label="Close"'), 'close control present');
@@ -57,19 +57,19 @@ test('exposes full-screen, delete, and close controls; omits new-tab/counter/leg
 });
 
 test('applies the full-screen layout class when isFullScreen is true (FR-17)', () => {
-  const html = render({ ...base, activeFileName: 'DEMO-WIREFRAME-X.html', isFullScreen: true });
+  const html = render({ ...base, activePath: 'DEMO-WIREFRAME-X.html', isFullScreen: true });
   assert.ok(html.includes('w-screen'), 'full-screen panel spans the viewport width');
   assert.ok(html.includes('h-screen'), 'full-screen panel spans the viewport height');
 });
 
 test('uses the windowed layout (max-w-5xl, rounded-xl) when not full-screen (FR-17 morph target)', () => {
-  const html = render({ ...base, activeFileName: 'DEMO-WIREFRAME-X.html', isFullScreen: false });
+  const html = render({ ...base, activePath: 'DEMO-WIREFRAME-X.html', isFullScreen: false });
   assert.ok(html.includes('max-w-5xl'), 'windowed panel is capped at max-w-5xl');
   assert.ok(html.includes('rounded-xl'), 'windowed panel has rounded corners');
 });
 
 test('idle (no activePulse): active cell carries grey ring, no lavender glow classes anywhere (Fix 5)', () => {
-  const html = render({ ...base, activeFileName: 'DEMO-WIREFRAME-X.html' });
+  const html = render({ ...base, activePath: 'DEMO-WIREFRAME-X.html' });
   // Legacy classes must be gone
   assert.ok(!html.includes('active-doc-glow-stage'), 'active-doc-glow-stage must not appear');
   assert.ok(!html.includes('active-doc-glow-cell'), 'active-doc-glow-cell must not appear');
@@ -85,7 +85,7 @@ test('idle (no activePulse): active cell carries grey ring, no lavender glow cla
 test('writing (activePulse contains active file): stage pulses lavender, lavender frame on cell, grey ring absent (Fix 5)', () => {
   const html = render({
     ...base,
-    activeFileName: 'DEMO-WIREFRAME-X.html',
+    activePath: 'DEMO-WIREFRAME-X.html',
     activePulse: new Set(['DEMO-WIREFRAME-X.html']),
   });
   // Stage overlay must carry the pulse class
@@ -106,7 +106,7 @@ test('writing (activePulse contains active file): stage pulses lavender, lavende
 });
 
 test('renders a label caption for every filmstrip cell (DD-8)', () => {
-  const html = render({ ...base, activeFileName: 'DEMO-BRAINSTORMING.md' });
+  const html = render({ ...base, activePath: 'DEMO-BRAINSTORMING.md' });
   assert.ok(html.includes('Brainstorm Visual'), 'filmstrip shows friendly name for second artifact');
   // The third artifact has title 'X', so the caption renders the friendly name 'X', not 'Wireframe'
   assert.ok(html.includes('X'), 'filmstrip shows friendly name for third artifact');
@@ -117,7 +117,7 @@ test('renders a label caption for every filmstrip cell (DD-8)', () => {
 });
 
 test('makes every filmstrip cell a keyboard-accessible button (Issue A)', () => {
-  const html = render({ ...base, activeFileName: 'DEMO-BRAINSTORMING.md' });
+  const html = render({ ...base, activePath: 'DEMO-BRAINSTORMING.md' });
   const roleButtons = (html.match(/role="button"/g) ?? []).length;
   assert.ok(roleButtons >= 3, 'at least one role="button" per filmstrip cell');
   const tabbables = (html.match(/tabindex="0"/g) ?? []).length;
@@ -125,19 +125,19 @@ test('makes every filmstrip cell a keyboard-accessible button (Issue A)', () => 
 });
 
 test('marks exactly one filmstrip cell as the current artifact (Issue A)', () => {
-  const html = render({ ...base, activeFileName: 'DEMO-BRAINSTORMING.md' });
+  const html = render({ ...base, activePath: 'DEMO-BRAINSTORMING.md' });
   const current = (html.match(/aria-current="true"/g) ?? []).length;
   assert.equal(current, 1, 'exactly one cell carries aria-current="true"');
 });
 
 test('aria-current tracks the active filename, not a fixed array slot, after a reorder (regression)', () => {
   // The user is focused on the html visual. Render once in the original order…
-  const before = render({ ...base, activeFileName: 'DEMO-BRAINSTORM.html' });
+  const before = render({ ...base, activePath: 'DEMO-BRAINSTORM.html' });
   // …then with the array reordered underneath the modal. The aria-current cell
   // must still be the SAME document (the one whose label is its own), never the
   // file that happens to sit at the old index.
-  const reordered: Artifact[] = [arts[2], arts[1], arts[0]];
-  const after = render({ ...base, artifacts: reordered, activeFileName: 'DEMO-BRAINSTORM.html' });
+  const reordered: ModalDoc[] = [arts[2], arts[1], arts[0]];
+  const after = render({ ...base, artifacts: reordered, activePath: 'DEMO-BRAINSTORM.html' });
   // Exactly one current cell in each render.
   assert.equal((before.match(/aria-current="true"/g) ?? []).length, 1);
   assert.equal((after.match(/aria-current="true"/g) ?? []).length, 1);
@@ -157,40 +157,40 @@ test('resolves the active document by filename, not by array slot (regression)',
   // Same artifacts, two different orderings. The active filename points at the
   // wireframe, which sits at a DIFFERENT index in each list. The stage must show
   // it regardless of where it landed — proving identity is the filename.
-  const orderA: Artifact[] = [arts[0], arts[1], arts[2]]; // wireframe at index 2
-  const orderB: Artifact[] = [arts[2], arts[0], arts[1]]; // wireframe at index 0
-  const a = render({ ...base, artifacts: orderA, activeFileName: 'DEMO-WIREFRAME-X.html' });
-  const b = render({ ...base, artifacts: orderB, activeFileName: 'DEMO-WIREFRAME-X.html' });
+  const orderA: ModalDoc[] = [arts[0], arts[1], arts[2]]; // wireframe at index 2
+  const orderB: ModalDoc[] = [arts[2], arts[0], arts[1]]; // wireframe at index 0
+  const a = render({ ...base, artifacts: orderA, activePath: 'DEMO-WIREFRAME-X.html' });
+  const b = render({ ...base, artifacts: orderB, activePath: 'DEMO-WIREFRAME-X.html' });
   for (const html of [a, b]) {
-    assert.ok(html.includes('/api/projects/DEMO/raw?path=DEMO-WIREFRAME-X.html'), 'stage shows the file named by activeFileName');
+    assert.ok(html.includes('/api/projects/DEMO/raw?path=DEMO-WIREFRAME-X.html'), 'stage shows the doc named by activePath');
   }
 });
 
 test('applies cursor-pointer to clickable controls (Issue A/C)', () => {
-  const html = render({ ...base, activeFileName: 'DEMO-BRAINSTORM.html' });
+  const html = render({ ...base, activePath: 'DEMO-BRAINSTORM.html' });
   assert.ok(html.includes('cursor-pointer'), 'cursor-pointer present in modal markup');
 });
 
 test('shows a loading spinner while markdown content is unresolved (Extras)', () => {
-  const html = render({ ...base, activeFileName: 'DEMO-BRAINSTORMING.md', markdownContent: null });
+  const html = render({ ...base, activePath: 'DEMO-BRAINSTORMING.md', markdownContent: null });
   assert.ok(html.includes('role="status"'), 'markdown loading spinner present');
   assert.ok(html.includes('aria-label="Loading document"'), 'spinner is labelled');
 });
 
 test('renders a Share control on the shared ghost button in the header', () => {
-  const html = render({ ...base, activeFileName: 'DEMO-BRAINSTORMING.md' });
+  const html = render({ ...base, activePath: 'DEMO-BRAINSTORMING.md' });
   assert.ok(html.includes('aria-label="Share / copy link"'), 'share control present and labelled');
 });
 
 test('header controls use the shared button slot while preserving their labels', () => {
-  const html = render({ ...base, activeFileName: 'DEMO-BRAINSTORMING.md' });
+  const html = render({ ...base, activePath: 'DEMO-BRAINSTORMING.md' });
   const slots = (html.match(/data-slot="button"/g) ?? []).length;
   assert.ok(slots >= 3, 'Share, Full screen, and Close all render on the shared Button');
   assert.ok(html.includes('aria-label="Full screen"'), 'Full screen label preserved');
   assert.ok(html.includes('aria-label="Close"'), 'Close label preserved');
 });
 test('delete stays a corner overlay and the footer holds only the filmstrip', () => {
-  const html = render({ ...base, activeFileName: 'DEMO-BRAINSTORMING.md' });
+  const html = render({ ...base, activePath: 'DEMO-BRAINSTORMING.md' });
   assert.ok(html.includes('aria-label="Delete artifact"'), 'delete control still present');
   const footerStart = html.indexOf('<footer');
   assert.ok(footerStart >= 0 && html.indexOf('aria-label="Delete artifact"') < footerStart,
@@ -198,7 +198,7 @@ test('delete stays a corner overlay and the footer holds only the filmstrip', ()
 });
 
 test('overflow edge fades are non-interactive and end chevrons are labelled', () => {
-  const html = render({ ...base, activeFileName: 'DEMO-BRAINSTORMING.md' });
+  const html = render({ ...base, activePath: 'DEMO-BRAINSTORMING.md' });
   assert.ok(html.includes('aria-label="Scroll filmstrip left"'), 'left paging chevron present');
   assert.ok(html.includes('aria-label="Scroll filmstrip right"'), 'right paging chevron present');
   assert.ok(html.includes('pointer-events-none'), 'edge fades do not block cell interaction');

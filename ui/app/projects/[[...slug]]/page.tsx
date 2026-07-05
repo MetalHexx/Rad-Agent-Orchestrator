@@ -29,6 +29,7 @@ import type { ProjectSummary } from "@/types/components";
 import { ArtifactViewerModal } from "@/components/artifacts";
 import { useArtifactModal, markdownPathForActive } from "@/hooks/use-artifact-modal";
 import { ArtifactLiveProvider, useArtifactLive } from "@/hooks/use-artifact-live";
+import { buildModalDocs, type ModalDoc } from "@/lib/modal-doc-model";
 
 // ─── Inner component — runs under ArtifactLiveProvider ────────────────────────
 
@@ -53,10 +54,11 @@ interface ProjectsPageContentProps {
   openDocument: (path: string) => void;
   filesLoaded: boolean;
   setPendingDelete: (a: import("@/lib/artifact-model").Artifact | null) => void;
-  onActiveFileNameChange: (fileName: string | null) => void;
+  onActivePathChange: (path: string | null) => void;
   registerOnDeleted: (fn: () => void) => void;
   urlDoc: string | null;
   requirementsStatus: string | null;
+  modalDocs: ModalDoc[];
 }
 
 function ProjectsPageContent({
@@ -73,10 +75,11 @@ function ProjectsPageContent({
   openDocument,
   filesLoaded,
   setPendingDelete,
-  onActiveFileNameChange,
+  onActivePathChange,
   registerOnDeleted,
   urlDoc,
   requirementsStatus,
+  modalDocs,
 }: ProjectsPageContentProps) {
   const live = useArtifactLive();
   const artifacts = live.artifacts;
@@ -84,18 +87,18 @@ function ProjectsPageContent({
   const { store: registryStore } = useRegistryStore();
   const bindByName = React.useMemo(() => buildBindLookup(registryStore.repos), [registryStore.repos]);
 
-  const getArtifacts = useCallback(() => artifacts, [artifacts]);
+  const getArtifacts = useCallback(() => modalDocs, [modalDocs]);
   // In-modal doc switching mutates the URL with the History API, NOT the Next router.
   // router.push/replace remounts this page (App Router re-keys the [[...slug]] segment on a
   // param change), which would reset isFullScreen, throw away the BufferedStage cross-fade,
   // and refetch — i.e. the "full page reload" jank. window.history.{push,replace}State updates
   // the address bar without a navigation, so the page only re-renders: fullscreen and the
   // cross-fade survive. usePathname() (read side, outer component) tracks these shallow updates.
-  const navigate = useCallback((fileName: string | null, mode: 'push' | 'replace' | 'back') => {
+  const navigate = useCallback((path: string | null, mode: 'push' | 'replace' | 'back') => {
     if (!selectedProject) return;
     if (mode === 'back') { window.history.back(); return; }
     const base = `/projects/${encodeURIComponent(selectedProject)}`;
-    const url = fileName ? `${base}/docs/${encodeURIComponent(fileName)}` : base;
+    const url = path ? `${base}/docs/${path.split('/').map(encodeURIComponent).join('/')}` : base;
     if (mode === 'replace') window.history.replaceState(null, '', url);
     else window.history.pushState(null, '', url);
   }, [selectedProject]);
@@ -115,28 +118,28 @@ function ProjectsPageContent({
   // from a freshly-navigated md layer until its own fetch lands (BUG 1).
   const [modalMarkdownFileName, setModalMarkdownFileName] = useState<string | null>(null);
 
-  // Active file name is the modal's own identity — single choke point, no
+  // Active path is the modal's own identity — single choke point, no
   // longer derived from a (mutable) array index.
-  const activeFileName = modal.activeFileName;
+  const activePath = modal.activePath;
 
   // Clear the unseen badge for whichever file the user is viewing — the one
   // authoritative place this fires so every open route and prev/next clears uniformly.
   React.useEffect(() => {
-    live.markActive(activeFileName);
-    onActiveFileNameChange(activeFileName);
-  }, [activeFileName, live, onActiveFileNameChange]);
+    live.markActive(activePath);
+    onActivePathChange(activePath);
+  }, [activePath, live, onActivePathChange]);
 
   useEffect(() => { if (!modal.open) setIsFullScreen(false); }, [modal.open]);
 
   useEffect(() => {
-    const mdPath = markdownPathForActive(artifacts, modal.activeFileName);
+    const mdPath = markdownPathForActive(modalDocs, modal.activePath);
     if (!modal.open || !mdPath || !selectedProject) {
       setModalMarkdown(null);
       setModalMarkdownFileName(null);
       return;
     }
     // Note: we intentionally leave the prior body/owner in place while the new fetch
-    // is in flight. The stage gates markdown by fileName, so the previously-shown
+    // is in flight. The stage gates markdown by path, so the previously-shown
     // (front) doc keeps rendering its own content while the incoming layer waits on
     // its matching fetch — no stale flash, no front spinner during navigation (BUG 1).
     let cancelled = false;
@@ -152,7 +155,7 @@ function ProjectsPageContent({
         if (!cancelled) { setModalMarkdown(''); setModalMarkdownFileName(mdPath); }
       });
     return () => { cancelled = true; };
-  }, [modal.open, modal.activeFileName, artifacts, selectedProject]);
+  }, [modal.open, modal.activePath, modalDocs, selectedProject]);
 
   const handleModalClose = useCallback(() => {
     setModalClosing(true);
@@ -279,19 +282,19 @@ function ProjectsPageContent({
         />
       ) : null}
 
-      {modal.open && artifacts.some((a) => a.fileName === modal.activeFileName) && (
+      {modal.open && modalDocs.some((d) => d.path === modal.activePath) && (
         <ArtifactViewerModal
           projectName={selectedProject!}
-          artifacts={artifacts}
-          activeFileName={modal.activeFileName}
+          artifacts={modalDocs}
+          activePath={modal.activePath}
           markdownContent={modalMarkdown}
           markdownContentFileName={modalMarkdownFileName}
           onClose={handleModalClose}
           dataState={modalClosing ? "closed" : "open"}
           onPrev={modal.goPrev}
           onNext={modal.goNext}
-          onSelect={(fileName) => modal.openByName(fileName)}
-          onRequestDelete={() => { const a = artifacts.find((x) => x.fileName === modal.activeFileName); if (a) setPendingDelete(a); }}
+          onSelect={(path) => modal.openByName(path)}
+          onRequestDelete={() => { const a = artifacts.find((x) => x.fileName === modal.activePath); if (a) setPendingDelete(a); }}
           isFullScreen={isFullScreen}
           onToggleFullScreen={() => setIsFullScreen((v) => !v)}
           unseen={live.unseen}
@@ -300,7 +303,7 @@ function ProjectsPageContent({
         />
       )}
 
-      {modal.open && filesLoaded && !artifacts.some((a) => a.fileName === modal.activeFileName) && (
+      {modal.open && filesLoaded && !modalDocs.some((d) => d.path === modal.activePath) && (
         <div role="alert" className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="flex flex-col items-center gap-3 rounded-xl bg-card p-6 text-card-foreground shadow-lg">
             <p className="text-sm text-muted-foreground">Document not found.</p>
@@ -324,13 +327,20 @@ export default function ProjectsPage() {
   // reflects in usePathname() but NOT in useParams(). usePathname() returns the ENCODED path,
   // so decode each segment exactly once (the write side encodes once — see `navigate`). A guard
   // keeps a malformed '%' from throwing URIError; it falls through to the not-found state.
-  const segs = pathname.split('/').filter(Boolean); // ["projects", <project?>, "docs", <doc?>]
+  const segs = pathname.split('/').filter(Boolean); // ["projects", <project?>, "docs", ...<doc path segments>]
   const decodeSeg = (s: string | undefined): string | null => {
     if (s === undefined) return null;
     try { return decodeURIComponent(s); } catch { return s; }
   };
   const urlProject = segs.length >= 2 ? decodeSeg(segs[1]) : null;
-  const urlDoc = segs.length >= 4 && segs[2] === 'docs' ? decodeSeg(segs[3]) : null;
+  // Everything after `docs/` is the doc's path segments — a flat filename is
+  // one segment (byte-identical to before); a nested path (`phases/…`) is
+  // several. Reconstruct the full relative path from ALL of them, not just
+  // the first, so a nested path round-trips instead of silently resolving to
+  // the wrong (or no) document.
+  const urlDoc = segs[2] === 'docs' && segs.length > 3
+    ? segs.slice(3).map((s) => decodeSeg(s) ?? s).join('/')
+    : null;
   const router = useRouter();
 
   const {
@@ -434,6 +444,15 @@ export default function ProjectsPage() {
     return [];
   }, [v5State, selectedProject, fileList]);
 
+  // The modal's unified, path-identified document list — built here (not inside
+  // ProjectsPageContent) because this is where the raw recursive `fileList` is
+  // already owned; the inner component only ever sees the root-only
+  // `live.artifacts`, which can't represent subfolder docs.
+  const modalDocs = useMemo(() => {
+    if (!selectedProject) return [];
+    return buildModalDocs(selectedProject, fileList, v5State, v5State !== null);
+  }, [selectedProject, fileList, v5State]);
+
   // Reset the files-loaded gate on project change ONLY (not on fileRefetch),
   // so deleting an artifact — which bumps fileRefetch — doesn't flash the
   // timeline body back to a skeleton.
@@ -470,9 +489,9 @@ export default function ProjectsPage() {
     return () => { cancelled = true; };
   }, [selectedProject, fileRefetch]);
 
-  // Active file name for the provider — derived from modal state inside the
+  // Active path for the provider — derived from modal state inside the
   // inner component and surfaced here via state so the provider prop stays live.
-  const [activeFileName, setActiveFileName] = useState<string | null>(null);
+  const [activePath, setActivePath] = useState<string | null>(null);
 
   return (
     <div className="flex h-[calc(100vh-3.5rem)] flex-col bg-background">
@@ -507,7 +526,7 @@ export default function ProjectsPage() {
               </p>
             </div>
           ) : selected ? (
-            <ArtifactLiveProvider projectName={selectedProject} activeFileName={activeFileName} hasTimeline={v5State !== null}>
+            <ArtifactLiveProvider projectName={selectedProject} activeFileName={activePath} hasTimeline={v5State !== null}>
               <ProjectsPageContent
                 selectedProject={selectedProject}
                 selected={selected}
@@ -522,10 +541,11 @@ export default function ProjectsPage() {
                 openDocument={openDocument}
                 filesLoaded={filesLoaded}
                 setPendingDelete={setPendingDelete}
-                onActiveFileNameChange={setActiveFileName}
+                onActivePathChange={setActivePath}
                 registerOnDeleted={registerOnDeleted}
                 urlDoc={urlDoc}
                 requirementsStatus={requirementsStatus}
+                modalDocs={modalDocs}
               />
             </ArtifactLiveProvider>
           ) : (

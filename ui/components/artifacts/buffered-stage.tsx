@@ -12,7 +12,7 @@ import {
   applyLiveUpdate,
   type SlotIndex,
 } from "./stage-transition";
-import type { Artifact } from "@/lib/artifact-model";
+import type { ModalDoc } from "@/lib/modal-doc-model";
 import { cn } from "@/lib/utils";
 
 /** How long the cross-fade runs before the incoming slot is promoted and the
@@ -51,7 +51,8 @@ export function BufferedStage({
   projectName, artifact, markdownContent, markdownContentFileName, activePulse, liveMtime = 0,
 }: {
   projectName: string;
-  artifact: Artifact;
+  /** The active document — identified by `path`, which is the raw/document API's `?path=` value. */
+  artifact: ModalDoc;
   markdownContent: string | null;
   /** Which file `markdownContent` actually belongs to. When provided, a markdown
    *  slot only renders the body if its own fileName matches — preventing a stale
@@ -64,7 +65,7 @@ export function BufferedStage({
    *  pulse rising edge alone misses (BUG 2). */
   liveMtime?: number;
 }) {
-  const [stage, setStage] = React.useState(() => initStage(artifact.fileName));
+  const [stage, setStage] = React.useState(() => initStage(artifact.path));
   // One stable scroll container per physical slot so two markdown bodies can be
   // in flight without sharing a ref.
   const scrollRef0 = React.useRef<HTMLDivElement>(null);
@@ -72,12 +73,12 @@ export function BufferedStage({
   const scrollRefs = [scrollRef0, scrollRef1] as const;
   const [liveRefreshKey, setLiveRefreshKey] = React.useState(0);
   const prevMtimeRef = React.useRef(liveMtime);
-  const prevMtimeFileRef = React.useRef(artifact.fileName);
+  const prevMtimeFileRef = React.useRef(artifact.path);
 
   // The active artifact changed → load it into the background slot and cross-fade.
   React.useEffect(() => {
-    setStage((s) => beginNavigate(s, artifact.fileName));
-  }, [artifact.fileName]);
+    setStage((s) => beginNavigate(s, artifact.path));
+  }, [artifact.path]);
 
   // Once the incoming slot reports ready and the fade starts, promote it after
   // the fade duration. Re-keyed on `incoming` so an interrupted navigation (a new
@@ -94,14 +95,14 @@ export function BufferedStage({
   // update, reload the foreground iframe in place — preserve scroll, no cross-fade
   // (DD-11). Markdown re-renders in place via its content prop without a remount.
   React.useEffect(() => {
-    const sameFile = prevMtimeFileRef.current === artifact.fileName;
+    const sameFile = prevMtimeFileRef.current === artifact.path;
     if (sameFile && liveMtime > prevMtimeRef.current) {
-      const plan = applyLiveUpdate(stage, artifact.fileName);
+      const plan = applyLiveUpdate(stage, artifact.path);
       if (plan.preserveScroll) setLiveRefreshKey((k) => k + 1);
     }
     prevMtimeRef.current = liveMtime;
-    prevMtimeFileRef.current = artifact.fileName;
-  }, [liveMtime, stage, artifact.fileName]);
+    prevMtimeFileRef.current = artifact.path;
+  }, [liveMtime, stage, artifact.path]);
 
   const onReady = React.useCallback(() => setStage((s) => markIncomingReady(s)), []);
 

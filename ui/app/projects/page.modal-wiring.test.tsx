@@ -7,17 +7,16 @@ import {
   fileNameAtOffset,
   fileNameAfterDelete,
 } from '@/hooks/use-artifact-modal';
-import type { Artifact } from '@/lib/artifact-model';
+import type { ModalDoc } from '@/lib/modal-doc-model';
 
-// Mirrors the page's wiring: identity is the FILENAME. The page converts the
-// index handed up by BrainstormingSection/LaunchScreen into a filename at the
-// call site (`artifacts[index].fileName`) and drives the modal by name from
-// there on. These tests pin that contract without mounting the whole page tree.
+// Mirrors the page's wiring: the LaunchScreen/PlanningSection tiles are still
+// root-only Artifact[] (index -> fileName at the call site), but the modal
+// itself is driven by the unified ModalDoc[] list, keyed by path.
 
-const arts: Artifact[] = [
-  { fileName: 'DEMO-BRAINSTORMING.md', kind: 'markdown', label: 'Brainstorm', title: null, isMarkdown: true },
-  { fileName: 'DEMO-BRAINSTORM.html', kind: 'visual', label: 'Brainstorm Visual', title: null, isMarkdown: false },
-  { fileName: 'DEMO-WIREFRAME-X.html', kind: 'wireframe', label: 'Wireframe', title: 'X', isMarkdown: false },
+const arts: ModalDoc[] = [
+  { path: 'DEMO-BRAINSTORMING.md', kind: 'markdown', title: 'Brainstorm', isMarkdown: true },
+  { path: 'DEMO-BRAINSTORM.html', kind: 'visual', title: 'Brainstorm Visual', isMarkdown: false },
+  { path: 'DEMO-WIREFRAME-X.html', kind: 'wireframe', title: 'X', isMarkdown: false },
 ];
 
 const pageSrc = readFileSync(path.join(process.cwd(), 'app', 'projects', '[[...slug]]', 'page.tsx'), 'utf-8');
@@ -33,37 +32,37 @@ test('open converts the child index to a filename at the call site (open-by-file
   assert.ok(pageSrc.includes('openArtifactModal = modal.openByName'), 'opener is openByName');
 });
 
-test('the modal is driven by activeFileName, not an index (single choke point)', () => {
-  assert.ok(pageSrc.includes('activeFileName={modal.activeFileName}'), 'modal receives the active filename');
+test('the modal is driven by activePath, not an index (single choke point)', () => {
+  assert.ok(pageSrc.includes('activePath={modal.activePath}'), 'modal receives the active path');
   assert.ok(!/activeIndex=\{/.test(pageSrc), 'no activeIndex prop is passed anymore');
-  assert.ok(pageSrc.includes('const activeFileName = modal.activeFileName'), 'active filename is the hook identity');
+  assert.ok(pageSrc.includes('const activePath = modal.activePath'), 'active path is the hook identity');
 });
 
-test('the render guard checks the active filename is still in the list (FR-19)', () => {
+test('the render guard checks the active path is still in the list (FR-19)', () => {
   assert.ok(
-    pageSrc.includes('artifacts.some((a) => a.fileName === modal.activeFileName)'),
-    'guard presence-checks by filename, not by index',
+    pageSrc.includes('modalDocs.some((d) => d.path === modal.activePath)'),
+    'guard presence-checks by path, not by index',
   );
 });
 
-test('select forwards a filename to the modal (select-by-filename)', () => {
-  assert.ok(pageSrc.includes('onSelect={(fileName) => modal.openByName(fileName)}'), 'onSelect re-opens by filename');
+test('select forwards a path to the modal (select-by-path)', () => {
+  assert.ok(pageSrc.includes('onSelect={(path) => modal.openByName(path)}'), 'onSelect re-opens by path');
 });
 
-test('prev/next are wired to the filename-based navigation handlers (FR-14)', () => {
+test('prev/next are wired to the path-based navigation handlers (FR-14)', () => {
   assert.ok(pageSrc.includes('onPrev={modal.goPrev}'), 'prev wired');
   assert.ok(pageSrc.includes('onNext={modal.goNext}'), 'next wired');
-  // The handlers themselves step by the active filename's current position.
+  // The handlers themselves step by the active path's current position.
   assert.equal(fileNameAtOffset(arts, 'DEMO-BRAINSTORMING.md', 1), 'DEMO-BRAINSTORM.html');
   assert.equal(fileNameAtOffset(arts, 'DEMO-BRAINSTORMING.md', -1), 'DEMO-WIREFRAME-X.html');
 });
 
-test('delete resolves the pending artifact by the active filename (FR-19)', () => {
+test('delete resolves the pending artifact by the active path (FR-19)', () => {
   assert.ok(
-    pageSrc.includes('artifacts.find((x) => x.fileName === modal.activeFileName)'),
-    'delete finds the active artifact by filename',
+    pageSrc.includes('artifacts.find((x) => x.fileName === modal.activePath)'),
+    'delete finds the active artifact by path',
   );
-  // onDeleted clamp semantics, in filename terms.
+  // onDeleted clamp semantics, in path terms.
   assert.equal(fileNameAfterDelete(arts, 'DEMO-WIREFRAME-X.html'), 'DEMO-BRAINSTORM.html');
 });
 
@@ -72,12 +71,12 @@ test('close runs the deferred-unmount handler and the modal is driven by a data-
   assert.ok(pageSrc.includes('dataState={modalClosing ? "closed" : "open"}'), 'data-state toggles between open and closed for the exit animation');
 });
 
-test('the markdown fetch effect resolves its path from the active filename (FR-12, AD-8)', () => {
+test('the markdown fetch effect resolves its path from the active path (FR-12, AD-8)', () => {
   assert.ok(
-    pageSrc.includes('markdownPathForActive(artifacts, modal.activeFileName)'),
-    'effect reads markdown path by filename',
+    pageSrc.includes('markdownPathForActive(modalDocs, modal.activePath)'),
+    'effect reads markdown path from the unified modal doc list',
   );
-  // And the helper returns the md path only for a markdown active file.
+  // And the helper returns the md path only for a markdown active doc.
   assert.equal(markdownPathForActive(arts, 'DEMO-BRAINSTORMING.md'), 'DEMO-BRAINSTORMING.md');
   assert.equal(markdownPathForActive(arts, 'DEMO-BRAINSTORM.html'), null);
 });
@@ -85,8 +84,8 @@ test('the markdown fetch effect resolves its path from the active filename (FR-1
 test('the modal identity is the URL document and navigation drives the URL (URL source of truth)', () => {
   assert.ok(pageSrc.includes('useArtifactModal(getArtifacts, urlDoc, navigate)'),
     'modal is constructed from the URL document and a navigate fn');
-  assert.ok(pageSrc.includes('/docs/${encodeURIComponent('),
-    'navigate builds an encoded document deep link');
+  assert.ok(/path\.split\(['"]\/['"]\)\.map\(encodeURIComponent\)\.join\(['"]\/['"]\)/.test(pageSrc),
+    'navigate encodes a possibly-nested doc path per-segment, not as one %2F-encoded segment');
   assert.ok(/const\s+urlDoc\s*=/.test(pageSrc),
     'page derives urlDoc from the slug');
 });
@@ -119,9 +118,16 @@ test('the route is read from usePathname and each segment is decoded exactly onc
     'urlProject and urlDoc are derived from the decoded segments');
 });
 
+test('urlDoc is reconstructed from every segment after docs/, not just the first (nested-path round-trip)', () => {
+  assert.ok(/segs\.slice\(3\)/.test(pageSrc),
+    'the parser takes everything after docs/ (segs.slice(3)), not a single fixed segment');
+  assert.ok(!/segs\.length\s*>=\s*4\s*&&\s*segs\[2\]\s*===\s*'docs'\s*\?\s*decodeSeg\(segs\[3\]\)/.test(pageSrc),
+    'the old segs[3]-only parser is gone');
+});
+
 test('a missing document shows a load-gated not-found state, never while still loading', () => {
-  assert.ok(pageSrc.includes('filesLoaded && !artifacts.some((a) => a.fileName === modal.activeFileName)'),
-    'not-found state is gated on filesLoaded and a filename-absence check');
+  assert.ok(pageSrc.includes('filesLoaded && !modalDocs.some((d) => d.path === modal.activePath)'),
+    'not-found state is gated on filesLoaded and a path-absence check');
   assert.ok(pageSrc.includes('Document not found'),
     'a client-rendered document-not-found notice is present');
 });

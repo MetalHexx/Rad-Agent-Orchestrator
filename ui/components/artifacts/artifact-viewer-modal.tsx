@@ -12,23 +12,25 @@ import { BufferedStage } from "./buffered-stage";
 import { ChangeBadge } from "@/components/badges";
 import { cn } from "@/lib/utils";
 import { ModalShell } from "@/components/modal/modal-shell";
-import type { Artifact } from "@/lib/artifact-model";
+import type { ModalDoc } from "@/lib/modal-doc-model";
 
 export interface ArtifactViewerModalProps {
   projectName: string;
-  artifacts: Artifact[];
-  /** Identity of the open document — anchored to the filename, not an array
-   *  index, so focus stays pinned across live reorders/inserts/deletes. */
-  activeFileName: string | null;
+  artifacts: ModalDoc[];
+  /** Identity of the open document — anchored to its path, not an array
+   *  index, so focus stays pinned across live reorders/inserts/deletes. A
+   *  root doc's path is its bare filename; a subfolder doc's path is its full
+   *  project-relative path. */
+  activePath: string | null;
   /** Fetched BRAINSTORMING.md body when the active (or any) md cell needs it. */
   markdownContent: string | null;
-  /** Which file `markdownContent` belongs to — lets the stage withhold a stale
+  /** Which path `markdownContent` belongs to — lets the stage withhold a stale
    *  body from a freshly-navigated md layer until its own fetch resolves (BUG 1). */
   markdownContentFileName?: string | null;
   onClose: () => void;
   onPrev: () => void;
   onNext: () => void;
-  onSelect: (fileName: string) => void;
+  onSelect: (path: string) => void;
   onRequestDelete: () => void;
   isFullScreen: boolean;
   onToggleFullScreen: () => void;
@@ -43,22 +45,22 @@ export interface ArtifactViewerModalProps {
 }
 
 export function ArtifactViewerModal({
-  projectName, artifacts, activeFileName, markdownContent, markdownContentFileName,
+  projectName, artifacts, activePath, markdownContent, markdownContentFileName,
   onClose, onPrev, onNext, onSelect, onRequestDelete, isFullScreen, onToggleFullScreen,
   unseen, activePulse, mtimes, dataState = "open",
 }: ArtifactViewerModalProps) {
-  const active = artifacts.find((a) => a.fileName === activeFileName);
+  const active = artifacts.find((a) => a.path === activePath);
 
   const [shareState, setShareState] = React.useState<'idle' | 'copied' | 'failed'>('idle');
   const shareTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleShare = React.useCallback(async () => {
-    if (!activeFileName) return;
-    const url = buildDocDeepLink(window.location.origin, projectName, activeFileName);
+    if (!activePath) return;
+    const url = buildDocDeepLink(window.location.origin, projectName, activePath);
     const ok = await copyTextToClipboard(url);
     setShareState(ok ? 'copied' : 'failed');
     if (shareTimerRef.current) clearTimeout(shareTimerRef.current);
     shareTimerRef.current = setTimeout(() => setShareState('idle'), 2000);
-  }, [projectName, activeFileName]);
+  }, [projectName, activePath]);
   React.useEffect(() => () => {
     if (shareTimerRef.current) clearTimeout(shareTimerRef.current);
   }, []);
@@ -69,7 +71,7 @@ export function ArtifactViewerModal({
     const c = stripRef.current, cell = activeCellRef.current;
     if (!c || !cell) return;
     c.scrollLeft = centerScrollLeft(c.clientWidth, cell.offsetLeft, cell.clientWidth);
-  }, [activeFileName]);
+  }, [activePath]);
 
   React.useEffect(() => {
     const c = stripRef.current;
@@ -84,15 +86,15 @@ export function ArtifactViewerModal({
   }, []);
 
   if (!active) return null;
-  const friendly = active.title ?? active.label;
+  const friendly = active.title;
 
   return (
     <ModalShell
-      ariaLabel={`${friendly} — ${active.fileName}`}
+      ariaLabel={`${friendly} — ${active.path}`}
       title={
         <>
           <span className="text-sm font-medium text-foreground">{friendly}</span>
-          <span title={active.fileName} className="truncate text-xs text-muted-foreground">{active.fileName}</span>
+          <span title={active.path} className="truncate text-xs text-muted-foreground">{active.path}</span>
         </>
       }
       onClose={onClose}
@@ -118,24 +120,24 @@ export function ArtifactViewerModal({
           </Button>
           <div ref={stripRef as React.RefObject<HTMLDivElement>} className="flex items-end gap-2 overflow-x-auto px-8">
           {artifacts.map((artifact) => {
-            const pulsing = activePulse?.has(artifact.fileName) ?? false;
+            const pulsing = activePulse?.has(artifact.path) ?? false;
             return (
-            <ActivePulse key={artifact.fileName} active={pulsing} variant="frame" className="rounded-md">
+            <ActivePulse key={artifact.path} active={pulsing} variant="frame" className="rounded-md">
             <div
               data-filmstrip-cell
-              ref={artifact.fileName === activeFileName ? activeCellRef : undefined}
+              ref={artifact.path === activePath ? activeCellRef : undefined}
               role="button"
               tabIndex={0}
-              aria-label={`View ${artifact.title ?? artifact.label}`}
-              aria-current={artifact.fileName === activeFileName ? 'true' : undefined}
-              onClick={() => onSelect(artifact.fileName)}
-              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(artifact.fileName); } }}
+              aria-label={`View ${artifact.title}`}
+              aria-current={artifact.path === activePath ? 'true' : undefined}
+              onClick={() => onSelect(artifact.path)}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(artifact.path); } }}
               className={cn(
                 "flex h-16 w-24 shrink-0 cursor-pointer flex-col items-center overflow-hidden rounded-md border",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 // Grey neutral ring marks the SELECTED doc; while it's being written the
                 // ActivePulse lavender glow takes over (supersedes grey), so drop the grey then.
-                !pulsing && artifact.fileName === activeFileName
+                !pulsing && artifact.path === activePath
                   ? "border-2 ring-2 ring-ring border-ring"
                   : "border-border",
               )}
@@ -148,14 +150,14 @@ export function ArtifactViewerModal({
                 ) : (
                   <IframePreview
                     projectName={projectName}
-                    fileName={artifact.fileName}
+                    fileName={artifact.path}
                     scale={0.12}
                     interactive={false}
                     eager
                     className="h-full w-full"
                   />
                 )}
-                {(unseen?.has(artifact.fileName) ?? false) && (
+                {(unseen?.has(artifact.path) ?? false) && (
                   <div className="absolute left-1 top-1 z-10">
                     <ChangeBadge />
                   </div>
@@ -163,7 +165,7 @@ export function ArtifactViewerModal({
               </div>
               <div className="flex w-full flex-1 items-center justify-center px-1">
                 <span className="w-full truncate text-center text-[9px] leading-tight text-muted-foreground">
-                  {artifact.title ?? artifact.label}
+                  {artifact.title}
                 </span>
               </div>
             </div>
@@ -180,14 +182,14 @@ export function ArtifactViewerModal({
           artifact={active}
           markdownContent={markdownContent}
           markdownContentFileName={markdownContentFileName ?? undefined}
-          activePulse={activePulse?.has(active.fileName) ?? false}
-          liveMtime={mtimes?.[active.fileName] ?? 0}
+          activePulse={activePulse?.has(active.path) ?? false}
+          liveMtime={mtimes?.[active.path] ?? 0}
         />
         <div
           aria-hidden="true"
           className={cn(
             "pointer-events-none absolute inset-0",
-            (activePulse?.has(active.fileName) ?? false) && "live-pulse-stage",
+            (activePulse?.has(active.path) ?? false) && "live-pulse-stage",
           )}
         />
         <button type="button" aria-label="Previous artifact" onClick={onPrev}

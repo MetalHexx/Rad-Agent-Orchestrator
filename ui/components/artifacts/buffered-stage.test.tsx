@@ -9,7 +9,7 @@ import { BufferedStage, MarkdownLayer } from './buffered-stage';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
 
-const MD = { fileName: 'A.md', kind: 'markdown' as const, label: 'Doc', title: null, isMarkdown: true };
+const MD = { path: 'A.md', kind: 'markdown' as const, title: 'Doc', isMarkdown: true };
 
 test('stage uses a dark backstop, not a white background (DD-8)', () => {
   const html = renderToStaticMarkup(createElement(BufferedStage, {
@@ -60,7 +60,7 @@ test('the markdown layer reports ready via a committed-body layout effect, not <
 });
 
 test('html iframes stay sandboxed without allow-scripts (NFR-8)', () => {
-  const htmlArt = { fileName: 'V.html', kind: 'html' as const, label: 'Visual', title: null, isMarkdown: false };
+  const htmlArt = { path: 'V.html', kind: 'html' as const, title: 'Visual', isMarkdown: false };
   const html = renderToStaticMarkup(createElement(BufferedStage, {
     projectName: 'DEMO', artifact: htmlArt, markdownContent: null, activePulse: false,
   } as never));
@@ -79,7 +79,7 @@ test('an open HTML document reloads its iframe in place when a live change lands
   (globalThis as any).ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
   const { createRoot } = await import('react-dom/client');
   const { act } = await import('react');
-  const htmlArt = { fileName: 'V.html', kind: 'html' as const, label: 'Visual', title: null, isMarkdown: false };
+  const htmlArt = { path: 'V.html', kind: 'html' as const, title: 'Visual', isMarkdown: false };
   const root = createRoot(window.document.getElementById('root')!);
   await act(async () => {
     root.render(createElement(BufferedStage, {
@@ -113,7 +113,7 @@ test('a repeated change to the open HTML doc within the pulse window still advan
   (globalThis as any).ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
   const { createRoot } = await import('react-dom/client');
   const { act } = await import('react');
-  const htmlArt = { fileName: 'V.html', kind: 'html' as const, label: 'Visual', title: null, isMarkdown: false };
+  const htmlArt = { path: 'V.html', kind: 'html' as const, title: 'Visual', isMarkdown: false };
   const decode = (html: string) => html.replace(/&amp;/g, '&');
   const root = createRoot(window.document.getElementById('root')!);
   await act(async () => {
@@ -155,8 +155,8 @@ test('navigating md→md does not flash the previous doc as the incoming layer (
   (globalThis as any).ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
   const { createRoot } = await import('react-dom/client');
   const { act } = await import('react');
-  const A = { fileName: 'A.md', kind: 'markdown' as const, label: 'Doc', title: null, isMarkdown: true };
-  const B = { fileName: 'B.md', kind: 'markdown' as const, label: 'Doc', title: null, isMarkdown: true };
+  const A = { path: 'A.md', kind: 'markdown' as const, title: 'Doc', isMarkdown: true };
+  const B = { path: 'B.md', kind: 'markdown' as const, title: 'Doc', isMarkdown: true };
   const root = createRoot(window.document.getElementById('root')!);
   // A is open with its matching content.
   await act(async () => {
@@ -202,7 +202,7 @@ test('the stage isolates its z-index so it never paints over the modal nav butto
 });
 
 test('the stage iframe uses the dark backstop color, not white — no first-open white flash (DD-8)', () => {
-  const htmlArt = { fileName: 'V.html', kind: 'html' as const, label: 'Visual', title: null, isMarkdown: false };
+  const htmlArt = { path: 'V.html', kind: 'html' as const, title: 'Visual', isMarkdown: false };
   const html = renderToStaticMarkup(createElement(BufferedStage, {
     projectName: 'DEMO', artifact: htmlArt, markdownContent: null, activePulse: false,
   } as never));

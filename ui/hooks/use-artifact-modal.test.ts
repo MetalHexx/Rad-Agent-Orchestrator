@@ -11,12 +11,12 @@ import {
   openNavMode,
   closeNavMode,
 } from './use-artifact-modal';
-import type { Artifact } from '@/lib/artifact-model';
+import type { ModalDoc } from '@/lib/modal-doc-model';
 
-const arts: Artifact[] = [
-  { fileName: 'A.md', kind: 'markdown', label: 'Brainstorm', title: null, isMarkdown: true },
-  { fileName: 'B.html', kind: 'visual', label: 'Brainstorm Visual', title: null, isMarkdown: false },
-  { fileName: 'C.html', kind: 'wireframe', label: 'Wireframe', title: 'X', isMarkdown: false },
+const arts: ModalDoc[] = [
+  { path: 'A.md', kind: 'markdown', title: 'Brainstorm', isMarkdown: true },
+  { path: 'B.html', kind: 'visual', title: 'Brainstorm Visual', isMarkdown: false },
+  { path: 'C.html', kind: 'wireframe', title: 'X', isMarkdown: false },
 ];
 
 test('nextIndex advances and loops past the end (FR-14)', () => {
@@ -88,7 +88,7 @@ test('fileNameAtOffset retreats to the previous filename and wraps past the star
 
 test('fileNameAtOffset navigates from the active filename position after a reorder, not a stale index (regression)', () => {
   // The user is looking at B.html. The live list reorders underneath the modal.
-  const reordered: Artifact[] = [arts[2], arts[0], arts[1]]; // C, A, B
+  const reordered: ModalDoc[] = [arts[2], arts[0], arts[1]]; // C, A, B
   // Next from B (now last) wraps to C (now first) — the neighbour of the file
   // the user actually sees, NOT whatever sits at B's old index 1.
   assert.equal(fileNameAtOffset(reordered, 'B.html', 1), 'C.html');
