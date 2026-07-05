@@ -153,6 +153,14 @@ export function getOrderedDocsV5(
   const basename = (p: string) => p.split(/[\/\\]/).pop() ?? p;
 
   const push = (path: string, title: string, category: OrderedDoc['category']) => {
+    // Path is the modal's document identity (see ModalDoc). A corrective task's
+    // doc_path is deliberately the SAME, unchanged handoff/plan doc as its
+    // hosting iteration (see buildCorrectiveBirth's scopeDocPath — "never
+    // re-authored"), so without this guard every corrective cycle would emit a
+    // second filmstrip tile aliasing a doc already shown under its original
+    // title, and both tiles would highlight together since the filmstrip's
+    // active check is path-based.
+    if (seenPaths.has(path)) return;
     result.push({ path, title, category });
     seenPaths.add(path);
     seenBasenames.add(basename(path));

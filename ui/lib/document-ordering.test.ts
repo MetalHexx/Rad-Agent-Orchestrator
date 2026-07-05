@@ -282,6 +282,55 @@ test('phase-scope corrective task step nodes emit Phase N CTK labels with correc
   assert.strictEqual(docs[3].path, 'reports/PROJ-CODE-REVIEW-P01-PHASE-C1.md');
 });
 
+test('a corrective whose doc_path aliases its hosting iteration\'s own doc_path does not duplicate the filmstrip entry', () => {
+  // Mirrors real engine behavior (buildCorrectiveBirth sets doc_path: scopeDocPath,
+  // the SAME handoff/plan doc, "never re-authored" — see corrective-playbook.md),
+  // unlike the other corrective tests above which use synthetic distinct paths.
+  // Without a path-uniqueness guard in `push`, this would surface a second
+  // "Phase 1 CT1" tile aliasing the same path as "Phase 1 Plan", and the
+  // filmstrip's path-based active check would highlight both simultaneously.
+  const state = makeV5State({
+    phase_loop: {
+      kind: 'for_each_phase',
+      status: 'in_progress',
+      iterations: [
+        {
+          index: 0,
+          status: 'in_progress',
+          doc_path: 'phases/P01-PLAN.md',
+          nodes: {
+            phase_review: { kind: 'step', status: 'completed', doc_path: 'reports/P01-PHASE-REVIEW.md', retries: 0 },
+          },
+          corrective_tasks: [
+            {
+              index: 1,
+              reason: 'Phase review requested changes',
+              injected_after: 'phase_review',
+              status: 'completed',
+              doc_path: 'phases/P01-PLAN.md',
+              nodes: {
+                task_executor: { kind: 'step', status: 'completed', doc_path: null, retries: 0 },
+              },
+              repos: [],
+            },
+          ],
+          repos: [],
+        },
+      ],
+    },
+  });
+
+  const docs = getOrderedDocsV5(state, 'TEST');
+  assert.strictEqual(docs.length, 2);
+  assert.strictEqual(docs[0].title, 'Phase 1 Plan');
+  assert.strictEqual(docs[0].path, 'phases/P01-PLAN.md');
+  assert.strictEqual(docs[1].title, 'Phase 1 Review');
+  assert.ok(
+    !docs.some((d) => d.title === 'Phase 1 CT1'),
+    'corrective entry aliasing an already-seen path must not surface as its own tile',
+  );
+});
+
 test('phase-scope corrective docs are sorted by corrective index and interleave correctly with task docs', () => {
   // Two phase-scope correctives (index 1 + index 2), stored out of order.
   // Ensures the sort((a, b) => a.index - b.index) in the loop is exercised.
