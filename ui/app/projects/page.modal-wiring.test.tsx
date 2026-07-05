@@ -131,3 +131,34 @@ test('a missing document shows a load-gated not-found state, never while still l
   assert.ok(pageSrc.includes('Document not found'),
     'a client-rendered document-not-found notice is present');
 });
+
+test('the DAG timeline routes doc clicks to the modal opener, not the retired drawer', () => {
+  // `<DAGTimeline` (the real mount) must be searched for AFTER `<PlanningSection`
+  // — a bare indexOf would instead match the earlier `<DAGTimelineSkeleton`
+  // branch, whose name has `<DAGTimeline` as a literal prefix.
+  const planningIdx = pageSrc.indexOf('<PlanningSection');
+  const idx = pageSrc.indexOf('<DAGTimeline', planningIdx);
+  assert.ok(planningIdx >= 0 && idx >= 0, '<PlanningSection> and <DAGTimeline> must both be present');
+  const mount = pageSrc.slice(idx, pageSrc.indexOf('afterPlanningSlot', idx));
+  assert.ok(/onDocClick=\{openArtifactModal\}/.test(mount),
+    'a DAG onDocClick(path) drives the same open-by-path opener the planning tiles use');
+});
+
+test('the DocumentDrawer and its hook are fully unwired from the page (drawer retired as a destination)', () => {
+  assert.ok(!pageSrc.includes('<DocumentDrawer'), 'DocumentDrawer no longer renders on the page');
+  assert.ok(!pageSrc.includes('useDocumentDrawer'), 'useDocumentDrawer is no longer invoked');
+  assert.ok(!pageSrc.includes('orderedDocs'), 'the drawer-only orderedDocs plumbing is removed');
+});
+
+test('the same open-by-path opener and not-found guard serve both the DAG and the planning tiles (single funnel, no doc-source-specific branch)', () => {
+  // Both entry points call the identical `openArtifactModal` identifier — the
+  // page has no separate "DAG doc" vs "planning doc" open path, so a DAG path
+  // that doesn't resolve (not-yet-authored file) falls through the one guard
+  // above rather than a bespoke/missing handler for that surface.
+  const planningIdx = pageSrc.indexOf('<PlanningSection');
+  const dagIdx = pageSrc.indexOf('<DAGTimeline', planningIdx);
+  const tileIdx = pageSrc.indexOf('openArtifactModal(artifacts[index].fileName)');
+  assert.ok(planningIdx >= 0 && dagIdx >= 0 && tileIdx >= 0);
+  assert.ok(/onDocClick=\{openArtifactModal\}/.test(pageSrc.slice(planningIdx, dagIdx)),
+    'PlanningSection (DagStateCard) doc-click uses the same opener');
+});

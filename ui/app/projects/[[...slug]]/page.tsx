@@ -3,7 +3,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useProjects } from "@/hooks/use-projects";
-import { useDocumentDrawer } from "@/hooks/use-document-drawer";
 import { useFollowMode } from "@/hooks/use-follow-mode";
 import { useConfigEditor } from "@/hooks/use-config-editor";
 import { useConfigClickContext } from "@/hooks/use-config-click-context";
@@ -12,7 +11,6 @@ import { ProjectSidebar } from "@/components/sidebar";
 import { LaunchScreen } from "@/components/layout";
 import { useStartAction } from "@/hooks/use-start-action";
 import { deleteArtifact } from "@/hooks/use-project-artifacts";
-import { DocumentDrawer } from "@/components/documents";
 import { ConfirmApprovalDialog } from "@/components/dashboard";
 import { ConfigEditorPanel } from "@/components/config";
 import { DAGTimeline, DAGTimelineSkeleton, ProjectHeader, HaltReasonBanner, SourceControlPanel, deriveCurrentPhase, derivePhaseProgress } from "@/components/dag-timeline";
@@ -21,7 +19,6 @@ import { hasSourceControlRepos, selectSourceControlRepos } from "@/components/da
 import { buildBindLookup } from "@/components/dag-timeline/source-control-bind";
 import { useRegistryStore } from "@/components/repo-registry/use-registry-store";
 import { SSEStatusBanner } from "@/components/badges";
-import { getOrderedDocsV5 } from "@/lib/document-ordering";
 import { isV5State, isV6State } from "@/types/state";
 import type { ProjectStateV5, ProjectStateV6, GraphStatus, GateMode, NodeStatus } from "@/types/state";
 import type { SSEConnectionStatus } from "@/types/events";
@@ -51,7 +48,6 @@ interface ProjectsPageContentProps {
   onAccordionChange: (value: string[], eventDetails: { reason: string }) => void;
   sseStatus: SSEConnectionStatus;
   reconnect: () => void;
-  openDocument: (path: string) => void;
   filesLoaded: boolean;
   setPendingDelete: (a: import("@/lib/artifact-model").Artifact | null) => void;
   onActivePathChange: (path: string | null) => void;
@@ -72,7 +68,6 @@ function ProjectsPageContent({
   onAccordionChange,
   sseStatus,
   reconnect,
-  openDocument,
   filesLoaded,
   setPendingDelete,
   onActivePathChange,
@@ -234,14 +229,14 @@ function ProjectsPageContent({
                   unseen={live.unseen}
                   activePulse={live.activePulse}
                   state={v5State}
-                  onDocClick={openDocument}
+                  onDocClick={openArtifactModal}
                   compareUrlByRepo={v5Derivations.compareUrlByRepo}
                   projectName={selected.name}
                 />
                 <DAGTimeline
                   nodes={v5State.graph.nodes}
                   currentNodePath={v5State.graph.current_node_path}
-                  onDocClick={openDocument}
+                  onDocClick={openArtifactModal}
                   expandedLoopIds={expandedLoopIds}
                   onAccordionChange={onAccordionChange}
                   compareUrlByRepo={v5Derivations.compareUrlByRepo}
@@ -370,18 +365,6 @@ export default function ProjectsPage() {
     }
   }, [urlProject, isLoading, projects, router]);
 
-  const {
-    isOpen,
-    docPath,
-    loading: docLoading,
-    error: docError,
-    data: docData,
-    openDocument,
-    close: closeDocument,
-    navigateTo,
-    scrollAreaRef,
-  } = useDocumentDrawer({ projectName: selectedProject });
-
   const [fileList, setFileList] = useState<string[]>([]);
   const [filesLoaded, setFilesLoaded] = useState(false);
   // Requirements-doc frontmatter status, captured here because it rides the
@@ -436,13 +419,6 @@ export default function ProjectsPage() {
       phaseLoopStatus: typedPhaseLoop?.status,
     };
   }, [v5State]);
-
-  const orderedDocs = useMemo(() => {
-    if (v5State && selectedProject) {
-      return getOrderedDocsV5(v5State, selectedProject, fileList);
-    }
-    return [];
-  }, [v5State, selectedProject, fileList]);
 
   // The modal's unified, path-identified document list — built here (not inside
   // ProjectsPageContent) because this is where the raw recursive `fileList` is
@@ -538,7 +514,6 @@ export default function ProjectsPage() {
                 onAccordionChange={onAccordionChange}
                 sseStatus={sseStatus}
                 reconnect={reconnect}
-                openDocument={openDocument}
                 filesLoaded={filesLoaded}
                 setPendingDelete={setPendingDelete}
                 onActivePathChange={setActivePath}
@@ -557,18 +532,6 @@ export default function ProjectsPage() {
           )}
         </SidebarInset>
       </SidebarProvider>
-
-      <DocumentDrawer
-        open={isOpen}
-        docPath={docPath}
-        loading={docLoading}
-        error={docError}
-        data={docData}
-        onClose={closeDocument}
-        scrollAreaRef={scrollAreaRef}
-        docs={orderedDocs}
-        onNavigate={navigateTo}
-      />
 
       <ConfirmApprovalDialog
         open={pendingDelete !== null}
