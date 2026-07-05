@@ -26,7 +26,7 @@ Use it to baseline the pipeline today, refactor `/rad-plan`, run it again, and c
 - Orchestration scripts installed once:
   `cd .claude/skills/rad-orchestration/scripts && npm install && cd -`
 - The dashboard running if you want the session link to resolve — start it with
-  `/rad-ui-start` (check with `/rad-ui-status`). It serves on `http://localhost:3000`.
+  `/rad-ui-start` (check with `/rad-ui-status`). It serves on a configurable port (default 1337, via `ui.port` in `orchestration.yml`).
 
 ## Run it
 
@@ -45,7 +45,8 @@ Use it to baseline the pipeline today, refactor `/rad-plan`, run it again, and c
    - the run folder path,
    - a one-line census (requirement / phase / task counts),
    - the **observability session URL**:
-     `http://localhost:3000/observability/session/<your-session-id>`.
+     `http://localhost:1337/observability/session/<your-session-id>` (the dashboard's
+     configurable default port, per `ui.port` in `orchestration.yml`).
 
 Typical duration: a few minutes (two planner calls + audit + explosion).
 

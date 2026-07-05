@@ -93,6 +93,16 @@ export const CONFIG_FIELDS: FieldMeta[] = [
     section: 'telemetry',
     controlType: 'switch',
   },
+
+  // 13. Dashboard Section
+  {
+    key: 'ui.port',
+    label: 'UI Port',
+    tooltip: 'Port the production dashboard listens on when launched via /rad-ui-start (default 1337). Restart the dashboard — /rad-ui-stop then /rad-ui-start — for a change to take effect.',
+    section: 'ui',
+    controlType: 'number',
+    min: 1,
+  },
 ];
 
 export const CONFIG_FIELD_MAP: Record<string, FieldMeta> =

@@ -40,9 +40,10 @@ const SECTION_TITLES: Record<string, string> = {
   "source-control": "Source Control",
   template: "Template",
   telemetry: "Observability",
+  ui: "Dashboard",
 };
 
-const SECTION_ORDER = ["limits", "human-gates", "source-control", "template", "telemetry"];
+const SECTION_ORDER = ["limits", "human-gates", "source-control", "template", "telemetry", "ui"];
 
 function getNestedValue(obj: Record<string, unknown>, path: string): unknown {
   return path.split(".").reduce<unknown>((acc, key) => {
@@ -133,12 +134,12 @@ test("groupFieldsBySection excludes version field", () => {
   assert.strictEqual(grouped.has("version"), false);
 });
 
-test("groupFieldsBySection produces exactly 5 sections", () => {
+test("groupFieldsBySection produces exactly 6 sections", () => {
   const grouped = groupFieldsBySection(CONFIG_FIELDS);
-  assert.strictEqual(grouped.size, 5);
+  assert.strictEqual(grouped.size, 6);
 });
 
-test("All 5 section keys are present in grouped fields", () => {
+test("All 6 section keys are present in grouped fields", () => {
   const grouped = groupFieldsBySection(CONFIG_FIELDS);
   for (const key of SECTION_ORDER) {
     assert.ok(grouped.has(key), `Missing section: ${key}`);
@@ -152,16 +153,18 @@ test("Section field counts are correct", () => {
   assert.strictEqual(grouped.get("source-control")!.length, 2);
   assert.strictEqual(grouped.get("template")!.length, 1);
   assert.strictEqual(grouped.get("telemetry")!.length, 1);
+  assert.strictEqual(grouped.get("ui")!.length, 1);
 });
 
 // --- Section titles ---
 
-test("All 5 accordion sections have correct display titles", () => {
+test("All 6 accordion sections have correct display titles", () => {
   assert.strictEqual(SECTION_TITLES["limits"], "Pipeline Limits");
   assert.strictEqual(SECTION_TITLES["human-gates"], "Human Gates");
   assert.strictEqual(SECTION_TITLES["source-control"], "Source Control");
   assert.strictEqual(SECTION_TITLES["template"], "Template");
   assert.strictEqual(SECTION_TITLES["telemetry"], "Observability");
+  assert.strictEqual(SECTION_TITLES["ui"], "Dashboard");
 });
 
 // --- Version field rendering ---
@@ -183,11 +186,12 @@ test("String fields (default_template) have controlType 'text'", () => {
   assert.ok(textKeys.includes("default_template"));
 });
 
-test("Number fields (1 limit) have controlType 'number' with min values", () => {
+test("Number fields (limits, ui port) have controlType 'number' with min values", () => {
   const numberFields = CONFIG_FIELDS.filter((f) => f.controlType === "number");
-  assert.strictEqual(numberFields.length, 1);
+  assert.strictEqual(numberFields.length, 2);
+  const numberSections = numberFields.map((f) => f.section).sort();
+  assert.deepStrictEqual(numberSections, ["limits", "ui"]);
   for (const f of numberFields) {
-    assert.strictEqual(f.section, "limits");
     assert.strictEqual(typeof f.min, "number");
   }
 });
@@ -195,6 +199,7 @@ test("Number fields (1 limit) have controlType 'number' with min values", () => 
 test("Number field min attributes are correct", () => {
   const fieldMap = new Map(CONFIG_FIELDS.map((f) => [f.key, f]));
   assert.strictEqual(fieldMap.get("limits.max_retries_per_task")!.min, 0);
+  assert.strictEqual(fieldMap.get("ui.port")!.min, 1);
 });
 
 test("Boolean fields (after_planning, after_final_review, telemetry.enabled) have controlType 'switch'", () => {
@@ -345,21 +350,22 @@ test("Every non-version CONFIG_FIELD has a non-empty tooltip", () => {
 
 // --- Section order ---
 
-test("SECTION_ORDER contains exactly 5 sections in correct order", () => {
+test("SECTION_ORDER contains exactly 6 sections in correct order", () => {
   assert.deepStrictEqual(SECTION_ORDER, [
     "limits",
     "human-gates",
     "source-control",
     "template",
     "telemetry",
+    "ui",
   ]);
 });
 
 // --- Default accordion expansion ---
 
-test("defaultValue for accordion matches all 5 section keys", () => {
+test("defaultValue for accordion matches all 6 section keys", () => {
   const defaultValue = [...SECTION_ORDER];
-  assert.strictEqual(defaultValue.length, 5);
+  assert.strictEqual(defaultValue.length, 6);
   assert.deepStrictEqual(defaultValue, SECTION_ORDER);
 });
 

@@ -220,6 +220,43 @@ async function run() {
   assert.strictEqual(json.error, 'Invalid JSON body');
 });
 
+  // --- ui.port: form mode round-trip ---
+  await test('form mode — ui.port persists and round-trips', async () => {
+  const configWithUi: OrchestrationConfig = { ...VALID_CONFIG, ui: { port: 4321 } };
+  const req = makePutRequest({ mode: 'form', config: configWithUi });
+  const res = await PUT(req);
+  assert.strictEqual(res.status, 200);
+  const json = await res.json();
+  assert.strictEqual(json.success, true);
+  assert.deepStrictEqual(json.config.ui, { port: 4321 });
+
+  const configPath = path.join(tmpDir, '.radorc', 'orchestration.yml');
+  const onDisk = await readFile(configPath, 'utf-8');
+  assert.ok(onDisk.includes('port: 4321'), 'Written file should contain port: 4321');
+});
+
+  // --- ui.port: form mode validation ---
+  await test('form mode — invalid ui.port returns 400 with details', async () => {
+  const badConfig: OrchestrationConfig = { ...VALID_CONFIG, ui: { port: 0 } };
+  const req = makePutRequest({ mode: 'form', config: badConfig });
+  const res = await PUT(req);
+  assert.strictEqual(res.status, 400);
+  const json = await res.json();
+  assert.strictEqual(json.error, 'Validation failed');
+  assert.ok(json.details['ui.port'], 'Should have ui.port error');
+});
+
+  // --- ui.port: raw mode round-trip ---
+  await test('raw mode — ui.port round-trips through YAML', async () => {
+  const yamlWithUi = `${VALID_YAML}ui:\n  port: 4321\n`;
+  const req = makePutRequest({ mode: 'raw', rawYaml: yamlWithUi });
+  const res = await PUT(req);
+  assert.strictEqual(res.status, 200);
+  const json = await res.json();
+  assert.strictEqual(json.success, true);
+  assert.deepStrictEqual(json.config.ui, { port: 4321 });
+});
+
   // --- Read-back integrity ---
   await test('read-back integrity — returned config roundtrips correctly', async () => {
   const req = makePutRequest({ mode: 'form', config: VALID_CONFIG });

@@ -85,7 +85,8 @@ To compare runs, hold both constant across the comparison set and record which y
 ### Comparing runs
 
 - **Spend:** open the two sessions in the observability dashboard
-  (`http://localhost:3000/observability/session/<id>`) and compare.
+  (`http://localhost:1337/observability/session/<id>`, the dashboard's configurable
+  default port — see `ui.port` in `orchestration.yml`) and compare.
 - **Artifacts:** `diff -r output/run-1/RAD-MASTER-BENCH-V2 output/run-2/RAD-MASTER-BENCH-V2`.
   Filenames are identical across runs because the project name is fixed.
 - **Cross-version:** diff this V2 master plan / explosion against the V1 sibling's to see the

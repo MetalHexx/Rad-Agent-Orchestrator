@@ -24,9 +24,10 @@ const SECTION_TITLES: Record<string, string> = {
   "source-control": "Source Control",
   template: "Template",
   telemetry: "Observability",
+  ui: "Dashboard",
 };
 
-const SECTION_ORDER = ["limits", "human-gates", "source-control", "template", "telemetry"];
+const SECTION_ORDER = ["limits", "human-gates", "source-control", "template", "telemetry", "ui"];
 
 function getNestedValue(obj: Record<string, unknown>, path: string): unknown {
   return path.split(".").reduce<unknown>((acc, key) => {

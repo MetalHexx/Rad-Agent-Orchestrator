@@ -28,6 +28,9 @@ const SAMPLE_CONFIG: OrchestrationConfig = {
     auto_commit: 'always',
     auto_pr: 'ask',
   },
+  ui: {
+    port: 4321,
+  },
 };
 
 const MINIMAL_CONFIG_YAML = `version: "1"

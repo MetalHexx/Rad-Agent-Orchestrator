@@ -157,7 +157,7 @@ The spend is already captured by observability under **this session's id**. Prin
 dashboard URL so the operator can jump straight to it:
 
 ```
-http://localhost:3000/observability/session/<SESSION-ID>
+http://localhost:1337/observability/session/<SESSION-ID>
 ```
 
 `<SESSION-ID>` is the UUID in your own scratchpad/session temp path — the last path
@@ -165,7 +165,8 @@ segment before `/scratchpad` (e.g. a path ending `…/<SESSION-ID>/scratchpad`).
 UUID verbatim.
 
 > The link only resolves if the dashboard is running. If it isn't, note that the
-> operator can start it with `/rad-ui-start` (check with `/rad-ui-status`).
+> operator can start it with `/rad-ui-start` (check with `/rad-ui-status`). It serves on
+> a configurable port (default 1337, via `ui.port` in `orchestration.yml`).
 
 ## Exit
 

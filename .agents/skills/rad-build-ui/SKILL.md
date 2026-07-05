@@ -5,11 +5,11 @@ description: 'Build the Next.js dashboard UI from source and redeploy it to the 
 
 # rad-build-ui
 
-**Where this fits.** This is the fast inner-loop for testing changes to the dashboard `ui/` in the *real* detached server (`radorch ui start`, which runs `~/.radorc/ui/ui/server.js`) — not `next dev`. It reuses the installer's own bundler (`emit-ui-bundle.js`) so the deployed layout is identical to a real install, but it deploys **only** the `ui/` directory. It deliberately does **not** run the full installer hydrate (`harness-installers/standard/lib/install/hydrate-user-data.js`), which would also overwrite the four shipped tier templates and could touch other user data — so `~/.radorc/orchestration.yml`, `repo-registry.yml`, `projects/`, and `logs/` are never modified.
+**Where this fits.** This is the fast inner-loop for testing changes to the dashboard `ui/` in the *real* detached server (`radorch ui start`, which runs `~/.radorc/ui/ui/server.js`) — not `next dev`. It reuses the installer's own bundler (`emit-ui-bundle.js`) so the deployed layout is identical to a real install, but it deploys **only** the `ui/` directory. It deliberately does **not** run the full installer hydrate (`harness-installers/standard/lib/install/hydrate-user-data.js`), which would also overwrite the four shipped tier templates and could touch other user data — so `~/.radorc/orchestration.yml`, `repo-registry.yml`, `projects/`, and `logs/` are never modified. The dashboard runs on a configurable port (default 1337, via `ui.port` in `orchestration.yml`).
 
 ## When to Use This Skill
 
-- You changed something under `ui/` and want to see it in the detached dashboard at `http://localhost:3000`.
+- You changed something under `ui/` and want to see it in the detached dashboard (configurable port, default 1337 via `ui.port` in `orchestration.yml`).
 - You need a production-parity build (standalone) deployed to `~/.radorc/ui`, not the `next dev` server.
 - You are about to browser-test the dashboard against the real install.
 
@@ -85,12 +85,12 @@ The deployed layout has the server at `~/.radorc/ui/ui/server.js`. Nothing else 
 
 ### Step 5 — Start the UI
 
-Start via the **`rad-ui-start`** skill (or directly `radorch ui start`). It probes ports 3000–3010, writes `~/.radorc/runtime/ui.pid`, and returns `data.url`.
+Start via the **`rad-ui-start`** skill (or directly `radorch ui start`). It probes ports 1337–1347 (the configurable default range, anchored to the `ui.port` setting), writes `~/.radorc/runtime/ui.pid`, and returns `data.url`.
 
 ### Step 6 — Verify
 
 - `radorch ui status` → `running:true` with a `url`.
-- Open the returned URL (default `http://localhost:3000`) and confirm the change is live. Note: the dashboard sets a build/version label; a hard refresh (Ctrl+Shift+R) avoids a stale cached bundle.
+- Open the returned URL (from the `status` command or the `data.url` from the `start` command; default `http://localhost:1337` if `ui.port` is not overridden) and confirm the change is live. Note: the dashboard sets a build/version label; a hard refresh (Ctrl+Shift+R) avoids a stale cached bundle.
 
 ## Safety notes
 
