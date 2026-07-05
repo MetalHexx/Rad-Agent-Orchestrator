@@ -30,7 +30,7 @@ test('the card inputs are threaded from live state into PlanningSection', () => 
   const mount = pageSrc.slice(idx, pageSrc.indexOf('/>', idx));
   assert.ok(/state=\{v5State\}/.test(mount), 'live state fed to the card');
   assert.ok(/compareUrlByRepo=\{v5Derivations\.compareUrlByRepo\}/.test(mount), 'compare URLs threaded');
-  assert.ok(/onDocClick=\{openDocument\}/.test(mount), 'doc-click handler threaded');
+  assert.ok(/onDocClick=\{openArtifactModal\}/.test(mount), 'doc-click handler threaded to the modal opener');
   assert.ok(/requirementsStatus=\{requirementsStatus\}/.test(mount), 'requirements status threaded to the docs list');
 });
 

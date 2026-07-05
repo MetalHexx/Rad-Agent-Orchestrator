@@ -1,8 +1,9 @@
 "use client";
 
 import * as React from "react";
-import { ChevronLeft, ChevronRight, Trash2, FileText } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { ChevronLeft, ChevronRight, Trash2, FileText, PanelTop } from "lucide-react";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { copyTextToClipboard } from "@/lib/clipboard";
 import { buildDocDeepLink } from "@/lib/deep-link";
 import { centerScrollLeft, pageScrollDelta, shouldHijackWheel } from "@/lib/filmstrip-scroll";
@@ -12,23 +13,38 @@ import { BufferedStage } from "./buffered-stage";
 import { ChangeBadge } from "@/components/badges";
 import { cn } from "@/lib/utils";
 import { ModalShell } from "@/components/modal/modal-shell";
-import type { Artifact } from "@/lib/artifact-model";
+import type { ModalDoc } from "@/lib/modal-doc-model";
+import type { DocumentFrontmatter } from "@/types/components";
+
+// Only one instance of the modal is ever mounted at a time, so fixed ids are
+// safe for aria-labelledby / aria-controls.
+const TITLE_ID = "artifact-viewer-modal-title";
+const STAGE_PANEL_ID = "artifact-viewer-modal-stage";
 
 export interface ArtifactViewerModalProps {
   projectName: string;
-  artifacts: Artifact[];
-  /** Identity of the open document — anchored to the filename, not an array
-   *  index, so focus stays pinned across live reorders/inserts/deletes. */
-  activeFileName: string | null;
+  artifacts: ModalDoc[];
+  /** Identity of the open document — anchored to its path, not an array
+   *  index, so focus stays pinned across live reorders/inserts/deletes. A
+   *  root doc's path is its bare filename; a subfolder doc's path is its full
+   *  project-relative path. */
+  activePath: string | null;
   /** Fetched BRAINSTORMING.md body when the active (or any) md cell needs it. */
   markdownContent: string | null;
-  /** Which file `markdownContent` belongs to — lets the stage withhold a stale
+  /** Which path `markdownContent` belongs to — lets the stage withhold a stale
    *  body from a freshly-navigated md layer until its own fetch resolves (BUG 1). */
   markdownContentFileName?: string | null;
+  /** The active markdown doc's frontmatter — gated to `markdownContentFileName`
+   *  the same way `markdownContent` is (BUG-1-style stale-doc guard). */
+  frontmatter?: DocumentFrontmatter | null;
+  /** Whether the frontmatter card is currently toggled on. Default false (hidden). */
+  showFrontmatter?: boolean;
+  /** Toggles frontmatter visibility. Omitted → the floating toggle button is not rendered. */
+  onToggleFrontmatter?: () => void;
   onClose: () => void;
   onPrev: () => void;
   onNext: () => void;
-  onSelect: (fileName: string) => void;
+  onSelect: (path: string) => void;
   onRequestDelete: () => void;
   isFullScreen: boolean;
   onToggleFullScreen: () => void;
@@ -43,22 +59,35 @@ export interface ArtifactViewerModalProps {
 }
 
 export function ArtifactViewerModal({
-  projectName, artifacts, activeFileName, markdownContent, markdownContentFileName,
+  projectName, artifacts, activePath, markdownContent, markdownContentFileName,
+  frontmatter, showFrontmatter = false, onToggleFrontmatter,
   onClose, onPrev, onNext, onSelect, onRequestDelete, isFullScreen, onToggleFullScreen,
   unseen, activePulse, mtimes, dataState = "open",
 }: ArtifactViewerModalProps) {
-  const active = artifacts.find((a) => a.fileName === activeFileName);
+  const active = artifacts.find((a) => a.path === activePath);
+  const activeIndex = active ? artifacts.indexOf(active) : -1;
+  // Mirrors DocumentMetadata's own "any real entries" check (document-metadata.tsx)
+  // so "has frontmatter" means the same thing everywhere in the app — otherwise
+  // the toggle would appear for markdown docs with an empty/absent frontmatter
+  // block and open onto an empty panel.
+  const hasFrontmatter = !!frontmatter && Object.entries(frontmatter).some(([, v]) => v !== null && v !== undefined);
+  // The delete API only allows unlinking root-level artifact files (see
+  // ui/app/api/projects/[name]/delete/route.ts) — nested spine docs (phase
+  // plans, task handoffs, reviews, the error log) are pipeline-managed and
+  // deliberately not user-deletable. Hide the control there instead of
+  // surfacing a delete request that the server will always reject.
+  const canDelete = !!active && !/[\\/]/.test(active.path);
 
   const [shareState, setShareState] = React.useState<'idle' | 'copied' | 'failed'>('idle');
   const shareTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleShare = React.useCallback(async () => {
-    if (!activeFileName) return;
-    const url = buildDocDeepLink(window.location.origin, projectName, activeFileName);
+    if (!activePath) return;
+    const url = buildDocDeepLink(window.location.origin, projectName, activePath);
     const ok = await copyTextToClipboard(url);
     setShareState(ok ? 'copied' : 'failed');
     if (shareTimerRef.current) clearTimeout(shareTimerRef.current);
     shareTimerRef.current = setTimeout(() => setShareState('idle'), 2000);
-  }, [projectName, activeFileName]);
+  }, [projectName, activePath]);
   React.useEffect(() => () => {
     if (shareTimerRef.current) clearTimeout(shareTimerRef.current);
   }, []);
@@ -69,7 +98,14 @@ export function ArtifactViewerModal({
     const c = stripRef.current, cell = activeCellRef.current;
     if (!c || !cell) return;
     c.scrollLeft = centerScrollLeft(c.clientWidth, cell.offsetLeft, cell.clientWidth);
-  }, [activeFileName]);
+    // Roving tabindex means the newly-active cell is the only tab stop; follow
+    // focus onto it so the keyboard user isn't stranded on the now-inert
+    // previous cell. Only when focus is already inside the filmstrip — never
+    // steal focus from the markdown body a reader is scrolling.
+    if (c.contains(document.activeElement)) {
+      cell.focus();
+    }
+  }, [activePath]);
 
   React.useEffect(() => {
     const c = stripRef.current;
@@ -84,15 +120,17 @@ export function ArtifactViewerModal({
   }, []);
 
   if (!active) return null;
-  const friendly = active.title ?? active.label;
+  const friendly = active.title;
 
   return (
     <ModalShell
-      ariaLabel={`${friendly} — ${active.fileName}`}
+      ariaLabel={`${friendly} — ${active.path}`}
+      titleId={TITLE_ID}
+      announcement={friendly}
       title={
         <>
-          <span className="text-sm font-medium text-foreground">{friendly}</span>
-          <span title={active.fileName} className="truncate text-xs text-muted-foreground">{active.fileName}</span>
+          <span id={TITLE_ID} className="text-sm font-medium text-foreground">{friendly}</span>
+          <span title={active.path} className="truncate text-xs text-muted-foreground">{active.path}</span>
         </>
       }
       onClose={onClose}
@@ -116,26 +154,29 @@ export function ArtifactViewerModal({
             onClick={() => { const c = stripRef.current; if (c) c.scrollBy({ left: pageScrollDelta(c.clientWidth) }); }}>
             <ChevronRight className="size-4" aria-hidden="true" />
           </Button>
-          <div ref={stripRef as React.RefObject<HTMLDivElement>} className="flex items-end gap-2 overflow-x-auto px-8">
-          {artifacts.map((artifact) => {
-            const pulsing = activePulse?.has(artifact.fileName) ?? false;
+          <div ref={stripRef as React.RefObject<HTMLDivElement>} role="tablist" aria-label="Artifacts" className="flex items-end gap-2 overflow-x-auto px-8">
+          {artifacts.map((artifact, index) => {
+            const pulsing = activePulse?.has(artifact.path) ?? false;
+            const isActive = artifact.path === activePath;
             return (
-            <ActivePulse key={artifact.fileName} active={pulsing} variant="frame" className="rounded-md">
+            <ActivePulse key={artifact.path} active={pulsing} variant="frame" className="rounded-md">
             <div
               data-filmstrip-cell
-              ref={artifact.fileName === activeFileName ? activeCellRef : undefined}
-              role="button"
-              tabIndex={0}
-              aria-label={`View ${artifact.title ?? artifact.label}`}
-              aria-current={artifact.fileName === activeFileName ? 'true' : undefined}
-              onClick={() => onSelect(artifact.fileName)}
-              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(artifact.fileName); } }}
+              id={`filmstrip-tab-${index}`}
+              ref={isActive ? activeCellRef : undefined}
+              role="tab"
+              tabIndex={isActive ? 0 : -1}
+              aria-label={`View ${artifact.title}`}
+              aria-selected={isActive}
+              aria-controls={STAGE_PANEL_ID}
+              onClick={() => onSelect(artifact.path)}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(artifact.path); } }}
               className={cn(
                 "flex h-16 w-24 shrink-0 cursor-pointer flex-col items-center overflow-hidden rounded-md border",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 // Grey neutral ring marks the SELECTED doc; while it's being written the
                 // ActivePulse lavender glow takes over (supersedes grey), so drop the grey then.
-                !pulsing && artifact.fileName === activeFileName
+                !pulsing && isActive
                   ? "border-2 ring-2 ring-ring border-ring"
                   : "border-border",
               )}
@@ -148,14 +189,14 @@ export function ArtifactViewerModal({
                 ) : (
                   <IframePreview
                     projectName={projectName}
-                    fileName={artifact.fileName}
+                    fileName={artifact.path}
                     scale={0.12}
                     interactive={false}
                     eager
                     className="h-full w-full"
                   />
                 )}
-                {(unseen?.has(artifact.fileName) ?? false) && (
+                {(unseen?.has(artifact.path) ?? false) && (
                   <div className="absolute left-1 top-1 z-10">
                     <ChangeBadge />
                   </div>
@@ -163,7 +204,7 @@ export function ArtifactViewerModal({
               </div>
               <div className="flex w-full flex-1 items-center justify-center px-1">
                 <span className="w-full truncate text-center text-[9px] leading-tight text-muted-foreground">
-                  {artifact.title ?? artifact.label}
+                  {artifact.title}
                 </span>
               </div>
             </div>
@@ -174,34 +215,102 @@ export function ArtifactViewerModal({
         </footer>
       }
     >
-      <div className="relative h-full w-full bg-muted">
+      <div
+        className="relative h-full w-full bg-muted"
+        role="tabpanel"
+        id={STAGE_PANEL_ID}
+        aria-labelledby={activeIndex >= 0 ? `filmstrip-tab-${activeIndex}` : undefined}
+      >
         <BufferedStage
           projectName={projectName}
           artifact={active}
           markdownContent={markdownContent}
           markdownContentFileName={markdownContentFileName ?? undefined}
-          activePulse={activePulse?.has(active.fileName) ?? false}
-          liveMtime={mtimes?.[active.fileName] ?? 0}
+          frontmatter={frontmatter ?? null}
+          showFrontmatter={showFrontmatter}
+          activePulse={activePulse?.has(active.path) ?? false}
+          liveMtime={mtimes?.[active.path] ?? 0}
         />
         <div
           aria-hidden="true"
           className={cn(
             "pointer-events-none absolute inset-0",
-            (activePulse?.has(active.fileName) ?? false) && "live-pulse-stage",
+            (activePulse?.has(active.path) ?? false) && "live-pulse-stage",
           )}
         />
-        <button type="button" aria-label="Previous artifact" onClick={onPrev}
-          className="absolute left-2 top-1/2 -translate-y-1/2 cursor-pointer rounded-full bg-background/70 p-2 text-foreground hover:bg-background">
-          <ChevronLeft className="size-5" aria-hidden="true" />
-        </button>
-        <button type="button" aria-label="Next artifact" onClick={onNext}
-          className="absolute right-2 top-1/2 -translate-y-1/2 cursor-pointer rounded-full bg-background/70 p-2 text-foreground hover:bg-background">
-          <ChevronRight className="size-5" aria-hidden="true" />
-        </button>
-        <button type="button" aria-label="Delete artifact" onClick={onRequestDelete}
-          className="absolute bottom-3 right-3 z-10 cursor-pointer rounded-full bg-background/70 p-2 text-muted-foreground hover:bg-background hover:text-destructive">
-          <Trash2 className="size-5" aria-hidden="true" />
-        </button>
+        {/* All four floating stage buttons share one look: buttonVariants ghost/icon on a
+            native <button> (never the Button component — it isn't wrapped in React.forwardRef,
+            so TooltipTrigger's ref never reaches the real DOM node and the tooltip fails to
+            close on blur, confirmed live). Each dims to text-muted-foreground until hovered/
+            focused, matching the frontmatter toggle; only Delete's hover color differs (red,
+            to signal destructiveness) — everything else about it is identical.
+            Wrapped in cn(): buttonVariants alone just concatenates strings, so the ghost
+            variant's own hover:bg-muted/hover:text-foreground would otherwise sit in the
+            compiled CSS after our hover:bg-background/hover:text-destructive overrides and
+            silently win (equal specificity, later source order) — cn()'s tailwind-merge
+            drops the earlier conflicting utility instead of leaving it to source order. */}
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger render={
+              <button type="button" aria-label="Previous artifact" onClick={onPrev}
+                className={cn(buttonVariants({
+                  variant: "ghost",
+                  size: "icon",
+                  className: "absolute left-2 top-1/2 z-10 -translate-y-1/2 cursor-pointer rounded-full bg-background/70 text-muted-foreground hover:bg-background hover:text-foreground",
+                }))}>
+                <ChevronLeft className="size-4" aria-hidden="true" />
+              </button>
+            } />
+            <TooltipContent>Previous artifact</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger render={
+              <button type="button" aria-label="Next artifact" onClick={onNext}
+                className={cn(buttonVariants({
+                  variant: "ghost",
+                  size: "icon",
+                  className: "absolute right-2 top-1/2 z-10 -translate-y-1/2 cursor-pointer rounded-full bg-background/70 text-muted-foreground hover:bg-background hover:text-foreground",
+                }))}>
+                <ChevronRight className="size-4" aria-hidden="true" />
+              </button>
+            } />
+            <TooltipContent>Next artifact</TooltipContent>
+          </Tooltip>
+          {canDelete && (
+            <Tooltip>
+              <TooltipTrigger render={
+                <button type="button" aria-label="Delete artifact" onClick={onRequestDelete}
+                  className={cn(buttonVariants({
+                    variant: "ghost",
+                    size: "icon",
+                    className: "absolute bottom-3 right-3 z-10 cursor-pointer rounded-full bg-background/70 text-muted-foreground hover:bg-background hover:text-destructive",
+                  }))}>
+                  <Trash2 className="size-4" aria-hidden="true" />
+                </button>
+              } />
+              <TooltipContent>Delete artifact</TooltipContent>
+            </Tooltip>
+          )}
+          {active.isMarkdown && onToggleFrontmatter && hasFrontmatter && (
+            <Tooltip>
+              <TooltipTrigger render={
+                <button
+                  type="button"
+                  aria-label={showFrontmatter ? "Hide frontmatter" : "Show frontmatter"}
+                  onClick={onToggleFrontmatter}
+                  className={cn(buttonVariants({
+                    variant: "ghost",
+                    size: "icon",
+                    className: "absolute right-3 top-3 z-10 cursor-pointer rounded-full bg-background/70 text-muted-foreground hover:bg-background hover:text-foreground",
+                  }))}
+                >
+                  <PanelTop className="size-4" aria-hidden="true" />
+                </button>
+              } />
+              <TooltipContent>{showFrontmatter ? "Hide frontmatter" : "Show frontmatter"}</TooltipContent>
+            </Tooltip>
+          )}
+        </TooltipProvider>
         {shareState !== 'idle' && (
           <div role="status" aria-live="polite"
             className="absolute right-4 top-12 z-10 rounded-md border border-border bg-popover px-2.5 py-1.5 text-xs text-popover-foreground shadow-md">

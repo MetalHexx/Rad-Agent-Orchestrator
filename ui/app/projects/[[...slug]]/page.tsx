@@ -3,7 +3,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useProjects } from "@/hooks/use-projects";
-import { useDocumentDrawer } from "@/hooks/use-document-drawer";
 import { useFollowMode } from "@/hooks/use-follow-mode";
 import { useConfigEditor } from "@/hooks/use-config-editor";
 import { useConfigClickContext } from "@/hooks/use-config-click-context";
@@ -12,7 +11,6 @@ import { ProjectSidebar } from "@/components/sidebar";
 import { LaunchScreen } from "@/components/layout";
 import { useStartAction } from "@/hooks/use-start-action";
 import { deleteArtifact } from "@/hooks/use-project-artifacts";
-import { DocumentDrawer } from "@/components/documents";
 import { ConfirmApprovalDialog } from "@/components/dashboard";
 import { ConfigEditorPanel } from "@/components/config";
 import { DAGTimeline, DAGTimelineSkeleton, ProjectHeader, HaltReasonBanner, SourceControlPanel, deriveCurrentPhase, derivePhaseProgress } from "@/components/dag-timeline";
@@ -21,14 +19,14 @@ import { hasSourceControlRepos, selectSourceControlRepos } from "@/components/da
 import { buildBindLookup } from "@/components/dag-timeline/source-control-bind";
 import { useRegistryStore } from "@/components/repo-registry/use-registry-store";
 import { SSEStatusBanner } from "@/components/badges";
-import { getOrderedDocsV5 } from "@/lib/document-ordering";
 import { isV5State, isV6State } from "@/types/state";
 import type { ProjectStateV5, ProjectStateV6, GraphStatus, GateMode, NodeStatus } from "@/types/state";
 import type { SSEConnectionStatus } from "@/types/events";
-import type { ProjectSummary } from "@/types/components";
+import type { ProjectSummary, DocumentFrontmatter } from "@/types/components";
 import { ArtifactViewerModal } from "@/components/artifacts";
-import { useArtifactModal, markdownPathForActive } from "@/hooks/use-artifact-modal";
+import { useArtifactModal, markdownPathForActive, deleteTargetForActive } from "@/hooks/use-artifact-modal";
 import { ArtifactLiveProvider, useArtifactLive } from "@/hooks/use-artifact-live";
+import { buildModalDocs, type ModalDoc } from "@/lib/modal-doc-model";
 
 // ─── Inner component — runs under ArtifactLiveProvider ────────────────────────
 
@@ -50,13 +48,13 @@ interface ProjectsPageContentProps {
   onAccordionChange: (value: string[], eventDetails: { reason: string }) => void;
   sseStatus: SSEConnectionStatus;
   reconnect: () => void;
-  openDocument: (path: string) => void;
   filesLoaded: boolean;
-  setPendingDelete: (a: import("@/lib/artifact-model").Artifact | null) => void;
-  onActiveFileNameChange: (fileName: string | null) => void;
+  setPendingDelete: (a: { fileName: string } | null) => void;
+  onActivePathChange: (path: string | null) => void;
   registerOnDeleted: (fn: () => void) => void;
   urlDoc: string | null;
   requirementsStatus: string | null;
+  modalDocs: ModalDoc[];
 }
 
 function ProjectsPageContent({
@@ -70,13 +68,13 @@ function ProjectsPageContent({
   onAccordionChange,
   sseStatus,
   reconnect,
-  openDocument,
   filesLoaded,
   setPendingDelete,
-  onActiveFileNameChange,
+  onActivePathChange,
   registerOnDeleted,
   urlDoc,
   requirementsStatus,
+  modalDocs,
 }: ProjectsPageContentProps) {
   const live = useArtifactLive();
   const artifacts = live.artifacts;
@@ -84,18 +82,18 @@ function ProjectsPageContent({
   const { store: registryStore } = useRegistryStore();
   const bindByName = React.useMemo(() => buildBindLookup(registryStore.repos), [registryStore.repos]);
 
-  const getArtifacts = useCallback(() => artifacts, [artifacts]);
+  const getArtifacts = useCallback(() => modalDocs, [modalDocs]);
   // In-modal doc switching mutates the URL with the History API, NOT the Next router.
   // router.push/replace remounts this page (App Router re-keys the [[...slug]] segment on a
   // param change), which would reset isFullScreen, throw away the BufferedStage cross-fade,
   // and refetch — i.e. the "full page reload" jank. window.history.{push,replace}State updates
   // the address bar without a navigation, so the page only re-renders: fullscreen and the
   // cross-fade survive. usePathname() (read side, outer component) tracks these shallow updates.
-  const navigate = useCallback((fileName: string | null, mode: 'push' | 'replace' | 'back') => {
+  const navigate = useCallback((path: string | null, mode: 'push' | 'replace' | 'back') => {
     if (!selectedProject) return;
     if (mode === 'back') { window.history.back(); return; }
     const base = `/projects/${encodeURIComponent(selectedProject)}`;
-    const url = fileName ? `${base}/docs/${encodeURIComponent(fileName)}` : base;
+    const url = path ? `${base}/docs/${path.split('/').map(encodeURIComponent).join('/')}` : base;
     if (mode === 'replace') window.history.replaceState(null, '', url);
     else window.history.pushState(null, '', url);
   }, [selectedProject]);
@@ -114,29 +112,40 @@ function ProjectsPageContent({
   // resolves; null while clearing/loading. Lets the stage withhold a stale body
   // from a freshly-navigated md layer until its own fetch lands (BUG 1).
   const [modalMarkdownFileName, setModalMarkdownFileName] = useState<string | null>(null);
+  // Fetched alongside modalMarkdown, from the same /document response — gated
+  // by the same modalMarkdownFileName identity so a stale doc's frontmatter
+  // never renders against a freshly-navigated body.
+  const [modalFrontmatter, setModalFrontmatter] = useState<DocumentFrontmatter | null>(null);
+  // Owned here (not in the modal) so it persists across prev/next/select and is
+  // reset only when the modal itself closes. Default false: frontmatter starts hidden.
+  const [showFrontmatter, setShowFrontmatter] = useState(false);
 
-  // Active file name is the modal's own identity — single choke point, no
+  // Active path is the modal's own identity — single choke point, no
   // longer derived from a (mutable) array index.
-  const activeFileName = modal.activeFileName;
+  const activePath = modal.activePath;
 
   // Clear the unseen badge for whichever file the user is viewing — the one
   // authoritative place this fires so every open route and prev/next clears uniformly.
   React.useEffect(() => {
-    live.markActive(activeFileName);
-    onActiveFileNameChange(activeFileName);
-  }, [activeFileName, live, onActiveFileNameChange]);
+    live.markActive(activePath);
+    onActivePathChange(activePath);
+  }, [activePath, live, onActivePathChange]);
 
-  useEffect(() => { if (!modal.open) setIsFullScreen(false); }, [modal.open]);
+  // Frontmatter toggle resets whenever the modal itself closes (regardless of
+  // how — close button, deferred-unmount handler, or delete-driven auto-close)
+  // so reopening always starts hidden again.
+  useEffect(() => { if (!modal.open) { setIsFullScreen(false); setShowFrontmatter(false); } }, [modal.open]);
 
   useEffect(() => {
-    const mdPath = markdownPathForActive(artifacts, modal.activeFileName);
+    const mdPath = markdownPathForActive(modalDocs, modal.activePath);
     if (!modal.open || !mdPath || !selectedProject) {
       setModalMarkdown(null);
       setModalMarkdownFileName(null);
+      setModalFrontmatter(null);
       return;
     }
     // Note: we intentionally leave the prior body/owner in place while the new fetch
-    // is in flight. The stage gates markdown by fileName, so the previously-shown
+    // is in flight. The stage gates markdown by path, so the previously-shown
     // (front) doc keeps rendering its own content while the incoming layer waits on
     // its matching fetch — no stale flash, no front spinner during navigation (BUG 1).
     let cancelled = false;
@@ -145,14 +154,24 @@ function ProjectsPageContent({
         if (!res.ok) throw new Error("Failed to fetch markdown");
         return res.json();
       })
-      .then((data: { content: string }) => {
-        if (!cancelled) { setModalMarkdown(data.content); setModalMarkdownFileName(mdPath); }
+      .then((data: { content: string; frontmatter: DocumentFrontmatter }) => {
+        if (!cancelled) {
+          setModalMarkdown(data.content);
+          setModalFrontmatter(data.frontmatter);
+          setModalMarkdownFileName(mdPath);
+        }
       })
       .catch(() => {
-        if (!cancelled) { setModalMarkdown(''); setModalMarkdownFileName(mdPath); }
+        if (!cancelled) {
+          setModalMarkdown('');
+          setModalFrontmatter({});
+          setModalMarkdownFileName(mdPath);
+        }
       });
     return () => { cancelled = true; };
-  }, [modal.open, modal.activeFileName, artifacts, selectedProject]);
+  }, [modal.open, modal.activePath, modalDocs, selectedProject]);
+
+  const handleToggleFrontmatter = useCallback(() => setShowFrontmatter((v) => !v), []);
 
   const handleModalClose = useCallback(() => {
     setModalClosing(true);
@@ -231,14 +250,14 @@ function ProjectsPageContent({
                   unseen={live.unseen}
                   activePulse={live.activePulse}
                   state={v5State}
-                  onDocClick={openDocument}
+                  onDocClick={openArtifactModal}
                   compareUrlByRepo={v5Derivations.compareUrlByRepo}
                   projectName={selected.name}
                 />
                 <DAGTimeline
                   nodes={v5State.graph.nodes}
                   currentNodePath={v5State.graph.current_node_path}
-                  onDocClick={openDocument}
+                  onDocClick={openArtifactModal}
                   expandedLoopIds={expandedLoopIds}
                   onAccordionChange={onAccordionChange}
                   compareUrlByRepo={v5Derivations.compareUrlByRepo}
@@ -279,19 +298,22 @@ function ProjectsPageContent({
         />
       ) : null}
 
-      {modal.open && artifacts.some((a) => a.fileName === modal.activeFileName) && (
+      {modal.open && modalDocs.some((d) => d.path === modal.activePath) && (
         <ArtifactViewerModal
           projectName={selectedProject!}
-          artifacts={artifacts}
-          activeFileName={modal.activeFileName}
+          artifacts={modalDocs}
+          activePath={modal.activePath}
           markdownContent={modalMarkdown}
           markdownContentFileName={modalMarkdownFileName}
+          frontmatter={modalFrontmatter}
+          showFrontmatter={showFrontmatter}
+          onToggleFrontmatter={handleToggleFrontmatter}
           onClose={handleModalClose}
           dataState={modalClosing ? "closed" : "open"}
           onPrev={modal.goPrev}
           onNext={modal.goNext}
-          onSelect={(fileName) => modal.openByName(fileName)}
-          onRequestDelete={() => { const a = artifacts.find((x) => x.fileName === modal.activeFileName); if (a) setPendingDelete(a); }}
+          onSelect={(path) => modal.openByName(path)}
+          onRequestDelete={() => { const d = deleteTargetForActive(modalDocs, modal.activePath); if (d) setPendingDelete(d); }}
           isFullScreen={isFullScreen}
           onToggleFullScreen={() => setIsFullScreen((v) => !v)}
           unseen={live.unseen}
@@ -300,7 +322,7 @@ function ProjectsPageContent({
         />
       )}
 
-      {modal.open && filesLoaded && !artifacts.some((a) => a.fileName === modal.activeFileName) && (
+      {modal.open && filesLoaded && !modalDocs.some((d) => d.path === modal.activePath) && (
         <div role="alert" className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="flex flex-col items-center gap-3 rounded-xl bg-card p-6 text-card-foreground shadow-lg">
             <p className="text-sm text-muted-foreground">Document not found.</p>
@@ -324,13 +346,20 @@ export default function ProjectsPage() {
   // reflects in usePathname() but NOT in useParams(). usePathname() returns the ENCODED path,
   // so decode each segment exactly once (the write side encodes once — see `navigate`). A guard
   // keeps a malformed '%' from throwing URIError; it falls through to the not-found state.
-  const segs = pathname.split('/').filter(Boolean); // ["projects", <project?>, "docs", <doc?>]
+  const segs = pathname.split('/').filter(Boolean); // ["projects", <project?>, "docs", ...<doc path segments>]
   const decodeSeg = (s: string | undefined): string | null => {
     if (s === undefined) return null;
     try { return decodeURIComponent(s); } catch { return s; }
   };
   const urlProject = segs.length >= 2 ? decodeSeg(segs[1]) : null;
-  const urlDoc = segs.length >= 4 && segs[2] === 'docs' ? decodeSeg(segs[3]) : null;
+  // Everything after `docs/` is the doc's path segments — a flat filename is
+  // one segment (byte-identical to before); a nested path (`phases/…`) is
+  // several. Reconstruct the full relative path from ALL of them, not just
+  // the first, so a nested path round-trips instead of silently resolving to
+  // the wrong (or no) document.
+  const urlDoc = segs[2] === 'docs' && segs.length > 3
+    ? segs.slice(3).map((s) => decodeSeg(s) ?? s).join('/')
+    : null;
   const router = useRouter();
 
   const {
@@ -359,18 +388,6 @@ export default function ProjectsPage() {
       router.replace('/projects');
     }
   }, [urlProject, isLoading, projects, router]);
-
-  const {
-    isOpen,
-    docPath,
-    loading: docLoading,
-    error: docError,
-    data: docData,
-    openDocument,
-    close: closeDocument,
-    navigateTo,
-    scrollAreaRef,
-  } = useDocumentDrawer({ projectName: selectedProject });
 
   const [fileList, setFileList] = useState<string[]>([]);
   const [filesLoaded, setFilesLoaded] = useState(false);
@@ -401,7 +418,7 @@ export default function ProjectsPage() {
     [projects, selectedProject],
   );
 
-  const [pendingDelete, setPendingDelete] = useState<import("@/lib/artifact-model").Artifact | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<{ fileName: string } | null>(null);
   const [deletePending, setDeletePending] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [fileRefetch, setFileRefetch] = useState(0);
@@ -427,12 +444,14 @@ export default function ProjectsPage() {
     };
   }, [v5State]);
 
-  const orderedDocs = useMemo(() => {
-    if (v5State && selectedProject) {
-      return getOrderedDocsV5(v5State, selectedProject, fileList);
-    }
-    return [];
-  }, [v5State, selectedProject, fileList]);
+  // The modal's unified, path-identified document list — built here (not inside
+  // ProjectsPageContent) because this is where the raw recursive `fileList` is
+  // already owned; the inner component only ever sees the root-only
+  // `live.artifacts`, which can't represent subfolder docs.
+  const modalDocs = useMemo(() => {
+    if (!selectedProject) return [];
+    return buildModalDocs(selectedProject, fileList, v5State, v5State !== null);
+  }, [selectedProject, fileList, v5State]);
 
   // Reset the files-loaded gate on project change ONLY (not on fileRefetch),
   // so deleting an artifact — which bumps fileRefetch — doesn't flash the
@@ -470,9 +489,9 @@ export default function ProjectsPage() {
     return () => { cancelled = true; };
   }, [selectedProject, fileRefetch]);
 
-  // Active file name for the provider — derived from modal state inside the
+  // Active path for the provider — derived from modal state inside the
   // inner component and surfaced here via state so the provider prop stays live.
-  const [activeFileName, setActiveFileName] = useState<string | null>(null);
+  const [activePath, setActivePath] = useState<string | null>(null);
 
   return (
     <div className="flex h-[calc(100vh-3.5rem)] flex-col bg-background">
@@ -507,7 +526,7 @@ export default function ProjectsPage() {
               </p>
             </div>
           ) : selected ? (
-            <ArtifactLiveProvider projectName={selectedProject} activeFileName={activeFileName} hasTimeline={v5State !== null}>
+            <ArtifactLiveProvider projectName={selectedProject} activeFileName={activePath} hasTimeline={v5State !== null}>
               <ProjectsPageContent
                 selectedProject={selectedProject}
                 selected={selected}
@@ -519,13 +538,13 @@ export default function ProjectsPage() {
                 onAccordionChange={onAccordionChange}
                 sseStatus={sseStatus}
                 reconnect={reconnect}
-                openDocument={openDocument}
                 filesLoaded={filesLoaded}
                 setPendingDelete={setPendingDelete}
-                onActiveFileNameChange={setActiveFileName}
+                onActivePathChange={setActivePath}
                 registerOnDeleted={registerOnDeleted}
                 urlDoc={urlDoc}
                 requirementsStatus={requirementsStatus}
+                modalDocs={modalDocs}
               />
             </ArtifactLiveProvider>
           ) : (
@@ -537,18 +556,6 @@ export default function ProjectsPage() {
           )}
         </SidebarInset>
       </SidebarProvider>
-
-      <DocumentDrawer
-        open={isOpen}
-        docPath={docPath}
-        loading={docLoading}
-        error={docError}
-        data={docData}
-        onClose={closeDocument}
-        scrollAreaRef={scrollAreaRef}
-        docs={orderedDocs}
-        onNavigate={navigateTo}
-      />
 
       <ConfirmApprovalDialog
         open={pendingDelete !== null}

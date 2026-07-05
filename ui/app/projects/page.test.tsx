@@ -265,6 +265,7 @@ async function run() {
       '@/components/dashboard',
       '@/components/artifacts',
       '@/lib/document-ordering',
+      '@/lib/modal-doc-model',
       '@/types/state',
       '@/types/components',
       '@/types/events',

@@ -8,15 +8,16 @@ import {
   markdownPathForActive,
   fileNameAtOffset,
   fileNameAfterDelete,
+  deleteTargetForActive,
   openNavMode,
   closeNavMode,
 } from './use-artifact-modal';
-import type { Artifact } from '@/lib/artifact-model';
+import type { ModalDoc } from '@/lib/modal-doc-model';
 
-const arts: Artifact[] = [
-  { fileName: 'A.md', kind: 'markdown', label: 'Brainstorm', title: null, isMarkdown: true },
-  { fileName: 'B.html', kind: 'visual', label: 'Brainstorm Visual', title: null, isMarkdown: false },
-  { fileName: 'C.html', kind: 'wireframe', label: 'Wireframe', title: 'X', isMarkdown: false },
+const arts: ModalDoc[] = [
+  { path: 'A.md', kind: 'markdown', title: 'Brainstorm', isMarkdown: true },
+  { path: 'B.html', kind: 'visual', title: 'Brainstorm Visual', isMarkdown: false },
+  { path: 'C.html', kind: 'wireframe', title: 'X', isMarkdown: false },
 ];
 
 test('nextIndex advances and loops past the end (FR-14)', () => {
@@ -88,7 +89,7 @@ test('fileNameAtOffset retreats to the previous filename and wraps past the star
 
 test('fileNameAtOffset navigates from the active filename position after a reorder, not a stale index (regression)', () => {
   // The user is looking at B.html. The live list reorders underneath the modal.
-  const reordered: Artifact[] = [arts[2], arts[0], arts[1]]; // C, A, B
+  const reordered: ModalDoc[] = [arts[2], arts[0], arts[1]]; // C, A, B
   // Next from B (now last) wraps to C (now first) — the neighbour of the file
   // the user actually sees, NOT whatever sits at B's old index 1.
   assert.equal(fileNameAtOffset(reordered, 'B.html', 1), 'C.html');
@@ -123,6 +124,32 @@ test('fileNameAfterDelete returns null when the only file is removed so the moda
 
 test('fileNameAfterDelete returns null when the active filename is absent', () => {
   assert.equal(fileNameAfterDelete(arts, 'GONE.md'), null);
+});
+
+// ─── deleteTargetForActive — resolves against the unified doc list, not a root-only one (FR-19) ──
+
+test('deleteTargetForActive resolves a root doc by its bare filename', () => {
+  assert.deepEqual(deleteTargetForActive(arts, 'A.md'), { fileName: 'A.md' });
+});
+
+test('deleteTargetForActive resolves a subfolder doc by its full path (regression: must not depend on a root-only list)', () => {
+  const withSubfolder: ModalDoc[] = [
+    ...arts,
+    { path: 'phases/PHASE-2-PLAN.md', kind: 'markdown', title: 'Phase 2 Plan', isMarkdown: true, category: 'phase' },
+  ];
+  assert.deepEqual(
+    deleteTargetForActive(withSubfolder, 'phases/PHASE-2-PLAN.md'),
+    { fileName: 'phases/PHASE-2-PLAN.md' },
+  );
+});
+
+test('deleteTargetForActive returns null when the active path is absent from the list', () => {
+  assert.equal(deleteTargetForActive(arts, 'GONE.md'), null);
+  assert.equal(deleteTargetForActive(arts, 'phases/PHASE-2-PLAN.md'), null);
+});
+
+test('deleteTargetForActive returns null when there is no active path', () => {
+  assert.equal(deleteTargetForActive(arts, null), null);
 });
 
 test('openNavMode pushes when opening from closed and replaces when switching', () => {

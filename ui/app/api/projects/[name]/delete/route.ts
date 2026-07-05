@@ -17,10 +17,14 @@ export async function POST(
   if (pathParam.includes('..')) {
     return NextResponse.json({ error: 'Invalid path' }, { status: 400 });
   }
-  // Restrict deletions to root-level artifact files (.md / .html) — the only
-  // files the UI ever surfaces via deriveArtifacts. Without this, a crafted
-  // request could unlink state.json, schemas, or nested files even though they
-  // resolve inside the project dir.
+  // Restrict deletions to root-level artifact files (.md / .html). The unified
+  // artifact modal also surfaces nested spine docs (phase plans, task
+  // handoffs, reviews, the error log), but those are pipeline-managed and the
+  // modal deliberately withholds its delete control for them (see
+  // artifact-viewer-modal.tsx's canDelete) — this stays root-only rather than
+  // widening the allowlist, since a crafted request could otherwise unlink
+  // state.json, schemas, or other nested files even though they resolve
+  // inside the project dir.
   const isRootArtifact = !/[\\/]/.test(pathParam) && /\.(md|html)$/i.test(pathParam);
   if (!isRootArtifact) {
     return NextResponse.json({ error: 'Invalid path' }, { status: 400 });
