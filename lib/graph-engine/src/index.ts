@@ -32,3 +32,5 @@ export type { Result, EngineError, EngineErrorCode } from './result.js';
 
 export type { ProjectScope, StateStore } from './store/state-store.js';
 export { InMemoryStateStore } from './store/in-memory-store.js';
+
+export { frontier, remaining, deriveContainerStatus } from './derive/readiness.js';

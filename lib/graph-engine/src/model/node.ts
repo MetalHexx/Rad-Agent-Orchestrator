@@ -20,6 +20,12 @@ export interface DagNode {
   order: number;
   /** Provenance: corrective chain / expansion child / offshoot. `null` for an authored node. */
   derivedFrom: NodeId | null;
+  /**
+   * Cross-cutting exclude-from-frontier flag, orthogonal to `status`: a disabled node keeps
+   * whatever status it holds but is never frontier-eligible. Absent/`undefined` means enabled —
+   * every pre-existing node literal stays valid without this field.
+   */
+  disabled?: boolean;
   /** Node-type-owned payload; opaque to the core engine. */
   data: Readonly<Record<string, unknown>>;
 }
