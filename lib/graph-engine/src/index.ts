@@ -60,3 +60,6 @@ export type { NodeSpec, Expansion } from './primitives/expand.js';
 export { expand } from './primitives/expand.js';
 export type { EventHandler } from './primitives/apply-event.js';
 export { apply_event } from './primitives/apply-event.js';
+export type { AddCorrectiveOptions } from './primitives/corrective.js';
+export { add_corrective } from './primitives/corrective.js';
+export { reset } from './primitives/reset.js';
