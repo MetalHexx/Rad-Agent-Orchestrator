@@ -63,3 +63,45 @@ export { apply_event } from './primitives/apply-event.js';
 export type { AddCorrectiveOptions } from './primitives/corrective.js';
 export { add_corrective } from './primitives/corrective.js';
 export { reset } from './primitives/reset.js';
+
+export type {
+  ActContext,
+  ActResult,
+  AgentSpawnRequest,
+  DataChange,
+  DataFieldKind,
+  DataFieldLevel,
+  DataFieldSpec,
+  DataSchema,
+  Envelope,
+  EnvelopeOutcome,
+  HandleResult,
+  NodeEvent,
+  NodeTypeDefinition,
+  Presentation,
+  ReviewSpawnRequest,
+  RoutingRequest,
+} from './node-type/definition.js';
+export { DATA_FIELD_KINDS, DATA_FIELD_LEVELS, ENVELOPE_OUTCOMES } from './node-type/definition.js';
+
+export type {
+  CodeBehindPort,
+  DocReadPort,
+  DocReadRequest,
+  DocWritePort,
+  DocWriteRequest,
+  DocWriteResult,
+  GitFacts,
+  GitFactsPort,
+  GitFactsRequest,
+  IdempotentCallContext,
+  RequestHumanPort,
+  RequestHumanRequest,
+  RequestHumanResult,
+  RunCommandPort,
+  RunCommandRequest,
+  RunCommandResult,
+  SpawnAgentPort,
+  SpawnAgentRequest,
+  SpawnAgentResult,
+} from './node-type/capabilities.js';
