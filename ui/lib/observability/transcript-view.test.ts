@@ -17,6 +17,24 @@ test('toolArgPreview takes the first line, trimmed and capped (DD-4)', () => {
   assert.ok(toolArgPreview('x'.repeat(200)).length <= 80);
 });
 
+test('toolArgPreview with max=Infinity returns the full first line uncapped (P04-T02)', () => {
+  // long single-line input returns the full first line, not sliced
+  const longInput = 'x'.repeat(200);
+  assert.equal(toolArgPreview(longInput, Infinity), longInput);
+
+  // still takes first line only when multiline
+  assert.equal(toolArgPreview('  long line with spaces  \nsecond line', Infinity), 'long line with spaces');
+
+  // still trims whitespace
+  assert.equal(toolArgPreview('  ls -la  ', Infinity), 'ls -la');
+
+  // handles undefined
+  assert.equal(toolArgPreview(undefined, Infinity), '');
+
+  // default max=80 still slices
+  assert.ok(toolArgPreview('x'.repeat(200)).length <= 80);
+});
+
 const E = (over: Record<string, unknown>) => ({ seq: 0, timestamp: '', ...over }) as never;
 
 test('errorEventSeqs returns only error tool_results, in order (FR-10)', () => {
