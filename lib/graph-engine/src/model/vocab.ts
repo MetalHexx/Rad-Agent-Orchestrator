@@ -54,10 +54,19 @@ export const CAPABILITY_NAMES = [
 export type CapabilityName = (typeof CAPABILITY_NAMES)[number] | (string & {});
 
 // ── Primitive name ───────────────────────────────────────────────────────────────
-// The closed set of mutation primitive names. The engine's built-in primitives are authored in
-// P03 — this task establishes only the closed-vocabulary shape (`ChangeDelta.primitive` needs a
-// name to type against) and ships it empty; P03 populates `PRIMITIVE_NAMES` with its members.
-export const PRIMITIVE_NAMES = [] as const;
+// The closed set of mutation primitive names — the CRUD/lifecycle primitives shipped in
+// `src/primitives/` (`crud.ts`, `lifecycle.ts`). `ChangeDelta.primitive` is drawn from this union,
+// so every delta names the exact primitive that produced it.
+export const PRIMITIVE_NAMES = [
+  'add_node',
+  'remove_node',
+  'add_dependency',
+  'remove_dependency',
+  'move_node',
+  'set_order',
+  'toggle',
+  'resume',
+] as const;
 export type PrimitiveName = (typeof PRIMITIVE_NAMES)[number];
 
 // ── Event / action token ─────────────────────────────────────────────────────────

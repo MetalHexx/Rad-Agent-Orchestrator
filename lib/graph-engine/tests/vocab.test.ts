@@ -70,8 +70,17 @@ describe('CapabilityName vocabulary', () => {
 });
 
 describe('PrimitiveName vocabulary', () => {
-  it('ships empty — P03 populates the mutation primitive names', () => {
-    expect(PRIMITIVE_NAMES).toEqual([]);
+  it('has exactly the P03 CRUD/lifecycle primitive names', () => {
+    expect(PRIMITIVE_NAMES).toEqual([
+      'add_node',
+      'remove_node',
+      'add_dependency',
+      'remove_dependency',
+      'move_node',
+      'set_order',
+      'toggle',
+      'resume',
+    ]);
   });
 });
 

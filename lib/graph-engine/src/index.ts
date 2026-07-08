@@ -39,3 +39,20 @@ export type { GraphSnapshot, MutationSpec, OrderContradiction } from './derive/i
 export { findOrderContradictions } from './derive/invariants.js';
 export type { PreviewCone } from './derive/dry-run.js';
 export { validate, preview } from './derive/dry-run.js';
+
+export type { PrimitiveContext } from './primitives/primitive.js';
+export type {
+  AddNodeOptions,
+  ChildRemovalStrategy,
+  DependentRemovalStrategy,
+  RemoveNodeStrategy,
+} from './primitives/crud.js';
+export {
+  add_node,
+  remove_node,
+  add_dependency,
+  remove_dependency,
+  move_node,
+  set_order,
+} from './primitives/crud.js';
+export { toggle, resume } from './primitives/lifecycle.js';
