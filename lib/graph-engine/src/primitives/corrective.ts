@@ -30,8 +30,14 @@ export interface AddCorrectiveOptions {
  * set (the original attempt, whose own `derivedFrom` — if any — points at something unrelated, e.g.
  * the expansion that seeded it). `null` when `review` has no predecessor at all — nothing to derive
  * a corrective's container or provenance from.
+ *
+ * The depth walk floors at `review`'s own `budgetAnchor` when set (stamped only by `resume` on a
+ * corrective-budget-halt recovery): the anchored node counts as depth 0, so a budget reset by
+ * `resume` genuinely shortens the measured chain rather than merely relabeling it. Tip-finding
+ * itself never consults the anchor — only the depth count is floored by it. An absent anchor
+ * reproduces the unfloored count exactly.
  */
-function resolveChainTip(graph: GraphSnapshot, review: NodeId): { tip: DagNode; depth: number } | null {
+export function resolveChainTip(graph: GraphSnapshot, review: NodeId): { tip: DagNode; depth: number } | null {
   const predecessorIds = graph.edges
     .filter((edge) => edge.kind === 'depends_on' && edge.to === review)
     .map((edge) => edge.from);
@@ -49,9 +55,11 @@ function resolveChainTip(graph: GraphSnapshot, review: NodeId): { tip: DagNode; 
   );
   const tip = predecessors.find((n) => !referencedAsDerivedFrom.has(n.id)) ?? predecessors[predecessors.length - 1];
 
+  const anchor = findNode(graph, review)?.budgetAnchor ?? null;
+
   let depth = 0;
   let current: DagNode | undefined = tip;
-  while (current && current.derivedFrom !== null && predecessorIdSet.has(current.derivedFrom)) {
+  while (current && current.id !== anchor && current.derivedFrom !== null && predecessorIdSet.has(current.derivedFrom)) {
     depth++;
     current = findNode(graph, current.derivedFrom);
   }

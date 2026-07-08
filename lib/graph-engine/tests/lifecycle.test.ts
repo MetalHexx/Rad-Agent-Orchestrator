@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { toggle, resume, InMemoryStateStore, ROOT_NODE_ID } from '../src/index.js';
-import type { DagNode, PrimitiveContext, ProjectScope } from '../src/index.js';
+import { toggle, resume, frontier, InMemoryStateStore, ROOT_NODE_ID } from '../src/index.js';
+import type { ChangeDelta, DagNode, PrimitiveContext, ProjectScope } from '../src/index.js';
 
 function scope(projectId: string): ProjectScope {
   return { projectId };
@@ -23,12 +23,12 @@ function node(id: string, overrides: Partial<DagNode> = {}): DagNode {
   };
 }
 
-function seed(ctx: PrimitiveContext, nodes: DagNode[]): void {
+function seed(ctx: PrimitiveContext, nodes: DagNode[], edges: ChangeDelta['edgeChanges'] = []): void {
   const result = ctx.store.apply(ctx.scope, {
     primitive: 'add_node',
     params: {},
     nodeChanges: nodes.map((after) => ({ op: 'created' as const, before: null, after })),
-    edgeChanges: [],
+    edgeChanges: edges,
   });
   if (!result.ok) throw new Error(`seed failed: ${result.error.message}`);
 }
@@ -65,24 +65,71 @@ describe('toggle', () => {
 });
 
 describe('resume', () => {
-  it('returns a halted (failed) node to not_started', () => {
+  it('returns a halted (failed) node to not_started, stamping no anchor', () => {
     const ctx = ctxFor('proj-a');
     seed(ctx, [node('a', { status: 'failed' })]);
 
     const result = resume(ctx, 'a');
 
     expect(result.ok).toBe(true);
-    expect(ctx.store.getNode(ctx.scope, 'a')?.status).toBe('not_started');
+    const after = ctx.store.getNode(ctx.scope, 'a');
+    expect(after?.status).toBe('not_started');
+    expect(after?.budgetAnchor).toBeUndefined();
   });
 
-  it('returns a halted (blocked) node to not_started', () => {
+  it('returns a halted (blocked) node to not_started, stamping no anchor even though a chain exists behind it', () => {
     const ctx = ctxFor('proj-a');
-    seed(ctx, [node('a', { status: 'blocked' })]);
+    seed(
+      ctx,
+      [node('task-a', { status: 'done' }), node('a', { status: 'blocked' })],
+      [{ op: 'created', before: null, after: { from: 'task-a', to: 'a', kind: 'depends_on' } }],
+    );
 
     const result = resume(ctx, 'a');
 
     expect(result.ok).toBe(true);
-    expect(ctx.store.getNode(ctx.scope, 'a')?.status).toBe('not_started');
+    const after = ctx.store.getNode(ctx.scope, 'a');
+    expect(after?.status).toBe('not_started');
+    expect(after?.budgetAnchor).toBeUndefined(); // 'a' was never disabled — resume never consulted the chain
+  });
+
+  it('clears disabled and stamps the anchor on a budget-halted review, making it frontier-eligible again', () => {
+    const ctx = ctxFor('proj-a');
+    seed(
+      ctx,
+      [
+        node('phase-1'),
+        node('task-a', { parent: 'phase-1', status: 'done' }),
+        node('review', { status: 'not_started', disabled: true }),
+      ],
+      [{ op: 'created', before: null, after: { from: 'task-a', to: 'review', kind: 'depends_on' } }],
+    );
+
+    const result = resume(ctx, 'review');
+
+    expect(result.ok).toBe(true);
+    const after = ctx.store.getNode(ctx.scope, 'review');
+    expect(after?.disabled).toBe(false);
+    expect(after?.status).toBe('not_started'); // already idle — left as-is
+    expect(after?.budgetAnchor).toBe('task-a');
+
+    const front = frontier(ctx.store.listNodes(ctx.scope), ctx.store.listEdges(ctx.scope), ROOT_NODE_ID).map(
+      (n) => n.id,
+    );
+    expect(front).toContain('review');
+  });
+
+  it('clears disabled on a plain disabled node with no corrective chain, stamping no anchor', () => {
+    const ctx = ctxFor('proj-a');
+    seed(ctx, [node('a', { disabled: true })]);
+
+    const result = resume(ctx, 'a');
+
+    expect(result.ok).toBe(true);
+    const after = ctx.store.getNode(ctx.scope, 'a');
+    expect(after?.disabled).toBe(false);
+    expect(after?.status).toBe('not_started');
+    expect(after?.budgetAnchor).toBeUndefined(); // resolveChainTip found no predecessor to anchor to
   });
 
   it('rejects a reference to a node that does not exist and writes nothing', () => {

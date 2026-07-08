@@ -26,6 +26,13 @@ export interface DagNode {
    * every pre-existing node literal stays valid without this field.
    */
   disabled?: boolean;
+  /**
+   * Engine-owned corrective-budget-reset marker: a nullable pointer at the corrective-chain node
+   * `resolveChainTip` should treat as depth 0. Absent/`undefined`/`null` means no reset anchor —
+   * every pre-existing node literal stays valid without this field. Set ONLY by `resume` on a
+   * corrective-budget-halt recovery; read ONLY by `resolveChainTip`'s depth walk.
+   */
+  budgetAnchor?: NodeId | null;
   /** Node-type-owned payload; opaque to the core engine. */
   data: Readonly<Record<string, unknown>>;
 }

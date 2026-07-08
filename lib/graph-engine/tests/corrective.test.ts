@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { add_corrective, frontier, InMemoryStateStore, ROOT_NODE_ID } from '../src/index.js';
+import { add_corrective, resume, frontier, InMemoryStateStore, ROOT_NODE_ID } from '../src/index.js';
 import type { ChangeDelta, DagNode, PrimitiveContext, ProjectScope } from '../src/index.js';
 import { detectCycle } from '../src/derive/invariants.js';
+import { resolveChainTip } from '../src/primitives/corrective.js';
 
 function scope(projectId: string): ProjectScope {
   return { projectId };
@@ -246,5 +247,114 @@ describe('add_corrective — validation', () => {
 
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.code).toBe('invalid_delta');
+  });
+});
+
+describe('resolveChainTip — budgetAnchor flooring', () => {
+  it('reproduces the unfloored depth when no anchor is set on the review', () => {
+    const ctx = ctxFor('proj-a');
+    seed(
+      ctx,
+      [
+        node('phase-1'),
+        node('task-a', { parent: 'phase-1', status: 'done' }),
+        node('corrective-1', { parent: 'phase-1', status: 'done', derivedFrom: 'task-a' }),
+        node('corrective-2', { parent: 'phase-1', status: 'not_started', derivedFrom: 'corrective-1' }),
+        node('review', { status: 'done' }),
+      ],
+      [
+        { op: 'created', before: null, after: { from: 'task-a', to: 'review', kind: 'depends_on' } },
+        { op: 'created', before: null, after: { from: 'corrective-1', to: 'review', kind: 'depends_on' } },
+        { op: 'created', before: null, after: { from: 'corrective-2', to: 'review', kind: 'depends_on' } },
+      ],
+    );
+
+    const chain = resolveChainTip(
+      { nodes: ctx.store.listNodes(ctx.scope), edges: ctx.store.listEdges(ctx.scope) },
+      'review',
+    );
+
+    expect(chain?.tip.id).toBe('corrective-2');
+    expect(chain?.depth).toBe(2);
+  });
+
+  it('floors the depth count at the anchored node without changing the resolved tip', () => {
+    const ctx = ctxFor('proj-a');
+    seed(
+      ctx,
+      [
+        node('phase-1'),
+        node('task-a', { parent: 'phase-1', status: 'done' }),
+        node('corrective-1', { parent: 'phase-1', status: 'done', derivedFrom: 'task-a' }),
+        node('corrective-2', { parent: 'phase-1', status: 'not_started', derivedFrom: 'corrective-1' }),
+        node('review', { status: 'done', budgetAnchor: 'corrective-1' }),
+      ],
+      [
+        { op: 'created', before: null, after: { from: 'task-a', to: 'review', kind: 'depends_on' } },
+        { op: 'created', before: null, after: { from: 'corrective-1', to: 'review', kind: 'depends_on' } },
+        { op: 'created', before: null, after: { from: 'corrective-2', to: 'review', kind: 'depends_on' } },
+      ],
+    );
+
+    const chain = resolveChainTip(
+      { nodes: ctx.store.listNodes(ctx.scope), edges: ctx.store.listEdges(ctx.scope) },
+      'review',
+    );
+
+    expect(chain?.tip.id).toBe('corrective-2'); // tip-finding is unaffected by the anchor
+    expect(chain?.depth).toBe(1); // only corrective-2 counts past the anchored corrective-1
+  });
+});
+
+describe('add_corrective — after a budget-recovery resume', () => {
+  it('mints a fresh corrective at measured depth 0 right after resume anchors the chain tip', () => {
+    const ctx = ctxFor('proj-a');
+    seed(
+      ctx,
+      [
+        node('phase-1'),
+        node('task-a', { parent: 'phase-1', status: 'done' }),
+        node('review', { status: 'not_started', disabled: true }),
+      ],
+      [{ op: 'created', before: null, after: { from: 'task-a', to: 'review', kind: 'depends_on' } }],
+    );
+
+    const resumed = resume(ctx, 'review');
+    expect(resumed.ok).toBe(true);
+    expect(ctx.store.getNode(ctx.scope, 'review')?.budgetAnchor).toBe('task-a');
+
+    markStatus(ctx, 'review', 'done'); // add_corrective only re-arms a 'done'/'in_progress' review
+
+    const result = add_corrective(ctx, 'corrective-1', 'rad-orc:corrective', 'review', { maxRetries: 1 });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.params).toMatchObject({ chainDepth: 0, halted: false });
+    expect(ctx.store.getNode(ctx.scope, 'corrective-1')?.derivedFrom).toBe('task-a');
+  });
+
+  it('still halts once the floored depth reaches the budget on a later cycle', () => {
+    const ctx = ctxFor('proj-a');
+    seed(
+      ctx,
+      [
+        node('phase-1'),
+        node('task-a', { parent: 'phase-1', status: 'done' }),
+        node('review', { status: 'not_started', disabled: true }),
+      ],
+      [{ op: 'created', before: null, after: { from: 'task-a', to: 'review', kind: 'depends_on' } }],
+    );
+    resume(ctx, 'review');
+    markStatus(ctx, 'review', 'done');
+    add_corrective(ctx, 'corrective-1', 'rad-orc:corrective', 'review', { maxRetries: 1 });
+    markStatus(ctx, 'corrective-1', 'done');
+    markStatus(ctx, 'review', 'done');
+
+    const halted = add_corrective(ctx, 'corrective-2', 'rad-orc:corrective', 'review', { maxRetries: 1 });
+
+    expect(halted.ok).toBe(true);
+    if (!halted.ok) return;
+    expect(halted.data.params).toMatchObject({ chainDepth: 1, halted: true });
+    expect(ctx.store.getNode(ctx.scope, 'corrective-2')).toBeNull();
   });
 });
