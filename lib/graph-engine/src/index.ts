@@ -48,7 +48,7 @@ export { frontier, remaining, deriveContainerStatus } from './derive/readiness.j
 
 export type { GraphSnapshot, MutationSpec, OrderContradiction } from './derive/invariants.js';
 export { findOrderContradictions } from './derive/invariants.js';
-export type { PreviewCone } from './derive/dry-run.js';
+export type { PreviewCone, AddCorrectivePreview, ResetPreview } from './derive/dry-run.js';
 export { validate, preview } from './derive/dry-run.js';
 
 export type { PrimitiveContext } from './primitives/primitive.js';

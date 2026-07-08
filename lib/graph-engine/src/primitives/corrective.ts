@@ -68,32 +68,140 @@ export function resolveChainTip(graph: GraphSnapshot, review: NodeId): { tip: Da
 }
 
 /**
- * The additive-iteration compound primitive: births a fresh corrective attempt for `review` and
- * re-arms `review` behind it, all in one delta. `id`/`type` name the new corrective node exactly
- * like `add_node` would; `review` is the `code_review` (or `phase_review`/final-review) node the
- * corrective answers.
- *
- * Within budget, this: creates the corrective — `derivedFrom` the chain's current tip (the original
+ * The effect set a prospective `add_corrective(id, type, review, options)` call would produce —
+ * the corrective node + gate edge it would create and the review's resulting node, or the
+ * would-halt outcome when the retry budget is already met/exceeded (no corrective minted; `review`
+ * flips `disabled` instead of resetting). Factored out of `add_corrective` so P02's
+ * `validate`/`preview` read the exact same computation — legality and budget outcome alike —
+ * rather than a second copy; `delta` is the identical `ChangeDelta` `add_corrective` itself commits.
+ */
+export interface AddCorrectiveComputation {
+  readonly wouldHalt: boolean;
+  /** `null` when `wouldHalt` — no corrective is minted on a halt. */
+  readonly correctiveNode: DagNode | null;
+  /** The `corrective -> review` gate edge; `null` when `wouldHalt`. */
+  readonly gateEdge: DagEdge | null;
+  /** `review` after this call: reset to `not_started` when minting, `disabled` when halting. */
+  readonly reviewAfter: DagNode;
+  readonly delta: ChangeDelta;
+}
+
+/**
+ * Within budget, computes: the corrective — `derivedFrom` the chain's current tip (the original
  * attempt on the first cycle, the prior corrective thereafter), parented in that same tip's own
  * container (the phase container at task/phase level, the project-scoped root for a spine-level
  * final review — read straight off the tip, never special-cased per level), entering with no new
- * `depends_on` of its own so it is frontier-eligible as soon as its container is `in_progress`; adds
- * a `depends_on` edge gating `review` on the new corrective; and flips `review` back to
- * `not_started`. This is deliberately additive, never removing an earlier attempt's own gate edge
- * into `review`: `resolveChainTip` (above) walks that exact stack of surviving predecessor edges to
- * find both the chain's current tip and how deep it runs, so the stack itself *is* the chain's
- * provenance record, not incidental leftovers. It is harmless to readiness — every stale predecessor
- * is already `done` and stays that way outside an explicit `reset`, so `review` still only actually
- * re-enters the frontier once the newest corrective reaches `done` (frontier requires *every*
- * predecessor done, and the older ones already are). Every attempt is a distinct node — this only
- * ever adds a forward edge onto the newest node, never rewrites or removes an earlier one, so the
- * chain (and the wider graph) stays acyclic; `validate` still runs the P02 cycle check over the new
- * edge as a defence-in-depth assertion of that.
+ * `depends_on` of its own so it is frontier-eligible as soon as its container is `in_progress`; the
+ * `depends_on` edge gating `review` on the new corrective; and `review` flipped back to
+ * `not_started`. At the retry budget (`options.maxRetries`, default `5`): counts the corrective
+ * chain depth already behind `review` and, once it is met or exceeded, halts instead of minting
+ * another — a frontier-exclusion (`review.disabled = true`) rather than a rejection, since the
+ * budget running out is an expected, successful outcome of the policy, not a structural error.
  *
- * At the retry budget (`options.maxRetries`, default `5`): counts the corrective chain depth already
- * behind `review` and, once it is met or exceeded, halts instead of minting another — a
- * frontier-exclusion (`review.disabled = true`) rather than a rejection, since the budget running
- * out is an expected, successful outcome of the policy, not a structural error.
+ * See {@link add_corrective} for the additive-chaining rationale (why an earlier attempt's own
+ * gate edge into `review` is never removed) and the acyclicity argument for why `validate`'s cycle
+ * check here is defence-in-depth rather than a real rejection path.
+ */
+export function computeAddCorrective(
+  graph: GraphSnapshot,
+  id: NodeId,
+  type: NodeTypeName,
+  review: NodeId,
+  options: AddCorrectiveOptions = {},
+): Result<AddCorrectiveComputation> {
+  const reviewNode = findNode(graph, review);
+  if (!reviewNode) return fail('invalid_delta', `review node '${review}' does not exist`);
+  if (reviewNode.status !== 'done' && reviewNode.status !== 'in_progress') {
+    return fail(
+      'invalid_delta',
+      `review '${review}' has status '${reviewNode.status}'; add_corrective only re-arms a 'done'/'in_progress' review`,
+    );
+  }
+
+  const chain = resolveChainTip(graph, review);
+  if (!chain) return fail('invalid_delta', `review '${review}' has no predecessor to derive a corrective from`);
+
+  const maxRetries = options.maxRetries ?? DEFAULT_MAX_RETRIES;
+
+  if (chain.depth >= maxRetries) {
+    const haltedReview: DagNode = { ...reviewNode, disabled: true };
+    return {
+      ok: true,
+      data: {
+        wouldHalt: true,
+        correctiveNode: null,
+        gateEdge: null,
+        reviewAfter: haltedReview,
+        delta: {
+          primitive: 'add_corrective',
+          params: { id, type, review, maxRetries, chainDepth: chain.depth, halted: true },
+          nodeChanges: [{ op: 'updated', before: reviewNode, after: haltedReview }],
+          edgeChanges: [],
+        },
+      },
+    };
+  }
+
+  if (findNode(graph, id)) return fail('invalid_delta', `node '${id}' already exists`);
+  if (chain.tip.parent === null) {
+    return fail('invalid_delta', `'${chain.tip.id}' has no container to parent a corrective under`);
+  }
+
+  const corrective: DagNode = {
+    id,
+    type,
+    status: 'not_started',
+    parent: chain.tip.parent,
+    order: options.order ?? 0,
+    derivedFrom: chain.tip.id,
+    data: options.data ?? {},
+  };
+
+  const edge: DagEdge = { from: id, to: review, kind: 'depends_on' };
+  const validated = validate(graph, { kind: 'add_dependency', from: id, to: review });
+  if (!validated.ok) return validated;
+
+  const resetReview: DagNode = { ...reviewNode, status: 'not_started' };
+
+  const nodeChanges: NodeChange[] = [
+    { op: 'created', before: null, after: corrective },
+    { op: 'updated', before: reviewNode, after: resetReview },
+  ];
+
+  return {
+    ok: true,
+    data: {
+      wouldHalt: false,
+      correctiveNode: corrective,
+      gateEdge: edge,
+      reviewAfter: resetReview,
+      delta: {
+        primitive: 'add_corrective',
+        params: { id, type, review, maxRetries, chainDepth: chain.depth, halted: false },
+        nodeChanges,
+        edgeChanges: [{ op: 'created', before: null, after: edge }],
+      },
+    },
+  };
+}
+
+/**
+ * The additive-iteration compound primitive: births a fresh corrective attempt for `review` and
+ * re-arms `review` behind it, all in one delta. `id`/`type` name the new corrective node exactly
+ * like `add_node` would; `review` is the `code_review` (or `phase_review`/final-review) node the
+ * corrective answers. See {@link computeAddCorrective} for exactly what this commits and the
+ * retry-budget halt it applies.
+ *
+ * This is deliberately additive, never removing an earlier attempt's own gate edge into `review`:
+ * `resolveChainTip` (above) walks that exact stack of surviving predecessor edges to find both the
+ * chain's current tip and how deep it runs, so the stack itself *is* the chain's provenance record,
+ * not incidental leftovers. It is harmless to readiness — every stale predecessor is already `done`
+ * and stays that way outside an explicit `reset`, so `review` still only actually re-enters the
+ * frontier once the newest corrective reaches `done` (frontier requires *every* predecessor done,
+ * and the older ones already are). Every attempt is a distinct node — this only ever adds a forward
+ * edge onto the newest node, never rewrites or removes an earlier one, so the chain (and the wider
+ * graph) stays acyclic; `validate` still runs the P02 cycle check over the new edge as a
+ * defence-in-depth assertion of that.
  */
 export function add_corrective(
   ctx: PrimitiveContext,
@@ -103,67 +211,8 @@ export function add_corrective(
   options: AddCorrectiveOptions = {},
 ): Result<ChangeDelta> {
   return runPrimitive(ctx, (graph) => {
-    const reviewNode = findNode(graph, review);
-    if (!reviewNode) return fail('invalid_delta', `review node '${review}' does not exist`);
-    if (reviewNode.status !== 'done' && reviewNode.status !== 'in_progress') {
-      return fail(
-        'invalid_delta',
-        `review '${review}' has status '${reviewNode.status}'; add_corrective only re-arms a 'done'/'in_progress' review`,
-      );
-    }
-
-    const chain = resolveChainTip(graph, review);
-    if (!chain) return fail('invalid_delta', `review '${review}' has no predecessor to derive a corrective from`);
-
-    const maxRetries = options.maxRetries ?? DEFAULT_MAX_RETRIES;
-
-    if (chain.depth >= maxRetries) {
-      const haltedReview: DagNode = { ...reviewNode, disabled: true };
-      return {
-        ok: true,
-        data: {
-          primitive: 'add_corrective',
-          params: { id, type, review, maxRetries, chainDepth: chain.depth, halted: true },
-          nodeChanges: [{ op: 'updated', before: reviewNode, after: haltedReview }],
-          edgeChanges: [],
-        },
-      };
-    }
-
-    if (findNode(graph, id)) return fail('invalid_delta', `node '${id}' already exists`);
-    if (chain.tip.parent === null) {
-      return fail('invalid_delta', `'${chain.tip.id}' has no container to parent a corrective under`);
-    }
-
-    const corrective: DagNode = {
-      id,
-      type,
-      status: 'not_started',
-      parent: chain.tip.parent,
-      order: options.order ?? 0,
-      derivedFrom: chain.tip.id,
-      data: options.data ?? {},
-    };
-
-    const edge: DagEdge = { from: id, to: review, kind: 'depends_on' };
-    const validated = validate(graph, { kind: 'add_dependency', from: id, to: review });
-    if (!validated.ok) return validated;
-
-    const resetReview: DagNode = { ...reviewNode, status: 'not_started' };
-
-    const nodeChanges: NodeChange[] = [
-      { op: 'created', before: null, after: corrective },
-      { op: 'updated', before: reviewNode, after: resetReview },
-    ];
-
-    return {
-      ok: true,
-      data: {
-        primitive: 'add_corrective',
-        params: { id, type, review, maxRetries, chainDepth: chain.depth, halted: false },
-        nodeChanges,
-        edgeChanges: [{ op: 'created', before: null, after: edge }],
-      },
-    };
+    const computed = computeAddCorrective(graph, id, type, review, options);
+    if (!computed.ok) return computed;
+    return { ok: true, data: computed.data.delta };
   });
 }

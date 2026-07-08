@@ -1,5 +1,9 @@
 import type { DagNode, NodeId } from '../model/node.js';
 import type { DagEdge } from '../model/edge.js';
+import type { NodeTypeName } from '../model/vocab.js';
+import type { NodeTypeRegistry } from '../node-type/registry.js';
+import type { Expansion } from '../primitives/expand.js';
+import type { AddCorrectiveOptions } from '../primitives/corrective.js';
 import { ROOT_NODE_ID } from '../model/root.js';
 import { assertNever } from '../model/vocab.js';
 
@@ -33,7 +37,24 @@ export type MutationSpec =
        */
       readonly dependentsCascade?: boolean;
     }
-  | { readonly kind: 'move_node'; readonly nodeId: NodeId; readonly newParent: NodeId };
+  | { readonly kind: 'move_node'; readonly nodeId: NodeId; readonly newParent: NodeId }
+  | {
+      readonly kind: 'expand';
+      /** The expanding node the batch would materialize under — `expand`'s own `node` argument. */
+      readonly node: NodeId;
+      readonly expansion: Expansion;
+      /** Injected so `validate`'s unknown-type precondition resolves against the same registry `expand` itself would. */
+      readonly registry: NodeTypeRegistry;
+    }
+  | {
+      readonly kind: 'add_corrective';
+      readonly review: NodeId;
+      /** The candidate corrective's id/type — `add_corrective`'s own `id`/`type` arguments. */
+      readonly id: NodeId;
+      readonly type: NodeTypeName;
+      readonly options?: AddCorrectiveOptions;
+    }
+  | { readonly kind: 'reset'; readonly node: NodeId; readonly cascade: boolean };
 
 // ── Acyclicity: depends_on forms a DAG ──────────────────────────────────────────
 
@@ -256,6 +277,10 @@ export function violatesRootGuard(mutationSpec: MutationSpec): boolean {
     case 'move_node':
       return mutationSpec.nodeId === ROOT_NODE_ID;
     case 'add_dependency':
+    case 'expand':
+    case 'add_corrective':
+    case 'reset':
+      // None of these ever removes or re-parents a node, so none can violate the root guard.
       return false;
     default:
       return assertNever(mutationSpec);
