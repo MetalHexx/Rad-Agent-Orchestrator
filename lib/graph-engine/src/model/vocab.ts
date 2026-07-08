@@ -54,9 +54,9 @@ export const CAPABILITY_NAMES = [
 export type CapabilityName = (typeof CAPABILITY_NAMES)[number] | (string & {});
 
 // ── Primitive name ───────────────────────────────────────────────────────────────
-// The closed set of mutation primitive names — the CRUD/lifecycle primitives shipped in
-// `src/primitives/` (`crud.ts`, `lifecycle.ts`). `ChangeDelta.primitive` is drawn from this union,
-// so every delta names the exact primitive that produced it.
+// The closed set of mutation primitive names — the CRUD/lifecycle/batch primitives shipped in
+// `src/primitives/` (`crud.ts`, `lifecycle.ts`, `expand.ts`, `apply-event.ts`). `ChangeDelta.primitive`
+// is drawn from this union, so every delta names the exact primitive that produced it.
 export const PRIMITIVE_NAMES = [
   'add_node',
   'remove_node',
@@ -66,6 +66,8 @@ export const PRIMITIVE_NAMES = [
   'set_order',
   'toggle',
   'resume',
+  'expand',
+  'apply_event',
 ] as const;
 export type PrimitiveName = (typeof PRIMITIVE_NAMES)[number];
 

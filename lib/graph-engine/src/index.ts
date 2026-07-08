@@ -56,3 +56,7 @@ export {
   set_order,
 } from './primitives/crud.js';
 export { toggle, resume } from './primitives/lifecycle.js';
+export type { NodeSpec, Expansion } from './primitives/expand.js';
+export { expand } from './primitives/expand.js';
+export type { EventHandler } from './primitives/apply-event.js';
+export { apply_event } from './primitives/apply-event.js';
