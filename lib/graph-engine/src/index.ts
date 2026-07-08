@@ -26,3 +26,9 @@ export {
   PRIMITIVE_NAMES,
   assertNever,
 } from './model/vocab.js';
+export { ROOT_NODE_ID, ROOT_TRAITS, createRootNode } from './model/root.js';
+
+export type { Result, EngineError, EngineErrorCode } from './result.js';
+
+export type { ProjectScope, StateStore } from './store/state-store.js';
+export { InMemoryStateStore } from './store/in-memory-store.js';
