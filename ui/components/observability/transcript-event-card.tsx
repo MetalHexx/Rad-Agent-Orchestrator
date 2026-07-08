@@ -4,10 +4,10 @@ import { ChevronDown, ChevronUp } from "lucide-react";
 import type { TranscriptEvent } from "@rad-orchestration/telemetry";
 import { cn } from "@/lib/utils";
 import { eventKindColor, eventKindLabel } from "@/lib/observability/event-kind-color";
-import { formatClock, needsClamp } from "@/lib/observability/transcript-view";
-import { RichText } from "./rich-text";
+import { formatClock, needsClamp, halfClampEm } from "@/lib/observability/transcript-view";
 import { JsonBlock } from "./json-block";
-import { extractToolFields, type ToolField } from "@/lib/observability/render-mode";
+import { extractToolFields, renderModeFor, type ToolField } from "@/lib/observability/render-mode";
+import { MarkdownRenderer } from "@/components/documents";
 
 export interface TranscriptEventCardProps {
   event: TranscriptEvent;
@@ -15,54 +15,92 @@ export interface TranscriptEventCardProps {
   /** When false, hide tool result output bodies; the call line still shows (FR-8, DD-9). */
   showToolIO?: boolean;
   /** The result's originating tool_call name (or, for a Read result, the file path it
-   *  read) — the result→tool pairing seam a follow-on task uses to pick the tool_result
-   *  render mode via renderModeFor. Not yet consumed here. */
+   *  read) — the result→tool pairing seam that picks the tool_result render mode via
+   *  renderModeFor, and (for Read specifically) suppresses CodeBlock's own line-number
+   *  column so it doesn't double up on the `cat -n` numbers already baked into the text. */
   originatingTool?: string;
 }
 
+// A Read result's `originatingTool` is the file path it read (see render-mode.ts's
+// renderModeForResult doc comment); every other raw-producing tool's `originatingTool`
+// is its bare name (Bash, SendMessage, ...), which never contains a path separator or
+// a dotted extension. That's the only signal available here to tell the two apart.
+function isReadOrigin(originatingTool: string | undefined): boolean {
+  return !!originatingTool && /[\\/]|\.[^./\\]+$/.test(originatingTool);
+}
+
+type RenderChoice = "markdown" | "raw";
+
 export function TranscriptEventCard({ event, tight = false, showToolIO = true, originatingTool }: TranscriptEventCardProps) {
   const token = eventKindColor(event);
+  const defaultRenderMode = renderModeFor(event, originatingTool);
+  // Seeded once from renderModeFor and never resynced — flipping this item's toggle
+  // must not affect any other card, and re-renders (e.g. live SSE ticks) must not
+  // snap an already-flipped card back to its default.
+  const [renderChoice, setRenderChoice] = React.useState<RenderChoice>(defaultRenderMode === "raw" ? "raw" : "markdown");
+  const showRenderToggle = event.kind === "message" || (event.kind === "tool_result" && showToolIO && !!event.result?.output);
   return (
     <article
       className={cn("rounded-xl bg-card ring-1 ring-foreground/10 border-l-[3px] px-4 py-3", tight ? "mt-1" : "mt-3")}
       style={{ borderLeftColor: `var(${token})` }}
     >
-      <header className="flex items-center justify-between">
+      <header className="flex items-center gap-2">
         <span className="text-[11px] font-semibold" style={{ color: `var(${token})` }}>{eventKindLabel(event)}</span>
+        <span className="flex-1" />
+        {showRenderToggle ? <RenderModeToggle mode={renderChoice} onChange={setRenderChoice} /> : null}
         <time className="font-mono text-[10.5px] tabular-nums text-muted-foreground">{formatClock(event.timestamp)}</time>
       </header>
       <div className="mt-1.5">
-        <EventBody event={event} showToolIO={showToolIO} originatingTool={originatingTool} />
+        <EventBody event={event} showToolIO={showToolIO} originatingTool={originatingTool} renderChoice={renderChoice} />
       </div>
     </article>
   );
 }
 
-function EventBody({ event, showToolIO }: { event: TranscriptEvent; showToolIO: boolean; originatingTool?: string }) {
+// Per-item Rendered/Raw override (wireframe `.seg`) — local to this card only.
+function RenderModeToggle({ mode, onChange }: { mode: RenderChoice; onChange: (mode: RenderChoice) => void }) {
+  const optionCls = (active: boolean) =>
+    cn(
+      "px-2 py-0.5 font-mono text-[10.5px]",
+      active ? "bg-foreground/10 font-semibold text-foreground" : "text-muted-foreground hover:text-foreground",
+    );
+  return (
+    <span className="inline-flex overflow-hidden rounded-md border border-border" role="group" aria-label="Render mode">
+      <button type="button" aria-pressed={mode === "markdown"} className={optionCls(mode === "markdown")} onClick={() => onChange("markdown")}>
+        Rendered
+      </button>
+      <button type="button" aria-pressed={mode === "raw"} className={optionCls(mode === "raw")} onClick={() => onChange("raw")}>
+        Raw
+      </button>
+    </span>
+  );
+}
+
+function EventBody({
+  event, showToolIO, originatingTool, renderChoice,
+}: { event: TranscriptEvent; showToolIO: boolean; originatingTool?: string; renderChoice: RenderChoice }) {
   const revealId = `reveal-${event.seq}`;
   switch (event.kind) {
-    case "message":
-      // Assistant prose is rendered via RichText; clamp the source text the same
-      // way when it is long enough (the markdown still renders inside the clamp).
-      if (event.role === "assistant") {
-        const body = event.text ?? "";
-        return (
-          <RevealBody id={revealId} clamp={needsClamp(body, 80)} maxHeightClass="max-h-[12.5rem]">
-            <RichText body={body} variant="prose" />
-          </RevealBody>
-        );
-      }
+    case "message": {
+      const body = event.text ?? "";
       return (
-        <RevealBody id={revealId} clamp={needsClamp(event.text ?? "", 80)} maxHeightClass="max-h-[12.5rem]">
-          <p className="whitespace-pre-wrap text-sm text-foreground">{event.text}</p>
+        <RevealBody id={revealId} clamp={needsClamp(body, 80)} maxHeightEm={halfClampEm(body, 80)}>
+          {renderChoice === "markdown" ? (
+            <MarkdownRenderer content={body} />
+          ) : (
+            <p className="whitespace-pre-wrap text-sm text-foreground">{body}</p>
+          )}
         </RevealBody>
       );
-    case "thinking":
+    }
+    case "thinking": {
+      const body = event.text ?? "";
       return (
-        <RevealBody id={revealId} clamp={needsClamp(event.text ?? "", 80)} maxHeightClass="max-h-[12.5rem]">
-          <p className="whitespace-pre-wrap text-sm italic text-muted-foreground">{event.text}</p>
+        <RevealBody id={revealId} clamp={needsClamp(body, 80)} maxHeightEm={halfClampEm(body, 80)}>
+          <p className="whitespace-pre-wrap text-sm italic text-muted-foreground">{body}</p>
         </RevealBody>
       );
+    }
     case "file_change":
       return (
         <div className="flex items-center gap-2 font-mono text-xs">
@@ -82,11 +120,11 @@ function EventBody({ event, showToolIO }: { event: TranscriptEvent; showToolIO: 
         <div className="font-mono text-xs">
           <span className="font-bold" style={{ color: "var(--model-teal)" }}>{event.tool?.name}</span>
           {fields ? (
-            <RevealBody id={revealId} clamp={needsClamp(clampSource, 92)} maxHeightClass="max-h-[15em]">
+            <RevealBody id={revealId} clamp={needsClamp(clampSource, 92)} maxHeightEm={halfClampEm(clampSource, 92)}>
               <ToolFieldsGrid fields={fields} />
             </RevealBody>
           ) : args ? (
-            <RevealBody id={revealId} clamp={needsClamp(args, 92)} maxHeightClass="max-h-[15em]">
+            <RevealBody id={revealId} clamp={needsClamp(args, 92)} maxHeightEm={halfClampEm(args, 92)}>
               <JsonBlock
                 text={args}
                 className="mt-1"
@@ -101,16 +139,23 @@ function EventBody({ event, showToolIO }: { event: TranscriptEvent; showToolIO: 
       if (!showToolIO) return null;
       const isError = !!event.result?.isError;
       const out = event.result?.output;
+      // `Read`-origin raw text already carries its own `cat -n` numbers baked in —
+      // suppress CodeBlock's added gutter so they don't double up.
+      const lineNumbers = !isReadOrigin(originatingTool);
       return (
         <div>
           {isError ? <div className="mb-1.5"><ErrorBadge /></div> : null}
           {out ? (
-            <RevealBody id={revealId} clamp={needsClamp(out.text, 92)} maxHeightClass="max-h-[16.25em]" fadeTo="after:to-background">
-              <JsonBlock
-                text={out.text}
-                className="mt-1.5 rounded-lg bg-background px-3 py-2.5"
-                fallback={<CodeBlock text={out.text} error={isError} />}
-              />
+            <RevealBody id={revealId} clamp={needsClamp(out.text, 92)} maxHeightEm={halfClampEm(out.text, 92)} fadeTo="after:to-background">
+              {renderChoice === "markdown" ? (
+                <MarkdownRenderer content={out.text} />
+              ) : (
+                <JsonBlock
+                  text={out.text}
+                  className="mt-1.5 rounded-lg bg-background px-3 py-2.5"
+                  fallback={<CodeBlock text={out.text} error={isError} lineNumbers={lineNumbers} />}
+                />
+              )}
             </RevealBody>
           ) : null}
           {/* Truncation badge sits OUTSIDE the reveal — it reflects the data capture
@@ -125,16 +170,22 @@ function EventBody({ event, showToolIO }: { event: TranscriptEvent; showToolIO: 
 }
 
 // ---------------------------------------------------------------------------
-// RevealBody — per-card more / less collapse (Revision 2026-06-24).
+// RevealBody — per-card more / less collapse (Revision 2026-07-08: half-clamp).
 // CSS-only and SSR-safe: a hidden peer checkbox toggles the clamp via Tailwind
 // `peer-checked:` sibling variants, so it renders to static HTML, holds zero
 // React state, and is exercisable under renderToStaticMarkup (NFR-5). When the
 // body does not overflow (`clamp` false) the children render bare — no control.
 // `id` is derived from event.seq (deterministic, no Math.random).
+//
+// `maxHeightEm` is computed per-body (halfClampEm) rather than a fixed class, so
+// it's threaded through a CSS custom property set via `style` and consumed by a
+// static arbitrary-value utility (`max-h-[var(--reveal-clamp)]`). A literal
+// `style.maxHeight` can't be done here: inline styles always outrank a class-based
+// rule, so `peer-checked:max-h-none` would never win and "less" would stop working.
 // ---------------------------------------------------------------------------
 function RevealBody({
-  id, clamp, maxHeightClass, fadeTo = "after:to-card", children,
-}: { id: string; clamp: boolean; maxHeightClass: string; fadeTo?: string; children: React.ReactNode }) {
+  id, clamp, maxHeightEm, fadeTo = "after:to-card", children,
+}: { id: string; clamp: boolean; maxHeightEm: number; fadeTo?: string; children: React.ReactNode }) {
   if (!clamp) return <>{children}</>;
   // Both <label>s are direct siblings of the peer checkbox so `peer-checked:`
   // toggles them; "more" shows collapsed, "less" shows expanded.
@@ -152,11 +203,12 @@ function RevealBody({
           content (card for prose/args, background for tool-result code blocks). */}
       <div
         className={cn(
-          maxHeightClass,
+          "max-h-[var(--reveal-clamp)]",
           "relative overflow-hidden peer-checked:max-h-none",
           "after:pointer-events-none after:absolute after:inset-x-0 after:bottom-0 after:h-12 after:bg-gradient-to-b after:from-transparent after:content-[''] peer-checked:after:hidden",
           fadeTo,
         )}
+        style={{ "--reveal-clamp": `${maxHeightEm}em` } as React.CSSProperties}
       >
         {children}
       </div>
@@ -189,19 +241,23 @@ function ToolFieldsGrid({ fields }: { fields: ToolField[] }) {
   );
 }
 
-function CodeBlock({ text, error }: { text: string; error?: boolean }) {
-  const lines = text.split("\n");
+// `lineNumbers` defaults on for command/tool output that has no numbering of its
+// own. `Read`-origin text already carries `cat -n` numbers, so the caller passes
+// `lineNumbers={false}` there to avoid a doubled-up column.
+function CodeBlock({ text, error, lineNumbers = true }: { text: string; error?: boolean; lineNumbers?: boolean }) {
   return (
     <pre
       className={cn("mt-1.5 rounded-lg px-3 py-2.5 font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap", !error && "bg-background")}
       style={error ? { background: "color-mix(in oklab, var(--model-red) 9%, transparent)" } : undefined}
     >
-      {lines.map((ln, i) => (
-        <div key={i} className="grid grid-cols-[2.25rem_1fr] gap-3">
-          <span className="select-none text-right text-muted-foreground">{i + 1}</span>
-          <span className="text-foreground">{ln}</span>
-        </div>
-      ))}
+      {lineNumbers
+        ? text.split("\n").map((ln, i) => (
+            <div key={i} className="grid grid-cols-[2.25rem_1fr] gap-3">
+              <span className="select-none text-right text-muted-foreground">{i + 1}</span>
+              <span className="text-foreground">{ln}</span>
+            </div>
+          ))
+        : text}
     </pre>
   );
 }

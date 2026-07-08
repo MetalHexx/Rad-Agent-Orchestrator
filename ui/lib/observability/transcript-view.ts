@@ -27,6 +27,16 @@ export function needsClamp(text: string, colsPerLine = 88): boolean {
   return displayLineCount(text, colsPerLine) > CLAMP_LINES;
 }
 
+// A collapsed body clamps to half its rendered length rather than a fixed height,
+// so long and short overflowing bodies both reveal a proportional first slice.
+// Floored so a body just past the CLAMP_LINES threshold doesn't collapse to a sliver.
+export const MIN_CLAMP_EM = 3;
+
+export function halfClampEm(text: string, colsPerLine: number): number {
+  if (!text) return 0;
+  return Math.max(MIN_CLAMP_EM, Math.ceil(displayLineCount(text, colsPerLine) / 2));
+}
+
 import type { TranscriptEvent } from "@rad-orchestration/telemetry";
 
 export function matchesQuery(event: TranscriptEvent, query: string): boolean {

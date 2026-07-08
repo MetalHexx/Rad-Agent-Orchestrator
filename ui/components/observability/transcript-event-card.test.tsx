@@ -140,3 +140,70 @@ test('a long capped result keeps its truncation badge even with the reveal contr
   assert.ok(html.includes('data-reveal') && html.includes('type="checkbox"'), 'reveal control on a long result');
   assert.ok(/truncated/i.test(html) && html.includes('20 KB'), 'truncation badge persists alongside the reveal');
 });
+
+// --- P02-T02: markdown reuse, per-item Rendered/Raw override, line-number fix, half-clamp ---
+
+test('the card imports and routes through the house MarkdownRenderer rather than re-implementing it', () => {
+  assert.match(src, /from ["']@\/components\/documents["']/, 'imports from the documents barrel, not a local re-implementation');
+  const messageBody = /case "message": \{([\s\S]*?)\n    \}/.exec(src);
+  assert.ok(messageBody, 'message case body located in source');
+  assert.match(messageBody![1], /MarkdownRenderer/, 'message case renders via MarkdownRenderer');
+  const resultBody = /case "tool_result": \{([\s\S]*?)\n    \}/.exec(src);
+  assert.ok(resultBody, 'tool_result case body located in source');
+  assert.match(resultBody![1], /MarkdownRenderer/, 'tool_result case renders via MarkdownRenderer');
+});
+
+test('a user message renders through MarkdownRenderer by default (document-viewer discipline)', () => {
+  const html = card({ seq: 1, timestamp: '2026-07-08T09:00:00.000Z', kind: 'message', role: 'user', text: 'do this' });
+  // "prose" is MarkdownRenderer's own wrapper class — its presence signals the
+  // card actually mounted the shared component, not merely a source-level import.
+  assert.ok(html.includes('prose'), 'markdown prose wrapper present, confirming live routing to MarkdownRenderer');
+  assert.ok(html.includes('do this'), 'body text still rendered');
+});
+
+test('the item header renders a Rendered/Raw segmented control for message and tool_result kinds, never for structured tool_call', () => {
+  const message = card({ seq: 1, timestamp: '2026-07-08T09:00:00.000Z', kind: 'message', role: 'user', text: 'hi' });
+  assert.ok(/Rendered/.test(message) && />Raw</.test(message), 'segmented control present on a message card');
+
+  const result = card({ seq: 2, timestamp: '2026-07-08T09:00:00.000Z', kind: 'tool_result',
+    result: { toolUseId: 'x', output: { text: 'boom' }, isError: false } }, { showToolIO: true });
+  assert.ok(/Rendered/.test(result) && />Raw</.test(result), 'segmented control present on a tool_result card');
+
+  const call = card({ seq: 3, timestamp: '2026-07-08T09:00:00.000Z', kind: 'tool_call',
+    tool: { name: 'Bash', input: { text: JSON.stringify({ command: 'ls' }) }, toolUseId: 'a' } });
+  assert.ok(!/Rendered/.test(call), 'no segmented control on a structured tool_call card');
+});
+
+test('a Read-origin raw result suppresses CodeBlock line numbers so the baked-in cat -n numbers are not doubled', () => {
+  const html = card(
+    { seq: 1, timestamp: '2026-07-08T09:00:00.000Z', kind: 'tool_result',
+      result: { toolUseId: 'x', output: { text: '     1\tfoo\n     2\tbar' }, isError: false } },
+    { showToolIO: true, originatingTool: 'ui/lib/foo.ts' },
+  );
+  assert.ok(html.includes('foo') && html.includes('bar'), 'output text still rendered');
+  assert.ok(!/>1</.test(html) && !/>2</.test(html), 'no added line-number gutter column');
+});
+
+test('a non-Read raw result still gets an added line-number column (regression)', () => {
+  const html = card(
+    { seq: 1, timestamp: '2026-07-08T09:00:00.000Z', kind: 'tool_result',
+      result: { toolUseId: 'x', output: { text: 'line a\nline b' }, isError: false } },
+    { showToolIO: true, originatingTool: 'Bash' },
+  );
+  assert.ok(html.includes('>1<') && html.includes('>2<'), 'line-number gutter present for non-Read raw output');
+});
+
+test('a non-markdown tool_result defaults to the raw JsonBlock/CodeBlock path, not MarkdownRenderer (mode path, not content)', () => {
+  const html = card(
+    { seq: 1, timestamp: '2026-07-08T09:00:00.000Z', kind: 'tool_result', result: { toolUseId: 'x', output: { text: 'stdout body' }, isError: false } },
+    { showToolIO: true, originatingTool: 'Bash' },
+  );
+  assert.ok(!html.includes('class="prose'), 'markdown prose wrapper not used for the raw-mode default');
+});
+
+test('collapsed reveal bodies clamp via an inline CSS variable, not a fixed Tailwind class (half-clamp)', () => {
+  const long = Array.from({ length: 20 }, (_, i) => `thought line ${i}`).join('\n');
+  const html = card({ seq: 1, timestamp: '2026-07-08T09:00:00.000Z', kind: 'thinking', text: long });
+  assert.ok(html.includes('--reveal-clamp'), 'clamp height delivered via a CSS custom property');
+  assert.ok(/max-h-/.test(html), 'clamped body still carries a max-height utility');
+});

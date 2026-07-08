@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { formatClock, toolArgPreview } from './transcript-view';
 import { errorEventSeqs, isTightResult, windowEvents } from './transcript-view';
-import { CLAMP_LINES, displayLineCount, needsClamp } from './transcript-view';
+import { CLAMP_LINES, displayLineCount, needsClamp, halfClampEm, MIN_CLAMP_EM } from './transcript-view';
 import { applyFacets, facetLabel } from './transcript-view';
 import type { TranscriptFacetState } from './transcript-view';
 
@@ -158,4 +158,25 @@ test('needsClamp is true only past the 10-line window (per-card reveal)', () => 
   assert.equal(needsClamp('z'.repeat(1000), 88), true);
   // empty → no clamp
   assert.equal(needsClamp('', 88), false);
+});
+
+test('halfClampEm returns 0 for empty text', () => {
+  assert.equal(halfClampEm('', 80), 0);
+});
+
+test('halfClampEm returns half the rendered line count, rounded up', () => {
+  const oddLines = Array.from({ length: 21 }, (_, i) => `line ${i}`).join('\n');
+  assert.equal(displayLineCount(oddLines, 80), 21);
+  assert.equal(halfClampEm(oddLines, 80), 11); // ceil(21 / 2)
+
+  const evenLines = Array.from({ length: 20 }, (_, i) => `line ${i}`).join('\n');
+  assert.equal(halfClampEm(evenLines, 80), 10); // 20 / 2
+
+  // a single 1000-char line wraps to 13 rows at 80 cols → half is 7
+  assert.equal(halfClampEm('x'.repeat(1000), 80), 7);
+});
+
+test('halfClampEm floors short bodies at a minimum sane height rather than a sliver', () => {
+  assert.equal(halfClampEm('one line', 80), MIN_CLAMP_EM);
+  assert.equal(halfClampEm('a\nb', 80), MIN_CLAMP_EM);
 });
