@@ -93,4 +93,36 @@ describe('resume', () => {
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.code).toBe('invalid_delta');
   });
+
+  it('rejects a done node, writing nothing — that axis belongs to reset, not resume', () => {
+    const ctx = ctxFor('proj-a');
+    seed(ctx, [node('a', { status: 'done' })]);
+
+    const result = resume(ctx, 'a');
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe('invalid_delta');
+    expect(ctx.store.getNode(ctx.scope, 'a')?.status).toBe('done');
+  });
+
+  it('rejects an in_progress node, writing nothing', () => {
+    const ctx = ctxFor('proj-a');
+    seed(ctx, [node('a', { status: 'in_progress' })]);
+
+    const result = resume(ctx, 'a');
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe('invalid_delta');
+    expect(ctx.store.getNode(ctx.scope, 'a')?.status).toBe('in_progress');
+  });
+
+  it('rejects a not_started node — it was never halted, so there is nothing to resume', () => {
+    const ctx = ctxFor('proj-a');
+    seed(ctx, [node('a')]);
+
+    const result = resume(ctx, 'a');
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe('invalid_delta');
+  });
 });

@@ -3,8 +3,7 @@ import type { DagEdge } from '../model/edge.js';
 import type { NodeTypeName } from '../model/vocab.js';
 import type { ChangeDelta, NodeChange, EdgeChange } from '../model/delta.js';
 import type { Result } from '../result.js';
-import { validate } from '../derive/dry-run.js';
-import { ROOT_NODE_ID } from '../model/root.js';
+import { validate, descendantCone, dependentsCascadeCone } from '../derive/dry-run.js';
 import type { PrimitiveContext } from './primitive.js';
 import { fail, findNode, runPrimitive } from './primitive.js';
 
@@ -90,20 +89,6 @@ function directChildren(nodes: readonly DagNode[], parentId: NodeId): DagNode[] 
   return nodes.filter((node) => node.parent === parentId);
 }
 
-/** `id` plus every descendant reachable through `parent`, breadth-first. */
-function descendantIds(nodes: readonly DagNode[], id: NodeId): NodeId[] {
-  const ids: NodeId[] = [id];
-  const queue: NodeId[] = [id];
-  while (queue.length > 0) {
-    const current = queue.shift() as NodeId;
-    for (const child of directChildren(nodes, current)) {
-      ids.push(child.id);
-      queue.push(child.id);
-    }
-  }
-  return ids;
-}
-
 /**
  * Removes `node` (root-guarded). `strategy.children` governs the containment axis: `'cascade'`
  * (default) removes every descendant along with `node`; `'promote'` removes only `node` and
@@ -115,7 +100,9 @@ function descendantIds(nodes: readonly DagNode[], id: NodeId): NodeId[] {
  * a deleted parent (never the root, which stays guarded even mid-sweep); `'detach'` just drops the
  * edges. Every other edge incident to a removed node (e.g. a cascaded descendant's own external
  * edge) is dropped outright regardless of `dependents` — healing is scoped to `node`'s own direct
- * edges, not projected through the whole removed subtree.
+ * edges, not projected through the whole removed subtree. Both destructive axes (`children:
+ * 'cascade'` and `dependents: 'cascade'`) are preview-able ahead of the commit via P02's `preview`,
+ * which shares the exact same `descendantCone`/`dependentsCascadeCone` walk this primitive commits.
  */
 export function remove_node(
   ctx: PrimitiveContext,
@@ -127,35 +114,21 @@ export function remove_node(
     if (!target) return fail('invalid_delta', `node '${node}' does not exist`);
 
     const childrenStrategy = strategy.children ?? 'cascade';
+    const dependentsCascade = strategy.dependents === 'cascade';
 
     const validated = validate(graph, {
       kind: 'remove_node',
       nodeId: node,
       cascade: childrenStrategy === 'cascade',
+      dependentsCascade,
     });
     if (!validated.ok) return validated;
 
     const nodesById = new Map(graph.nodes.map((n) => [n.id, n]));
+    const containmentIds = childrenStrategy === 'cascade' ? descendantCone(graph.nodes, node) : [node];
     const removal = new Set<NodeId>(
-      childrenStrategy === 'cascade' ? descendantIds(graph.nodes, node) : [node],
+      dependentsCascade ? dependentsCascadeCone(graph, containmentIds) : containmentIds,
     );
-
-    if (strategy.dependents === 'cascade') {
-      const queue = [...removal];
-      while (queue.length > 0) {
-        const current = queue.shift() as NodeId;
-        for (const edge of graph.edges) {
-          if (edge.kind !== 'depends_on' || edge.from !== current) continue;
-          if (edge.to === ROOT_NODE_ID || removal.has(edge.to)) continue;
-          for (const id of descendantIds(graph.nodes, edge.to)) {
-            if (!removal.has(id)) {
-              removal.add(id);
-              queue.push(id);
-            }
-          }
-        }
-      }
-    }
 
     const incidentEdges = graph.edges.filter(
       (edge) => edge.kind === 'depends_on' && (removal.has(edge.from) || removal.has(edge.to)),

@@ -128,8 +128,10 @@ function createStatusResolver(nodes: readonly DagNode[], edges: readonly DagEdge
  * and a direct child of `scope` (root scope surfaces its phases/tasks; a phase scope surfaces its
  * tasks). Only leaf/work nodes are ever engine-engaged — a node with its own children is a
  * container, gated purely by dependency edges, and never appears here itself. A corrective needs no
- * special case: it is a new node like any other, so once its own predecessors (including a
- * re-pointed edge) are `done`, it falls out of this same uniform rule.
+ * special case: it is a new node like any other, so once every one of its own predecessors is
+ * `done` — including whichever review it gates, itself gated on the corrective plus every earlier
+ * attempt `add_corrective` stacked onto the same review rather than replacing — it falls out of
+ * this same uniform rule.
  *
  * Precondition: `nodes`/`edges` must already be acyclic and tree-shaped (as `validate` would
  * confirm before a mutation commits) — this is a read over an assumed-valid graph, not a

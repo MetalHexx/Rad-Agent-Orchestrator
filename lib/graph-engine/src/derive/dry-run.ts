@@ -67,8 +67,13 @@ export function validate(graph: GraphSnapshot, mutationSpec: MutationSpec): Resu
   }
 }
 
-/** `nodeId` plus every descendant reachable through `parent`, breadth-first — containment only, never `depends_on`. */
-function descendantCone(nodes: readonly DagNode[], nodeId: NodeId): NodeId[] {
+/**
+ * `nodeId` plus every descendant reachable through `parent`, breadth-first — containment only,
+ * never `depends_on`. Exported so `remove_node` (P03) shares this exact walk rather than forking
+ * its own copy — the same reason `preview` and the primitive's actual removal set must never
+ * disagree on what a cascade touches.
+ */
+export function descendantCone(nodes: readonly DagNode[], nodeId: NodeId): NodeId[] {
   const childrenByParent = new Map<NodeId, NodeId[]>();
   for (const node of nodes) {
     if (node.parent === null) continue;
@@ -90,10 +95,39 @@ function descendantCone(nodes: readonly DagNode[], nodeId: NodeId): NodeId[] {
 }
 
 /**
+ * Every node transitively gated (via `depends_on`) on any node already in `seedIds`, each pulled in
+ * together with its own containment descendants — the identical sweep `remove_node`'s `dependents:
+ * 'cascade'` strategy (P03) performs on commit, factored here so `preview` reports the same blast
+ * radius rather than a second, independently-maintained copy of the walk. Never crosses into the
+ * root (a removal can never reach the project-scoped root through this sweep).
+ */
+export function dependentsCascadeCone(graph: GraphSnapshot, seedIds: readonly NodeId[]): NodeId[] {
+  const cone = new Set<NodeId>(seedIds);
+  const queue: NodeId[] = [...seedIds];
+  while (queue.length > 0) {
+    const current = queue.shift() as NodeId;
+    for (const edge of graph.edges) {
+      if (edge.kind !== 'depends_on' || edge.from !== current) continue;
+      if (edge.to === ROOT_NODE_ID || cone.has(edge.to)) continue;
+      for (const id of descendantCone(graph.nodes, edge.to)) {
+        if (!cone.has(id)) {
+          cone.add(id);
+          queue.push(id);
+        }
+      }
+    }
+  }
+  return [...cone];
+}
+
+/**
  * "What would this affect?" — the blast radius a mutation would touch, computed without a store
  * write. For `remove_node` under a `cascade` strategy: the node itself plus every descendant reached
  * through `parent` (containment, never `depends_on` — dependency edges gate ordering, not who gets
- * removed), plus every edge incident to any of those nodes (the ones referential integrity would
+ * removed). `dependentsCascade` folds in the transitive `depends_on` sweep too — every node gated
+ * (directly or transitively) on any node already in the cone, each with its own containment
+ * descendants — mirroring `remove_node`'s `dependents: 'cascade'` strategy exactly. Either way the
+ * cone also includes every edge incident to any touched node (the ones referential integrity would
  * otherwise leave dangling). A non-cascading `remove_node` touches only the node itself and its own
  * incident edges. `add_dependency`/`move_node` are non-destructive; their cone is the surface the
  * change itself introduces or touches, not a removal.
@@ -101,9 +135,12 @@ function descendantCone(nodes: readonly DagNode[], nodeId: NodeId): NodeId[] {
 export function preview(graph: GraphSnapshot, mutationSpec: MutationSpec): PreviewCone {
   switch (mutationSpec.kind) {
     case 'remove_node': {
-      const nodeIds = mutationSpec.cascade
+      const containmentIds = mutationSpec.cascade
         ? descendantCone(graph.nodes, mutationSpec.nodeId)
         : [mutationSpec.nodeId];
+      const nodeIds = mutationSpec.dependentsCascade
+        ? dependentsCascadeCone(graph, containmentIds)
+        : containmentIds;
       const idSet = new Set(nodeIds);
       const edges = graph.edges.filter((edge) => idSet.has(edge.from) || idSet.has(edge.to));
       return { nodeIds, edges };

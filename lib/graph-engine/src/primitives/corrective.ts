@@ -70,11 +70,17 @@ function resolveChainTip(graph: GraphSnapshot, review: NodeId): { tip: DagNode; 
  * container (the phase container at task/phase level, the project-scoped root for a spine-level
  * final review — read straight off the tip, never special-cased per level), entering with no new
  * `depends_on` of its own so it is frontier-eligible as soon as its container is `in_progress`; adds
- * a `depends_on` edge gating `review` on the new corrective (so `review` re-enters the frontier only
- * once the corrective reaches `done`); and flips `review` back to `not_started`. Every attempt is a
- * distinct node — this only ever adds a forward edge onto the newest node, never rewrites or
- * removes an earlier one, so the chain (and the wider graph) stays acyclic; `validate` still runs
- * the P02 cycle check over the new edge as a defence-in-depth assertion of that.
+ * a `depends_on` edge gating `review` on the new corrective; and flips `review` back to
+ * `not_started`. This is deliberately additive, never removing an earlier attempt's own gate edge
+ * into `review`: `resolveChainTip` (above) walks that exact stack of surviving predecessor edges to
+ * find both the chain's current tip and how deep it runs, so the stack itself *is* the chain's
+ * provenance record, not incidental leftovers. It is harmless to readiness — every stale predecessor
+ * is already `done` and stays that way outside an explicit `reset`, so `review` still only actually
+ * re-enters the frontier once the newest corrective reaches `done` (frontier requires *every*
+ * predecessor done, and the older ones already are). Every attempt is a distinct node — this only
+ * ever adds a forward edge onto the newest node, never rewrites or removes an earlier one, so the
+ * chain (and the wider graph) stays acyclic; `validate` still runs the P02 cycle check over the new
+ * edge as a defence-in-depth assertion of that.
  *
  * At the retry budget (`options.maxRetries`, default `5`): counts the corrective chain depth already
  * behind `review` and, once it is met or exceeded, halts instead of minting another — a

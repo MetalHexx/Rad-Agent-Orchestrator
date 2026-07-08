@@ -22,7 +22,17 @@ export interface GraphSnapshot {
  */
 export type MutationSpec =
   | { readonly kind: 'add_dependency'; readonly from: NodeId; readonly to: NodeId }
-  | { readonly kind: 'remove_node'; readonly nodeId: NodeId; readonly cascade: boolean }
+  | {
+      readonly kind: 'remove_node';
+      readonly nodeId: NodeId;
+      readonly cascade: boolean;
+      /**
+       * Whether the removal also transitively sweeps every node gated (directly or transitively,
+       * via `depends_on`) on `nodeId` — the `dependents: 'cascade'` strategy axis (P03). Optional;
+       * absent/`false` scopes `preview`'s blast radius to the containment (`cascade`) axis only.
+       */
+      readonly dependentsCascade?: boolean;
+    }
   | { readonly kind: 'move_node'; readonly nodeId: NodeId; readonly newParent: NodeId };
 
 // ── Acyclicity: depends_on forms a DAG ──────────────────────────────────────────
