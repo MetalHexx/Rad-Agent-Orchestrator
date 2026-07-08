@@ -3,8 +3,10 @@
 The node-type vocabulary and type contracts for the steerable DAG, layered on
 `@rad-orchestration/graph-engine`. The strict build, the vitest harness, the facade-only barrel,
 and the lint gate were established here so every later task inherits them. `graph-engine` now
-ships the full relational model and state store (see its `AGENTS.md`); this package's own
-node-type vocabulary and type contracts are still to come in a later task.
+ships the full relational model and state store (see its `AGENTS.md`); this package ships the
+frozen wire-contract fixtures, the built-in event-token normalization, and the first four
+`rad-orc:*` built-ins (the structural container plus the pre-execution planning spine) under
+`src/rad-orc/`, with more built-ins to follow in later tasks.
 
 ## Standing conventions
 
