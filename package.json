@@ -5,6 +5,8 @@
     "lib/repo-registry",
     "lib/work-graph",
     "lib/telemetry",
+    "lib/graph-engine",
+    "lib/graph-node-types",
     "cli",
     "ui",
     "harness-adapters/engine",
