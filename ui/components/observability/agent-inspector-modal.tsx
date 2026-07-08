@@ -12,6 +12,7 @@ import { TranscriptFacet } from "./transcript-facet";
 import { ToolsFacet } from "./tools-facet";
 import { FilesFacet } from "./files-facet";
 import { useAgentInspector, useSessionAgents } from "@/hooks/use-agent-inspector";
+import { StickToBottomProvider } from "./stick-to-bottom-context";
 
 // ---------------------------------------------------------------------------
 // AgentInspectorModal — composes the full Agent Inspector overlay (FR-6, FR-9,
@@ -113,73 +114,83 @@ export function AgentInspectorModal({
   );
 
   return (
-    <ModalShell
-      ariaLabel="Agent Inspector"
-      title={titleSlot}
-      footer={footer}
-      onClose={onClose}
-      onPrev={prevId ? handlePrev : undefined}
-      onNext={nextId ? handleNext : undefined}
-      isFullScreen={isFullScreen}
-      onToggleFullScreen={onToggleFullScreen}
-      dataState={dataState}
-    >
-      {/* Body: facet tab bar + active panel (FR-13, FR-15) */}
-      <div className="flex h-full flex-col overflow-hidden">
-        {/* Facet tab bar — Raw active; four future facets disabled "soon" (FR-13, DD-3) */}
-        <FacetTabs active={activeFacet} onSelect={setActiveFacet} />
+    // StickToBottomProvider wraps both the body (TranscriptTimeline owns the
+    // scroller and publishes pinned/newCount) and the footer (AgentNavigatorStrip
+    // renders the Jump-to-latest button driven by that published state) — they're
+    // siblings under ModalShell, not parent/child, so a shared context is required.
+    <StickToBottomProvider>
+      <ModalShell
+        ariaLabel="Agent Inspector"
+        title={titleSlot}
+        footer={footer}
+        onClose={onClose}
+        onPrev={prevId ? handlePrev : undefined}
+        onNext={nextId ? handleNext : undefined}
+        isFullScreen={isFullScreen}
+        onToggleFullScreen={onToggleFullScreen}
+        dataState={dataState}
+      >
+        {/* Body: facet tab bar + active panel (FR-13, FR-15) */}
+        <div className="flex h-full flex-col overflow-hidden">
+          {/* Facet tab bar — Raw active; four future facets disabled "soon" (FR-13, DD-3) */}
+          <FacetTabs active={activeFacet} onSelect={setActiveFacet} />
 
-        {/* Active panel */}
-        <div className="min-h-0 flex-1 overflow-hidden">
-          {transcript != null ? (
-            /* Raw transcript view — shown when transcript is present (FR-9) */
-            activeFacet === 'overview' ? (
-              <OverviewFacet transcript={transcript} />
-            ) : activeFacet === 'transcript' ? (
-              <TranscriptFacet transcript={transcript} />
-            ) : activeFacet === 'tools' ? (
-              <ToolsFacet transcript={transcript} />
-            ) : activeFacet === 'files' ? (
-              <FilesFacet transcript={transcript} />
-            ) : activeFacet === 'raw' ? (
-              <RawTranscriptView
-                transcript={transcript}
-                file={agentId ?? 'transcript'}
-              />
+          {/* Active panel */}
+          <div className="min-h-0 flex-1 overflow-hidden">
+            {transcript != null ? (
+              /* Raw transcript view — shown when transcript is present (FR-9) */
+              activeFacet === 'overview' ? (
+                <OverviewFacet transcript={transcript} />
+              ) : activeFacet === 'transcript' ? (
+                // Keyed by agentId so the scroller (and its useStickToBottom
+                // instance) remounts fresh on every agent switch — otherwise
+                // pinned/newCount and the raw scroll position leak from the
+                // previously-viewed agent's transcript into the new one.
+                <TranscriptFacet key={agentId} transcript={transcript} />
+              ) : activeFacet === 'tools' ? (
+                <ToolsFacet transcript={transcript} />
+              ) : activeFacet === 'files' ? (
+                <FilesFacet transcript={transcript} />
+              ) : activeFacet === 'raw' ? (
+                <RawTranscriptView
+                  transcript={transcript}
+                  file={agentId ?? 'transcript'}
+                />
+              ) : (
+                /* Future facets — not yet implemented */
+                <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                  This view is coming soon.
+                </div>
+              )
             ) : (
-              /* Future facets — not yet implemented */
-              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-                This view is coming soon.
+              /* Empty state — no transcript for this agent (FR-9) */
+              <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
+                <span className="text-sm font-medium text-foreground">No transcript for this agent</span>
+                <span className="text-xs text-muted-foreground">
+                  The agent may still be running or its transcript is unavailable.
+                </span>
               </div>
-            )
-          ) : (
-            /* Empty state — no transcript for this agent (FR-9) */
-            <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
-              <span className="text-sm font-medium text-foreground">No transcript for this agent</span>
-              <span className="text-xs text-muted-foreground">
-                The agent may still be running or its transcript is unavailable.
-              </span>
-            </div>
-          )}
+            )}
+          </div>
         </div>
-      </div>
 
-      {/* Content-edge nav chevrons (FR-15) — overlay the body's relative container,
-          mirroring the artifact viewer; ends disable. Keyboard ←/→ stays via ModalShell. */}
-      <button type="button" aria-label="Previous agent" onClick={handlePrev} disabled={!prevId}
-        className={cn(
-          "absolute left-2 top-1/2 z-10 -translate-y-1/2 cursor-pointer rounded-full bg-background/70 p-2 text-foreground hover:bg-background",
-          !prevId && "pointer-events-none opacity-40",
-        )}>
-        <ChevronLeft className="size-5" aria-hidden="true" />
-      </button>
-      <button type="button" aria-label="Next agent" onClick={handleNext} disabled={!nextId}
-        className={cn(
-          "absolute right-2 top-1/2 z-10 -translate-y-1/2 cursor-pointer rounded-full bg-background/70 p-2 text-foreground hover:bg-background",
-          !nextId && "pointer-events-none opacity-40",
-        )}>
-        <ChevronRight className="size-5" aria-hidden="true" />
-      </button>
-    </ModalShell>
+        {/* Content-edge nav chevrons (FR-15) — overlay the body's relative container,
+            mirroring the artifact viewer; ends disable. Keyboard ←/→ stays via ModalShell. */}
+        <button type="button" aria-label="Previous agent" onClick={handlePrev} disabled={!prevId}
+          className={cn(
+            "absolute left-2 top-1/2 z-10 -translate-y-1/2 cursor-pointer rounded-full bg-background/70 p-2 text-foreground hover:bg-background",
+            !prevId && "pointer-events-none opacity-40",
+          )}>
+          <ChevronLeft className="size-5" aria-hidden="true" />
+        </button>
+        <button type="button" aria-label="Next agent" onClick={handleNext} disabled={!nextId}
+          className={cn(
+            "absolute right-2 top-1/2 z-10 -translate-y-1/2 cursor-pointer rounded-full bg-background/70 p-2 text-foreground hover:bg-background",
+            !nextId && "pointer-events-none opacity-40",
+          )}>
+          <ChevronRight className="size-5" aria-hidden="true" />
+        </button>
+      </ModalShell>
+    </StickToBottomProvider>
   );
 }

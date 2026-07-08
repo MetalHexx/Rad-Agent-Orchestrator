@@ -27,7 +27,23 @@ export function needsClamp(text: string, colsPerLine = 88): boolean {
   return displayLineCount(text, colsPerLine) > CLAMP_LINES;
 }
 
+// A collapsed body clamps to a sixth of its rendered length rather than a fixed
+// height, so long and short overflowing bodies both reveal a proportional first
+// slice — just enough to identify the result, not half the content.
+// Floored so a body just past the CLAMP_LINES threshold doesn't collapse to a
+// sliver, and ceilinged so a huge or truncated body (e.g. a 13 KB capture) still
+// collapses to a glanceable size instead of a proportionally-large-but-still-huge one.
+export const MIN_CLAMP_EM = 3;
+export const MAX_CLAMP_EM = 10;
+
+export function collapsedClampEm(text: string, colsPerLine: number): number {
+  if (!text) return 0;
+  const lines = Math.ceil(displayLineCount(text, colsPerLine) / 6);
+  return Math.min(MAX_CLAMP_EM, Math.max(MIN_CLAMP_EM, lines));
+}
+
 import type { TranscriptEvent } from "@rad-orchestration/telemetry";
+import { resultToolNameBySeq } from "./tool-calls";
 
 export function matchesQuery(event: TranscriptEvent, query: string): boolean {
   const q = query.trim().toLowerCase();
@@ -37,8 +53,49 @@ export function matchesQuery(event: TranscriptEvent, query: string): boolean {
   return hay.includes(q);
 }
 
-export function visibleEvents(events: TranscriptEvent[], opts: { showThinking: boolean; query: string }): TranscriptEvent[] {
-  return events.filter((e) => (opts.showThinking || e.kind !== "thinking") && matchesQuery(e, opts.query));
+export interface TranscriptFacetState {
+  types: { user: boolean; assistant: boolean; thinking: boolean; errors: boolean };
+  tools: ReadonlySet<string> | "all"; // selected tool names; 'all' = every tool; empty set = hide all tool calls AND their results
+  files: ReadonlySet<string> | "all"; // selected file ops ('edit'|'write'|'snapshot'); empty set = hide all file changes
+  query: string;
+}
+
+function matchesFacet(event: TranscriptEvent, f: TranscriptFacetState, toolNameByResultSeq: ReadonlyMap<number, string>): boolean {
+  switch (event.kind) {
+    case "tool_call":
+      return f.tools === "all" || (!!event.tool && f.tools.has(event.tool.name));
+    case "file_change":
+      return f.files === "all" || (!!event.file && f.files.has(event.file.op));
+    case "message":
+      return event.role === "user" ? f.types.user : f.types.assistant;
+    case "thinking":
+      return f.types.thinking;
+    case "tool_result": {
+      // Same tool-name gate as tool_call — a call and its result show/hide
+      // together via the Tools ▾ dropdown, there's no separate "Tool results"
+      // toggle. Errors is an orthogonal, error-state-only gate layered on top.
+      const name = toolNameByResultSeq.get(event.seq);
+      const toolVisible = f.tools === "all" || (!!name && f.tools.has(name));
+      if (!toolVisible) return false;
+      return event.result?.isError === true ? f.types.errors : true;
+    }
+    case "system":
+    case "hook":
+      return true;
+    default:
+      return true;
+  }
+}
+
+export function applyFacets(events: TranscriptEvent[], f: TranscriptFacetState): TranscriptEvent[] {
+  const toolNameByResultSeq = resultToolNameBySeq(events);
+  return events.filter((e) => matchesFacet(e, f, toolNameByResultSeq) && matchesQuery(e, f.query));
+}
+
+export function facetLabel(sel: ReadonlySet<string> | "all", total: number): string {
+  if (sel === "all" || sel.size === total) return "All";
+  if (sel.size === 0) return "None";
+  return `${sel.size} of ${total}`;
 }
 
 export function errorEventSeqs(events: TranscriptEvent[]): number[] {

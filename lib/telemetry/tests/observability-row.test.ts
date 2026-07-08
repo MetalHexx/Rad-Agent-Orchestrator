@@ -49,3 +49,11 @@ it2('back-compat: still resolves a legacy row carrying agentId only in pointers 
   } as never);
   expect2(row.agentId).toBe('legacy_1');
 });
+
+it2('does not throw on a record with no pointers field at all (readers tolerate schema variance)', () => {
+  const row = toObservabilityUsageRow({
+    usageId: 'u5', sessionId: 's5', timestamp: 't', inputTokens: 0, outputTokens: 0,
+    model: 'm', source: 'main-agent',
+  } as never);
+  expect2(row.agentId).toBeUndefined();
+});

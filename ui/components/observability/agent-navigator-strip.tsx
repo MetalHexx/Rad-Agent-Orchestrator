@@ -1,9 +1,11 @@
 "use client";
 
 import * as React from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ArrowDownToLine, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { centerScrollLeft, pageScrollDelta, shouldHijackWheel } from "@/lib/filmstrip-scroll";
+import { Button } from "@/components/ui/button";
+import { useStickToBottomContext } from "./stick-to-bottom-context";
 
 // ---------------------------------------------------------------------------
 // AgentNavigatorStrip — horizontally-scrollable row of agent-name chips (FR-14, DD-5, DD-7, NFR-5)
@@ -29,6 +31,7 @@ export interface AgentNavigatorStripProps {
 export function AgentNavigatorStrip({ agents, activeId, onSelect }: AgentNavigatorStripProps) {
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const activeCellRef = React.useRef<HTMLButtonElement>(null);
+  const { pinned, newCount, jumpToLatest } = useStickToBottomContext();
 
   const scroll = (direction: 'left' | 'right') => {
     const c = scrollRef.current;
@@ -108,6 +111,25 @@ export function AgentNavigatorStrip({ agents, activeId, onSelect }: AgentNavigat
         <ChevronRight className="size-4" aria-hidden="true" />
       </button>
       <div className="pointer-events-none absolute right-0 top-0 z-10 h-full w-8 bg-gradient-to-l from-card to-transparent" aria-hidden="true" />
+
+      {/* Jump-to-latest — docked bottom-right (stick-to-bottom, shared via
+          StickToBottomContext since the transcript scroller that owns the
+          live pinned/newCount state is a facet-body sibling, not a parent). */}
+      <div className="flex shrink-0 items-center gap-2 border-l border-border pl-2 pr-3">
+        {!pinned && newCount > 0 ? (
+          <span className="text-xs text-muted-foreground">{newCount} new</span>
+        ) : null}
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={pinned}
+          aria-label="Jump to latest"
+          onClick={jumpToLatest}
+        >
+          <ArrowDownToLine aria-hidden="true" />
+          Jump to latest
+        </Button>
+      </div>
     </div>
   );
 }

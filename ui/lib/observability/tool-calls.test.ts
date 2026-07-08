@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { toToolCalls, filterToolCalls } from './tool-calls';
+import { toToolCalls, filterToolCalls, originatingToolByResult, resultToolNameBySeq } from './tool-calls';
 
 const call = (seq: number, name: string, text: string, useId: string) =>
   ({ seq, timestamp: '', kind: 'tool_call', tool: { name, input: { text }, toolUseId: useId } }) as never;
@@ -39,6 +39,41 @@ test('toToolCalls agrees with the toolSummary it should mirror (NFR-5)', () => {
   assert.equal(calls.length, 3);                  // == toolSummary.total
   assert.deepEqual(byName, { Read: 2, Glob: 1 });  // == toolSummary.byName
   assert.equal(calls.filter((c) => c.isError).length, 1); // == toolSummary.errors
+});
+
+test('originatingToolByResult resolves Read results to the file path they read, others to the bare tool name', () => {
+  const events = [
+    call(1, 'Read', JSON.stringify({ file_path: 'ui/lib/foo.ts' }), 'u1'), result(2, 'u1', 'ok', false),
+    call(3, 'Bash', 'npm test', 'u2'), result(4, 'u2', 'boom', true),
+  ];
+  const map = originatingToolByResult(events);
+  assert.equal(map.get(2), 'ui/lib/foo.ts');
+  assert.equal(map.get(4), 'Bash');
+});
+
+// Regression (phase review Finding 1): the pairing map MUST be built from the full,
+// unfiltered event list. A call can be absent from a narrower/windowed subset (e.g.
+// scrolled out of view) while its result remains, so a map built from that subset
+// silently loses the entry.
+test('originatingToolByResult loses the pairing when built from a subset missing the call, but resolves it when built from the full list', () => {
+  const events = [
+    call(1, 'Read', JSON.stringify({ file_path: 'ui/lib/foo.ts' }), 'u1'),
+    result(2, 'u1', '     1\tfoo', false),
+  ];
+  const subset = events.slice(1); // simulates the call scrolled out of a windowed view
+  assert.equal(subset.length, 1, 'sanity: only the tool_result remains');
+  assert.equal(originatingToolByResult(subset).size, 0, 'built from the subset missing the call, the pairing is lost');
+  assert.equal(originatingToolByResult(events).get(2), 'ui/lib/foo.ts', 'built from the full list, the pairing resolves');
+});
+
+test('resultToolNameBySeq resolves the plain tool name (no Read-to-file-path special-casing), matching Tools ▾ option values', () => {
+  const events = [
+    call(1, 'Read', JSON.stringify({ file_path: 'ui/lib/foo.ts' }), 'u1'), result(2, 'u1', 'ok', false),
+    call(3, 'Bash', 'npm test', 'u2'), result(4, 'u2', 'boom', true),
+  ];
+  const map = resultToolNameBySeq(events);
+  assert.equal(map.get(2), 'Read');
+  assert.equal(map.get(4), 'Bash');
 });
 
 test('filterToolCalls composes tool, errorsOnly, and query (FR-7)', () => {

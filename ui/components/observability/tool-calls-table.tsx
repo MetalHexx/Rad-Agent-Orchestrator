@@ -54,7 +54,7 @@ function ToolCallRow({ call, ordinal, open, onToggle }: {
       >
         <span className="font-mono text-xs tabular-nums text-muted-foreground">{ordinal}</span>
         <span className="min-w-0"><Badge variant="secondary" className="font-mono">{call.name}</Badge></span>
-        <span className="truncate font-mono text-xs text-muted-foreground">{toolArgPreview(call.input.text)}</span>
+        <span className="truncate font-mono text-xs text-muted-foreground">{toolArgPreview(call.input.text, Infinity)}</span>
         <span><Badge variant={call.isError ? "destructive" : "success"}>{call.isError ? "error" : "ok"}</Badge></span>
         <ChevronDown className={cn("size-4 text-muted-foreground transition-transform", open && "rotate-180")} aria-hidden="true" />
       </button>

@@ -9,6 +9,7 @@ import { FilterSelect } from "@/components/observability/filter-select";
 import { SessionTable } from "@/components/observability/session-table";
 import { ObservabilitySubHeader } from "@/components/observability/observability-sub-header";
 import { deriveSessions, rowsInWindow, rowsSince } from "@/lib/observability/sessions";
+import { sessionSpendInRange } from "@/lib/observability/session-spend";
 import { countActiveNow } from "@/lib/observability/live-active";
 import { fitToSession } from "@/lib/observability/fit-to-session";
 import { retentionFloorMs } from "@/lib/time-range/range";
@@ -85,6 +86,16 @@ export function ObservabilityView() {
     return sessionsAfterWorktree.filter((s) => s.sessionId === session);
   }, [sessionsAfterWorktree, session]);
 
+  // Reconcile the per-session Total Spend against session-detail's canonical windowing
+  // (rowsInWindow, upper-bounded at rangeEnd) instead of the open-ended sum `allSessions`
+  // inherits from `windowedRows` (rowsSince). Session membership/order and each row's own
+  // `.rows` stay untouched — only the displayed `spend` figure is overridden — so the table
+  // and summary tiles agree with session-detail for the same session and range (AD-6).
+  const reconciledSessions = React.useMemo(
+    () => filteredSessions.map((s) => ({ ...s, spend: sessionSpendInRange(s.rows, s.sessionId, rangeStart, rangeEnd) })),
+    [filteredSessions, rangeStart, rangeEnd]
+  );
+
   // Active-Now from the system-wide today baseline, not the filtered window (FR-11).
   const activeNow = React.useMemo(() => countActiveNow(deriveSessions(todayRows), now), [todayRows, now]);
 
@@ -129,8 +140,8 @@ export function ObservabilityView() {
       />
       <main id="main-content" className="px-6 py-[var(--space-4)] space-y-[var(--space-4)]">
         <SpendRateChart data={chart.data} series={chart.series} title="Token Spend Rate" rangeStart={rangeStart} rangeEnd={rangeEnd} filtered={filtered} ready={ready} />
-        <SummaryCards sessions={filteredSessions} activeNow={activeNow} />
-        <SessionTable sessions={filteredSessions} now={now} rangeStart={rangeStart} rangeEnd={rangeEnd} nominalWindowMs={tw.nominalWindowMs} savedIds={savedIds} onToggleSave={handleToggleSave} />
+        <SummaryCards sessions={reconciledSessions} activeNow={activeNow} />
+        <SessionTable sessions={reconciledSessions} now={now} rangeStart={rangeStart} rangeEnd={rangeEnd} nominalWindowMs={tw.nominalWindowMs} savedIds={savedIds} onToggleSave={handleToggleSave} />
         <HelpPanel open={helpOpen} onOpenChange={setHelpOpen} />
       </main>
     </>
