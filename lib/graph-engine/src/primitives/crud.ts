@@ -167,10 +167,25 @@ export function remove_node(
       return before ? [{ op: 'removed' as const, before, after: null }] : [];
     });
 
+    // Surviving-node updates — a `promote` reparent and/or scrubbing a `budgetAnchor` that pointed at
+    // a now-removed node (a resume-stamped corrective-budget anchor whose chain tip is being deleted) —
+    // are collapsed so each survivor emits at most one coherent `updated` change.
+    const survivorUpdates = new Map<NodeId, DagNode>();
     if (childrenStrategy === 'promote') {
       for (const child of directChildren(graph.nodes, node)) {
-        nodeChanges.push({ op: 'updated', before: child, after: { ...child, parent: target.parent } });
+        survivorUpdates.set(child.id, { ...child, parent: target.parent });
       }
+    }
+    for (const survivor of graph.nodes) {
+      if (removal.has(survivor.id)) continue;
+      if (survivor.budgetAnchor != null && removal.has(survivor.budgetAnchor)) {
+        const base = survivorUpdates.get(survivor.id) ?? survivor;
+        survivorUpdates.set(survivor.id, { ...base, budgetAnchor: null });
+      }
+    }
+    for (const [id, after] of survivorUpdates) {
+      const before = nodesById.get(id);
+      if (before) nodeChanges.push({ op: 'updated', before, after });
     }
 
     return {

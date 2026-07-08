@@ -12,6 +12,7 @@ import {
 } from '@rad-orchestration/graph-engine';
 import { describe, expect, it } from 'vitest';
 import { BUILT_IN_NODE_TYPES } from '../../src/index.js';
+import { DECORATION_CADENCE_FIXTURE } from '../fixtures/decoration-cadence.js';
 import type { DriverScript } from '../harness/test-driver.js';
 import { createBuiltInResolvers, createFakedCapabilityPorts, isGloballyQuiescent, runToQuiescence } from '../harness/test-driver.js';
 
@@ -28,6 +29,26 @@ const REPOS = [{ name: 'rad-orc-source', path: '/repos/rad-orc-source', branch: 
 function taskData(handoffDocPath: string) {
   return { handoffDocPath, repos: REPOS, complexity: 'standard' as const, shouldCommit: true };
 }
+
+// A valid two-phase plan the explosion can parse — mirrors the driver's private DEFAULT_MASTER_PLAN_DOC
+// so a resumed explosion, reading this back from the master plan's docPath, yields the same decorated
+// subgraph ids the happy-path proof asserts.
+const GOOD_MASTER_PLAN_DOC = `# Master Plan
+
+## Phase 1: Foundation
+Doc: docs/phases/phase-1.md
+Exit Criteria:
+- Foundations laid
+
+### Task 1: Scaffold the module
+
+## Phase 2: Delivery
+Doc: docs/phases/phase-2.md
+Exit Criteria:
+- Delivery shipped
+
+### Task 1: Ship it
+`;
 
 describe('recovery — rejected -> halt -> resume', () => {
   it('a rejected verdict halts the review (blocked, quiescent); resume re-arms it to run again and converge', async () => {
@@ -118,6 +139,66 @@ describe('recovery — corrective-budget halt -> resume -> a fresh corrective co
     expect(ctx.store.getNode(ctx.scope, 'review')?.status).toBe('done');
     expect(ctx.store.getNode(ctx.scope, 'review')?.data.verdict).toBe('approved');
     expect(isGloballyQuiescent(ctx, ROOT_NODE_ID)).toBe(true);
+  });
+});
+
+describe('recovery — explosion parse-cap halt -> resume -> re-parse -> completion', () => {
+  it('a halted explosion, once a valid plan is authored and resume clears its self-disable, re-parses and expands its decorated subgraph to done — recovering from resume alone', async () => {
+    const ctx = ctxFor('proj-explosion-recovery');
+    const registry = createNodeTypeRegistry(BUILT_IN_NODE_TYPES);
+
+    add_node(ctx, registry, 'master-plan', 'rad-orc:master_plan', ROOT_NODE_ID);
+    add_node(ctx, registry, 'plan-approval', 'rad-orc:approval', ROOT_NODE_ID, {
+      data: { level: 'plan' },
+      dependsOn: ['master-plan'],
+    });
+    add_node(ctx, registry, 'explosion', 'rad-orc:explosion', ROOT_NODE_ID, {
+      data: { cadence: DECORATION_CADENCE_FIXTURE },
+      dependsOn: ['master-plan'],
+    });
+
+    // A master plan that never parses drives the explosion through its parse-retry cap to a self-disable halt.
+    const ports = createFakedCapabilityPorts();
+    const resolvers = createBuiltInResolvers(ports, { masterPlanDoc: '# Master Plan\n' }); // no phases — never parses
+    await runToQuiescence(ctx, registry, ROOT_NODE_ID, resolvers);
+
+    // Precondition: the node is halted (frontier-excluded) with a fresh retry window and a recorded error.
+    const halted = ctx.store.getNode(ctx.scope, 'explosion');
+    expect(halted?.disabled).toBe(true);
+    expect(halted?.data.parseRetryCount).toBe(0); // reset at halt time — a later resume gets a fresh window
+    expect(halted?.data.lastParseError).toBeTruthy();
+    expect(halted?.status).toBe('not_started');
+    expect(isGloballyQuiescent(ctx, ROOT_NODE_ID)).toBe(true);
+
+    // The operator's out-of-band recovery: author a valid plan at the master plan's own docPath (which the
+    // explosion reads back), then resume the explosion alone. master-plan stays done, so it never re-authors —
+    // the re-parse is driven purely by resume re-arming the halted node.
+    ports.docRead.seed('docs/master-plan/master-plan.md', GOOD_MASTER_PLAN_DOC);
+    const writesBefore = ports.docWrite.writes.length;
+
+    const resumed = resume(ctx, 'explosion');
+    expect(resumed.ok).toBe(true);
+    expect(ctx.store.getNode(ctx.scope, 'explosion')?.disabled).toBe(false);
+
+    await runToQuiescence(ctx, registry, ROOT_NODE_ID, resolvers);
+
+    // Full recovery: the explosion re-parsed, cleared its error, expanded, and reached done.
+    const recovered = ctx.store.getNode(ctx.scope, 'explosion');
+    expect(recovered?.disabled).toBe(false);
+    expect(recovered?.status).toBe('done');
+    expect(recovered?.data.parseRetryCount).toBe(0);
+    expect(recovered?.data.lastParseError).toBeNull();
+    expect(recovered?.data.expanded).toBe(true);
+
+    // The handle-issued expansion seeded the decorated subgraph, and every node under it converged.
+    expect(ctx.store.getNode(ctx.scope, 'phase-1')?.type).toBe('rad-orc:phase');
+    expect(ctx.store.getNode(ctx.scope, 'phase-1-task-1')?.status).toBe('done');
+    expect(ctx.store.getNode(ctx.scope, 'phase-1-task-1-code_review-0')?.status).toBe('done');
+    expect(ctx.store.getNode(ctx.scope, 'spine-approval-2')?.status).toBe('done');
+    expect(isGloballyQuiescent(ctx, ROOT_NODE_ID)).toBe(true);
+
+    // Recovery came from resume alone — the master plan was never re-authored.
+    expect(ports.docWrite.writes.length).toBe(writesBefore);
   });
 });
 

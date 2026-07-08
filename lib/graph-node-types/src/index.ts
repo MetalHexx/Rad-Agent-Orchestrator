@@ -13,8 +13,9 @@ export {
 import type { NodeTypeDefinition } from '@rad-orchestration/graph-engine';
 
 // ── rad-orc:* built-ins ──────────────────────────────────────────────────────────
-// The structural container and the pre-execution planning spine — the first four `rad-orc:*`
-// node types, registered under the same `NodeTypeRegistry` as any custom type.
+// The structural container, the pre-execution planning spine, and the execution/review node types —
+// the eight `rad-orc:*` node types (phase, master_plan, explosion, approval, task, code_review,
+// corrective, pr), registered under the same `NodeTypeRegistry` as any custom type.
 
 export { PHASE_NODE_TYPE, PHASE_DATA_SCHEMA } from './rad-orc/phase.js';
 

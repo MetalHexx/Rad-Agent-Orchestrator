@@ -1,8 +1,9 @@
-// Property suite (P05-T02): across long, randomized mutation sequences — add/remove/move/reorder/
-// expand/reset/toggle, interleaved with direct status advances (the same raw-`store.apply` seeding
-// idiom every other test file's own `seed()` helper already uses) — `depends_on` stays acyclic,
-// `parent` stays a tree, and the frontier stays correct against an independently-authored reference
-// resolver (never a call into the resolver `frontier` itself uses).
+// Property suite (P05-T02, extended): across long, randomized mutation sequences — add/remove/move/
+// reorder/expand/reset/toggle/resume, interleaved with direct status advances and direct
+// `budgetAnchor` stamps (the same raw-`store.apply` seeding idiom every other test file's own
+// `seed()` helper already uses) — `depends_on` stays acyclic, `parent` stays a tree, no
+// `budgetAnchor` dangles at a removed node, and the frontier stays correct against an
+// independently-authored reference resolver (never a call into the resolver `frontier` itself uses).
 import { describe, expect, it } from 'vitest';
 import {
   InMemoryStateStore,
@@ -17,6 +18,7 @@ import {
   remove_dependency,
   remove_node,
   reset,
+  resume,
   set_order,
   toggle,
 } from '../../src/index.js';
@@ -73,7 +75,7 @@ function freshId(): string {
 
 const CHILD_STRATEGIES: readonly ChildRemovalStrategy[] = ['cascade', 'promote'];
 const DEPENDENT_STRATEGIES: readonly DependentRemovalStrategy[] = ['heal', 'cascade', 'detach'];
-const OPS = ['add_node', 'remove_node', 'add_dependency', 'remove_dependency', 'move_node', 'set_order', 'expand', 'reset', 'toggle'] as const;
+const OPS = ['add_node', 'remove_node', 'add_dependency', 'remove_dependency', 'move_node', 'set_order', 'expand', 'reset', 'toggle', 'resume'] as const;
 
 // ── A known, out-of-scope engine gap this generator deliberately steers around ────
 // A `depends_on` edge whose two endpoints are also related by containment (one is the other's
@@ -217,6 +219,22 @@ function applyRandomOp(ctx: PrimitiveContext, registry: NodeTypeRegistry, rng: (
       toggle(ctx, target);
       return;
     }
+    case 'resume': {
+      // Only a disabled node (from `toggle`) is resumable here; no primitive in this mix ever mints
+      // `blocked`/`failed`, but guard for them anyway. When the resumed node has a depends_on
+      // predecessor, resume also organically stamps a `budgetAnchor` (its chain tip). Note: the
+      // sibling `add_corrective` primitive is deliberately *not* in this mix — it commits a
+      // corrective→review `depends_on` edge that can cross a containment relationship (the documented
+      // out-of-scope engine gap this generator steers around); its behavior, including its
+      // `resolveChainTip`/`budgetAnchor` read, is covered deterministically in `corrective.test.ts`.
+      const target = pick(
+        rng,
+        nodes.filter((node) => node.id !== ROOT_NODE_ID && (node.disabled === true || node.status === 'blocked' || node.status === 'failed')),
+      );
+      if (!target) return;
+      resume(ctx, target.id);
+      return;
+    }
     default:
       return;
   }
@@ -225,9 +243,9 @@ function applyRandomOp(ctx: PrimitiveContext, registry: NodeTypeRegistry, rng: (
 /**
  * Advances a random not-yet-run node straight to `done`/`in_progress` via a raw `store.apply` —
  * the same seeding idiom every other test file's own `seed()` helper already uses (the store's
- * `apply` is the sole public write path; this is not a second one). Interleaved with the seven
- * named mutation primitives so `reset`/dependency-driven frontier eligibility have something to
- * actually exercise, since none of those seven primitives can, by itself, mint a `done` node.
+ * `apply` is the sole public write path; this is not a second one). Interleaved with the named
+ * mutation primitives so `reset`/dependency-driven frontier eligibility have something to actually
+ * exercise, since none of those primitives can, by itself, mint a `done` node.
  */
 function maybeAdvanceAStatus(ctx: PrimitiveContext, rng: () => number): void {
   if (rng() >= 0.3) return;
@@ -243,6 +261,33 @@ function maybeAdvanceAStatus(ctx: PrimitiveContext, rng: () => number): void {
     primitive: 'apply_event',
     params: { node: candidate.id, testHarnessStatusSeed: after.status },
     nodeChanges: [{ op: 'updated', before: candidate, after }],
+    edgeChanges: [],
+  });
+}
+
+/**
+ * Stamps a `budgetAnchor` on a random node, pointing at one of its own `depends_on` predecessors — the
+ * same node a real `resume` would anchor to (the corrective-budget chain tip). Seeded directly via the
+ * raw `store.apply` idiom because `resume`'s own stamping path (a *disabled* node that *also* has a
+ * predecessor, then resumed) is far too rare to emerge from random ops, leaving the field otherwise
+ * unexercised. Interleaving this gives the no-dangling-anchor invariant real teeth: arbitrary later
+ * `remove_node`/`move_node`/`reset` sequences must never leave a `budgetAnchor` pointing at a gone node.
+ */
+function maybeStampAnchor(ctx: PrimitiveContext, rng: () => number): void {
+  if (rng() >= 0.25) return;
+  const nodes = ctx.store.listNodes(ctx.scope);
+  const edges = ctx.store.listEdges(ctx.scope);
+  const subject = pick(rng, nodes.filter((node) => node.id !== ROOT_NODE_ID && node.budgetAnchor == null));
+  if (!subject) return;
+  const predecessors = edges.filter((edge) => edge.kind === 'depends_on' && edge.to === subject.id).map((edge) => edge.from);
+  const anchor = pick(rng, predecessors);
+  if (!anchor) return;
+
+  const after: DagNode = { ...subject, budgetAnchor: anchor };
+  ctx.store.apply(ctx.scope, {
+    primitive: 'apply_event',
+    params: { node: subject.id, testHarnessAnchorSeed: anchor },
+    nodeChanges: [{ op: 'updated', before: subject, after }],
     edgeChanges: [],
   });
 }
@@ -314,7 +359,10 @@ function expectedFrontierIds(nodes: readonly DagNode[], edges: readonly DagEdge[
 }
 
 describe('property: arbitrary mutation sequences preserve acyclicity, tree-shape, and a correct frontier', () => {
-  it.each([1, 2, 3])('seed %i: depends_on stays acyclic, parent stays a tree, and frontier matches the reference resolver after every step', (seed) => {
+  // Seeds 4 and 7 are deliberately retained beyond the original 1-3: with the `budgetAnchor` seeding
+  // now in the mix, they construct a "remove a still-anchored node" sequence, so the no-dangling-anchor
+  // invariant genuinely catches a regression of `remove_node`'s anchor scrub (not just asserts vacuously).
+  it.each([1, 2, 3, 4, 5, 6, 7, 8])('seed %i: depends_on stays acyclic, parent stays a tree, and frontier matches the reference resolver after every step', (seed) => {
     const ctx: PrimitiveContext = { store: new InMemoryStateStore(), scope: { projectId: `proj-${seed}` } };
     const registry = createNodeTypeRegistry([FAKE_NODE_TYPE]);
     const rng = mulberry32(seed * 7919 + 1);
@@ -322,12 +370,20 @@ describe('property: arbitrary mutation sequences preserve acyclicity, tree-shape
     for (let step = 0; step < 150; step += 1) {
       applyRandomOp(ctx, registry, rng);
       maybeAdvanceAStatus(ctx, rng);
+      maybeStampAnchor(ctx, rng);
 
       const nodes = ctx.store.listNodes(ctx.scope);
       const edges = ctx.store.listEdges(ctx.scope);
 
       expect(detectCycle(edges)).toBeNull();
       expect(isTreeShaped(nodes)).toBe(true);
+
+      // No dangling budget anchor: `resume` stamps `budgetAnchor` at a chain tip, which a later
+      // `remove_node` can delete — a surviving node must never point at a node that no longer exists.
+      const idSet = new Set(nodes.map((node) => node.id));
+      for (const node of nodes) {
+        if (node.budgetAnchor != null) expect(idSet.has(node.budgetAnchor)).toBe(true);
+      }
 
       const containers = new Set<string>([ROOT_NODE_ID, ...nodes.filter((node) => node.parent !== null).map((node) => node.parent as string)]);
       for (const containerId of containers) {

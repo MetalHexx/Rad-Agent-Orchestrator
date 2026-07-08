@@ -279,6 +279,47 @@ describe('remove_node — detach (dependents)', () => {
   });
 });
 
+describe('remove_node — budgetAnchor scrub', () => {
+  it("scrubs a surviving node's budgetAnchor when the node it points at is removed (no dangling back-reference)", () => {
+    const ctx = ctxFor('proj-a');
+    seed(
+      ctx,
+      [node('anchor'), node('anchored', { budgetAnchor: 'anchor' })],
+      [{ op: 'created', before: null, after: { from: 'anchor', to: 'anchored', kind: 'depends_on' } }],
+    );
+
+    const result = remove_node(ctx, 'anchor', { dependents: 'detach' });
+
+    expect(result.ok).toBe(true);
+    expect(ctx.store.getNode(ctx.scope, 'anchor')).toBeNull();
+    const survivor = ctx.store.getNode(ctx.scope, 'anchored');
+    expect(survivor).not.toBeNull();
+    expect(survivor?.budgetAnchor ?? null).toBeNull(); // the dangling back-reference was scrubbed
+  });
+
+  it('folds the anchor scrub into the promote reparent — a promoted child that anchored its removed parent gets one coherent update', () => {
+    const ctx = ctxFor('proj-a');
+    seed(ctx, [node('parent'), node('child', { parent: 'parent', budgetAnchor: 'parent' })]);
+
+    const result = remove_node(ctx, 'parent', { children: 'promote', dependents: 'detach' });
+
+    expect(result.ok).toBe(true);
+    const child = ctx.store.getNode(ctx.scope, 'child');
+    expect(child?.parent).toBe(ROOT_NODE_ID); // reparented by promote
+    expect(child?.budgetAnchor ?? null).toBeNull(); // and its dangling anchor scrubbed, in the same update
+  });
+
+  it('leaves an unrelated budgetAnchor intact when a different node is removed', () => {
+    const ctx = ctxFor('proj-a');
+    seed(ctx, [node('anchor'), node('anchored', { budgetAnchor: 'anchor' }), node('bystander')]);
+
+    const result = remove_node(ctx, 'bystander', { dependents: 'detach' });
+
+    expect(result.ok).toBe(true);
+    expect(ctx.store.getNode(ctx.scope, 'anchored')?.budgetAnchor).toBe('anchor'); // untouched
+  });
+});
+
 describe('add_dependency', () => {
   it('commits a legal edge and emits a well-formed delta', () => {
     const ctx = ctxFor('proj-a');
