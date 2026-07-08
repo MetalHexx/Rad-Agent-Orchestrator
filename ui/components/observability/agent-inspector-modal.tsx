@@ -142,7 +142,11 @@ export function AgentInspectorModal({
               activeFacet === 'overview' ? (
                 <OverviewFacet transcript={transcript} />
               ) : activeFacet === 'transcript' ? (
-                <TranscriptFacet transcript={transcript} />
+                // Keyed by agentId so the scroller (and its useStickToBottom
+                // instance) remounts fresh on every agent switch — otherwise
+                // pinned/newCount and the raw scroll position leak from the
+                // previously-viewed agent's transcript into the new one.
+                <TranscriptFacet key={agentId} transcript={transcript} />
               ) : activeFacet === 'tools' ? (
                 <ToolsFacet transcript={transcript} />
               ) : activeFacet === 'files' ? (

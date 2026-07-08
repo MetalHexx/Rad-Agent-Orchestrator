@@ -42,3 +42,16 @@ const noop = () => {};
   assert.ok(source.includes("activeFacet === 'files'"), 'modal dispatches the Files facet branch (FR-6, AD-5)');
   console.log('✓ agent inspector modal: one-line title, mapped chips, retired header nav');
 }
+
+// --- Source: TranscriptFacet is keyed by agentId (phase review Finding 1) ---
+// Without this key, switching agents while the Transcript facet is active reconciles
+// TranscriptTimeline in place instead of remounting it, so useStickToBottom's
+// pinned/newCount (and the raw scroll position) leak from the previously-viewed
+// agent's transcript into the newly-selected one.
+{
+  assert.ok(
+    source.includes('<TranscriptFacet key={agentId} transcript={transcript} />'),
+    'Transcript facet is keyed by agentId so the scroller remounts fresh on every agent switch (phase review Finding 1)',
+  );
+  console.log('✓ agent inspector modal: Transcript facet keyed by agentId');
+}
