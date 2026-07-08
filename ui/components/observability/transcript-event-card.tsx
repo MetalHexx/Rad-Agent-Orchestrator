@@ -4,7 +4,7 @@ import { ChevronDown, ChevronUp } from "lucide-react";
 import type { TranscriptEvent } from "@rad-orchestration/telemetry";
 import { cn } from "@/lib/utils";
 import { eventKindColor, eventKindLabel } from "@/lib/observability/event-kind-color";
-import { formatClock, needsClamp, halfClampEm } from "@/lib/observability/transcript-view";
+import { formatClock, needsClamp, collapsedClampEm } from "@/lib/observability/transcript-view";
 import { JsonBlock } from "./json-block";
 import { extractToolFields, renderModeFor, type ToolField } from "@/lib/observability/render-mode";
 import { MarkdownRenderer } from "@/components/documents";
@@ -92,7 +92,7 @@ function EventBody({
     case "message": {
       const body = event.text ?? "";
       return (
-        <RevealBody id={revealId} clamp={needsClamp(body, 80)} maxHeightEm={halfClampEm(body, 80)}>
+        <RevealBody id={revealId} clamp={needsClamp(body, 80)} maxHeightEm={collapsedClampEm(body, 80)}>
           {renderChoice === "markdown" ? (
             <MarkdownRenderer content={body} />
           ) : (
@@ -104,7 +104,7 @@ function EventBody({
     case "thinking": {
       const body = event.text ?? "";
       return (
-        <RevealBody id={revealId} clamp={needsClamp(body, 80)} maxHeightEm={halfClampEm(body, 80)}>
+        <RevealBody id={revealId} clamp={needsClamp(body, 80)} maxHeightEm={collapsedClampEm(body, 80)}>
           <p className="whitespace-pre-wrap text-sm italic text-muted-foreground">{body}</p>
         </RevealBody>
       );
@@ -128,11 +128,11 @@ function EventBody({
         <div className="font-mono text-xs">
           <span className="font-bold" style={{ color: "var(--model-teal)" }}>{event.tool?.name}</span>
           {fields ? (
-            <RevealBody id={revealId} clamp={needsClamp(clampSource, 92)} maxHeightEm={halfClampEm(clampSource, 92)}>
+            <RevealBody id={revealId} clamp={needsClamp(clampSource, 92)} maxHeightEm={collapsedClampEm(clampSource, 92)}>
               <ToolFieldsGrid fields={fields} />
             </RevealBody>
           ) : args ? (
-            <RevealBody id={revealId} clamp={needsClamp(args, 92)} maxHeightEm={halfClampEm(args, 92)}>
+            <RevealBody id={revealId} clamp={needsClamp(args, 92)} maxHeightEm={collapsedClampEm(args, 92)}>
               <JsonBlock
                 text={args}
                 className="mt-1"
@@ -154,7 +154,7 @@ function EventBody({
         <div>
           {isError ? <div className="mb-1.5"><ErrorBadge /></div> : null}
           {out ? (
-            <RevealBody id={revealId} clamp={needsClamp(out.text, 92)} maxHeightEm={halfClampEm(out.text, 92)} fadeTo="after:to-background">
+            <RevealBody id={revealId} clamp={needsClamp(out.text, 92)} maxHeightEm={collapsedClampEm(out.text, 92)} fadeTo="after:to-background">
               {renderChoice === "markdown" ? (
                 <MarkdownRenderer content={isReadOrigin(originatingTool) ? stripCatNPrefix(out.text) : out.text} />
               ) : (
@@ -178,14 +178,15 @@ function EventBody({
 }
 
 // ---------------------------------------------------------------------------
-// RevealBody — per-card more / less collapse (Revision 2026-07-08: half-clamp).
+// RevealBody — per-card more / less collapse (Revision 2026-07-08: half-clamp;
+// Revision 2026-07-08: collapsed to a sixth-clamp — half left too much visible).
 // CSS-only and SSR-safe: a hidden peer checkbox toggles the clamp via Tailwind
 // `peer-checked:` sibling variants, so it renders to static HTML, holds zero
 // React state, and is exercisable under renderToStaticMarkup (NFR-5). When the
 // body does not overflow (`clamp` false) the children render bare — no control.
 // `id` is derived from event.seq (deterministic, no Math.random).
 //
-// `maxHeightEm` is computed per-body (halfClampEm) rather than a fixed class, so
+// `maxHeightEm` is computed per-body (collapsedClampEm) rather than a fixed class, so
 // it's threaded through a CSS custom property set via `style` and consumed by a
 // static arbitrary-value utility (`max-h-[var(--reveal-clamp)]`). A literal
 // `style.maxHeight` can't be done here: inline styles always outrank a class-based

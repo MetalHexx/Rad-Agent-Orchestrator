@@ -1,7 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { toToolCalls, filterToolCalls, originatingToolByResult } from './tool-calls';
-import { applyFacets, type TranscriptFacetState } from './transcript-view';
+import { toToolCalls, filterToolCalls, originatingToolByResult, resultToolNameBySeq } from './tool-calls';
 
 const call = (seq: number, name: string, text: string, useId: string) =>
   ({ seq, timestamp: '', kind: 'tool_call', tool: { name, input: { text }, toolUseId: useId } }) as never;
@@ -53,25 +52,28 @@ test('originatingToolByResult resolves Read results to the file path they read, 
 });
 
 // Regression (phase review Finding 1): the pairing map MUST be built from the full,
-// unfiltered event list. A facet can hide a tool_call while its tool_result stays
-// visible (tools facet governs tool_call visibility; the separate toolResults facet
-// governs tool_result visibility — see transcript-view.ts's matchesFacet), so a map
-// built from a facet-filtered subset silently loses the entry.
-test('originatingToolByResult loses the pairing when built from a facet-filtered subset, but resolves it when built from the unfiltered list', () => {
+// unfiltered event list. A call can be absent from a narrower/windowed subset (e.g.
+// scrolled out of view) while its result remains, so a map built from that subset
+// silently loses the entry.
+test('originatingToolByResult loses the pairing when built from a subset missing the call, but resolves it when built from the full list', () => {
   const events = [
     call(1, 'Read', JSON.stringify({ file_path: 'ui/lib/foo.ts' }), 'u1'),
     result(2, 'u1', '     1\tfoo', false),
   ];
-  const facets: TranscriptFacetState = {
-    types: { user: true, assistant: true, thinking: true, toolResults: true, errors: true },
-    tools: new Set(['Bash']), // Read deselected
-    files: 'all',
-    query: '',
-  };
-  const filtered = applyFacets(events, facets);
-  assert.deepEqual(filtered.map((e) => e.kind), ['tool_result'], 'the Read tool_call is filtered out; its result survives');
-  assert.equal(originatingToolByResult(filtered).size, 0, 'built from the filtered subset, the pairing is lost');
-  assert.equal(originatingToolByResult(events).get(2), 'ui/lib/foo.ts', 'built from the unfiltered list, the pairing resolves');
+  const subset = events.slice(1); // simulates the call scrolled out of a windowed view
+  assert.equal(subset.length, 1, 'sanity: only the tool_result remains');
+  assert.equal(originatingToolByResult(subset).size, 0, 'built from the subset missing the call, the pairing is lost');
+  assert.equal(originatingToolByResult(events).get(2), 'ui/lib/foo.ts', 'built from the full list, the pairing resolves');
+});
+
+test('resultToolNameBySeq resolves the plain tool name (no Read-to-file-path special-casing), matching Tools ▾ option values', () => {
+  const events = [
+    call(1, 'Read', JSON.stringify({ file_path: 'ui/lib/foo.ts' }), 'u1'), result(2, 'u1', 'ok', false),
+    call(3, 'Bash', 'npm test', 'u2'), result(4, 'u2', 'boom', true),
+  ];
+  const map = resultToolNameBySeq(events);
+  assert.equal(map.get(2), 'Read');
+  assert.equal(map.get(4), 'Bash');
 });
 
 test('filterToolCalls composes tool, errorsOnly, and query (FR-7)', () => {

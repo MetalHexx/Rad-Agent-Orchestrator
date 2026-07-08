@@ -25,7 +25,6 @@ const TYPE_TOGGLES: { key: keyof TranscriptFacetState["types"]; label: string }[
   { key: "user", label: "User" },
   { key: "assistant", label: "Assistant" },
   { key: "thinking", label: "Thinking" },
-  { key: "toolResults", label: "Tool results" },
   { key: "errors", label: "Errors" },
 ];
 
@@ -34,13 +33,12 @@ export function TranscriptControls(props: TranscriptControlsProps) {
     <div className="flex flex-col gap-2.5 border-b border-border px-4 py-2.5">
       {/* Row 1: type toggles, then the Tools/Files multiselect dropdowns */}
       <div className="flex flex-wrap items-center gap-3">
-        <span className="text-[10.5px] font-semibold tracking-wide text-muted-foreground uppercase">Show</span>
         {TYPE_TOGGLES.map(({ key, label }) => {
           const id = `t-type-${key}`;
           return (
             <div key={key} className="flex items-center gap-2">
-              <Switch id={id} checked={props.types[key]} onCheckedChange={(v) => props.onTypeChange(key, v)} />
               <Label htmlFor={id} className="text-xs">{label}</Label>
+              <Switch id={id} checked={props.types[key]} onCheckedChange={(v) => props.onTypeChange(key, v)} />
             </div>
           );
         })}

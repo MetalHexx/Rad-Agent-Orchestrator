@@ -9,7 +9,7 @@ import { TranscriptControls } from './transcript-controls';
 Object.assign(globalThis, { React });
 
 const noop = () => {};
-const allTypes = { user: true, assistant: true, thinking: true, toolResults: true, errors: true };
+const allTypes = { user: true, assistant: true, thinking: true, errors: true };
 const base = {
   types: allTypes, onTypeChange: noop,
   tools: 'all' as const, onToolsChange: noop, toolOptions: [{ value: 'Bash', count: 3 }],
@@ -20,9 +20,9 @@ const base = {
 const controlsSource = fs.readFileSync(
   path.join(path.dirname(url.fileURLToPath(import.meta.url)), 'transcript-controls.tsx'), 'utf8');
 
-test('renders the five Show toggles, the Tools/Files dropdown triggers, search, and the error count', () => {
+test('renders the four Show toggles, the Tools/Files dropdown triggers, search, and the error count', () => {
   const html = renderToStaticMarkup(createElement(TranscriptControls, { ...base, errorCount: 2, onJumpError: noop } as never));
-  for (const label of ['User', 'Assistant', 'Thinking', 'Tool results', 'Errors']) {
+  for (const label of ['User', 'Assistant', 'Thinking', 'Errors']) {
     assert.ok(html.includes(label), `${label} toggle label present`);
   }
   assert.ok(html.includes('Tools') && html.includes('Files'), 'Tools/Files dropdown triggers present');
@@ -36,8 +36,8 @@ test('errors button is disabled when there are no errors', () => {
   assert.ok(html.includes('Errors (0)') && /disabled/.test(html), 'zero count + disabled');
 });
 
-test('Row 1 wires the five Switches then the two FacetMultiselects; the search sits on its own row (wireframe layout)', () => {
-  const order = ['"user"', '"assistant"', '"thinking"', '"toolResults"', '"errors"', 'label="Tools"', 'label="Files"'];
+test('Row 1 wires the four Switches then the two FacetMultiselects; the search sits on its own row (wireframe layout)', () => {
+  const order = ['"user"', '"assistant"', '"thinking"', '"errors"', 'label="Tools"', 'label="Files"'];
   let last = -1;
   for (const token of order) {
     const idx = controlsSource.indexOf(token);

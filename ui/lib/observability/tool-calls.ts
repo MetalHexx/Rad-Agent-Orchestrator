@@ -50,15 +50,29 @@ function originatingToolKey(name: string, inputText: string): string {
 }
 
 // tool_result seq -> originating tool key (AD-6 pairing seam the Transcript
-// timeline consumes to resolve a card's originatingTool). MUST be built from
-// the full, unfiltered event list: a facet can hide a tool_call while its
-// tool_result stays visible (they're filtered independently — see
-// transcript-view.ts's matchesFacet), and the pairing still needs to resolve
-// in that state or the result silently loses its originating tool.
+// timeline consumes to resolve a card's originatingTool, e.g. for the
+// double-line-number-gutter suppression rule). MUST be built from the full,
+// unfiltered event list: a call can be absent from a rendered/windowed
+// subset (e.g. scrolled out of view) while its result remains, and the
+// pairing still needs to resolve in that state or the result silently loses
+// its originating tool.
 export function originatingToolByResult(events: TranscriptEvent[]): Map<number, string> {
   const map = new Map<number, string>();
   for (const call of toToolCalls(events)) {
     if (call.resultEvent) map.set(call.resultEvent.seq, originatingToolKey(call.name, call.input.text));
+  }
+  return map;
+}
+
+// tool_result seq -> plain originating tool name, with none of
+// originatingToolKey's Read-to-file-path special-casing. Used by the
+// Transcript facet to gate a tool_result's visibility on the same tool name
+// selected in the Tools ▾ dropdown (transcript-view.ts's matchesFacet), so a
+// call and its result are filtered together instead of independently.
+export function resultToolNameBySeq(events: TranscriptEvent[]): Map<number, string> {
+  const map = new Map<number, string>();
+  for (const call of toToolCalls(events)) {
+    if (call.resultEvent) map.set(call.resultEvent.seq, call.name);
   }
   return map;
 }

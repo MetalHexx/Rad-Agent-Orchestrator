@@ -26,7 +26,7 @@ function fileOptionsFrom(events: TranscriptEvent[]): { value: string; count: num
 }
 
 const defaultFacets = (): TranscriptFacetState => ({
-  types: { user: true, assistant: true, thinking: true, toolResults: true, errors: true },
+  types: { user: true, assistant: true, thinking: true, errors: true },
   tools: "all",
   files: "all",
   query: "",
@@ -47,9 +47,12 @@ export function TranscriptFacet({ transcript }: TranscriptFacetProps) {
   // TranscriptTimeline only ever sees the filtered list, so the badge/button
   // must agree with what a click can actually reach.
   const errorCount = React.useMemo(() => errorEventSeqs(filtered).length, [filtered]);
-  // Built from the full, unfiltered `events` — NOT `filtered` — so a tool_call
-  // hidden by the Tools facet still pairs with its still-visible tool_result
-  // (they're filtered independently; see transcript-view.ts's matchesFacet).
+  // Built from the full, unfiltered `events` — NOT `filtered` — purely for
+  // display/render-mode resolution (e.g. a Read result's originating file
+  // path), independent of facet state; a call and its result are now filtered
+  // together (see transcript-view.ts's matchesFacet), but a call can still be
+  // absent from a rendered/windowed subset for other reasons (e.g. scrolled
+  // out of view) while its result remains.
   const originatingToolByResultSeq = React.useMemo(() => originatingToolByResult(events), [events]);
 
   const onTypeChange = React.useCallback(

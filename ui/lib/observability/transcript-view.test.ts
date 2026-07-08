@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { formatClock, toolArgPreview } from './transcript-view';
 import { errorEventSeqs, isTightResult, windowEvents } from './transcript-view';
-import { CLAMP_LINES, displayLineCount, needsClamp, halfClampEm, MIN_CLAMP_EM } from './transcript-view';
+import { CLAMP_LINES, displayLineCount, needsClamp, collapsedClampEm, MIN_CLAMP_EM, MAX_CLAMP_EM } from './transcript-view';
 import { applyFacets, facetLabel } from './transcript-view';
 import type { TranscriptFacetState } from './transcript-view';
 
@@ -73,7 +73,7 @@ test('displayLineCount counts explicit newlines AND wrapped rows (per-card revea
 });
 
 const allFacets = (): TranscriptFacetState => ({
-  types: { user: true, assistant: true, thinking: true, toolResults: true, errors: true },
+  types: { user: true, assistant: true, thinking: true, errors: true },
   tools: 'all',
   files: 'all',
   query: '',
@@ -109,10 +109,6 @@ test('applyFacets: each type toggle hides only its kind', () => {
     [1, 2, 4, 5, 6, 7, 8, 9, 10, 11]
   );
   assert.deepEqual(
-    seqs({ ...allFacets(), types: { ...allFacets().types, toolResults: false } }),
-    [1, 2, 3, 4, 5, 7, 8, 9, 10, 11]
-  );
-  assert.deepEqual(
     seqs({ ...allFacets(), types: { ...allFacets().types, errors: false } }),
     [1, 2, 3, 4, 5, 6, 8, 9, 10, 11]
   );
@@ -120,7 +116,7 @@ test('applyFacets: each type toggle hides only its kind', () => {
 
 test('applyFacets: system and hook kinds are always visible regardless of type toggles', () => {
   const f: TranscriptFacetState = {
-    types: { user: false, assistant: false, thinking: false, toolResults: false, errors: false },
+    types: { user: false, assistant: false, thinking: false, errors: false },
     tools: new Set<string>(),
     files: new Set<string>(),
     query: '',
@@ -128,12 +124,16 @@ test('applyFacets: system and hook kinds are always visible regardless of type t
   assert.deepEqual(applyFacets(facetEvents, f).map((e) => e.seq), [10, 11]);
 });
 
-test('applyFacets: a tool subset shows only those tools; an empty tool set hides all tool calls', () => {
+test('applyFacets: a tool subset shows only that tool\'s calls AND results (no separate Tool results toggle); an empty tool set hides both', () => {
   const subset = applyFacets(facetEvents, { ...allFacets(), tools: new Set(['Bash']) });
   assert.deepEqual(subset.filter((e) => e.kind === 'tool_call').map((e) => e.seq), [4]);
+  // seq 6 is Bash's own (non-error) result and survives; seq 7 is Read's
+  // (error) result and is hidden by tool selection even though errors is on.
+  assert.deepEqual(subset.filter((e) => e.kind === 'tool_result').map((e) => e.seq), [6]);
 
   const none = applyFacets(facetEvents, { ...allFacets(), tools: new Set<string>() });
   assert.deepEqual(none.filter((e) => e.kind === 'tool_call'), []);
+  assert.deepEqual(none.filter((e) => e.kind === 'tool_result'), []);
 });
 
 test('applyFacets: a file-op subset filters file_change', () => {
@@ -144,12 +144,19 @@ test('applyFacets: a file-op subset filters file_change', () => {
   assert.deepEqual(none.filter((e) => e.kind === 'file_change'), []);
 });
 
-test('applyFacets: tool_result splits by isError between errors and toolResults', () => {
-  const errorsOnly = applyFacets(facetEvents, { ...allFacets(), types: { ...allFacets().types, toolResults: false } });
-  assert.deepEqual(errorsOnly.filter((e) => e.kind === 'tool_result').map((e) => e.seq), [7]);
+test('applyFacets: the errors toggle only ever hides error results, and composes with the tool-name gate', () => {
+  // errors off, all tools selected: only the non-error result (seq 6) survives.
+  const noErrors = applyFacets(facetEvents, { ...allFacets(), types: { ...allFacets().types, errors: false } });
+  assert.deepEqual(noErrors.filter((e) => e.kind === 'tool_result').map((e) => e.seq), [6]);
 
-  const resultsOnly = applyFacets(facetEvents, { ...allFacets(), types: { ...allFacets().types, errors: false } });
-  assert.deepEqual(resultsOnly.filter((e) => e.kind === 'tool_result').map((e) => e.seq), [6]);
+  // errors on, but only Bash selected: Read's error result (seq 7) is hidden
+  // by tool selection, not by the errors toggle — the two gates are independent.
+  const bashOnly = applyFacets(facetEvents, { ...allFacets(), tools: new Set(['Bash']) });
+  assert.deepEqual(bashOnly.filter((e) => e.kind === 'tool_result').map((e) => e.seq), [6]);
+
+  // errors on, only Read selected: Read's error result survives.
+  const readOnly = applyFacets(facetEvents, { ...allFacets(), tools: new Set(['Read']) });
+  assert.deepEqual(readOnly.filter((e) => e.kind === 'tool_result').map((e) => e.seq), [7]);
 });
 
 test('applyFacets composes with query: a hidden type stays hidden regardless of match', () => {
@@ -178,23 +185,30 @@ test('needsClamp is true only past the 10-line window (per-card reveal)', () => 
   assert.equal(needsClamp('', 88), false);
 });
 
-test('halfClampEm returns 0 for empty text', () => {
-  assert.equal(halfClampEm('', 80), 0);
+test('collapsedClampEm returns 0 for empty text', () => {
+  assert.equal(collapsedClampEm('', 80), 0);
 });
 
-test('halfClampEm returns half the rendered line count, rounded up', () => {
+test('collapsedClampEm returns a sixth of the rendered line count, rounded up', () => {
   const oddLines = Array.from({ length: 21 }, (_, i) => `line ${i}`).join('\n');
   assert.equal(displayLineCount(oddLines, 80), 21);
-  assert.equal(halfClampEm(oddLines, 80), 11); // ceil(21 / 2)
+  assert.equal(collapsedClampEm(oddLines, 80), 4); // ceil(21 / 6)
 
   const evenLines = Array.from({ length: 20 }, (_, i) => `line ${i}`).join('\n');
-  assert.equal(halfClampEm(evenLines, 80), 10); // 20 / 2
+  assert.equal(collapsedClampEm(evenLines, 80), 4); // ceil(20 / 6)
 
-  // a single 1000-char line wraps to 13 rows at 80 cols → half is 7
-  assert.equal(halfClampEm('x'.repeat(1000), 80), 7);
+  // a single 1000-char line wraps to 13 rows at 80 cols → ceil(13 / 6) is 3
+  assert.equal(collapsedClampEm('x'.repeat(1000), 80), 3);
 });
 
-test('halfClampEm floors short bodies at a minimum sane height rather than a sliver', () => {
-  assert.equal(halfClampEm('one line', 80), MIN_CLAMP_EM);
-  assert.equal(halfClampEm('a\nb', 80), MIN_CLAMP_EM);
+test('collapsedClampEm floors short bodies at a minimum sane height rather than a sliver', () => {
+  assert.equal(collapsedClampEm('one line', 80), MIN_CLAMP_EM);
+  assert.equal(collapsedClampEm('a\nb', 80), MIN_CLAMP_EM);
+});
+
+test('collapsedClampEm ceilings huge or truncated bodies instead of a proportionally-large-but-still-huge preview', () => {
+  const hugeBody = Array.from({ length: 200 }, (_, i) => `line ${i}`).join('\n');
+  assert.equal(displayLineCount(hugeBody, 80), 200);
+  assert.ok(Math.ceil(200 / 6) > MAX_CLAMP_EM, 'sanity: the uncapped sixth would exceed the ceiling');
+  assert.equal(collapsedClampEm(hugeBody, 80), MAX_CLAMP_EM);
 });

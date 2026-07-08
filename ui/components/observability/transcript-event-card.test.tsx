@@ -141,7 +141,7 @@ test('a long capped result keeps its truncation badge even with the reveal contr
   assert.ok(/truncated/i.test(html) && html.includes('20 KB'), 'truncation badge persists alongside the reveal');
 });
 
-// --- P02-T02: markdown reuse, per-item Rendered/Raw override, line-number fix, half-clamp ---
+// --- P02-T02: markdown reuse, per-item Rendered/Raw override, line-number fix, collapsed-clamp ---
 
 test('the card imports and routes through the house MarkdownRenderer rather than re-implementing it', () => {
   assert.match(src, /from ["']@\/components\/documents["']/, 'imports from the documents barrel, not a local re-implementation');
@@ -222,7 +222,7 @@ test('a non-markdown tool_result defaults to the raw JsonBlock/CodeBlock path, n
   assert.ok(!html.includes('class="prose'), 'markdown prose wrapper not used for the raw-mode default');
 });
 
-test('collapsed reveal bodies clamp via an inline CSS variable, not a fixed Tailwind class (half-clamp)', () => {
+test('collapsed reveal bodies clamp via an inline CSS variable, not a fixed Tailwind class (collapsed-clamp)', () => {
   const long = Array.from({ length: 20 }, (_, i) => `thought line ${i}`).join('\n');
   const html = card({ seq: 1, timestamp: '2026-07-08T09:00:00.000Z', kind: 'thinking', text: long });
   assert.ok(html.includes('--reveal-clamp'), 'clamp height delivered via a CSS custom property');
