@@ -4,7 +4,11 @@ The steerable DAG execution engine. The strict build, the vitest harness, the fa
 barrel, and the lint gate were established here so every later task inherits them, and the
 package now ships the engine's relational spine: the node envelope (`DagNode`), the typed
 dependency edge (`DagEdge`), the closed vocabularies, the `ChangeDelta` shape, and the
-scope-aware `StateStore` interface with its `InMemoryStateStore` implementation.
+scope-aware `StateStore` interface with its `InMemoryStateStore` implementation. It also ships
+the pure `derive/` layer on top of that spine: the readiness/frontier derivation (`frontier`,
+`remaining`, `deriveContainerStatus`), the structural invariant predicates (`detectCycle`,
+`isTreeShaped`, `wouldCreateCycle`, `wouldCreateParentCycle`, `violatesRootGuard`,
+`findOrderContradictions`), and the side-effect-free `validate`/`preview` dry-run reads.
 
 ## Standing conventions
 

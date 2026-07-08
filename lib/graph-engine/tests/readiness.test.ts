@@ -161,6 +161,27 @@ describe('frontier — additive-corrective satisfaction', () => {
   });
 });
 
+describe('frontier/remaining — malformed-graph precondition', () => {
+  it('throws rather than recursing unbounded on a depends_on cycle between two containers', () => {
+    const root = createRootNode();
+    const phaseA = node('phase-a');
+    const taskA = node('task-a', { parent: 'phase-a' });
+    const phaseB = node('phase-b');
+    const taskB = node('task-b', { parent: 'phase-b' });
+    const edges = [dependsOn('phase-b', 'phase-a'), dependsOn('phase-a', 'phase-b')];
+
+    expect(() => frontier([root, phaseA, taskA, phaseB, taskB], edges, 'phase-a')).toThrow(/cycle/);
+  });
+
+  it('throws rather than recursing unbounded on a parent-chain cycle', () => {
+    const a = node('a', { parent: 'b' });
+    const b = node('b', { parent: 'a' });
+
+    expect(() => frontier([a, b], [], 'a')).toThrow(/cycle/);
+    expect(() => remaining([a, b], 'a')).toThrow(/cycle/);
+  });
+});
+
 describe('remaining', () => {
   it('returns everything not done under scope — a distinct read from frontier', () => {
     const root = createRootNode();

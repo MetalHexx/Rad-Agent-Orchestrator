@@ -1,6 +1,35 @@
 import type { DagNode, NodeId } from '../model/node.js';
 import type { DagEdge } from '../model/edge.js';
 import type { NodeStatus } from '../model/vocab.js';
+import { detectCycle, isTreeShaped } from './invariants.js';
+
+/**
+ * Precondition guard shared by `frontier`/`remaining`: both recurse through the `parent` chain
+ * (ancestor walk and children roll-up alike) with no in-flight cycle guard of their own, so a
+ * caller is expected to keep containment tree-shaped (e.g. by routing every `move_node` through
+ * `validate`) before deriving status from it. Throws loudly and cheaply — via the exact
+ * `isTreeShaped` check `validate` itself runs — rather than letting a malformed or adversarial
+ * graph overflow the call stack.
+ */
+function assertTreeShapedInput(nodes: readonly DagNode[]): void {
+  if (!isTreeShaped(nodes)) {
+    throw new Error('cannot derive status: parent chain contains a cycle');
+  }
+}
+
+/**
+ * Precondition guard for `frontier`: `predecessorsDone` recurses through `depends_on` edges with
+ * no in-flight cycle guard of its own, so a caller is expected to keep the edge set acyclic (e.g.
+ * by routing every `add_dependency` through `validate`) before deriving status from it. Same
+ * rationale and idiom as `assertTreeShapedInput`, via the exact `detectCycle` check `validate`
+ * itself runs.
+ */
+function assertAcyclicInput(edges: readonly DagEdge[]): void {
+  const cycle = detectCycle(edges);
+  if (cycle) {
+    throw new Error(`cannot derive status: depends_on cycle detected: ${cycle.join(' -> ')}`);
+  }
+}
 
 /** Groups nodes by `parent`, skipping the one node with no container (`parent === null`). */
 function groupChildrenByParent(nodes: readonly DagNode[]): Map<NodeId, DagNode[]> {
@@ -101,8 +130,15 @@ function createStatusResolver(nodes: readonly DagNode[], edges: readonly DagEdge
  * container, gated purely by dependency edges, and never appears here itself. A corrective needs no
  * special case: it is a new node like any other, so once its own predecessors (including a
  * re-pointed edge) are `done`, it falls out of this same uniform rule.
+ *
+ * Precondition: `nodes`/`edges` must already be acyclic and tree-shaped (as `validate` would
+ * confirm before a mutation commits) — this is a read over an assumed-valid graph, not a
+ * validator. Throws on a `depends_on` or `parent`-chain cycle rather than recursing unbounded.
  */
 export function frontier(nodes: readonly DagNode[], edges: readonly DagEdge[], scope: NodeId): DagNode[] {
+  assertAcyclicInput(edges);
+  assertTreeShapedInput(nodes);
+
   const { nodesById, childrenByParent, resolve, predecessorsDone } = createStatusResolver(nodes, edges);
 
   if (!nodesById.has(scope) || resolve(scope) !== 'in_progress') return [];
@@ -120,8 +156,14 @@ export function frontier(nodes: readonly DagNode[], edges: readonly DagEdge[], s
  * Everything not yet `done` under `scope` — the roadmap the UI grays out as work completes. A
  * distinct read from `frontier`: it needs no dependency edges, only completion, and it includes
  * disabled and not-yet-eligible nodes alongside anything still in flight.
+ *
+ * Precondition: `nodes`' `parent` pointers must already be tree-shaped (as `validate` would
+ * confirm before a `move_node` commits) — this is a read over an assumed-valid graph, not a
+ * validator. Throws on a `parent`-chain cycle rather than recursing unbounded.
  */
 export function remaining(nodes: readonly DagNode[], scope: NodeId): DagNode[] {
+  assertTreeShapedInput(nodes);
+
   const childrenByParent = groupChildrenByParent(nodes);
   const doneMemo = new Map<NodeId, boolean>();
 
