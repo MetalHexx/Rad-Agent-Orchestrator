@@ -58,7 +58,12 @@ function rowToNode(row: NodeRow): DagNode {
     data: JSON.parse(row.data) as Record<string, unknown>,
   };
   // NULL columns round-trip as *absent* keys, not `null`/`undefined` present — parity with
-  // conformance nodes, which never carry these optional fields at all.
+  // conformance nodes, which never carry these optional fields at all. This also collapses a
+  // present-and-explicit-null `budgetAnchor` (the shape `crud.ts`'s remove_node survivor-scrub
+  // writes) into absent on read, diverging from `InMemoryStateStore`'s exact-identity round-trip.
+  // A conscious, tested choice (`sqlite-state-store.test.ts`'s "optional field round-trip" block):
+  // every current reader treats absent and null identically (`?? null` / `!= null`), so the
+  // collapse carries no live behavioral gap.
   if (row.disabled !== null) node.disabled = row.disabled === 1;
   if (row.budget_anchor !== null) node.budgetAnchor = row.budget_anchor;
   return node;

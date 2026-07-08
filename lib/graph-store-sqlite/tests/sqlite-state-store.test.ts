@@ -107,4 +107,31 @@ describe('SqliteStateStore — optional field round-trip', () => {
     expect(read && Object.hasOwn(read, 'disabled')).toBe(false);
     expect(read && Object.hasOwn(read, 'budgetAnchor')).toBe(false);
   });
+
+  it('round-trips a remove_node-shaped budgetAnchor scrub (present, explicit null) as an absent key on read', () => {
+    // `crud.ts`'s remove_node survivor-scrub produces `{ ...survivor, budgetAnchor: null }` — a
+    // present-and-null key, distinct from a node that never carried the field. SqliteStateStore
+    // collapses both to absent on read (unlike InMemoryStateStore, which holds the object by
+    // reference and keeps the key present). This is a conscious, tested divergence: every current
+    // reader treats absent and null identically (`?? null` / `!= null` — see
+    // `lib/graph-engine/src/primitives/corrective.ts:58` and
+    // `lib/graph-engine/tests/crud.test.ts:297`), so the collapse carries no live behavioral gap.
+    const db = openDatabase(':memory:');
+    const store = new SqliteStateStore(db);
+    const anchored = node('task-a', { budgetAnchor: ROOT_NODE_ID });
+    store.apply(SCOPE, createDelta([anchored]));
+
+    const scrubbed: DagNode = { ...anchored, budgetAnchor: null };
+    const result = store.apply(SCOPE, {
+      primitive: 'remove_node',
+      params: {},
+      nodeChanges: [{ op: 'updated', before: anchored, after: scrubbed }],
+      edgeChanges: [],
+    });
+
+    expect(result.ok).toBe(true);
+    const read = store.getNode(SCOPE, 'task-a');
+    expect(read?.budgetAnchor).toBeUndefined();
+    expect(read && Object.hasOwn(read, 'budgetAnchor')).toBe(false);
+  });
 });
