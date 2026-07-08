@@ -3,8 +3,23 @@ import * as React from "react";
 import type { TranscriptEvent } from "@rad-orchestration/telemetry";
 import { TranscriptEventCard } from "./transcript-event-card";
 import { isTightResult, errorEventSeqs, windowEvents } from "@/lib/observability/transcript-view";
+import { toToolCalls } from "@/lib/observability/tool-calls";
 
 const DEFAULT_WINDOW = 400;
+
+// The identity renderModeFor needs to classify a tool_result: the call's tool
+// name for most tools, or — for a Read result specifically — the file path it
+// read, since "Read of *.md" vs "Read of a source file" can't be told apart
+// from the bare tool name alone.
+function originatingToolKey(name: string, inputText: string): string {
+  if (name !== "Read") return name;
+  try {
+    const parsed = JSON.parse(inputText) as { file_path?: unknown };
+    return typeof parsed.file_path === "string" ? parsed.file_path : name;
+  } catch {
+    return name;
+  }
+}
 
 export interface TranscriptTimelineProps {
   /** Already facet-filtered (via applyFacets) — this component renders, it does not filter. */
@@ -17,6 +32,17 @@ export function TranscriptTimeline({ events, errorCursor }: TranscriptTimelinePr
   const errorRefs = React.useRef<Map<number, HTMLElement>>(new Map());
 
   const { shown, hidden } = windowEvents(events, expanded ? Infinity : DEFAULT_WINDOW);
+
+  // tool_result seq -> originating tool key (AD-6 pairing seam a follow-on task
+  // consumes). Built from the full faceted `events`, not `shown` — the window
+  // only trims the head, so a call cut from view can still have a visible result.
+  const originatingToolByResultSeq = React.useMemo(() => {
+    const map = new Map<number, string>();
+    for (const call of toToolCalls(events)) {
+      if (call.resultEvent) map.set(call.resultEvent.seq, originatingToolKey(call.name, call.input.text));
+    }
+    return map;
+  }, [events]);
 
   // Scroll to the current error ONLY on an explicit jump click (errorCursor change).
   // `events` is intentionally NOT a dep: each SSE refetch yields a fresh events
@@ -54,7 +80,11 @@ export function TranscriptTimeline({ events, errorCursor }: TranscriptTimelinePr
           return (
             <div key={e.seq} data-seq={e.seq}
               ref={isErr ? (el) => { if (el) errorRefs.current.set(e.seq, el); } : undefined}>
-              <TranscriptEventCard event={e} tight={isTightResult(shown, i)} />
+              <TranscriptEventCard
+                event={e}
+                tight={isTightResult(shown, i)}
+                originatingTool={e.kind === "tool_result" ? originatingToolByResultSeq.get(e.seq) : undefined}
+              />
             </div>
           );
         })

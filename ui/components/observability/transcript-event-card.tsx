@@ -7,15 +7,20 @@ import { eventKindColor, eventKindLabel } from "@/lib/observability/event-kind-c
 import { formatClock, needsClamp } from "@/lib/observability/transcript-view";
 import { RichText } from "./rich-text";
 import { JsonBlock } from "./json-block";
+import { extractToolFields, type ToolField } from "@/lib/observability/render-mode";
 
 export interface TranscriptEventCardProps {
   event: TranscriptEvent;
   tight?: boolean;
   /** When false, hide tool result output bodies; the call line still shows (FR-8, DD-9). */
   showToolIO?: boolean;
+  /** The result's originating tool_call name (or, for a Read result, the file path it
+   *  read) — the result→tool pairing seam a follow-on task uses to pick the tool_result
+   *  render mode via renderModeFor. Not yet consumed here. */
+  originatingTool?: string;
 }
 
-export function TranscriptEventCard({ event, tight = false, showToolIO = true }: TranscriptEventCardProps) {
+export function TranscriptEventCard({ event, tight = false, showToolIO = true, originatingTool }: TranscriptEventCardProps) {
   const token = eventKindColor(event);
   return (
     <article
@@ -27,13 +32,13 @@ export function TranscriptEventCard({ event, tight = false, showToolIO = true }:
         <time className="font-mono text-[10.5px] tabular-nums text-muted-foreground">{formatClock(event.timestamp)}</time>
       </header>
       <div className="mt-1.5">
-        <EventBody event={event} showToolIO={showToolIO} />
+        <EventBody event={event} showToolIO={showToolIO} originatingTool={originatingTool} />
       </div>
     </article>
   );
 }
 
-function EventBody({ event, showToolIO }: { event: TranscriptEvent; showToolIO: boolean }) {
+function EventBody({ event, showToolIO }: { event: TranscriptEvent; showToolIO: boolean; originatingTool?: string }) {
   const revealId = `reveal-${event.seq}`;
   switch (event.kind) {
     case "message":
@@ -69,10 +74,18 @@ function EventBody({ event, showToolIO }: { event: TranscriptEvent; showToolIO: 
       // Render the FULL args, wrapped — never a single horizontal-truncated line
       // (Issue 1). Past 10 wrapped rows the more/less clamp applies (Issue 2).
       const args = event.tool?.input?.text ?? "";
+      const fields = event.tool ? extractToolFields(event.tool.name, args) : null;
+      // Known tools render as a label/value grid; unknown tools and malformed
+      // input fall back to the JsonBlock path below — nothing regresses.
+      const clampSource = fields ? fields.map((f) => `${f.label}: ${f.value}`).join("\n") : args;
       return (
         <div className="font-mono text-xs">
           <span className="font-bold" style={{ color: "var(--model-teal)" }}>{event.tool?.name}</span>
-          {args ? (
+          {fields ? (
+            <RevealBody id={revealId} clamp={needsClamp(clampSource, 92)} maxHeightClass="max-h-[15em]">
+              <ToolFieldsGrid fields={fields} />
+            </RevealBody>
+          ) : args ? (
             <RevealBody id={revealId} clamp={needsClamp(args, 92)} maxHeightClass="max-h-[15em]">
               <JsonBlock
                 text={args}
@@ -154,6 +167,25 @@ function RevealBody({
         less <ChevronUp className="size-3" aria-hidden="true" />
       </label>
     </div>
+  );
+}
+
+// Label/value grid for known tool-call shapes (extractToolFields) — the item-card's
+// existing tokens, reused rather than a new palette: labels reuse the JSON key
+// style (heavier weight); values stay mono for code/paths, or switch to prose
+// (font-sans, overriding the row's ambient font-mono) for freeform text.
+function ToolFieldsGrid({ fields }: { fields: ToolField[] }) {
+  return (
+    <dl className="mt-1 grid grid-cols-[minmax(4.5rem,auto)_1fr] items-baseline gap-x-3 gap-y-1">
+      {fields.map((f, i) => (
+        <React.Fragment key={i}>
+          <dt className="text-foreground font-medium">{f.label}</dt>
+          <dd className={cn("whitespace-pre-wrap break-words", f.mono ? "text-muted-foreground" : "font-sans text-foreground")}>
+            {f.value}
+          </dd>
+        </React.Fragment>
+      ))}
+    </dl>
   );
 }
 

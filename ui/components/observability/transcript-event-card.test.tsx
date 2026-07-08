@@ -1,9 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { join, dirname } from 'node:path';
 import React, { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { TranscriptEventCard } from './transcript-event-card';
 Object.assign(globalThis, { React });
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const src = readFileSync(join(__dirname, 'transcript-event-card.tsx'), 'utf-8');
 
 const card = (event: Record<string, unknown>, props: Record<string, unknown> = {}) =>
   renderToStaticMarkup(createElement(TranscriptEventCard, { event, ...props } as never));
@@ -60,14 +66,41 @@ test('error result shows an error badge + red tint; truncation shows a warning b
 
 test('long JSON tool-call args pretty-print and keep the full path — no mid-string truncation (Issue 1)', () => {
   const longPath = 'C:\\Users\\Metal\\.radorc\\worktrees\\TELEMETRY-5.5\\rad-orc-source\\ui\\components\\observability\\BUILD-AND-WIRE-OVERVIEW-FACET.md';
-  // Real tool-call args are valid (properly escaped) JSON, so they now pretty-print.
+  // 'Glob' has no structured renderer (render-mode.ts), so this stays on the
+  // JsonBlock pretty-print path the test targets. Real tool-call args are valid
+  // (properly escaped) JSON, so they now pretty-print.
   const html = card({ seq: 1, timestamp: '2026-06-24T09:00:00.000Z', kind: 'tool_call',
-    tool: { name: 'Read', input: { text: JSON.stringify({ file_path: longPath }) }, toolUseId: 'toolu_x' } });
+    tool: { name: 'Glob', input: { text: JSON.stringify({ pattern: longPath }) }, toolUseId: 'toolu_x' } });
   assert.ok(html.includes('BUILD-AND-WIRE-OVERVIEW-FACET.md'), 'full filename retained');
   assert.ok(!html.includes('…'), 'no horizontal ellipsis cut');
   assert.ok(html.includes('whitespace-pre-wrap'), 'pretty body carries wrapping classes');
   assert.ok(html.includes('text-foreground font-medium'), 'args rendered as formatted JSON (key span)');
   assert.ok(!html.includes('toolu_x'), 'toolUseId never rendered (AD-6)');
+});
+
+// --- P02-T01: structured tool-shape renderer ---
+
+test('a known tool (Read) renders a label/value row instead of the raw JSON block', () => {
+  const html = card({ seq: 1, timestamp: '2026-06-24T09:00:00.000Z', kind: 'tool_call',
+    tool: { name: 'Read', input: { text: JSON.stringify({ file_path: 'ui/lib/foo.ts' }) }, toolUseId: 'toolu_x' } });
+  assert.ok(html.includes('File') && html.includes('ui/lib/foo.ts'), 'File label/value rendered');
+  assert.ok(!html.includes('file_path'), 'raw JSON key not rendered — this is the structured path, not JsonBlock');
+  assert.ok(!html.includes('toolu_x'), 'toolUseId never rendered (AD-6)');
+});
+
+test('an unknown tool with valid JSON args falls back to JsonBlock, not a blank grid', () => {
+  const html = card({ seq: 1, timestamp: '2026-06-24T09:00:00.000Z', kind: 'tool_call',
+    tool: { name: 'Glob', input: { text: JSON.stringify({ pattern: '**/*.ts' }) }, toolUseId: 'toolu_x' } });
+  assert.ok(html.includes('pattern') && html.includes('**/*.ts'), 'raw JSON rendered via JsonBlock');
+});
+
+test('tool_call falls back to JsonBlock when extractToolFields yields null (source inspection)', () => {
+  const bodyMatch = /case "tool_call": \{([\s\S]*?)\n    \}/.exec(src);
+  assert.ok(bodyMatch, 'tool_call case body located in source');
+  const body = bodyMatch![1];
+  assert.match(body, /extractToolFields\(/, 'tool_call case calls extractToolFields');
+  assert.match(body, /fields\s*\?/, 'branches on the extractor result');
+  assert.match(body, /JsonBlock/, 'JsonBlock remains the else branch');
 });
 
 test('non-JSON tool-call args render the raw wrapping fallback span (no pretty-print)', () => {
