@@ -38,6 +38,40 @@ export {
   APPROVAL_DECIDED_TOKEN,
 } from './rad-orc/approval.js';
 
+export type { TaskCompletedData } from './rad-orc/task.js';
+export {
+  TASK_NODE_TYPE,
+  TASK_DATA_SCHEMA,
+  TASK_COMPLETED_TOKEN,
+} from './rad-orc/task.js';
+
+export type {
+  CodeReviewLevel,
+  CodeReviewReviewedData,
+  CodeReviewSpawnPayload,
+  FinalCodeReviewSpawnPayload,
+  FinalReviewRepo,
+  PhaseCodeReviewSpawnPayload,
+  PhaseReviewRepo,
+  TaskCodeReviewSpawnPayload,
+  TaskReviewRepo,
+} from './rad-orc/code-review.js';
+export {
+  CODE_REVIEW_NODE_TYPE,
+  CODE_REVIEW_DATA_SCHEMA,
+  CODE_REVIEW_LEVELS,
+  CODE_REVIEW_REVIEWED_TOKEN,
+} from './rad-orc/code-review.js';
+
+export { CORRECTIVE_NODE_TYPE, CORRECTIVE_DATA_SCHEMA } from './rad-orc/corrective.js';
+
+export type { PrCreatedData, PrRepoRef, PrRepoResult } from './rad-orc/pr.js';
+export {
+  PR_NODE_TYPE,
+  PR_DATA_SCHEMA,
+  PR_CREATED_TOKEN,
+} from './rad-orc/pr.js';
+
 export type {
   DecorationCadence,
   ExplosionNodeTypeOptions,
@@ -64,6 +98,10 @@ import { PHASE_NODE_TYPE } from './rad-orc/phase.js';
 import { MASTER_PLAN_NODE_TYPE } from './rad-orc/master-plan.js';
 import { EXPLOSION_NODE_TYPE } from './rad-orc/explosion.js';
 import { APPROVAL_NODE_TYPE } from './rad-orc/approval.js';
+import { TASK_NODE_TYPE } from './rad-orc/task.js';
+import { CODE_REVIEW_NODE_TYPE } from './rad-orc/code-review.js';
+import { CORRECTIVE_NODE_TYPE } from './rad-orc/corrective.js';
+import { PR_NODE_TYPE } from './rad-orc/pr.js';
 
 /** Every `rad-orc:*` built-in this package ships, ready to hand to `createNodeTypeRegistry` as its `builtins` argument. */
 export const BUILT_IN_NODE_TYPES: readonly NodeTypeDefinition[] = [
@@ -71,4 +109,8 @@ export const BUILT_IN_NODE_TYPES: readonly NodeTypeDefinition[] = [
   MASTER_PLAN_NODE_TYPE,
   EXPLOSION_NODE_TYPE,
   APPROVAL_NODE_TYPE,
+  TASK_NODE_TYPE,
+  CODE_REVIEW_NODE_TYPE,
+  CORRECTIVE_NODE_TYPE,
+  PR_NODE_TYPE,
 ];
