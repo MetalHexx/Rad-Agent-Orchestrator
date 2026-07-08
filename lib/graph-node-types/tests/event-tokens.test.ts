@@ -4,6 +4,13 @@ import {
   BUILT_IN_ROUTED_OUTCOMES,
   findEventTokenIncoherence,
   assertEventTokenCoherence,
+  APPROVAL_DECIDED_TOKEN,
+  CODE_REVIEW_REVIEWED_TOKEN,
+  EXPLOSION_PARSED_TOKEN,
+  EXPLOSION_PARSE_FAILED_TOKEN,
+  MASTER_PLAN_AUTHORED_TOKEN,
+  PR_CREATED_TOKEN,
+  TASK_COMPLETED_TOKEN,
 } from '../src/index.js';
 
 describe('the shipped event-token map', () => {
@@ -26,9 +33,37 @@ describe('the shipped event-token map', () => {
     expect(EVENT_TOKENS).toContain('rad-orc:code_review.reviewed');
   });
 
-  it('folds the task/phase gate approvals onto one rad-orc:approval.approved token', () => {
-    expect(BUILT_IN_ROUTED_OUTCOMES['rad-orc:approval']).toEqual(['approved']);
-    expect(EVENT_TOKENS).toContain('rad-orc:approval.approved');
+  it('folds the task/phase gate approvals onto one rad-orc:approval.decided token', () => {
+    expect(BUILT_IN_ROUTED_OUTCOMES['rad-orc:approval']).toEqual(['decided']);
+    expect(EVENT_TOKENS).toContain('rad-orc:approval.decided');
+  });
+});
+
+describe('the map against the real built-ins', () => {
+  // Each built-in's own `*_TOKEN` export is the ground truth its `handle` actually dispatches
+  // on. Walking those real exports (rather than only cross-checking the two hand-authored
+  // constants against each other) is what catches the map drifting from the shipped code.
+  const realBuiltInTokens: readonly string[] = [
+    TASK_COMPLETED_TOKEN,
+    CODE_REVIEW_REVIEWED_TOKEN,
+    APPROVAL_DECIDED_TOKEN,
+    MASTER_PLAN_AUTHORED_TOKEN,
+    EXPLOSION_PARSED_TOKEN,
+    EXPLOSION_PARSE_FAILED_TOKEN,
+    PR_CREATED_TOKEN,
+  ];
+
+  it('declares every built-in\'s real dispatch token in EVENT_TOKENS', () => {
+    for (const token of realBuiltInTokens) {
+      expect(EVENT_TOKENS).toContain(token);
+    }
+  });
+
+  it('routes every built-in\'s real dispatch token through BUILT_IN_ROUTED_OUTCOMES', () => {
+    for (const token of realBuiltInTokens) {
+      const [type, outcome] = token.split('.') as [string, string];
+      expect(BUILT_IN_ROUTED_OUTCOMES[type as keyof typeof BUILT_IN_ROUTED_OUTCOMES]).toContain(outcome);
+    }
   });
 });
 
