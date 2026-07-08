@@ -69,6 +69,7 @@ function createStatusResolver(nodes: readonly DagNode[], edges: readonly DagEdge
   const childrenByParent = groupChildrenByParent(nodes);
   const statusMemo = new Map<NodeId, NodeStatus>();
   const beganMemo = new Map<NodeId, boolean>();
+  const beganInFlight = new Set<NodeId>();
 
   function predecessorsDone(nodeId: NodeId): boolean {
     return edges
@@ -82,10 +83,26 @@ function createStatusResolver(nodes: readonly DagNode[], edges: readonly DagEdge
    * its own roll-up to know whether it's entered would have to roll up before it could know
    * whether it was allowed to. The root is entered vacuously (seeded `in_progress`, no parent),
    * which is what makes the top-level spine frontier-eligible on tick one.
+   *
+   * `beganInFlight` guards re-entrancy: a `depends_on` edge whose endpoints are also
+   * containment-related (rejected by `validate` for state reachable through the public
+   * primitives, but not provable from `nodes`/`edges` alone) would otherwise walk back up onto a
+   * `node.id` still mid-computation — `predecessorsDone` resolving a descendant that itself calls
+   * back into `hasBegun` on an ancestor — and recurse unbounded. Same DFS-coloring idiom as
+   * `detectCycle`: a node revisited while still gray throws a clean, typed-message error instead
+   * of overflowing the call stack.
    */
   function hasBegun(node: DagNode): boolean {
     const cached = beganMemo.get(node.id);
     if (cached !== undefined) return cached;
+    if (beganInFlight.has(node.id)) {
+      throw new Error(
+        `cannot derive status: '${node.id}' recurses back onto itself while resolving whether it has ` +
+          'begun — a depends_on edge crosses a containment (parent/descendant) relationship',
+      );
+    }
+
+    beganInFlight.add(node.id);
     let result: boolean;
     if (node.parent === null) {
       result = true;
@@ -93,6 +110,8 @@ function createStatusResolver(nodes: readonly DagNode[], edges: readonly DagEdge
       const parent = nodesById.get(node.parent);
       result = parent !== undefined && hasBegun(parent) && predecessorsDone(node.id);
     }
+    beganInFlight.delete(node.id);
+
     beganMemo.set(node.id, result);
     return result;
   }

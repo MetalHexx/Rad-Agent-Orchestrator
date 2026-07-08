@@ -4,7 +4,13 @@ import type { Result } from '../result.js';
 import { ROOT_NODE_ID } from '../model/root.js';
 import { assertNever } from '../model/vocab.js';
 import type { GraphSnapshot, MutationSpec } from './invariants.js';
-import { violatesRootGuard, wouldCreateCycle, wouldCreateParentCycle } from './invariants.js';
+import {
+  violatesRootGuard,
+  wouldCreateCycle,
+  wouldCreateParentCycle,
+  wouldCrossContainmentAxis,
+  wouldCrossContainmentAxisOnMove,
+} from './invariants.js';
 
 /**
  * The blast radius a destructive mutation would touch, as a read — the exact node ids and edges a
@@ -44,6 +50,17 @@ export function validate(graph: GraphSnapshot, mutationSpec: MutationSpec): Resu
           },
         };
       }
+      if (wouldCrossContainmentAxis(graph.nodes, mutationSpec.from, mutationSpec.to)) {
+        return {
+          ok: false,
+          error: {
+            code: 'cross_axis_cycle',
+            message:
+              `'${mutationSpec.from}' -> '${mutationSpec.to}' would create a depends_on edge between ` +
+              `containment-related nodes (one is the other's ancestor)`,
+          },
+        };
+      }
       return { ok: true, data: undefined };
     }
     case 'remove_node':
@@ -57,6 +74,19 @@ export function validate(graph: GraphSnapshot, mutationSpec: MutationSpec): Resu
             message:
               `moving '${mutationSpec.nodeId}' under '${mutationSpec.newParent}' would create a ` +
               `containment cycle`,
+          },
+        };
+      }
+      if (
+        wouldCrossContainmentAxisOnMove(graph.nodes, graph.edges, mutationSpec.nodeId, mutationSpec.newParent)
+      ) {
+        return {
+          ok: false,
+          error: {
+            code: 'cross_axis_cycle',
+            message:
+              `moving '${mutationSpec.nodeId}' under '${mutationSpec.newParent}' would newly relate a ` +
+              `depends_on edge's endpoints by containment`,
           },
         };
       }

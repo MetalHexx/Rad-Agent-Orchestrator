@@ -129,6 +129,91 @@ export function wouldCreateParentCycle(nodes: readonly DagNode[], nodeId: NodeId
   return false;
 }
 
+// ── Cross-axis: a depends_on edge never relates two containment-related nodes ──
+
+/** Whether `nodeId` is `ancestorId` itself, or reaches it by walking `parent` upward. */
+function isAncestorOrSelf(nodes: readonly DagNode[], ancestorId: NodeId, nodeId: NodeId): boolean {
+  const nodesById = new Map(nodes.map((node) => [node.id, node]));
+  let current: NodeId | null = nodeId;
+  while (current !== null) {
+    if (current === ancestorId) return true;
+    current = nodesById.get(current)?.parent ?? null;
+  }
+  return false;
+}
+
+/**
+ * Whether `a` and `b` are already containment-related — one is the other's ancestor (or the same
+ * node) in the current `parent` tree. A `depends_on` edge between containment-related nodes is
+ * acyclic on both axes individually (`detectCycle`/`isTreeShaped` each pass), yet drives
+ * `derive/readiness.ts`'s `hasBegun`/`resolve` into unbounded mutual recursion — each resolves
+ * through the other's still-in-flight memo entry. `validate`'s `add_dependency` case calls this
+ * alongside `wouldCreateCycle` so the two single-axis checks don't leave this combination
+ * reachable through the public primitive.
+ */
+export function wouldCrossContainmentAxis(nodes: readonly DagNode[], a: NodeId, b: NodeId): boolean {
+  return isAncestorOrSelf(nodes, a, b) || isAncestorOrSelf(nodes, b, a);
+}
+
+/** `nodeId` plus every descendant reached by walking `parent` downward, breadth-first. */
+function subtreeIds(nodes: readonly DagNode[], nodeId: NodeId): Set<NodeId> {
+  const childrenByParent = new Map<NodeId, NodeId[]>();
+  for (const node of nodes) {
+    if (node.parent === null) continue;
+    const siblings = childrenByParent.get(node.parent);
+    if (siblings) siblings.push(node.id);
+    else childrenByParent.set(node.parent, [node.id]);
+  }
+
+  const subtree = new Set<NodeId>([nodeId]);
+  const queue: NodeId[] = [nodeId];
+  while (queue.length > 0) {
+    const current = queue.shift() as NodeId;
+    for (const childId of childrenByParent.get(current) ?? []) {
+      if (!subtree.has(childId)) {
+        subtree.add(childId);
+        queue.push(childId);
+      }
+    }
+  }
+  return subtree;
+}
+
+/**
+ * Whether re-parenting `nodeId` under `newParent` would newly containment-relate the two endpoints
+ * of some existing `depends_on` edge — one endpoint already inside `nodeId`'s moving subtree, the
+ * other being `newParent` or one of its own ancestors (the new ancestor chain the whole subtree
+ * would inherit). Same rationale as `wouldCrossContainmentAxis`, mirrored for `move_node`: the
+ * move itself is what would newly relate an already-existing dependency edge across the
+ * containment axis, so this runs the check prospectively against the move rather than the
+ * pre-move tree.
+ */
+export function wouldCrossContainmentAxisOnMove(
+  nodes: readonly DagNode[],
+  edges: readonly DagEdge[],
+  nodeId: NodeId,
+  newParent: NodeId,
+): boolean {
+  const nodesById = new Map(nodes.map((node) => [node.id, node]));
+  const movingSubtree = subtreeIds(nodes, nodeId);
+
+  const newAncestors = new Set<NodeId>();
+  let current: NodeId | null = newParent;
+  while (current !== null) {
+    newAncestors.add(current);
+    current = nodesById.get(current)?.parent ?? null;
+  }
+
+  return edges.some((edge) => {
+    if (edge.kind !== 'depends_on') return false;
+    const fromMoves = movingSubtree.has(edge.from);
+    const toMoves = movingSubtree.has(edge.to);
+    const fromIsNewAncestor = newAncestors.has(edge.from);
+    const toIsNewAncestor = newAncestors.has(edge.to);
+    return (fromMoves && toIsNewAncestor) || (toMoves && fromIsNewAncestor);
+  });
+}
+
 // ── Order-advisory: order never contradicts a depends_on edge ──────────────────
 
 /** A sibling pair whose authored `order` disagrees with a `depends_on` edge between them. */

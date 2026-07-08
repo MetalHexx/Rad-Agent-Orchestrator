@@ -180,6 +180,22 @@ describe('frontier/remaining — malformed-graph precondition', () => {
     expect(() => frontier([a, b], [], 'a')).toThrow(/cycle/);
     expect(() => remaining([a, b], 'a')).toThrow(/cycle/);
   });
+
+  it('throws rather than recursing unbounded on a depends_on edge that crosses containment', () => {
+    // Acyclic on both axes individually (a single depends_on edge, a proper tree), so neither
+    // assertAcyclicInput nor assertTreeShapedInput catches it — the edge relates 'descendant' (a
+    // container two levels under 'ancestor') back onto 'ancestor' itself, so resolving whether
+    // 'ancestor' has begun walks straight back into itself while still mid-computation.
+    const root = createRootNode();
+    const ancestor = node('ancestor');
+    const descendant = node('descendant', { parent: 'ancestor' });
+    const leaf = node('leaf', { parent: 'descendant' });
+    const edges = [dependsOn('descendant', 'ancestor')];
+
+    expect(() => frontier([root, ancestor, descendant, leaf], edges, 'ancestor')).toThrow(
+      /recurses back onto itself/,
+    );
+  });
 });
 
 describe('remaining', () => {

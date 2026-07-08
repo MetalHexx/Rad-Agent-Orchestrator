@@ -102,6 +102,56 @@ describe('validate — move_node tree-shape', () => {
   });
 });
 
+describe('validate — cross-axis containment/dependency guard', () => {
+  it('rejects add_dependency from a descendant onto its own ancestor', () => {
+    const root = createRootNode();
+    const parent = node('parent');
+    const child = node('child', { parent: 'parent' });
+    const g = graph([root, parent, child], []);
+
+    const result = validate(g, { kind: 'add_dependency', from: 'child', to: 'parent' });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe('cross_axis_cycle');
+  });
+
+  it('rejects add_dependency from an ancestor onto its own descendant', () => {
+    const root = createRootNode();
+    const parent = node('parent');
+    const child = node('child', { parent: 'parent' });
+    const g = graph([root, parent, child], []);
+
+    const result = validate(g, { kind: 'add_dependency', from: 'parent', to: 'child' });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe('cross_axis_cycle');
+  });
+
+  it('rejects move_node that would newly relate an existing depends_on edge by containment', () => {
+    const root = createRootNode();
+    const x = node('x');
+    const y = node('y');
+    const g = graph([root, x, y], [dependsOn('x', 'y')]);
+
+    const result = validate(g, { kind: 'move_node', nodeId: 'x', newParent: 'y' });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe('cross_axis_cycle');
+  });
+
+  it('still accepts a move_node that leaves no depends_on edge crossing containment', () => {
+    const root = createRootNode();
+    const x = node('x');
+    const y = node('y');
+    const g = graph([root, x, y], [dependsOn('x', 'y')]);
+
+    expect(validate(g, { kind: 'move_node', nodeId: 'x', newParent: ROOT_NODE_ID })).toEqual({
+      ok: true,
+      data: undefined,
+    });
+  });
+});
+
 describe('preview — remove_node cascade cone', () => {
   it('returns exactly the descendant/dependent cone on a small branching graph', () => {
     const root = createRootNode();
