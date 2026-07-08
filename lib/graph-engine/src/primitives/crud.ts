@@ -3,6 +3,7 @@ import type { DagEdge } from '../model/edge.js';
 import type { NodeTypeName } from '../model/vocab.js';
 import type { ChangeDelta, NodeChange, EdgeChange } from '../model/delta.js';
 import type { Result } from '../result.js';
+import type { NodeTypeRegistry } from '../node-type/registry.js';
 import { validate, descendantCone, dependentsCascadeCone } from '../derive/dry-run.js';
 import type { PrimitiveContext } from './primitive.js';
 import { fail, findNode, runPrimitive } from './primitive.js';
@@ -17,21 +18,25 @@ export interface AddNodeOptions {
 }
 
 /**
- * Inserts a leaf node of `type` under `parent`. Registry resolution of `type` arrives in P04;
- * this primitive only checks structural legality (the parent exists, `id` is fresh — `id` is
- * reserved-safe for free since the seeded root already occupies `ROOT_NODE_ID`, so a caller can
- * never mint a duplicate of it). `dependsOn` lands the node and its gate edges (one `depends_on`
- * edge from each dependency to the new node) in the same delta, so there is never a tick where
- * the node exists but isn't yet gated — no frontier race.
+ * Inserts a leaf node of `type` under `parent`. `type` resolves against the injected `registry`
+ * before anything else is checked — an unregistered name fails with `unknown_node_type` and
+ * writes nothing, so a bad type name never reaches the store. Beyond that, this primitive only
+ * checks structural legality (the parent exists, `id` is fresh — `id` is reserved-safe for free
+ * since the seeded root already occupies `ROOT_NODE_ID`, so a caller can never mint a duplicate of
+ * it). `dependsOn` lands the node and its gate edges (one `depends_on` edge from each dependency to
+ * the new node) in the same delta, so there is never a tick where the node exists but isn't yet
+ * gated — no frontier race.
  */
 export function add_node(
   ctx: PrimitiveContext,
+  registry: NodeTypeRegistry,
   id: NodeId,
   type: NodeTypeName,
   parent: NodeId,
   options: AddNodeOptions = {},
 ): Result<ChangeDelta> {
   return runPrimitive(ctx, (graph) => {
+    if (!registry.resolve(type)) return fail('unknown_node_type', `node type '${type}' is not registered`);
     if (findNode(graph, id)) return fail('invalid_delta', `node '${id}' already exists`);
     if (!findNode(graph, parent)) return fail('invalid_delta', `parent '${parent}' does not exist`);
 

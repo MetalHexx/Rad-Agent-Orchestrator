@@ -3,10 +3,19 @@ import {
   expand,
   add_dependency,
   remove_dependency,
+  createNodeTypeRegistry,
   InMemoryStateStore,
   ROOT_NODE_ID,
 } from '../src/index.js';
-import type { ChangeDelta, DagNode, Expansion, PrimitiveContext, ProjectScope } from '../src/index.js';
+import type {
+  ChangeDelta,
+  DagNode,
+  Expansion,
+  NodeTypeDefinition,
+  NodeTypeRegistry,
+  PrimitiveContext,
+  ProjectScope,
+} from '../src/index.js';
 
 function scope(projectId: string): ProjectScope {
   return { projectId };
@@ -15,6 +24,23 @@ function scope(projectId: string): ProjectScope {
 function ctxFor(projectId: string): PrimitiveContext {
   return { store: new InMemoryStateStore(), scope: scope(projectId) };
 }
+
+/** A minimal registered definition — only `name` matters to `expand`'s own resolution check. */
+function stubType(name: NodeTypeDefinition['name']): NodeTypeDefinition {
+  return {
+    name,
+    dataSchema: {},
+    traits: [],
+    capabilities: [],
+    presentation: { label: name },
+    instructions: '',
+    act: () => ({ instructions: '', executor: 'noop' }),
+    handle: () => ({}),
+    projectStatus: () => 'not_started',
+  };
+}
+
+const registry: NodeTypeRegistry = createNodeTypeRegistry([stubType('rad-orc:task'), stubType('rad-orc:phase')]);
 
 /** Seeds `ctx`'s scope with `nodes` (root already seeded) and `edges`, via a single raw `apply`. */
 function seed(ctx: PrimitiveContext, nodes: DagNode[], edges: ChangeDelta['edgeChanges'] = []): void {
@@ -53,7 +79,7 @@ describe('expand', () => {
       ],
     };
 
-    const result = expand(ctx, 'phase-container', expansion);
+    const result = expand(ctx, registry, 'phase-container', expansion);
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -80,7 +106,7 @@ describe('expand', () => {
       ],
     };
 
-    const result = expand(ctx, 'container', expansion);
+    const result = expand(ctx, registry, 'container', expansion);
 
     expect(result.ok).toBe(true);
     expect(ctx.store.getNode(ctx.scope, 'child')?.parent).toBe('phase');
@@ -94,17 +120,31 @@ describe('expand', () => {
       specs: [{ key: 'child', type: 'rad-orc:task', parent: 'container', dependsOn: [] }],
     };
 
-    const result = expand(ctx, 'container', expansion);
+    const result = expand(ctx, registry, 'container', expansion);
 
     expect(result.ok).toBe(true);
     expect(ctx.store.getNode(ctx.scope, 'child')?.derivedFrom).toBe('container');
+  });
+
+  it('rejects (and writes nothing for) a spec type the registry does not resolve', () => {
+    const ctx = ctxFor('proj-a');
+    seed(ctx, [node('container')]);
+    const expansion: Expansion = {
+      specs: [{ key: 'child', type: 'acme-qa:security-scan', parent: 'container', dependsOn: [] }],
+    };
+
+    const result = expand(ctx, registry, 'container', expansion);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe('unknown_node_type');
+    expect(ctx.store.listNodes(ctx.scope)).toHaveLength(2); // root + container only
   });
 
   it('rejects (and writes nothing for) an expanding node that does not exist', () => {
     const ctx = ctxFor('proj-a');
     const expansion: Expansion = { specs: [{ key: 'a', type: 'rad-orc:task', parent: null, dependsOn: [] }] };
 
-    const result = expand(ctx, 'ghost', expansion);
+    const result = expand(ctx, registry, 'ghost', expansion);
 
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.code).toBe('invalid_delta');
@@ -118,7 +158,7 @@ describe('expand', () => {
       specs: [{ key: 'child', type: 'rad-orc:task', parent: 'no-such-key', dependsOn: [] }],
     };
 
-    const result = expand(ctx, 'container', expansion);
+    const result = expand(ctx, registry, 'container', expansion);
 
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.code).toBe('invalid_delta');
@@ -132,7 +172,7 @@ describe('expand', () => {
       specs: [{ key: 'child', type: 'rad-orc:task', parent: 'container', dependsOn: ['ghost'] }],
     };
 
-    const result = expand(ctx, 'container', expansion);
+    const result = expand(ctx, registry, 'container', expansion);
 
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.code).toBe('invalid_delta');
@@ -149,7 +189,7 @@ describe('expand', () => {
       ],
     };
 
-    const result = expand(ctx, 'container', expansion);
+    const result = expand(ctx, registry, 'container', expansion);
 
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.code).toBe('cycle');
@@ -166,7 +206,7 @@ describe('expand', () => {
       ],
     };
 
-    const result = expand(ctx, 'container', expansion);
+    const result = expand(ctx, registry, 'container', expansion);
 
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.code).toBe('invalid_delta');
@@ -180,7 +220,7 @@ describe('expand', () => {
       specs: [{ key: 'existing', type: 'rad-orc:task', parent: 'container', dependsOn: [] }],
     };
 
-    const result = expand(ctx, 'container', expansion);
+    const result = expand(ctx, registry, 'container', expansion);
 
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.code).toBe('invalid_delta');
@@ -197,7 +237,7 @@ describe('expand', () => {
     const expansion: Expansion = {
       specs: [{ key: 'task-1', type: 'rad-orc:task', parent: 'container', dependsOn: [] }],
     };
-    const expandResult = expand(ctx, 'container', expansion);
+    const expandResult = expand(ctx, registry, 'container', expansion);
     expect(expandResult.ok).toBe(true);
 
     const removed = remove_dependency(ctx, 'placeholder', 'final_review');

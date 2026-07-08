@@ -2,6 +2,17 @@
 // barrel — nothing outside this package imports internals by path.
 export const ENGINE_SCHEMA_VERSION = 'graph-engine/v0' as const;
 
+import type { NodeId } from './model/node.js';
+import type { NodeTypeName } from './model/vocab.js';
+import type { ChangeDelta } from './model/delta.js';
+import type { Result } from './result.js';
+import type { ProjectScope, StateStore } from './store/state-store.js';
+import type { NodeTypeRegistry } from './node-type/registry.js';
+import type { AddNodeOptions } from './primitives/crud.js';
+import { add_node as addNode } from './primitives/crud.js';
+import type { Expansion } from './primitives/expand.js';
+import { expand as expandBatch } from './primitives/expand.js';
+
 export type { NodeId, DagNode } from './model/node.js';
 export type { EdgeKind, DagEdge } from './model/edge.js';
 export type { ChangeOp, NodeChange, EdgeChange, ChangeDelta } from './model/delta.js';
@@ -63,6 +74,34 @@ export { apply_event } from './primitives/apply-event.js';
 export type { AddCorrectiveOptions } from './primitives/corrective.js';
 export { add_corrective } from './primitives/corrective.js';
 export { reset } from './primitives/reset.js';
+
+export type { NodeTypeRegistry } from './node-type/registry.js';
+export { RESERVED_NODE_TYPE_PREFIX, createNodeTypeRegistry } from './node-type/registry.js';
+
+/** The two mutation primitives {@link createEngine} binds against an injected registry + store. */
+export interface Engine {
+  readonly add_node: (
+    scope: ProjectScope,
+    id: NodeId,
+    type: NodeTypeName,
+    parent: NodeId,
+    options?: AddNodeOptions,
+  ) => Result<ChangeDelta>;
+  readonly expand: (scope: ProjectScope, node: NodeId, expansion: Expansion) => Result<ChangeDelta>;
+}
+
+/**
+ * The engine's composition point: binds `store` and `registry` once, producing `add_node`/`expand`
+ * bound to both, so every insert resolves its `type` through the same injected registry — a caller
+ * only ever supplies the per-call `scope` and the primitive's own arguments, never a store/registry
+ * pair it has to source from somewhere global.
+ */
+export function createEngine(store: StateStore, registry: NodeTypeRegistry): Engine {
+  return {
+    add_node: (scope, id, type, parent, options) => addNode({ store, scope }, registry, id, type, parent, options),
+    expand: (scope, node, expansion) => expandBatch({ store, scope }, registry, node, expansion),
+  };
+}
 
 export type {
   ActContext,

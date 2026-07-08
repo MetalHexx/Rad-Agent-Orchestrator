@@ -6,10 +6,18 @@ import {
   remove_dependency,
   move_node,
   set_order,
+  createNodeTypeRegistry,
   InMemoryStateStore,
   ROOT_NODE_ID,
 } from '../src/index.js';
-import type { ChangeDelta, DagNode, PrimitiveContext, ProjectScope } from '../src/index.js';
+import type {
+  ChangeDelta,
+  DagNode,
+  NodeTypeDefinition,
+  NodeTypeRegistry,
+  PrimitiveContext,
+  ProjectScope,
+} from '../src/index.js';
 
 function scope(projectId: string): ProjectScope {
   return { projectId };
@@ -18,6 +26,23 @@ function scope(projectId: string): ProjectScope {
 function ctxFor(projectId: string): PrimitiveContext {
   return { store: new InMemoryStateStore(), scope: scope(projectId) };
 }
+
+/** A minimal registered definition — only `name` matters to `add_node`'s own resolution check. */
+function stubType(name: NodeTypeDefinition['name']): NodeTypeDefinition {
+  return {
+    name,
+    dataSchema: {},
+    traits: [],
+    capabilities: [],
+    presentation: { label: name },
+    instructions: '',
+    act: () => ({ instructions: '', executor: 'noop' }),
+    handle: () => ({}),
+    projectStatus: () => 'not_started',
+  };
+}
+
+const registry: NodeTypeRegistry = createNodeTypeRegistry([stubType('rad-orc:task')]);
 
 /** Seeds `ctx`'s scope with `nodes` (root already seeded) and `edges`, via a single raw `apply`. */
 function seed(ctx: PrimitiveContext, nodes: DagNode[], edges: ChangeDelta['edgeChanges'] = []): void {
@@ -47,7 +72,7 @@ describe('add_node', () => {
   it('inserts a leaf node under an existing parent', () => {
     const ctx = ctxFor('proj-a');
 
-    const result = add_node(ctx, 'task-a', 'rad-orc:task', ROOT_NODE_ID);
+    const result = add_node(ctx, registry, 'task-a', 'rad-orc:task', ROOT_NODE_ID);
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -62,7 +87,7 @@ describe('add_node', () => {
     const ctx = ctxFor('proj-a');
     seed(ctx, [node('setup', { status: 'not_started' })]);
 
-    const result = add_node(ctx, 'deploy', 'rad-orc:task', ROOT_NODE_ID, { dependsOn: ['setup'] });
+    const result = add_node(ctx, registry, 'deploy', 'rad-orc:task', ROOT_NODE_ID, { dependsOn: ['setup'] });
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -77,10 +102,20 @@ describe('add_node', () => {
   it('rejects (and writes nothing for) a missing parent', () => {
     const ctx = ctxFor('proj-a');
 
-    const result = add_node(ctx, 'task-a', 'rad-orc:task', 'no-such-parent');
+    const result = add_node(ctx, registry, 'task-a', 'rad-orc:task', 'no-such-parent');
 
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.code).toBe('invalid_delta');
+    expect(ctx.store.listNodes(ctx.scope)).toHaveLength(1); // only the seeded root
+  });
+
+  it('rejects (and writes nothing for) a type the registry does not resolve', () => {
+    const ctx = ctxFor('proj-a');
+
+    const result = add_node(ctx, registry, 'task-a', 'acme-qa:security-scan', ROOT_NODE_ID);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe('unknown_node_type');
     expect(ctx.store.listNodes(ctx.scope)).toHaveLength(1); // only the seeded root
   });
 
@@ -88,7 +123,7 @@ describe('add_node', () => {
     const ctx = ctxFor('proj-a');
     seed(ctx, [node('task-a')]);
 
-    const result = add_node(ctx, 'task-a', 'rad-orc:task', ROOT_NODE_ID);
+    const result = add_node(ctx, registry, 'task-a', 'rad-orc:task', ROOT_NODE_ID);
 
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.code).toBe('invalid_delta');
@@ -97,7 +132,7 @@ describe('add_node', () => {
   it('rejects a dependsOn reference to a node that does not exist', () => {
     const ctx = ctxFor('proj-a');
 
-    const result = add_node(ctx, 'task-a', 'rad-orc:task', ROOT_NODE_ID, { dependsOn: ['ghost'] });
+    const result = add_node(ctx, registry, 'task-a', 'rad-orc:task', ROOT_NODE_ID, { dependsOn: ['ghost'] });
 
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.code).toBe('invalid_delta');
