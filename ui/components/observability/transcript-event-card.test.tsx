@@ -193,6 +193,27 @@ test('a non-Read raw result still gets an added line-number column (regression)'
   assert.ok(html.includes('>1<') && html.includes('>2<'), 'line-number gutter present for non-Read raw output');
 });
 
+test('a Read-origin markdown result strips baked-in cat -n prefixes before rendering', () => {
+  const html = card(
+    { seq: 1, timestamp: '2026-07-08T09:00:00.000Z', kind: 'tool_result',
+      result: { toolUseId: 'x', output: { text: '     1\t# Heading\n     2\t\n     3\tSome body text.' }, isError: false } },
+    { showToolIO: true, originatingTool: 'docs/notes.md' },
+  );
+  assert.ok(/<h1[\s>]/.test(html), 'renders a real heading element, not a single collapsed code block');
+  assert.ok(html.includes('Heading') && html.includes('Some body text.'), 'body content survives stripping');
+  assert.ok(!/\d+\t/.test(html), 'no baked-in line-number prefix survives in output');
+});
+
+test('a non-Read markdown result (Agent/Task prose) is not stripped', () => {
+  const html = card(
+    { seq: 1, timestamp: '2026-07-08T09:00:00.000Z', kind: 'tool_result',
+      result: { toolUseId: 'x', output: { text: '# Report\n\nStep 1\tdone.' }, isError: false } },
+    { showToolIO: true, originatingTool: 'Agent' },
+  );
+  assert.ok(/<h1[\s>]/.test(html), 'renders a real heading element');
+  assert.ok(html.includes('Step 1') && html.includes('done.'), 'literal tab-containing prose text is preserved verbatim');
+});
+
 test('a non-markdown tool_result defaults to the raw JsonBlock/CodeBlock path, not MarkdownRenderer (mode path, not content)', () => {
   const html = card(
     { seq: 1, timestamp: '2026-07-08T09:00:00.000Z', kind: 'tool_result', result: { toolUseId: 'x', output: { text: 'stdout body' }, isError: false } },

@@ -29,6 +29,14 @@ function isReadOrigin(originatingTool: string | undefined): boolean {
   return !!originatingTool && /[\\/]|\.[^./\\]+$/.test(originatingTool);
 }
 
+// Read-origin text carries its own `cat -n` line-number prefix baked in; strip it
+// before handing the text to MarkdownRenderer so the prefix doesn't push CommonMark
+// into treating every line as indented code (see isReadOrigin above for why raw mode
+// suppresses CodeBlock's own gutter instead — same root cause, different render path).
+function stripCatNPrefix(text: string): string {
+  return text.replace(/^\s*\d+\t/gm, "");
+}
+
 type RenderChoice = "markdown" | "raw";
 
 export function TranscriptEventCard({ event, tight = false, showToolIO = true, originatingTool }: TranscriptEventCardProps) {
@@ -148,7 +156,7 @@ function EventBody({
           {out ? (
             <RevealBody id={revealId} clamp={needsClamp(out.text, 92)} maxHeightEm={halfClampEm(out.text, 92)} fadeTo="after:to-background">
               {renderChoice === "markdown" ? (
-                <MarkdownRenderer content={out.text} />
+                <MarkdownRenderer content={isReadOrigin(originatingTool) ? stripCatNPrefix(out.text) : out.text} />
               ) : (
                 <JsonBlock
                   text={out.text}

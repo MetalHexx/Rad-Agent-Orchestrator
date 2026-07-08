@@ -30,7 +30,7 @@ test('GET sets Cache-Control: no-store on the response (FR-6)', async () => {
   const root = mkdtempSync(join(tmpdir(), 'obs-nostore-'));
   const dir = join(root, 'usage'); mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, 'usage-2026-06-17-s1.ndjson'),
-    JSON.stringify({ usageId: 'u1', sessionId: 's1', timestamp: '2026-06-17T00:00:00Z', inputTokens: 1, outputTokens: 2 }) + '\n');
+    JSON.stringify({ usageId: 'u1', sessionId: 's1', timestamp: '2026-06-17T00:00:00Z', inputTokens: 1, outputTokens: 2, pointers: { sourceFile: '/log.jsonl' } }) + '\n');
   process.env.RADORC_TELEMETRY_ROOT = root;
   const { GET } = await import('./route');
   const res = await GET(new Request('http://t/api/observability/usage?startDate=2026-06-17&endDate=2026-06-17'));
