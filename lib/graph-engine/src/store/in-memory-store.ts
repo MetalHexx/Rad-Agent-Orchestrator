@@ -84,6 +84,45 @@ function planEdgeChange(state: ScopeState, change: EdgeChange): Result<EdgeMutat
   }
 }
 
+/** The node ids and edges the scope would hold if every planned mutation were committed. */
+function projectFinalState(
+  state: ScopeState,
+  nodeMutations: readonly NodeMutation[],
+  edgeMutations: readonly EdgeMutation[],
+): { nodeIds: Set<NodeId>; edges: Map<string, DagEdge> } {
+  const nodeIds = new Set(state.nodes.keys());
+  for (const mutation of nodeMutations) {
+    if (mutation.kind === 'set') nodeIds.add(mutation.node.id);
+    else nodeIds.delete(mutation.id);
+  }
+
+  const edges = new Map(state.edges);
+  for (const mutation of edgeMutations) {
+    if (mutation.kind === 'set') edges.set(mutation.key, mutation.edge);
+    else edges.delete(mutation.key);
+  }
+
+  return { nodeIds, edges };
+}
+
+/**
+ * Rejects a delta whose post-commit state would leave an edge referencing a node id that isn't
+ * (or is no longer) in the scope — a dangling edge planted directly, or a node removed out from
+ * under an edge the same delta didn't also remove. The store never cascades an edge removal on
+ * a node's behalf: a delta that removes a node with dependent edges must remove those edges
+ * itself, so edge-healing stays the mutation primitive's responsibility, not the store's.
+ */
+function checkReferentialIntegrity(nodeIds: ReadonlySet<NodeId>, edges: ReadonlyMap<string, DagEdge>): Result<void> {
+  for (const edge of edges.values()) {
+    if (!nodeIds.has(edge.from) || !nodeIds.has(edge.to)) {
+      return invalidDelta(
+        `edge '${edgeKey(edge)}' references a node that does not exist ('${edge.from}' -> '${edge.to}')`,
+      );
+    }
+  }
+  return { ok: true, data: undefined };
+}
+
 /**
  * The in-memory `StateStore` every engine test runs against. Each scope is backed by its own pair
  * of `Map`s — proving the interface carries no single-global-graph assumption — and is seeded with
@@ -91,8 +130,8 @@ function planEdgeChange(state: ScopeState, change: EdgeChange): Result<EdgeMutat
  * is never null.
  *
  * `apply` validates every change in the delta against the current state before mutating anything,
- * so a malformed delta (e.g. removing a node that doesn't exist) leaves the store untouched —
- * transactional, all-or-nothing.
+ * so a malformed delta (e.g. removing a node that doesn't exist, or leaving an edge referencing a
+ * node id the delta doesn't also add) leaves the store untouched — transactional, all-or-nothing.
  */
 export class InMemoryStateStore implements StateStore {
   private readonly scopes = new Map<string, ScopeState>();
@@ -135,6 +174,10 @@ export class InMemoryStateStore implements StateStore {
       if (!planned.ok) return planned;
       edgeMutations.push(planned.data);
     }
+
+    const projected = projectFinalState(state, nodeMutations, edgeMutations);
+    const integrity = checkReferentialIntegrity(projected.nodeIds, projected.edges);
+    if (!integrity.ok) return integrity;
 
     for (const mutation of nodeMutations) {
       if (mutation.kind === 'set') state.nodes.set(mutation.node.id, mutation.node);

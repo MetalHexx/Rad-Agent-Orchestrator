@@ -1,8 +1,10 @@
 # graph-engine
 
-The steerable DAG execution engine. This package is currently a bare scaffold — the strict
-build, the vitest harness, the facade-only barrel, and the lint gate are established here so
-every later task inherits them; no engine logic ships yet.
+The steerable DAG execution engine. The strict build, the vitest harness, the facade-only
+barrel, and the lint gate were established here so every later task inherits them, and the
+package now ships the engine's relational spine: the node envelope (`DagNode`), the typed
+dependency edge (`DagEdge`), the closed vocabularies, the `ChangeDelta` shape, and the
+scope-aware `StateStore` interface with its `InMemoryStateStore` implementation.
 
 ## Standing conventions
 
@@ -14,9 +16,8 @@ here going forward:
   literal union does; every fixed vocabulary in this package (node kinds, edge types, statuses,
   etc.) is expressed as a `const` array (`as const`) or a string-literal union type instead.
 - **Decision-traceability.** A non-obvious choice carries an inline comment naming the governing
-  design decision in `STEERABLE-DAG-DESIGN`, e.g. `// AD-3: ...` or `// FR-2: ...` — the same
-  `AD-`/`FR-` comment convention `lib/telemetry` and `lib/work-graph` already use for their own
-  design documents, applied here to this project's decisions.
+  design decision in `STEERABLE-DAG-DESIGN`, e.g. `// D8: ...` or `// D22: ...` — matching that
+  design doc's own `D<N>` decision numbering (its "Locked Decisions" section runs `D1`-`D23`).
 
 ## Seam rules
 

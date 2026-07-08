@@ -1,9 +1,10 @@
 # graph-node-types
 
 The node-type vocabulary and type contracts for the steerable DAG, layered on
-`@rad-orchestration/graph-engine`. This package is currently a bare scaffold — the strict build,
-the vitest harness, the facade-only barrel, and the lint gate are established here so every later
-task inherits them; no node-type vocabulary ships yet.
+`@rad-orchestration/graph-engine`. The strict build, the vitest harness, the facade-only barrel,
+and the lint gate were established here so every later task inherits them. `graph-engine` now
+ships the full relational model and state store (see its `AGENTS.md`); this package's own
+node-type vocabulary and type contracts are still to come in a later task.
 
 ## Standing conventions
 
@@ -15,9 +16,8 @@ here going forward:
   literal union does; every fixed vocabulary in this package (node kinds, port types, etc.) is
   expressed as a `const` array (`as const`) or a string-literal union type instead.
 - **Decision-traceability.** A non-obvious choice carries an inline comment naming the governing
-  design decision in `STEERABLE-DAG-DESIGN`, e.g. `// AD-3: ...` or `// FR-2: ...` — the same
-  `AD-`/`FR-` comment convention `lib/telemetry` and `lib/work-graph` already use for their own
-  design documents, applied here to this project's decisions.
+  design decision in `STEERABLE-DAG-DESIGN`, e.g. `// D8: ...` or `// D22: ...` — matching that
+  design doc's own `D<N>` decision numbering (its "Locked Decisions" section runs `D1`-`D23`).
 
 ## Seam rules
 

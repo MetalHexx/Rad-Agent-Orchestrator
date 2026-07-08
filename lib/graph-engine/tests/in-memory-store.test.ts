@@ -21,13 +21,23 @@ function node(id: string, overrides: Partial<DagNode> = {}): DagNode {
   };
 }
 
-function createDelta(nodes: DagNode[], edges: ChangeDelta['edgeChanges'] = []): ChangeDelta {
+function delta(
+  nodeChanges: ChangeDelta['nodeChanges'],
+  edgeChanges: ChangeDelta['edgeChanges'] = [],
+): ChangeDelta {
   return {
     primitive: 'add_node' as ChangeDelta['primitive'],
     params: {},
-    nodeChanges: nodes.map((after) => ({ op: 'created' as const, before: null, after })),
-    edgeChanges: edges,
+    nodeChanges,
+    edgeChanges,
   };
+}
+
+function createDelta(nodes: DagNode[], edges: ChangeDelta['edgeChanges'] = []): ChangeDelta {
+  return delta(
+    nodes.map((after) => ({ op: 'created' as const, before: null, after })),
+    edges,
+  );
 }
 
 describe('InMemoryStateStore — seeding', () => {
@@ -50,11 +60,11 @@ describe('InMemoryStateStore — apply round-trip', () => {
     const s = scope('proj-a');
     const a = node('task-a');
     const b = node('task-b');
-    const delta = createDelta([a, b], [
+    const roundTripDelta = createDelta([a, b], [
       { op: 'created', before: null, after: { from: 'task-a', to: 'task-b', kind: 'depends_on' } },
     ]);
 
-    const result = store.apply(s, delta);
+    const result = store.apply(s, roundTripDelta);
 
     expect(result.ok).toBe(true);
     expect(store.getNode(s, 'task-a')).toEqual(a);
@@ -70,21 +80,14 @@ describe('InMemoryStateStore — apply round-trip', () => {
     store.apply(s, createDelta([original]));
 
     const updated = { ...original, status: 'in_progress' as const };
-    const updateResult = store.apply(s, {
-      primitive: 'add_node' as ChangeDelta['primitive'],
-      params: {},
-      nodeChanges: [{ op: 'updated', before: original, after: updated }],
-      edgeChanges: [],
-    });
+    const updateResult = store.apply(
+      s,
+      delta([{ op: 'updated', before: original, after: updated }]),
+    );
     expect(updateResult.ok).toBe(true);
     expect(store.getNode(s, 'task-a')).toEqual(updated);
 
-    const removeResult = store.apply(s, {
-      primitive: 'add_node' as ChangeDelta['primitive'],
-      params: {},
-      nodeChanges: [{ op: 'removed', before: updated, after: null }],
-      edgeChanges: [],
-    });
+    const removeResult = store.apply(s, delta([{ op: 'removed', before: updated, after: null }]));
     expect(removeResult.ok).toBe(true);
     expect(store.getNode(s, 'task-a')).toBeNull();
   });
@@ -110,19 +113,11 @@ describe('InMemoryStateStore — transactional rollback', () => {
     const store = new InMemoryStateStore();
     const s = scope('proj-a');
 
-    expect(() => store.apply(s, {
-      primitive: 'add_node' as ChangeDelta['primitive'],
-      params: {},
-      nodeChanges: [{ op: 'removed', before: node('ghost'), after: null }],
-      edgeChanges: [],
-    })).not.toThrow();
+    expect(() =>
+      store.apply(s, delta([{ op: 'removed', before: node('ghost'), after: null }])),
+    ).not.toThrow();
 
-    const result = store.apply(s, {
-      primitive: 'add_node' as ChangeDelta['primitive'],
-      params: {},
-      nodeChanges: [{ op: 'removed', before: node('ghost'), after: null }],
-      edgeChanges: [],
-    });
+    const result = store.apply(s, delta([{ op: 'removed', before: node('ghost'), after: null }]));
 
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.code).toBe('invalid_delta');
@@ -140,5 +135,59 @@ describe('InMemoryStateStore — transactional rollback', () => {
     expect(result.ok).toBe(false);
     expect(store.getNode(s, 'good')).toBeNull();
     expect(store.listNodes(s)).toEqual(before);
+  });
+});
+
+describe('InMemoryStateStore — edge/node referential integrity', () => {
+  it('rejects an edge whose from/to reference nodes that were never created', () => {
+    const store = new InMemoryStateStore();
+    const s = scope('proj-a');
+
+    const result = store.apply(s, createDelta([], [
+      { op: 'created', before: null, after: { from: 'ghost-a', to: 'ghost-b', kind: 'depends_on' } },
+    ]));
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe('invalid_delta');
+    expect(store.listEdges(s)).toEqual([]);
+  });
+
+  it('rejects removing a node that a still-present edge references', () => {
+    const store = new InMemoryStateStore();
+    const s = scope('proj-a');
+    const a = node('task-a');
+    const b = node('task-b');
+    store.apply(s, createDelta([a, b], [
+      { op: 'created', before: null, after: { from: 'task-a', to: 'task-b', kind: 'depends_on' } },
+    ]));
+
+    const result = store.apply(s, delta([{ op: 'removed', before: a, after: null }]));
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe('invalid_delta');
+    // rejected, not cascaded: the node and its edge both survive untouched
+    expect(store.getNode(s, 'task-a')).toEqual(a);
+    expect(store.listEdges(s)).toEqual([{ from: 'task-a', to: 'task-b', kind: 'depends_on' }]);
+  });
+
+  it('allows removing a node when the same delta also removes its dependent edges', () => {
+    const store = new InMemoryStateStore();
+    const s = scope('proj-a');
+    const a = node('task-a');
+    const b = node('task-b');
+    const edge = { from: 'task-a', to: 'task-b', kind: 'depends_on' as const };
+    store.apply(s, createDelta([a, b], [{ op: 'created', before: null, after: edge }]));
+
+    const result = store.apply(
+      s,
+      delta(
+        [{ op: 'removed', before: a, after: null }],
+        [{ op: 'removed', before: edge, after: null }],
+      ),
+    );
+
+    expect(result.ok).toBe(true);
+    expect(store.getNode(s, 'task-a')).toBeNull();
+    expect(store.listEdges(s)).toEqual([]);
   });
 });
