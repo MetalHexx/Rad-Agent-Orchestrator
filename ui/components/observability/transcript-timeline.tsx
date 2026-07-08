@@ -3,6 +3,8 @@ import * as React from "react";
 import type { TranscriptEvent } from "@rad-orchestration/telemetry";
 import { TranscriptEventCard } from "./transcript-event-card";
 import { isTightResult, errorEventSeqs, windowEvents } from "@/lib/observability/transcript-view";
+import { useStickToBottom } from "@/hooks/use-stick-to-bottom";
+import { useStickToBottomContext, defaultStickToBottomState } from "./stick-to-bottom-context";
 
 const DEFAULT_WINDOW = 400;
 
@@ -23,6 +25,8 @@ export interface TranscriptTimelineProps {
 export function TranscriptTimeline({ events, originatingToolByResultSeq, errorCursor }: TranscriptTimelineProps) {
   const [expanded, setExpanded] = React.useState(false);
   const errorRefs = React.useRef<Map<number, HTMLElement>>(new Map());
+  const { scrollRef, pinned, newCount, jumpToLatest, notifyContentChanged } = useStickToBottom();
+  const { publish } = useStickToBottomContext();
 
   const { shown, hidden } = windowEvents(events, expanded ? Infinity : DEFAULT_WINDOW);
 
@@ -41,13 +45,31 @@ export function TranscriptTimeline({ events, originatingToolByResultSeq, errorCu
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [errorCursor]);
 
+  // Publish this scroller's live stick-to-bottom state up to the modal-level
+  // footer (AgentNavigatorStrip's Jump-to-latest button is a sibling, not a
+  // descendant). Reset to the default on unmount (e.g. switching facets away
+  // from Transcript) so the footer button doesn't show a stale engaged state.
+  React.useEffect(() => {
+    publish({ pinned, newCount, jumpToLatest });
+  }, [pinned, newCount, jumpToLatest, publish]);
+  React.useEffect(() => () => publish(defaultStickToBottomState), [publish]);
+
+  // Follow new events into view when pinned; count them (no scroll) when the
+  // user has scrolled up. Coalesced upstream by useTranscriptLive's 50ms SSE
+  // debounce, so `events` only changes once per burst.
+  const prevLengthRef = React.useRef(events.length);
+  React.useEffect(() => {
+    if (events.length > prevLengthRef.current) notifyContentChanged();
+    prevLengthRef.current = events.length;
+  }, [events.length, notifyContentChanged]);
+
   return (
     // Native overflow scroll (same as the Tools/Files/Overview facets), NOT the
     // @base-ui ScrollArea. `[transform:translateZ(0)]` promotes this scroller to
     // its own GPU compositing layer: without it, expanding a more/less block grows
     // the (very tall) content and Chromium fails to re-raster the layer, blanking
     // the panel until a re-render. Its own layer repaints reliably on the reflow.
-    <div className="h-full overflow-y-auto p-5 [transform:translateZ(0)]">
+    <div ref={scrollRef} className="h-full overflow-y-auto p-5 [transform:translateZ(0)]">
       {hidden > 0 ? (
         <button type="button" onClick={() => setExpanded(true)}
           className="mb-3 w-full rounded-md border border-border bg-muted px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground">
