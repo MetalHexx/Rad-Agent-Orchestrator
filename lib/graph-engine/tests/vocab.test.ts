@@ -70,7 +70,7 @@ describe('CapabilityName vocabulary', () => {
 });
 
 describe('PrimitiveName vocabulary', () => {
-  it('has exactly the P03 CRUD/lifecycle/batch/iteration primitive names', () => {
+  it('has exactly the P03 CRUD/lifecycle/batch/iteration primitive names plus the driver contract\'s engage', () => {
     expect(PRIMITIVE_NAMES).toEqual([
       'add_node',
       'remove_node',
@@ -84,6 +84,7 @@ describe('PrimitiveName vocabulary', () => {
       'apply_event',
       'add_corrective',
       'reset',
+      'engage',
     ]);
   });
 });

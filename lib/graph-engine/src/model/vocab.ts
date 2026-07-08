@@ -56,8 +56,9 @@ export type CapabilityName = (typeof CAPABILITY_NAMES)[number] | (string & {});
 // ── Primitive name ───────────────────────────────────────────────────────────────
 // The closed set of mutation primitive names — the CRUD/lifecycle/batch/iteration primitives
 // shipped in `src/primitives/` (`crud.ts`, `lifecycle.ts`, `expand.ts`, `apply-event.ts`,
-// `corrective.ts`, `reset.ts`). `ChangeDelta.primitive` is drawn from this union, so every delta
-// names the exact primitive that produced it.
+// `corrective.ts`, `reset.ts`) plus `engage`, the driver contract's `not_started -> in_progress`
+// writer in `src/driver/contract.ts`. `ChangeDelta.primitive` is drawn from this union, so every
+// delta names the exact primitive that produced it.
 export const PRIMITIVE_NAMES = [
   'add_node',
   'remove_node',
@@ -71,6 +72,7 @@ export const PRIMITIVE_NAMES = [
   'apply_event',
   'add_corrective',
   'reset',
+  'engage',
 ] as const;
 export type PrimitiveName = (typeof PRIMITIVE_NAMES)[number];
 

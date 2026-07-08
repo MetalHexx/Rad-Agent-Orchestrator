@@ -123,6 +123,11 @@ export type {
 } from './node-type/definition.js';
 export { DATA_FIELD_KINDS, DATA_FIELD_LEVELS, ENVELOPE_OUTCOMES } from './node-type/definition.js';
 
+export type { DispatchRequest } from './driver/contract.js';
+export { readFrontier, isQuiescent, engage } from './driver/contract.js';
+export type { ChangeListener, Unsubscribe, ChangeStream } from './driver/change-stream.js';
+export { withChangeStream } from './driver/change-stream.js';
+
 export type {
   CodeBehindPort,
   DocReadPort,
