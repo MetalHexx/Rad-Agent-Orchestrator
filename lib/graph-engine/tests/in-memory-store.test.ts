@@ -123,6 +123,44 @@ describe('InMemoryStateStore — transactional rollback', () => {
     if (!result.ok) expect(result.error.code).toBe('invalid_delta');
   });
 
+  it('rejects an updated node change that changes id, leaving neither the old nor new node written', () => {
+    const store = new InMemoryStateStore();
+    const s = scope('proj-a');
+    const original = node('task-a');
+    store.apply(s, createDelta([original]));
+
+    const result = store.apply(
+      s,
+      delta([{ op: 'updated', before: original, after: node('task-b') }]),
+    );
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe('invalid_delta');
+    // the identity-changing update is rejected outright — no orphaned duplicate is created
+    expect(store.getNode(s, 'task-a')).toEqual(original);
+    expect(store.getNode(s, 'task-b')).toBeNull();
+  });
+
+  it('rejects an updated edge change that changes identity, so no stale duplicate edge is left behind', () => {
+    const store = new InMemoryStateStore();
+    const s = scope('proj-a');
+    const a = node('task-a');
+    const b = node('task-b');
+    const c = node('task-c');
+    const edge = { from: 'task-a', to: 'task-b', kind: 'depends_on' as const };
+    store.apply(s, createDelta([a, b, c], [{ op: 'created', before: null, after: edge }]));
+
+    const result = store.apply(
+      s,
+      delta([], [{ op: 'updated', before: edge, after: { from: 'task-a', to: 'task-c', kind: 'depends_on' } }]),
+    );
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe('invalid_delta');
+    // the original edge survives untouched and no second edge under the new identity was written
+    expect(store.listEdges(s)).toEqual([edge]);
+  });
+
   it('leaves the store untouched when part of a mixed delta is malformed (all-or-nothing)', () => {
     const store = new InMemoryStateStore();
     const s = scope('proj-a');

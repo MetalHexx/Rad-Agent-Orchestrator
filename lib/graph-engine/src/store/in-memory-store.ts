@@ -40,6 +40,14 @@ function planNodeChange(state: ScopeState, change: NodeChange): Result<NodeMutat
       if (!change.before || !change.after) {
         return invalidDelta(`an 'updated' node change requires 'before' and 'after'`);
       }
+      // An update mutates a node in place; it must not change identity. Writing `after` under a new
+      // id would leave `before` orphaned in the map (an update that silently became an insert), so
+      // reject it — an id change is a removal plus a creation, not an update.
+      if (change.before.id !== change.after.id) {
+        return invalidDelta(
+          `an 'updated' node change cannot change id ('${change.before.id}' -> '${change.after.id}')`,
+        );
+      }
       if (!state.nodes.has(change.before.id)) {
         return invalidDelta(`node '${change.before.id}' does not exist`);
       }
@@ -70,8 +78,17 @@ function planEdgeChange(state: ScopeState, change: EdgeChange): Result<EdgeMutat
         return invalidDelta(`an 'updated' edge change requires 'before' and 'after'`);
       }
       const beforeKey = edgeKey(change.before);
+      const afterKey = edgeKey(change.after);
+      // An edge is defined entirely by its `{kind,from,to}` identity — it carries no other payload —
+      // so an 'updated' change that alters that identity is really a remove-plus-create. Reject it
+      // rather than write the new key while leaving the old one behind as a stale duplicate.
+      if (beforeKey !== afterKey) {
+        return invalidDelta(
+          `an 'updated' edge change cannot change identity ('${beforeKey}' -> '${afterKey}')`,
+        );
+      }
       if (!state.edges.has(beforeKey)) return invalidDelta(`edge '${beforeKey}' does not exist`);
-      return { ok: true, data: { kind: 'set', key: edgeKey(change.after), edge: change.after } };
+      return { ok: true, data: { kind: 'set', key: afterKey, edge: change.after } };
     }
     case 'removed': {
       if (!change.before) return invalidDelta(`a 'removed' edge change requires 'before'`);
