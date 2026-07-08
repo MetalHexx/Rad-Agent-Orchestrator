@@ -35,7 +35,6 @@ export function TranscriptFacet({ transcript }: TranscriptFacetProps) {
   const events = transcript.events;
   const [facets, setFacets] = React.useState<TranscriptFacetState>(defaultFacets);
   const [errorCursor, setErrorCursor] = React.useState(-1);
-  const errorCount = errorEventSeqs(events).length;
 
   const toolOptions = React.useMemo(() => toolOptionsFrom(transcript.toolSummary.byName), [transcript.toolSummary]);
   const fileOptions = React.useMemo(() => fileOptionsFrom(events), [events]);
@@ -43,6 +42,10 @@ export function TranscriptFacet({ transcript }: TranscriptFacetProps) {
   // so a facet-off toolbar and the underlying timeline stay in sync (no showToolIO
   // pass-through — the timeline just renders whatever survives the filter).
   const filtered = React.useMemo(() => applyFacets(events, facets), [events, facets]);
+  // Derived from `filtered`, not `events`: the jump-to-error effect in
+  // TranscriptTimeline only ever sees the filtered list, so the badge/button
+  // must agree with what a click can actually reach.
+  const errorCount = React.useMemo(() => errorEventSeqs(filtered).length, [filtered]);
 
   const onTypeChange = React.useCallback(
     (key: keyof TranscriptFacetState["types"], value: boolean) =>
