@@ -41,7 +41,7 @@ import type {
   SpawnAgentRequest,
   SpawnAgentResult,
 } from '@rad-orchestration/graph-engine';
-import { add_corrective, apply_event, engage, expand, readFrontier, reset } from '@rad-orchestration/graph-engine';
+import { add_corrective, apply_event, engage, expand, readFrontier, reset, toggle } from '@rad-orchestration/graph-engine';
 import type {
   ApprovalDecision,
   CodeReviewReviewedData,
@@ -169,9 +169,9 @@ function findChainTip(nodes: readonly DagNode[], edges: readonly DagEdge[], revi
 }
 
 /**
- * Carries out one `HandleResult.routing` request. Only the two primitives the shipped built-ins'
- * own `handle` ever requests are supported (`reset`, `add_corrective`) — any other is a driver bug,
- * not a silently-ignored no-op. `add_corrective`'s own `handle`-supplied `params.data` deliberately
+ * Carries out one `HandleResult.routing` request. Only the three primitives the shipped built-ins'
+ * own `handle` ever requests are supported (`reset`, `add_corrective`, `toggle`) — any other is a
+ * driver bug, not a silently-ignored no-op. `add_corrective`'s own `handle`-supplied `params.data` deliberately
  * carries only `reviewReportPath`/`correctiveIndex` (see `code-review.ts`); the chain's original
  * scope contract (`handoffDocPath`/`repos`/`complexity`/`shouldCommit`) is carried forward here from
  * the review's current chain tip — the same host-side enrichment a real orchestrator performs
@@ -202,6 +202,10 @@ function runRouting(ctx: PrimitiveContext, routing: RoutingRequest): Result<unkn
       return add_corrective(ctx, params.id, params.type, params.review, {
         data: { ...carriedForward, ...params.data },
       });
+    }
+    case 'toggle': {
+      const params = routing.params as unknown as { node: NodeId };
+      return toggle(ctx, params.node);
     }
     default:
       throw new Error(`test driver: unsupported routing primitive '${routing.primitive}'`);

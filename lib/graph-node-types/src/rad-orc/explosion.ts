@@ -404,7 +404,14 @@ export function createExplosionNodeType(options: ExplosionNodeTypeOptions = {}):
       const { parseError, masterPlanNodeId, parseRetryCount } = ev.envelope.data as unknown as ExplosionParseFailureData;
       const nextCount = parseRetryCount + 1;
       if (nextCount > parseRetryLimit) {
-        return { dataChange: { parseRetryCount: nextCount, lastParseError: parseError } };
+        // Halts by excluding this node from the frontier (never re-firing the same failing parse
+        // forever) and resets its own count at halt time — honoring core-opacity, since the engine
+        // itself never touches `data` — so a later `resume` (clearing `disabled`) hands the
+        // re-entering explosion a fresh full retry window rather than an already-exhausted one.
+        return {
+          dataChange: { parseRetryCount: 0, lastParseError: parseError },
+          routing: { primitive: 'toggle', params: { node: ev.nodeId } },
+        };
       }
       const routing: RoutingRequest = { primitive: 'reset', params: { node: masterPlanNodeId, cascade: true } };
       return { dataChange: { parseRetryCount: nextCount, lastParseError: parseError }, routing };

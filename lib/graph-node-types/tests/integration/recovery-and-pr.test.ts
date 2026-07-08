@@ -67,6 +67,60 @@ describe('recovery — rejected -> halt -> resume', () => {
   });
 });
 
+describe('recovery — corrective-budget halt -> resume -> a fresh corrective converges', () => {
+  it('exhausting the retry budget halts the review (disabled); resume mints a fresh corrective and it converges to done', async () => {
+    const ctx = ctxFor('proj-budget-recovery');
+    const registry = createNodeTypeRegistry(BUILT_IN_NODE_TYPES);
+
+    add_node(ctx, registry, 'task-a', 'rad-orc:task', ROOT_NODE_ID, { data: taskData('/tasks/task-a.md') });
+    add_node(ctx, registry, 'review', 'rad-orc:code_review', ROOT_NODE_ID, { data: { level: 'task' }, dependsOn: ['task-a'] });
+
+    // The default engine budget (`add_corrective`'s own `DEFAULT_MAX_RETRIES`) is 5: five
+    // `changes_requested` cycles mint correctives 1-5, the sixth finds the chain already at depth
+    // 5 and halts instead of minting a 6th. Two more entries prove the post-resume recovery: a
+    // fresh corrective minted under the reset budget, then a final approval.
+    const script: DriverScript = {
+      reviewVerdicts: {
+        review: [
+          { verdict: 'changes_requested', severity: 'low' },
+          { verdict: 'changes_requested', severity: 'low' },
+          { verdict: 'changes_requested', severity: 'low' },
+          { verdict: 'changes_requested', severity: 'low' },
+          { verdict: 'changes_requested', severity: 'low' },
+          { verdict: 'changes_requested', severity: 'low' },
+          { verdict: 'changes_requested', severity: 'low' },
+          { verdict: 'approved', severity: 'none' },
+        ],
+      },
+    };
+    const ports = createFakedCapabilityPorts();
+    const resolvers = createBuiltInResolvers(ports, script);
+
+    await runToQuiescence(ctx, registry, ROOT_NODE_ID, resolvers);
+
+    const halted = ctx.store.getNode(ctx.scope, 'review');
+    expect(halted?.disabled).toBe(true);
+    expect(halted?.status).not.toBe('done');
+    expect(ctx.store.getNode(ctx.scope, 'review-corrective-5')?.status).toBe('done'); // the 5th attempt within budget
+    expect(ctx.store.getNode(ctx.scope, 'review-corrective-6')).toBeNull(); // the budget-exceeding 6th mint never happened
+    expect(isGloballyQuiescent(ctx, ROOT_NODE_ID)).toBe(true); // a recoverable halt — nothing left eligible without resume
+
+    const resumed = resume(ctx, 'review');
+    expect(resumed.ok).toBe(true);
+    expect(ctx.store.getNode(ctx.scope, 'review')?.disabled).toBe(false);
+    expect(ctx.store.getNode(ctx.scope, 'review')?.budgetAnchor).toBe('review-corrective-5'); // anchors the reset budget at the chain's tip
+
+    await runToQuiescence(ctx, registry, ROOT_NODE_ID, resolvers);
+
+    const freshCorrective = ctx.store.getNode(ctx.scope, 'review-corrective-7');
+    expect(freshCorrective?.status).toBe('done'); // the fresh mint the reset budget allowed
+    expect(freshCorrective?.derivedFrom).toBe('review-corrective-5');
+    expect(ctx.store.getNode(ctx.scope, 'review')?.status).toBe('done');
+    expect(ctx.store.getNode(ctx.scope, 'review')?.data.verdict).toBe('approved');
+    expect(isGloballyQuiescent(ctx, ROOT_NODE_ID)).toBe(true);
+  });
+});
+
 describe('multi-repo pr — the frozen per-repo shape', () => {
   it('opens (or resolves) a PR per repo and reports back the frozen {name, pr_url} shape', async () => {
     const ctx = ctxFor('proj-pr');

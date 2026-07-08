@@ -157,6 +157,33 @@ describe('rad-orc:master_plan -> rad-orc:explosion seed their own decorated subg
   });
 });
 
+describe('rad-orc:explosion halts (frontier-excluded) once its parse-retry cap is exhausted', () => {
+  it('a master plan that never parses drives explosion through parseRetryLimit + 1 failure cycles, then it self-disables and the graph reaches quiescence', async () => {
+    const ctx = ctxFor('proj-explosion-halt');
+    const registry = createNodeTypeRegistry(BUILT_IN_NODE_TYPES);
+
+    add_node(ctx, registry, 'master-plan', 'rad-orc:master_plan', ROOT_NODE_ID);
+    add_node(ctx, registry, 'plan-approval', 'rad-orc:approval', ROOT_NODE_ID, {
+      data: { level: 'plan' },
+      dependsOn: ['master-plan'],
+    });
+    add_node(ctx, registry, 'explosion', 'rad-orc:explosion', ROOT_NODE_ID, {
+      data: { cadence: DECORATION_CADENCE_FIXTURE },
+      dependsOn: ['master-plan'],
+    });
+
+    const ports = createFakedCapabilityPorts();
+    const resolvers = createBuiltInResolvers(ports, { masterPlanDoc: '# Master Plan\n' }); // no phases — never parses
+
+    await runToQuiescence(ctx, registry, ROOT_NODE_ID, resolvers);
+
+    const explosion = ctx.store.getNode(ctx.scope, 'explosion');
+    expect(explosion?.disabled).toBe(true);
+    expect(explosion?.data.parseRetryCount).toBe(0); // reset at halt time — a later resume gets a fresh window
+    expect(isGloballyQuiescent(ctx, ROOT_NODE_ID)).toBe(true); // maxSteps never throws — the halt actually stops the loop
+  });
+});
+
 describe('a custom team:* node type registers through the same registry and runs to completion via the same driver', () => {
   function withCustomResolver(ports: ReturnType<typeof createFakedCapabilityPorts>, rawFindings: readonly string[]) {
     const resolvers: Readonly<Record<string, NodeOutcomeResolver>> = {

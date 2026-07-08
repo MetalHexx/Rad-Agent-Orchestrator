@@ -4,9 +4,11 @@ The node-type vocabulary and type contracts for the steerable DAG, layered on
 `@rad-orchestration/graph-engine`. The strict build, the vitest harness, the facade-only barrel,
 and the lint gate were established here so every later task inherits them. `graph-engine` now
 ships the full relational model and state store (see its `AGENTS.md`); this package ships the
-frozen wire-contract fixtures, the built-in event-token normalization, and the first four
-`rad-orc:*` built-ins (the structural container plus the pre-execution planning spine) under
-`src/rad-orc/`, with more built-ins to follow in later tasks.
+frozen wire-contract fixtures, the built-in event-token normalization, and all eight `rad-orc:*`
+built-ins — `phase`, `master_plan`, `explosion`, `approval`, `task`, `code_review`, `corrective`,
+`pr` — under `src/rad-orc/`, plus the P05 test harness (`tests/harness/test-driver.ts`, a
+driver implementing the engine's driver contract over faked capability ports) driving the
+integration and property-style contract suites under `tests/`.
 
 ## Standing conventions
 

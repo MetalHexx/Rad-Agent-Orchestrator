@@ -188,7 +188,7 @@ describe('rad-orc:explosion node type', () => {
     expect(result.dataChange).toMatchObject({ parseRetryCount: 1 });
   });
 
-  it('a parse failure past the retry cap stops retrying — no routing request', () => {
+  it('a parse failure past the retry cap halts via a self-toggle and resets its own retry count', () => {
     const explosion = createExplosionNodeType({ parseRetryLimit: 2 });
     const result = explosion.handle({
       token: EXPLOSION_PARSE_FAILED_TOKEN,
@@ -199,8 +199,11 @@ describe('rad-orc:explosion node type', () => {
       },
     });
 
-    expect(result.routing).toBeUndefined();
-    expect(result.dataChange).toMatchObject({ parseRetryCount: 3 });
+    expect(result.routing).toEqual({ primitive: 'toggle', params: { node: 'explosion' } });
+    expect(result.dataChange).toEqual({
+      parseRetryCount: 0,
+      lastParseError: { line: 3, expected: 'x', found: 'y', message: 'bad' },
+    });
   });
 
   it('handle ignores an unrelated token', () => {
