@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { formatClock, toolArgPreview } from './transcript-view';
-import { visibleEvents, errorEventSeqs, isTightResult, windowEvents } from './transcript-view';
+import { errorEventSeqs, isTightResult, windowEvents } from './transcript-view';
 import { CLAMP_LINES, displayLineCount, needsClamp } from './transcript-view';
 import { applyFacets, facetLabel } from './transcript-view';
 import type { TranscriptFacetState } from './transcript-view';
@@ -18,17 +18,6 @@ test('toolArgPreview takes the first line, trimmed and capped (DD-4)', () => {
 });
 
 const E = (over: Record<string, unknown>) => ({ seq: 0, timestamp: '', ...over }) as never;
-
-test('visibleEvents hides thinking when off and filters by query (FR-7, FR-9, DD-8)', () => {
-  const events = [
-    E({ seq: 1, kind: 'thinking', text: 'secret plan' }),
-    E({ seq: 2, kind: 'message', role: 'user', text: 'run the build' }),
-    E({ seq: 3, kind: 'tool_call', tool: { name: 'Bash', input: { text: 'npm run build' }, toolUseId: 'a' } }),
-  ];
-  assert.equal(visibleEvents(events, { showThinking: false, query: '' }).length, 2);
-  assert.equal(visibleEvents(events, { showThinking: true, query: 'build' }).length, 2);
-  assert.equal(visibleEvents(events, { showThinking: true, query: 'nomatch' }).length, 0);
-});
 
 test('errorEventSeqs returns only error tool_results, in order (FR-10)', () => {
   const events = [

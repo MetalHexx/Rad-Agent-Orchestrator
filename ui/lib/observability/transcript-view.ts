@@ -37,10 +37,6 @@ export function matchesQuery(event: TranscriptEvent, query: string): boolean {
   return hay.includes(q);
 }
 
-export function visibleEvents(events: TranscriptEvent[], opts: { showThinking: boolean; query: string }): TranscriptEvent[] {
-  return events.filter((e) => (opts.showThinking || e.kind !== "thinking") && matchesQuery(e, opts.query));
-}
-
 export interface TranscriptFacetState {
   types: { user: boolean; assistant: boolean; thinking: boolean; toolResults: boolean; errors: boolean };
   tools: ReadonlySet<string> | "all"; // selected tool names; 'all' = every tool; empty set = hide all tool calls

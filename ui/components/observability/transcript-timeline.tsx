@@ -2,24 +2,21 @@
 import * as React from "react";
 import type { TranscriptEvent } from "@rad-orchestration/telemetry";
 import { TranscriptEventCard } from "./transcript-event-card";
-import { visibleEvents, isTightResult, errorEventSeqs, windowEvents } from "@/lib/observability/transcript-view";
+import { isTightResult, errorEventSeqs, windowEvents } from "@/lib/observability/transcript-view";
 
 const DEFAULT_WINDOW = 400;
 
 export interface TranscriptTimelineProps {
+  /** Already facet-filtered (via applyFacets) — this component renders, it does not filter. */
   events: TranscriptEvent[];
-  showThinking: boolean;
-  showToolIO: boolean;
-  query: string;
   errorCursor: number;
 }
 
-export function TranscriptTimeline({ events, showThinking, showToolIO, query, errorCursor }: TranscriptTimelineProps) {
+export function TranscriptTimeline({ events, errorCursor }: TranscriptTimelineProps) {
   const [expanded, setExpanded] = React.useState(false);
   const errorRefs = React.useRef<Map<number, HTMLElement>>(new Map());
 
-  const visible = visibleEvents(events, { showThinking, query });
-  const { shown, hidden } = windowEvents(visible, expanded ? Infinity : DEFAULT_WINDOW);
+  const { shown, hidden } = windowEvents(events, expanded ? Infinity : DEFAULT_WINDOW);
 
   // Scroll to the current error ONLY on an explicit jump click (errorCursor change).
   // `events` is intentionally NOT a dep: each SSE refetch yields a fresh events
@@ -46,7 +43,7 @@ export function TranscriptTimeline({ events, showThinking, showToolIO, query, er
       {hidden > 0 ? (
         <button type="button" onClick={() => setExpanded(true)}
           className="mb-3 w-full rounded-md border border-border bg-muted px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground">
-          Showing latest {shown.length} of {visible.length} events — show all
+          Showing latest {shown.length} of {events.length} events — show all
         </button>
       ) : null}
       {shown.length === 0 ? (
@@ -57,7 +54,7 @@ export function TranscriptTimeline({ events, showThinking, showToolIO, query, er
           return (
             <div key={e.seq} data-seq={e.seq}
               ref={isErr ? (el) => { if (el) errorRefs.current.set(e.seq, el); } : undefined}>
-              <TranscriptEventCard event={e} tight={isTightResult(shown, i)} showToolIO={showToolIO} />
+              <TranscriptEventCard event={e} tight={isTightResult(shown, i)} />
             </div>
           );
         })
