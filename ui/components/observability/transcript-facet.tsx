@@ -5,6 +5,7 @@ import { TranscriptControls } from "./transcript-controls";
 import { TranscriptTimeline } from "./transcript-timeline";
 import { applyFacets, errorEventSeqs } from "@/lib/observability/transcript-view";
 import type { TranscriptFacetState } from "@/lib/observability/transcript-view";
+import { originatingToolByResult } from "@/lib/observability/tool-calls";
 
 export interface TranscriptFacetProps {
   transcript: AgentTranscript;
@@ -46,6 +47,10 @@ export function TranscriptFacet({ transcript }: TranscriptFacetProps) {
   // TranscriptTimeline only ever sees the filtered list, so the badge/button
   // must agree with what a click can actually reach.
   const errorCount = React.useMemo(() => errorEventSeqs(filtered).length, [filtered]);
+  // Built from the full, unfiltered `events` — NOT `filtered` — so a tool_call
+  // hidden by the Tools facet still pairs with its still-visible tool_result
+  // (they're filtered independently; see transcript-view.ts's matchesFacet).
+  const originatingToolByResultSeq = React.useMemo(() => originatingToolByResult(events), [events]);
 
   const onTypeChange = React.useCallback(
     (key: keyof TranscriptFacetState["types"], value: boolean) =>
@@ -65,7 +70,11 @@ export function TranscriptFacet({ transcript }: TranscriptFacetProps) {
         errorCount={errorCount} onJumpError={() => setErrorCursor((c) => c + 1)}
       />
       <div className="min-h-0 flex-1">
-        <TranscriptTimeline events={filtered} errorCursor={errorCursor} />
+        <TranscriptTimeline
+          events={filtered}
+          originatingToolByResultSeq={originatingToolByResultSeq}
+          errorCursor={errorCursor}
+        />
       </div>
     </div>
   );

@@ -1,5 +1,6 @@
-// Pure, SSR-safe derivations for the Tools facet. No React, no DOM —
-// mirrors the helper style in transcript-view.ts (e.g. errorEventSeqs).
+// Pure, SSR-safe tool_call/tool_result derivations shared by the Tools facet
+// and the Transcript timeline. No React, no DOM — mirrors the helper style in
+// transcript-view.ts (e.g. errorEventSeqs).
 import type { TranscriptEvent, TruncatableBody } from "@rad-orchestration/telemetry";
 
 export interface ToolCall {
@@ -32,6 +33,34 @@ export function toToolCalls(events: TranscriptEvent[]): ToolCall[] {
     });
   }
   return calls;
+}
+
+// The identity renderModeFor needs to classify a tool_result: the call's tool
+// name for most tools, or — for a Read result specifically — the file path it
+// read, since "Read of *.md" vs "Read of a source file" can't be told apart
+// from the bare tool name alone.
+function originatingToolKey(name: string, inputText: string): string {
+  if (name !== "Read") return name;
+  try {
+    const parsed = JSON.parse(inputText) as { file_path?: unknown };
+    return typeof parsed.file_path === "string" ? parsed.file_path : name;
+  } catch {
+    return name;
+  }
+}
+
+// tool_result seq -> originating tool key (AD-6 pairing seam the Transcript
+// timeline consumes to resolve a card's originatingTool). MUST be built from
+// the full, unfiltered event list: a facet can hide a tool_call while its
+// tool_result stays visible (they're filtered independently — see
+// transcript-view.ts's matchesFacet), and the pairing still needs to resolve
+// in that state or the result silently loses its originating tool.
+export function originatingToolByResult(events: TranscriptEvent[]): Map<number, string> {
+  const map = new Map<number, string>();
+  for (const call of toToolCalls(events)) {
+    if (call.resultEvent) map.set(call.resultEvent.seq, originatingToolKey(call.name, call.input.text));
+  }
+  return map;
 }
 
 export interface ToolCallFilter {
