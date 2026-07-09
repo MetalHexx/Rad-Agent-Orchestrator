@@ -7,6 +7,7 @@
     "lib/telemetry",
     "lib/graph-engine",
     "lib/graph-node-types",
+    "lib/graph-store-sqlite",
     "cli",
     "ui",
     "harness-adapters/engine",
