@@ -56,8 +56,12 @@ export function runMigrations(db: Database.Database): void {
   const current = db.pragma('user_version', { simple: true }) as number;
   for (const migration of MIGRATIONS) {
     if (migration.version > current) {
-      db.exec(migration.up);
-      db.pragma(`user_version = ${migration.version}`);
+      // DDL + version bump commit atomically, so a crash between them can't leave a half-migrated
+      // DB whose re-open would re-run this migration against tables that already exist.
+      db.transaction(() => {
+        db.exec(migration.up);
+        db.pragma(`user_version = ${migration.version}`);
+      })();
     }
   }
 }

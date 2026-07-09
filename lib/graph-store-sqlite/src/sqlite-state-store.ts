@@ -13,6 +13,9 @@ import {
   type StateStore,
 } from '@rad-orchestration/graph-engine';
 
+/** Shared read projection for `dag_nodes` — the columns `rowToNode` consumes, in `NodeRow` order. */
+const NODE_COLUMNS = 'id, type, status, parent, order_key, derived_from, disabled, budget_anchor, data';
+
 interface NodeRow {
   id: string;
   type: string;
@@ -73,20 +76,28 @@ function rowToEdge(row: EdgeRow): DagEdge {
   return { from: row.from_id, to: row.to_id, kind: row.kind as DagEdge['kind'] };
 }
 
-/** Positional bind values for `upsertNodeStmt`, matching its column order exactly. */
-function nodeParams(projectId: string, node: DagNode): unknown[] {
-  return [
-    projectId,
-    node.id,
-    node.type,
-    node.status,
-    node.parent,
-    node.order,
-    node.derivedFrom,
-    node.disabled === undefined ? null : node.disabled ? 1 : 0,
-    node.budgetAnchor ?? null,
-    JSON.stringify(node.data),
-  ];
+/** Named bind values for `upsertNodeStmt` — keys match its `@name` parameters exactly. */
+function nodeParams(projectId: string, node: DagNode): Record<string, string | number | null> {
+  return {
+    project_id: projectId,
+    id: node.id,
+    type: node.type,
+    status: node.status,
+    parent: node.parent,
+    order_key: node.order,
+    derived_from: node.derivedFrom,
+    disabled: node.disabled === undefined ? null : node.disabled ? 1 : 0,
+    budget_anchor: node.budgetAnchor ?? null,
+    data: JSON.stringify(node.data),
+  };
+}
+
+/** Named bind values shared by the edge exists / upsert / delete statements. */
+function edgeParams(
+  projectId: string,
+  edge: Pick<DagEdge, 'from' | 'to' | 'kind'>,
+): Record<string, string> {
+  return { project_id: projectId, from_id: edge.from, to_id: edge.to, kind: edge.kind };
 }
 
 /**
@@ -104,7 +115,6 @@ function nodeParams(projectId: string, node: DagNode): unknown[] {
  */
 export class SqliteStateStore implements StateStore {
   private readonly insertProjectStmt: Database.Statement;
-  private readonly countNodesStmt: Database.Statement;
   private readonly selectNodeStmt: Database.Statement;
   private readonly selectNodesStmt: Database.Statement;
   private readonly selectNodeIdsStmt: Database.Statement;
@@ -120,18 +130,16 @@ export class SqliteStateStore implements StateStore {
     (projectId: string, delta: ChangeDelta) => Result<void>
   >;
 
+  /** Scopes whose `projects` row has been ensured this session — lets reads skip re-seeding work. */
+  private readonly seededScopes = new Set<string>();
+
   constructor(private readonly db: Database.Database) {
     this.insertProjectStmt = this.db.prepare('INSERT OR IGNORE INTO projects (id) VALUES (?)');
-    this.countNodesStmt = this.db.prepare(
-      'SELECT COUNT(*) AS count FROM dag_nodes WHERE project_id = ?',
-    );
     this.selectNodeStmt = this.db.prepare(
-      `SELECT id, type, status, parent, order_key, derived_from, disabled, budget_anchor, data
-       FROM dag_nodes WHERE project_id = ? AND id = ?`,
+      `SELECT ${NODE_COLUMNS} FROM dag_nodes WHERE project_id = ? AND id = ?`,
     );
     this.selectNodesStmt = this.db.prepare(
-      `SELECT id, type, status, parent, order_key, derived_from, disabled, budget_anchor, data
-       FROM dag_nodes WHERE project_id = ?`,
+      `SELECT ${NODE_COLUMNS} FROM dag_nodes WHERE project_id = ? ORDER BY rowid`,
     );
     this.selectNodeIdsStmt = this.db.prepare('SELECT id FROM dag_nodes WHERE project_id = ?');
     this.nodeExistsStmt = this.db.prepare(
@@ -140,7 +148,7 @@ export class SqliteStateStore implements StateStore {
     this.upsertNodeStmt = this.db.prepare(
       `INSERT INTO dag_nodes
          (project_id, id, type, status, parent, order_key, derived_from, disabled, budget_anchor, data)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       VALUES (@project_id, @id, @type, @status, @parent, @order_key, @derived_from, @disabled, @budget_anchor, @data)
        ON CONFLICT(project_id, id) DO UPDATE SET
          type = excluded.type,
          status = excluded.status,
@@ -153,16 +161,16 @@ export class SqliteStateStore implements StateStore {
     );
     this.deleteNodeStmt = this.db.prepare('DELETE FROM dag_nodes WHERE project_id = ? AND id = ?');
     this.selectEdgesStmt = this.db.prepare(
-      'SELECT from_id, to_id, kind FROM dag_edges WHERE project_id = ?',
+      'SELECT from_id, to_id, kind FROM dag_edges WHERE project_id = ? ORDER BY rowid',
     );
     this.edgeExistsStmt = this.db.prepare(
-      'SELECT 1 FROM dag_edges WHERE project_id = ? AND from_id = ? AND to_id = ? AND kind = ?',
+      'SELECT 1 FROM dag_edges WHERE project_id = @project_id AND from_id = @from_id AND to_id = @to_id AND kind = @kind',
     );
     this.upsertEdgeStmt = this.db.prepare(
-      'INSERT OR REPLACE INTO dag_edges (project_id, from_id, to_id, kind) VALUES (?, ?, ?, ?)',
+      'INSERT OR REPLACE INTO dag_edges (project_id, from_id, to_id, kind) VALUES (@project_id, @from_id, @to_id, @kind)',
     );
     this.deleteEdgeStmt = this.db.prepare(
-      'DELETE FROM dag_edges WHERE project_id = ? AND from_id = ? AND to_id = ? AND kind = ?',
+      'DELETE FROM dag_edges WHERE project_id = @project_id AND from_id = @from_id AND to_id = @to_id AND kind = @kind',
     );
     this.insertChangeLogStmt = this.db.prepare(
       `INSERT INTO change_log (project_id, ts, actor, primitive, params, node_changes, edge_changes)
@@ -174,11 +182,16 @@ export class SqliteStateStore implements StateStore {
   }
 
   private ensureSeeded(scope: ProjectScope): void {
-    this.insertProjectStmt.run(scope.projectId);
-    const { count } = this.countNodesStmt.get(scope.projectId) as { count: number };
-    if (count === 0) {
-      this.upsertNodeStmt.run(...nodeParams(scope.projectId, createRootNode()));
+    if (this.seededScopes.has(scope.projectId)) return;
+    // Seed the root node only on a scope's genuine first touch — when the `projects` row is newly
+    // inserted (`changes === 1`). This matches `InMemoryStateStore`, which seeds root once on first
+    // sight and never resurrects an intentionally-emptied scope, and keeps reads from taking a
+    // write lock + full COUNT on every call.
+    const inserted = this.insertProjectStmt.run(scope.projectId);
+    if (inserted.changes === 1) {
+      this.upsertNodeStmt.run(nodeParams(scope.projectId, createRootNode()));
     }
+    this.seededScopes.add(scope.projectId);
   }
 
   private nodeExists(projectId: string, id: NodeId): boolean {
@@ -186,7 +199,7 @@ export class SqliteStateStore implements StateStore {
   }
 
   private edgeExists(projectId: string, edge: Pick<DagEdge, 'from' | 'to' | 'kind'>): boolean {
-    return this.edgeExistsStmt.get(projectId, edge.from, edge.to, edge.kind) !== undefined;
+    return this.edgeExistsStmt.get(edgeParams(projectId, edge)) !== undefined;
   }
 
   private planNodeChange(projectId: string, change: NodeChange): Result<NodeMutation> {
@@ -325,13 +338,13 @@ export class SqliteStateStore implements StateStore {
     if (!integrity.ok) return integrity;
 
     for (const mutation of nodeMutations) {
-      if (mutation.kind === 'set') this.upsertNodeStmt.run(...nodeParams(projectId, mutation.node));
+      if (mutation.kind === 'set') this.upsertNodeStmt.run(nodeParams(projectId, mutation.node));
       else this.deleteNodeStmt.run(projectId, mutation.id);
     }
     for (const mutation of edgeMutations) {
       const edge = mutation.edge;
-      if (mutation.kind === 'set') this.upsertEdgeStmt.run(projectId, edge.from, edge.to, edge.kind);
-      else this.deleteEdgeStmt.run(projectId, edge.from, edge.to, edge.kind);
+      if (mutation.kind === 'set') this.upsertEdgeStmt.run(edgeParams(projectId, edge));
+      else this.deleteEdgeStmt.run(edgeParams(projectId, edge));
     }
 
     // The store is a host component outside the engine's determinism boundary, so a wall-clock
