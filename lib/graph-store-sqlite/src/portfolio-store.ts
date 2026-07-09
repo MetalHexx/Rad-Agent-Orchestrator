@@ -3,6 +3,10 @@ import path from 'node:path';
 import type Database from 'better-sqlite3';
 import type { Result } from '@rad-orchestration/graph-engine';
 import type {
+  DocAttachInput,
+  DocOwner,
+  DocRecord,
+  DocUpdateInput,
   EdgeType,
   ExternalRefRecord,
   ExternalRefUpsertInput,
@@ -38,6 +42,9 @@ const EXTERNAL_REF_COLUMNS =
   'id, system, external_id, url, ref_type, parent_ref_id, data, created_at, updated_at';
 /** Shared read projection for `project_external_refs`, in `ProjectExternalRefRow` order. */
 const PROJECT_EXTERNAL_REF_COLUMNS = 'project_id, external_ref_id, relation, is_primary';
+/** Shared read projection for `docs`, in `DocRow` order. */
+const DOC_COLUMNS =
+  'id, dag_node_id, project_id, project_group_id, scope_project_id, path, doc_type, created_at, updated_at';
 
 interface ProjectRow {
   id: string;
@@ -92,6 +99,18 @@ interface ProjectExternalRefRow {
   external_ref_id: string;
   relation: string | null;
   is_primary: number | null;
+}
+
+interface DocRow {
+  id: string;
+  dag_node_id: string | null;
+  project_id: string | null;
+  project_group_id: string | null;
+  scope_project_id: string | null;
+  path: string | null;
+  doc_type: string | null;
+  created_at: string | null;
+  updated_at: string | null;
 }
 
 function invalidDelta(message: string): Result<never> {
@@ -169,6 +188,20 @@ function rowToProjectExternalRef(row: ProjectExternalRefRow): ProjectExternalRef
     externalRefId: row.external_ref_id,
     relation: row.relation as RefRelation | null,
     isPrimary: row.is_primary === 1,
+  };
+}
+
+function rowToDoc(row: DocRow): DocRecord {
+  return {
+    id: row.id,
+    dagNodeId: row.dag_node_id,
+    projectId: row.project_id,
+    groupId: row.project_group_id,
+    scopeProjectId: row.scope_project_id,
+    path: row.path as string,
+    docType: row.doc_type,
+    createdAt: row.created_at as string,
+    updatedAt: row.updated_at as string,
   };
 }
 
@@ -268,12 +301,53 @@ function projectExternalRefTargetId(projectId: string, externalRefId: string): s
   return `${projectId}:${externalRefId}`;
 }
 
+/** Named bind values for the doc insert/update statements — keys match their `@name` params. The
+ * update statement only references `id`/`path`/`doc_type`/`updated_at`; the remaining keys are
+ * harmlessly unused on that path. */
+function docParams(record: DocRecord): Record<string, string | null> {
+  return {
+    id: record.id,
+    dag_node_id: record.dagNodeId,
+    project_id: record.projectId,
+    project_group_id: record.groupId,
+    scope_project_id: record.scopeProjectId,
+    path: record.path,
+    doc_type: record.docType,
+    created_at: record.createdAt,
+    updated_at: record.updatedAt,
+  };
+}
+
+/** The `docs` owner-column values a `DocOwner` resolves to on `attachDoc` — mirrors the DB CHECK's
+ * exactly-one-of-three-arcs invariant. `scopeProjectId` is the FK-worthy partition `attachDoc` sets
+ * regardless of owner kind (`null` only for a group owner) — see the `docs` DDL comment. */
+function docOwnerColumns(owner: DocOwner): {
+  readonly dagNodeId: string | null;
+  readonly projectId: string | null;
+  readonly groupId: string | null;
+  readonly scopeProjectId: string | null;
+} {
+  if ('dagNode' in owner) {
+    return {
+      dagNodeId: owner.dagNode.nodeId,
+      projectId: null,
+      groupId: null,
+      scopeProjectId: owner.dagNode.projectId,
+    };
+  }
+  if ('project' in owner) {
+    return { dagNodeId: null, projectId: owner.project, groupId: null, scopeProjectId: owner.project };
+  }
+  return { dagNodeId: null, projectId: null, groupId: owner.group, scopeProjectId: null };
+}
+
 /**
- * Rejects a `worktrees.path` that is absolute under either path convention, regardless of the host
- * OS this process happens to run on — `path.isAbsolute` alone only recognizes the current
- * platform's convention, and a portable POSIX ref must be rejected as absolute on every host.
+ * Rejects a portable relative path ref (`worktrees.path`, `docs.path`) that is absolute under
+ * either path convention, regardless of the host OS this process happens to run on —
+ * `path.isAbsolute` alone only recognizes the current platform's convention, and a portable POSIX
+ * ref must be rejected as absolute on every host.
  */
-function isAbsoluteWorktreePath(candidate: string): boolean {
+function isAbsolutePortablePath(candidate: string): boolean {
   return path.win32.isAbsolute(candidate) || path.posix.isAbsolute(candidate);
 }
 
@@ -322,6 +396,15 @@ export class SqlitePortfolioStore implements PortfolioStore {
   private readonly deleteProjectExternalRefStmt: Database.Statement;
   private readonly selectRefsForProjectStmt: Database.Statement;
   private readonly selectProjectsForRefStmt: Database.Statement;
+  private readonly insertDocStmt: Database.Statement;
+  private readonly selectDocStmt: Database.Statement;
+  private readonly updateDocStmt: Database.Statement;
+  private readonly deleteDocStmt: Database.Statement;
+  private readonly selectDocsByNodeStmt: Database.Statement;
+  private readonly selectDocsByProjectOwnerStmt: Database.Statement;
+  private readonly selectDocsByGroupStmt: Database.Statement;
+  private readonly selectDocsForProjectScopeStmt: Database.Statement;
+  private readonly dagNodeExistsStmt: Database.Statement;
   private readonly insertChangeLogStmt: Database.Statement;
 
   constructor(private readonly db: Database.Database) {
@@ -458,6 +541,37 @@ export class SqlitePortfolioStore implements PortfolioStore {
        WHERE external_ref_id = ? ORDER BY rowid`,
     );
 
+    this.insertDocStmt = this.db.prepare(
+      `INSERT INTO docs (${DOC_COLUMNS})
+       VALUES (@id, @dag_node_id, @project_id, @project_group_id, @scope_project_id, @path, @doc_type, @created_at, @updated_at)`,
+    );
+    this.selectDocStmt = this.db.prepare(`SELECT ${DOC_COLUMNS} FROM docs WHERE id = ?`);
+    this.updateDocStmt = this.db.prepare(
+      `UPDATE docs SET path = @path, doc_type = @doc_type, updated_at = @updated_at WHERE id = @id`,
+    );
+    this.deleteDocStmt = this.db.prepare('DELETE FROM docs WHERE id = ?');
+    this.selectDocsByNodeStmt = this.db.prepare(
+      `SELECT ${DOC_COLUMNS} FROM docs WHERE dag_node_id = ? AND scope_project_id = ? ORDER BY rowid`,
+    );
+    this.selectDocsByProjectOwnerStmt = this.db.prepare(
+      `SELECT ${DOC_COLUMNS} FROM docs WHERE project_id = ? ORDER BY rowid`,
+    );
+    this.selectDocsByGroupStmt = this.db.prepare(
+      `SELECT ${DOC_COLUMNS} FROM docs WHERE project_group_id = ? ORDER BY rowid`,
+    );
+    // Backs `listDocsForProject`'s single indexed seek: `scope_project_id` is set to the owning
+    // project for both a project-owned doc and a node-owned doc (see `docOwnerColumns`), so this
+    // one query resolves both kinds without a UNION; a group-owned doc's `scope_project_id` is
+    // always NULL and never matches.
+    this.selectDocsForProjectScopeStmt = this.db.prepare(
+      `SELECT ${DOC_COLUMNS} FROM docs WHERE scope_project_id = ? ORDER BY rowid`,
+    );
+    // `dag_nodes`' composite PK precludes a `docs.dag_node_id` FK (see the `docs` DDL comment), so
+    // `attachDoc` validates node existence with this lookup instead.
+    this.dagNodeExistsStmt = this.db.prepare(
+      'SELECT 1 FROM dag_nodes WHERE project_id = ? AND id = ?',
+    );
+
     this.insertChangeLogStmt = this.db.prepare(
       `INSERT INTO portfolio_change_log (ts, actor, operation, target_type, target_id, before, after)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -580,7 +694,7 @@ export class SqlitePortfolioStore implements PortfolioStore {
   }
 
   addWorktree(input: WorktreeInput, actor: string | null): Result<WorktreeRecord> {
-    if (input.path != null && isAbsoluteWorktreePath(input.path)) {
+    if (input.path != null && isAbsolutePortablePath(input.path)) {
       return invalidDelta(
         `worktree path '${input.path}' must be relative to ~/.radorc/worktrees, not absolute`,
       );
@@ -1034,5 +1148,117 @@ export class SqlitePortfolioStore implements PortfolioStore {
       | ProjectExternalRefRow
       | undefined;
     return row ? rowToProjectExternalRef(row) : null;
+  }
+
+  /**
+   * Validates the owner arc (node existence for a node owner; row existence for a project/group
+   * owner) and `path`'s portability, then inserts the `docs` row with the owner's resolved columns
+   * (`docOwnerColumns`) — `scope_project_id` always lands on the owning project, or `NULL` for a
+   * group owner, per the `docs` DDL's CHECK.
+   */
+  attachDoc(owner: DocOwner, input: DocAttachInput, actor: string | null): Result<DocRecord> {
+    if (isAbsolutePortablePath(input.path)) {
+      return invalidDelta(
+        `doc path '${input.path}' must be relative to ~/.radorc/projects, not absolute`,
+      );
+    }
+    if ('dagNode' in owner) {
+      if (!this.dagNodeExists(owner.dagNode.projectId, owner.dagNode.nodeId)) {
+        return invalidDelta(
+          `dag node '${owner.dagNode.nodeId}' does not exist in project '${owner.dagNode.projectId}'`,
+        );
+      }
+    } else if ('project' in owner) {
+      if (!this.getProject(owner.project)) {
+        return invalidDelta(`project '${owner.project}' does not exist`);
+      }
+    } else {
+      if (!this.getGroup(owner.group)) {
+        return invalidDelta(`group '${owner.group}' does not exist`);
+      }
+    }
+
+    const now = new Date().toISOString();
+    const record: DocRecord = {
+      id: randomUUID(),
+      ...docOwnerColumns(owner),
+      path: input.path,
+      docType: input.docType ?? null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    return this.mutate<DocRecord>({
+      operation: 'doc.attached',
+      targetType: 'doc',
+      targetId: record.id,
+      actor,
+      before: null,
+      after: record,
+      write: () => this.insertDocStmt.run(docParams(record)),
+    });
+  }
+
+  getDoc(id: string): DocRecord | null {
+    const row = this.selectDocStmt.get(id) as DocRow | undefined;
+    return row ? rowToDoc(row) : null;
+  }
+
+  listDocsForOwner(owner: DocOwner): DocRecord[] {
+    if ('dagNode' in owner) {
+      return (
+        this.selectDocsByNodeStmt.all(owner.dagNode.nodeId, owner.dagNode.projectId) as DocRow[]
+      ).map(rowToDoc);
+    }
+    if ('project' in owner) {
+      return (this.selectDocsByProjectOwnerStmt.all(owner.project) as DocRow[]).map(rowToDoc);
+    }
+    return (this.selectDocsByGroupStmt.all(owner.group) as DocRow[]).map(rowToDoc);
+  }
+
+  listDocsForProject(projectId: string): DocRecord[] {
+    return (this.selectDocsForProjectScopeStmt.all(projectId) as DocRow[]).map(rowToDoc);
+  }
+
+  updateDoc(id: string, patch: DocUpdateInput, actor: string | null): Result<DocRecord> {
+    const before = this.getDoc(id);
+    if (!before) return invalidDelta(`doc '${id}' does not exist`);
+    if (patch.path !== undefined && isAbsolutePortablePath(patch.path)) {
+      return invalidDelta(
+        `doc path '${patch.path}' must be relative to ~/.radorc/projects, not absolute`,
+      );
+    }
+    const after: DocRecord = {
+      ...before,
+      path: patch.path ?? before.path,
+      docType: patch.docType === undefined ? before.docType : patch.docType,
+      updatedAt: new Date().toISOString(),
+    };
+    return this.mutate<DocRecord>({
+      operation: 'doc.updated',
+      targetType: 'doc',
+      targetId: id,
+      actor,
+      before,
+      after,
+      write: () => this.updateDocStmt.run(docParams(after)),
+    });
+  }
+
+  detachDoc(id: string, actor: string | null): Result<void> {
+    const before = this.getDoc(id);
+    if (!before) return invalidDelta(`doc '${id}' does not exist`);
+    return this.mutate<void>({
+      operation: 'doc.detached',
+      targetType: 'doc',
+      targetId: id,
+      actor,
+      before,
+      after: null,
+      write: () => this.deleteDocStmt.run(id),
+    });
+  }
+
+  private dagNodeExists(projectId: string, nodeId: string): boolean {
+    return this.dagNodeExistsStmt.get(projectId, nodeId) !== undefined;
   }
 }

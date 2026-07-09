@@ -8,9 +8,8 @@ export type AutoPolicy = 'ask' | 'always' | 'never';
 
 /**
  * The entity kinds `SqlitePortfolioStore`'s private mutate-and-audit helper accepts as
- * `portfolio_change_log.target_type`. `project`, `worktree`, `group`, `edge`, and `external_ref`
- * are implemented; `doc` is reserved for the portfolio entity a later task adds against this same
- * store and audit spine.
+ * `portfolio_change_log.target_type`. `project`, `worktree`, `group`, `edge`, `external_ref`, and
+ * `doc` are all implemented.
  */
 export type PortfolioTargetType = 'project' | 'group' | 'edge' | 'doc' | 'worktree' | 'external_ref';
 
@@ -175,6 +174,64 @@ export interface LinkProjectToRefInput {
 }
 
 /**
+ * Free-form classification tag for a `docs.doc_type` value (e.g. `'design'`, `'notes'`) — the
+ * store neither constrains nor interprets it; left open for a later task to narrow.
+ */
+export type DocType = string;
+
+/**
+ * The exactly-one-owner arc a `docs` row expresses, mirroring the DB's `docs` CHECK —
+ * `(dag_node_id IS NOT NULL) + (project_id IS NOT NULL) + (project_group_id IS NOT NULL) = 1` —
+ * at the type level: a caller cannot construct a `DocOwner` naming zero or multiple owners. A
+ * node-owned doc names both halves of the `dag_nodes` composite key, since `dag_node_id` alone
+ * isn't unique across projects.
+ */
+export type DocOwner =
+  | { readonly dagNode: { readonly projectId: string; readonly nodeId: string } }
+  | { readonly project: string }
+  | { readonly group: string };
+
+/**
+ * A `docs` row, camelCased for the store's public surface. Exactly one of `dagNodeId`/`projectId`/
+ * `groupId` is non-null — the DB CHECK's invariant. `scopeProjectId` is the project the doc's
+ * node/project owner belongs to (`null` for a group-owned doc); it is how the DDL's
+ * `trg_detach_docs_on_dag_node_delete` trigger finds a node-owned doc to promote on node deletion,
+ * and how `listDocsForProject` resolves both project-owned and node-owned docs of one project in a
+ * single indexed query.
+ */
+export interface DocRecord {
+  readonly id: string;
+  readonly dagNodeId: string | null;
+  readonly projectId: string | null;
+  readonly groupId: string | null;
+  readonly scopeProjectId: string | null;
+  readonly path: string;
+  readonly docType: DocType | null;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+/**
+ * Caller-supplied fields for `attachDoc`. `path` is relative to `~/.radorc/projects`,
+ * POSIX-separated — its first segment is the owner's folder: the project `id` for a project- or
+ * node-owned doc, the group slug for a group-owned doc. An absolute path is rejected.
+ */
+export interface DocAttachInput {
+  readonly path: string;
+  readonly docType?: DocType | null;
+}
+
+/**
+ * Caller-supplied fields for `updateDoc` — `path` and/or `docType` only; the owner arc moves
+ * through `detachDoc` + `attachDoc`, not this method. An omitted field leaves that column
+ * unchanged.
+ */
+export interface DocUpdateInput {
+  readonly path?: string;
+  readonly docType?: DocType | null;
+}
+
+/**
  * The portfolio graph's CRUD surface — distinct from the engine's `StateStore`, since projects,
  * worktrees, and the rest of the portfolio graph are host-managed metadata, not execution-DAG
  * state. Every mutation returns a `Result` and writes exactly one `portfolio_change_log` row in the
@@ -243,4 +300,11 @@ export interface PortfolioStore {
   ): Result<void>;
   listRefsForProject(projectId: string): ProjectExternalRefRecord[];
   listProjectsForRef(externalRefId: string): ProjectExternalRefRecord[];
+
+  attachDoc(owner: DocOwner, input: DocAttachInput, actor: string | null): Result<DocRecord>;
+  getDoc(id: string): DocRecord | null;
+  listDocsForOwner(owner: DocOwner): DocRecord[];
+  listDocsForProject(projectId: string): DocRecord[];
+  updateDoc(id: string, patch: DocUpdateInput, actor: string | null): Result<DocRecord>;
+  detachDoc(id: string, actor: string | null): Result<void>;
 }

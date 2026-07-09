@@ -5,6 +5,11 @@ export { SqliteStateStore } from './sqlite-state-store.js';
 export { SqlitePortfolioStore } from './portfolio-store.js';
 export type {
   AutoPolicy,
+  DocAttachInput,
+  DocOwner,
+  DocRecord,
+  DocType,
+  DocUpdateInput,
   EdgeType,
   ExternalRefRecord,
   ExternalRefUpsertInput,

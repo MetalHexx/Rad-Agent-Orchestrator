@@ -1,7 +1,9 @@
-import type { Result } from '@rad-orchestration/graph-engine';
+import type { ChangeDelta, DagNode, Result } from '@rad-orchestration/graph-engine';
+import { ROOT_NODE_ID } from '@rad-orchestration/graph-engine';
 import { describe, expect, it } from 'vitest';
 import { openDatabase } from '../src/db.js';
 import { SqlitePortfolioStore } from '../src/portfolio-store.js';
+import { SqliteStateStore } from '../src/sqlite-state-store.js';
 
 interface ChangeLogRow {
   seq: number;
@@ -20,6 +22,38 @@ function changeLogRows(db: ReturnType<typeof openDatabase>): ChangeLogRow[] {
 
 function tableCount(db: ReturnType<typeof openDatabase>, table: string): number {
   return (db.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get() as { count: number }).count;
+}
+
+/** A minimal `dag_nodes` row, created via `SqliteStateStore` so the docs tests can exercise the
+ * cross-graph node-existence check and the promote-on-delete trigger against a real node. */
+function dagNode(id: string): DagNode {
+  return {
+    id,
+    type: 'rad-orc:task',
+    status: 'not_started',
+    parent: ROOT_NODE_ID,
+    order: 0,
+    derivedFrom: null,
+    data: {},
+  };
+}
+
+function createNodeDelta(node: DagNode): ChangeDelta {
+  return {
+    primitive: 'add_node',
+    params: { id: node.id },
+    nodeChanges: [{ op: 'created', before: null, after: node }],
+    edgeChanges: [],
+  };
+}
+
+function removeNodeDelta(node: DagNode): ChangeDelta {
+  return {
+    primitive: 'remove_node',
+    params: { id: node.id },
+    nodeChanges: [{ op: 'removed', before: node, after: null }],
+    edgeChanges: [],
+  };
 }
 
 describe('SqlitePortfolioStore — projects', () => {
@@ -726,5 +760,234 @@ describe('SqlitePortfolioStore — audit fidelity', () => {
     expect(result.ok).toBe(false);
     expect(tableCount(db, 'projects')).toBe(projectCountBefore);
     expect(changeLogRows(db)).toHaveLength(rowsBefore);
+  });
+});
+
+describe('SqlitePortfolioStore — docs', () => {
+  it('attaches to a node, a project, and a group; get and list-by-owner round-trip each', () => {
+    const db = openDatabase(':memory:');
+    const store = new SqlitePortfolioStore(db);
+    const nodeStore = new SqliteStateStore(db);
+    store.createProject({ id: 'proj-a' }, null);
+    store.createGroup({ id: 'group-a', description: 'Group A' }, null);
+    const node = dagNode('task-a');
+    nodeStore.apply({ projectId: 'proj-a' }, createNodeDelta(node));
+
+    const nodeDoc = store.attachDoc(
+      { dagNode: { projectId: 'proj-a', nodeId: 'task-a' } },
+      { path: 'proj-a/design/task-a.md', docType: 'design' },
+      'alice',
+    );
+    const projectDoc = store.attachDoc(
+      { project: 'proj-a' },
+      { path: 'proj-a/README.md' },
+      'alice',
+    );
+    const groupDoc = store.attachDoc({ group: 'group-a' }, { path: 'group-a/CHARTER.md' }, 'alice');
+
+    expect(nodeDoc.ok && projectDoc.ok && groupDoc.ok).toBe(true);
+    if (!nodeDoc.ok || !projectDoc.ok || !groupDoc.ok) return;
+
+    expect(nodeDoc.data).toMatchObject({
+      dagNodeId: 'task-a',
+      projectId: null,
+      groupId: null,
+      scopeProjectId: 'proj-a',
+      path: 'proj-a/design/task-a.md',
+      docType: 'design',
+    });
+    expect(projectDoc.data).toMatchObject({
+      dagNodeId: null,
+      projectId: 'proj-a',
+      groupId: null,
+      scopeProjectId: 'proj-a',
+    });
+    expect(groupDoc.data).toMatchObject({
+      dagNodeId: null,
+      projectId: null,
+      groupId: 'group-a',
+      scopeProjectId: null,
+    });
+
+    expect(store.getDoc(nodeDoc.data.id)).toEqual(nodeDoc.data);
+    expect(
+      store.listDocsForOwner({ dagNode: { projectId: 'proj-a', nodeId: 'task-a' } }),
+    ).toEqual([nodeDoc.data]);
+    expect(store.listDocsForOwner({ project: 'proj-a' })).toEqual([projectDoc.data]);
+    expect(store.listDocsForOwner({ group: 'group-a' })).toEqual([groupDoc.data]);
+  });
+
+  it('listDocsForProject resolves project-owned and node-owned docs of one project, not group-owned', () => {
+    const db = openDatabase(':memory:');
+    const store = new SqlitePortfolioStore(db);
+    const nodeStore = new SqliteStateStore(db);
+    store.createProject({ id: 'proj-a' }, null);
+    store.createGroup({ id: 'group-a', description: 'Group A' }, null);
+    const node = dagNode('task-a');
+    nodeStore.apply({ projectId: 'proj-a' }, createNodeDelta(node));
+
+    const nodeDoc = store.attachDoc(
+      { dagNode: { projectId: 'proj-a', nodeId: 'task-a' } },
+      { path: 'proj-a/design/task-a.md' },
+      null,
+    );
+    const projectDoc = store.attachDoc({ project: 'proj-a' }, { path: 'proj-a/README.md' }, null);
+    store.attachDoc({ group: 'group-a' }, { path: 'group-a/CHARTER.md' }, null);
+    expect(nodeDoc.ok && projectDoc.ok).toBe(true);
+    if (!nodeDoc.ok || !projectDoc.ok) return;
+
+    const docs = store.listDocsForProject('proj-a');
+
+    expect(docs.map((d) => d.id).sort()).toEqual([nodeDoc.data.id, projectDoc.data.id].sort());
+  });
+
+  it('rejects a node-owned attachDoc when no matching dag_nodes row exists', () => {
+    const db = openDatabase(':memory:');
+    const store = new SqlitePortfolioStore(db);
+    store.createProject({ id: 'proj-a' }, null);
+
+    const result = store.attachDoc(
+      { dagNode: { projectId: 'proj-a', nodeId: 'ghost-node' } },
+      { path: 'proj-a/ghost.md' },
+      null,
+    );
+
+    expect(result.ok).toBe(false);
+    expect(tableCount(db, 'docs')).toBe(0);
+  });
+
+  it('rejects attachDoc against a project or group owner that does not exist', () => {
+    const db = openDatabase(':memory:');
+    const store = new SqlitePortfolioStore(db);
+
+    expect(store.attachDoc({ project: 'ghost' }, { path: 'ghost/x.md' }, null).ok).toBe(false);
+    expect(store.attachDoc({ group: 'ghost' }, { path: 'ghost/x.md' }, null).ok).toBe(false);
+  });
+
+  it('rejects an absolute doc path under either POSIX or Windows conventions', () => {
+    const db = openDatabase(':memory:');
+    const store = new SqlitePortfolioStore(db);
+    store.createProject({ id: 'proj-a' }, null);
+
+    const posixResult = store.attachDoc({ project: 'proj-a' }, { path: '/abs/path.md' }, null);
+    const windowsResult = store.attachDoc(
+      { project: 'proj-a' },
+      { path: 'C:\\abs\\path.md' },
+      null,
+    );
+
+    expect(posixResult.ok).toBe(false);
+    expect(windowsResult.ok).toBe(false);
+    expect(tableCount(db, 'docs')).toBe(0);
+  });
+
+  it("stores a group-owned doc's path with the group slug as its base and scope_project_id null", () => {
+    const db = openDatabase(':memory:');
+    const store = new SqlitePortfolioStore(db);
+    store.createGroup({ id: 'group-a', description: 'Group A' }, null);
+
+    const result = store.attachDoc({ group: 'group-a' }, { path: 'group-a/DESIGN.md' }, null);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.scopeProjectId).toBeNull();
+    expect(result.data.path.split('/')[0]).toBe('group-a');
+  });
+
+  it('updates path/docType and detaches a doc round-trip', () => {
+    const db = openDatabase(':memory:');
+    const store = new SqlitePortfolioStore(db);
+    store.createProject({ id: 'proj-a' }, null);
+    const attached = store.attachDoc(
+      { project: 'proj-a' },
+      { path: 'proj-a/README.md', docType: 'notes' },
+      null,
+    );
+    expect(attached.ok).toBe(true);
+    if (!attached.ok) return;
+
+    const updated = store.updateDoc(
+      attached.data.id,
+      { path: 'proj-a/README-v2.md', docType: 'design' },
+      'alice',
+    );
+    expect(updated.ok).toBe(true);
+    if (!updated.ok) return;
+    expect(updated.data.path).toBe('proj-a/README-v2.md');
+    expect(updated.data.docType).toBe('design');
+    expect(store.getDoc(attached.data.id)).toEqual(updated.data);
+
+    const detached = store.detachDoc(attached.data.id, 'alice');
+    expect(detached.ok).toBe(true);
+    expect(store.getDoc(attached.data.id)).toBeNull();
+
+    const rows = changeLogRows(db).filter((row) => row.target_type === 'doc');
+    expect(rows.map((row) => row.operation)).toEqual([
+      'doc.attached',
+      'doc.updated',
+      'doc.detached',
+    ]);
+  });
+
+  it('rejects updateDoc/detachDoc against a doc that does not exist', () => {
+    const db = openDatabase(':memory:');
+    const store = new SqlitePortfolioStore(db);
+
+    expect(store.updateDoc('ghost-doc', { path: 'x/y.md' }, null).ok).toBe(false);
+    expect(store.detachDoc('ghost-doc', null).ok).toBe(false);
+  });
+
+  it('the DB CHECK rejects a docs row naming zero or multiple owner arcs', () => {
+    const db = openDatabase(':memory:');
+    const store = new SqlitePortfolioStore(db);
+    store.createProject({ id: 'proj-a' }, null);
+    store.createGroup({ id: 'group-a', description: 'Group A' }, null);
+
+    expect(() =>
+      db
+        .prepare('INSERT INTO docs (id, path, created_at, updated_at) VALUES (?, ?, ?, ?)')
+        .run('doc-zero-owners', 'proj-a/x.md', 'now', 'now'),
+    ).toThrow();
+
+    expect(() =>
+      db
+        .prepare(
+          `INSERT INTO docs (id, project_id, project_group_id, path, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+        )
+        .run('doc-two-owners', 'proj-a', 'group-a', 'proj-a/x.md', 'now', 'now'),
+    ).toThrow();
+
+    expect(tableCount(db, 'docs')).toBe(0);
+  });
+
+  it('promotes a node-owned doc to its project when the dag_node is deleted (DDL trigger)', () => {
+    const db = openDatabase(':memory:');
+    const store = new SqlitePortfolioStore(db);
+    const nodeStore = new SqliteStateStore(db);
+    const scope = { projectId: 'proj-a' };
+    const node = dagNode('task-a');
+    nodeStore.apply(scope, createNodeDelta(node));
+
+    const attached = store.attachDoc(
+      { dagNode: { projectId: 'proj-a', nodeId: 'task-a' } },
+      { path: 'proj-a/design/task-a.md' },
+      null,
+    );
+    expect(attached.ok).toBe(true);
+    if (!attached.ok) return;
+
+    const removed = nodeStore.apply(scope, removeNodeDelta(node));
+    expect(removed.ok).toBe(true);
+
+    const promoted = store.getDoc(attached.data.id);
+    expect(promoted).toMatchObject({
+      id: attached.data.id,
+      dagNodeId: null,
+      projectId: 'proj-a',
+      scopeProjectId: 'proj-a',
+      path: 'proj-a/design/task-a.md',
+    });
+    expect(tableCount(db, 'docs')).toBe(1);
   });
 });
