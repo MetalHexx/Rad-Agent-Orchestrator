@@ -11,6 +11,9 @@ committing nodes, edges, and one `change_log` row inside a single `better-sqlite
 Behavioral parity with the in-memory store is not aspirational — it is proven by running the
 engine's exported conformance suite (see below).
 
+It also ships `SqlitePortfolioStore` — the CRUD store for the portfolio graph (projects,
+worktrees, and the rest of the v2 schema's entities) backed by the same `better-sqlite3` handle.
+
 ## Standing conventions
 
 These conventions are enforced from this package's first file and apply to every file added here
@@ -27,13 +30,27 @@ going forward:
 - **Decision-traceability.** A non-obvious choice carries an inline comment naming the governing
   design decision in `STEERABLE-DAG-DESIGN`, e.g. `// D8: ...` — matching that design doc's own
   `D<N>` decision numbering.
+- **`SqlitePortfolioStore` has its own CRUD interface, not `StateStore`.** Projects, worktrees, and
+  the rest of the portfolio graph are host-managed metadata, not execution-DAG state, so there is
+  no `ChangeDelta`/`apply` shape here — each portfolio entity gets explicit create/read/update/
+  delete methods instead (`portfolio-types.ts`'s `PortfolioStore`).
+- **The mutate-and-audit transaction rule.** Every `SqlitePortfolioStore` mutation funnels through
+  its private `mutate` helper, which runs the write and one `portfolio_change_log` insert inside a
+  single `better-sqlite3` transaction — a failed write rolls back the audit row too, so the
+  exactly-one-audit-row-per-mutation invariant holds even under a thrown constraint violation. A
+  mutation that writes portfolio data outside `mutate` (skipping the audit) is a defect.
+- **Portable paths.** A `worktrees.path` is always stored exactly as given — relative to
+  `~/.radorc/worktrees`, POSIX-separated. The store never derives or stores an absolute path;
+  `addWorktree` rejects one outright (checked under both the POSIX and Windows conventions,
+  regardless of the host OS the process happens to run on).
 
 ## Seam rules
 
-- **Consumed only through `src/index.ts`.** The barrel exports exactly `openDatabase` and
-  `SqliteStateStore`; nothing outside this package imports internals (`db.ts`,
-  `sqlite-state-store.ts`, `schema/migrations.ts`) by path. Tests inside this library may import
-  internals by their direct module path.
+- **Consumed only through `src/index.ts`.** The barrel exports exactly `openDatabase`,
+  `SqliteStateStore`, `SqlitePortfolioStore`, and their public types; nothing outside this package
+  imports internals (`db.ts`, `sqlite-state-store.ts`, `portfolio-store.ts`, `portfolio-types.ts`,
+  `schema/migrations.ts`) by path. Tests inside this library may import internals by their direct
+  module path.
 - **Depends on `@rad-orchestration/graph-engine` by scoped name only**, pinned to the same
   monorepo-lockstep version. It consumes the engine's `StateStore` contract and relational types
   (`DagNode`, `DagEdge`, `ChangeDelta`, `Result`, …) through the engine's barrel, and its tests
@@ -71,5 +88,5 @@ npm test
 
 Runs the vitest suite in `tests/` — including `conformance.test.ts`, which drives the engine's
 shared `StateStore` conformance suite (imported from `@rad-orchestration/graph-engine/testing`)
-against `SqliteStateStore`, plus `durability.test.ts`, `migrations.test.ts`, and
-`sqlite-state-store.test.ts`.
+against `SqliteStateStore`, plus `durability.test.ts`, `migrations.test.ts`,
+`sqlite-state-store.test.ts`, and `portfolio-store.test.ts`.
