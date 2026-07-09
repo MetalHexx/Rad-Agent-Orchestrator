@@ -24,6 +24,8 @@ Read the following fields from `data` in the returned envelope:
 
 The observable model is exactly two calls: provision then record. Use the locate result to decide which provisioning path applies, then execute both calls in that order.
 
+**Make no more calls than the flow requires.** Every shell call re-reads your whole context. Decide the case from the `locate` envelope you already have, and gate `source-control init` on the `worktree create` result you already have (Step 3) — don't insert extra `radorch project locate`, `git status`, or other probe calls to re-confirm state between steps. The provision→record pair (plus the one `locate`) is the whole happy path; anything beyond it is targeted recovery, not routine verification.
+
 ---
 
 ## Step 2: Decide — Five-Case Flow

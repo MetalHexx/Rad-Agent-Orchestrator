@@ -52,8 +52,12 @@ like, and what to test — enough contract for a coding agent to execute a task
 4. **Ground with targeted codebase discovery.** Grep / Glob / Read the exact
    files, contracts, and modules the tasks will touch, so every `Files` path and
    every contract you pin is real, not guessed. Read the `CLAUDE.md` / `AGENTS.md`
-   in each area you'll touch. These files will contain the coding conventions and 
-   nuances needed to properly author tasks appropriate to the module / repo.
+   in each area you'll touch — they carry the coding conventions and nuances a task
+   in that module / repo must respect. **Inline the conventions each task depends on
+   into that task's handoff**, so the coding agent carries them and never has to open
+   an `AGENTS.md` — or go hunting through the codebase — to proceed. The coder works
+   from a self-contained handoff and is told not to read upstream docs, so a
+   convention you leave out is a convention it won't apply.
 
 5. **Decide the phase and task breakdown.** Phases group work by natural seam and
    are the integration unit — a phase can span repos (a UI view and its API

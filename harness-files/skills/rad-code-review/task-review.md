@@ -13,7 +13,7 @@ Read only these. Do **not** open the Requirements doc, Master Plan, Phase Plan, 
 ## Do
 
 1. **Read the Task Handoff** — what did this task owe? (contracts, file targets, acceptance criteria).
-2. **Scope the diff, read-only.** With `head_sha`: `git diff <head_sha>~1..<head_sha>` and `git diff --stat <head_sha>~1..<head_sha>`. Without it: `git diff HEAD` (+ `--stat`) and read any untracked file targets.
+2. **Scope the diff, read-only.** With `head_sha`, in one call: `git diff <head_sha>~1..<head_sha> && git diff --stat <head_sha>~1..<head_sha>`. Without it: `git diff HEAD` (+ `--stat`) and read any untracked file targets.
 3. **Run the change-relevant tests yourself** — capture the real command and named output. Don't take "tests passed" on faith. Scope to the change; CI is the full regression net.
 4. **Two lenses** (SKILL.md → the two lenses):
    - *Conformance* — does the diff deliver the handoff's contract, including staying inside its declared **File Targets**? A declared target left unmodified, or a file changed outside the targets (scope creep), is a finding.
