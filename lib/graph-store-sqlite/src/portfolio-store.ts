@@ -1,19 +1,25 @@
+import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import type Database from 'better-sqlite3';
 import type { Result } from '@rad-orchestration/graph-engine';
 import type {
   EdgeType,
+  ExternalRefRecord,
+  ExternalRefUpsertInput,
   GroupChildren,
   GroupCreateInput,
   GroupRecord,
   GroupUpdateInput,
+  LinkProjectToRefInput,
   PortfolioStore,
   PortfolioTargetType,
   ProjectCreateInput,
   ProjectEdgeRecord,
+  ProjectExternalRefRecord,
   ProjectRecord,
   ProjectStatus,
   ProjectUpdateInput,
+  RefRelation,
   WorktreeInput,
   WorktreeRecord,
 } from './portfolio-types.js';
@@ -27,6 +33,11 @@ const WORKTREE_COLUMNS = 'project_id, repo, path, branch, base_branch, pr_url';
 const GROUP_COLUMNS = 'id, name, description, parent_group_id, created_at, updated_at';
 /** Shared read projection for `project_edges`, in `EdgeRow` order. */
 const EDGE_COLUMNS = 'from_project_id, to_project_id, type';
+/** Shared read projection for `external_refs`, in `ExternalRefRow` order. */
+const EXTERNAL_REF_COLUMNS =
+  'id, system, external_id, url, ref_type, parent_ref_id, data, created_at, updated_at';
+/** Shared read projection for `project_external_refs`, in `ProjectExternalRefRow` order. */
+const PROJECT_EXTERNAL_REF_COLUMNS = 'project_id, external_ref_id, relation, is_primary';
 
 interface ProjectRow {
   id: string;
@@ -62,6 +73,25 @@ interface EdgeRow {
   from_project_id: string;
   to_project_id: string;
   type: string;
+}
+
+interface ExternalRefRow {
+  id: string;
+  system: string | null;
+  external_id: string | null;
+  url: string | null;
+  ref_type: string | null;
+  parent_ref_id: string | null;
+  data: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+interface ProjectExternalRefRow {
+  project_id: string;
+  external_ref_id: string;
+  relation: string | null;
+  is_primary: number | null;
 }
 
 function invalidDelta(message: string): Result<never> {
@@ -116,6 +146,29 @@ function rowToEdge(row: EdgeRow): ProjectEdgeRecord {
     fromProjectId: row.from_project_id,
     toProjectId: row.to_project_id,
     type: row.type as EdgeType,
+  };
+}
+
+function rowToExternalRef(row: ExternalRefRow): ExternalRefRecord {
+  return {
+    id: row.id,
+    system: row.system as string,
+    externalId: row.external_id as string,
+    url: row.url,
+    refType: row.ref_type,
+    parentRefId: row.parent_ref_id,
+    data: row.data,
+    createdAt: row.created_at as string,
+    updatedAt: row.updated_at as string,
+  };
+}
+
+function rowToProjectExternalRef(row: ProjectExternalRefRow): ProjectExternalRefRecord {
+  return {
+    projectId: row.project_id,
+    externalRefId: row.external_ref_id,
+    relation: row.relation as RefRelation | null,
+    isPrimary: row.is_primary === 1,
   };
 }
 
@@ -179,6 +232,42 @@ function edgeTargetId(from: string, to: string, type: EdgeType): string {
   return `${from}->${to}:${type}`;
 }
 
+/** Named bind values for the external-ref insert/update statements — keys match their `@name`
+ * params. The update statement only references `id`/`url`/`ref_type`/`data`/`updated_at`; the
+ * remaining keys are harmlessly unused on that path. */
+function externalRefParams(record: ExternalRefRecord): Record<string, string | null> {
+  return {
+    id: record.id,
+    system: record.system,
+    external_id: record.externalId,
+    url: record.url,
+    ref_type: record.refType,
+    parent_ref_id: record.parentRefId,
+    data: record.data,
+    created_at: record.createdAt,
+    updated_at: record.updatedAt,
+  };
+}
+
+/** Named bind values for the project-external-ref join insert statement — keys match its `@name`
+ * params. */
+function projectExternalRefParams(
+  record: ProjectExternalRefRecord,
+): Record<string, string | number | null> {
+  return {
+    project_id: record.projectId,
+    external_ref_id: record.externalRefId,
+    relation: record.relation,
+    is_primary: record.isPrimary ? 1 : 0,
+  };
+}
+
+/** The `portfolio_change_log.target_id` for a project-external-ref link, whose real key is the
+ * composite `(project_id, external_ref_id)`. */
+function projectExternalRefTargetId(projectId: string, externalRefId: string): string {
+  return `${projectId}:${externalRefId}`;
+}
+
 /**
  * Rejects a `worktrees.path` that is absolute under either path convention, regardless of the host
  * OS this process happens to run on — `path.isAbsolute` alone only recognizes the current
@@ -223,6 +312,16 @@ export class SqlitePortfolioStore implements PortfolioStore {
   private readonly selectEdgesFromStmt: Database.Statement;
   private readonly selectEdgesToStmt: Database.Statement;
   private readonly selectOutgoingByTypeStmt: Database.Statement;
+  private readonly insertExternalRefStmt: Database.Statement;
+  private readonly updateExternalRefStmt: Database.Statement;
+  private readonly selectExternalRefStmt: Database.Statement;
+  private readonly selectExternalRefByKeyStmt: Database.Statement;
+  private readonly selectChildRefsStmt: Database.Statement;
+  private readonly insertProjectExternalRefStmt: Database.Statement;
+  private readonly selectProjectExternalRefStmt: Database.Statement;
+  private readonly deleteProjectExternalRefStmt: Database.Statement;
+  private readonly selectRefsForProjectStmt: Database.Statement;
+  private readonly selectProjectsForRefStmt: Database.Statement;
   private readonly insertChangeLogStmt: Database.Statement;
 
   constructor(private readonly db: Database.Database) {
@@ -316,6 +415,47 @@ export class SqlitePortfolioStore implements PortfolioStore {
     // single edge `type` so the `follows` and `spawned-from` graphs are checked as independent DAGs.
     this.selectOutgoingByTypeStmt = this.db.prepare(
       'SELECT to_project_id FROM project_edges WHERE from_project_id = ? AND type = ?',
+    );
+
+    this.insertExternalRefStmt = this.db.prepare(
+      `INSERT INTO external_refs (${EXTERNAL_REF_COLUMNS})
+       VALUES (@id, @system, @external_id, @url, @ref_type, @parent_ref_id, @data, @created_at, @updated_at)`,
+    );
+    // Only the fields `upsertExternalRef` re-syncs on a dedup hit: `parent_ref_id` is set once, at
+    // first insert, and never moved by a later upsert (see `ExternalRefUpsertInput`'s doc comment).
+    this.updateExternalRefStmt = this.db.prepare(
+      `UPDATE external_refs SET url = @url, ref_type = @ref_type, data = @data, updated_at = @updated_at
+       WHERE id = @id`,
+    );
+    this.selectExternalRefStmt = this.db.prepare(
+      `SELECT ${EXTERNAL_REF_COLUMNS} FROM external_refs WHERE id = ?`,
+    );
+    this.selectExternalRefByKeyStmt = this.db.prepare(
+      `SELECT ${EXTERNAL_REF_COLUMNS} FROM external_refs WHERE system = ? AND external_id = ?`,
+    );
+    this.selectChildRefsStmt = this.db.prepare(
+      `SELECT ${EXTERNAL_REF_COLUMNS} FROM external_refs WHERE parent_ref_id = ? ORDER BY rowid`,
+    );
+
+    this.insertProjectExternalRefStmt = this.db.prepare(
+      `INSERT INTO project_external_refs (${PROJECT_EXTERNAL_REF_COLUMNS})
+       VALUES (@project_id, @external_ref_id, @relation, @is_primary)`,
+    );
+    this.selectProjectExternalRefStmt = this.db.prepare(
+      `SELECT ${PROJECT_EXTERNAL_REF_COLUMNS} FROM project_external_refs
+       WHERE project_id = ? AND external_ref_id = ?`,
+    );
+    this.deleteProjectExternalRefStmt = this.db.prepare(
+      'DELETE FROM project_external_refs WHERE project_id = ? AND external_ref_id = ?',
+    );
+    this.selectRefsForProjectStmt = this.db.prepare(
+      `SELECT ${PROJECT_EXTERNAL_REF_COLUMNS} FROM project_external_refs
+       WHERE project_id = ? ORDER BY rowid`,
+    );
+    // Backs `listProjectsForRef`'s reverse lookup via `idx_project_external_refs_external_ref_id`.
+    this.selectProjectsForRefStmt = this.db.prepare(
+      `SELECT ${PROJECT_EXTERNAL_REF_COLUMNS} FROM project_external_refs
+       WHERE external_ref_id = ? ORDER BY rowid`,
     );
 
     this.insertChangeLogStmt = this.db.prepare(
@@ -719,5 +859,150 @@ export class SqlitePortfolioStore implements PortfolioStore {
       }
     }
     return false;
+  }
+
+  /**
+   * Insert-or-return-existing on the `(system, external_id)` dedup key: two projects linking the
+   * same external ticket reuse this one `external_refs` row rather than duplicating it. A dedup hit
+   * re-syncs `url`/`ref_type`/`data` onto the existing row; `parentRefId` is only consulted on first
+   * insert, so the ticket's hierarchy position isn't moved by a later upsert.
+   */
+  upsertExternalRef(
+    input: ExternalRefUpsertInput,
+    actor: string | null,
+  ): Result<ExternalRefRecord> {
+    const before = this.getExternalRefByKey(input.system, input.externalId);
+    const now = new Date().toISOString();
+
+    if (before) {
+      const after: ExternalRefRecord = {
+        ...before,
+        url: input.url,
+        refType: input.refType ?? null,
+        data: input.data ?? null,
+        updatedAt: now,
+      };
+      return this.mutate<ExternalRefRecord>({
+        operation: 'external_ref.upserted',
+        targetType: 'external_ref',
+        targetId: after.id,
+        actor,
+        before,
+        after,
+        write: () => this.updateExternalRefStmt.run(externalRefParams(after)),
+      });
+    }
+
+    if (input.parentRefId != null && !this.getExternalRef(input.parentRefId)) {
+      return invalidDelta(`parent ref '${input.parentRefId}' does not exist`);
+    }
+    const record: ExternalRefRecord = {
+      id: randomUUID(),
+      system: input.system,
+      externalId: input.externalId,
+      url: input.url,
+      refType: input.refType ?? null,
+      parentRefId: input.parentRefId ?? null,
+      data: input.data ?? null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    return this.mutate<ExternalRefRecord>({
+      operation: 'external_ref.upserted',
+      targetType: 'external_ref',
+      targetId: record.id,
+      actor,
+      before: null,
+      after: record,
+      write: () => this.insertExternalRefStmt.run(externalRefParams(record)),
+    });
+  }
+
+  getExternalRef(id: string): ExternalRefRecord | null {
+    const row = this.selectExternalRefStmt.get(id) as ExternalRefRow | undefined;
+    return row ? rowToExternalRef(row) : null;
+  }
+
+  listChildRefs(parentRefId: string): ExternalRefRecord[] {
+    return (this.selectChildRefsStmt.all(parentRefId) as ExternalRefRow[]).map(rowToExternalRef);
+  }
+
+  private getExternalRefByKey(system: string, externalId: string): ExternalRefRecord | null {
+    const row = this.selectExternalRefByKeyStmt.get(system, externalId) as
+      | ExternalRefRow
+      | undefined;
+    return row ? rowToExternalRef(row) : null;
+  }
+
+  linkProjectToRef(
+    projectId: string,
+    externalRefId: string,
+    input: LinkProjectToRefInput,
+    actor: string | null,
+  ): Result<ProjectExternalRefRecord> {
+    if (!this.getProject(projectId)) return invalidDelta(`project '${projectId}' does not exist`);
+    if (!this.getExternalRef(externalRefId)) {
+      return invalidDelta(`external ref '${externalRefId}' does not exist`);
+    }
+    if (this.getProjectExternalRef(projectId, externalRefId)) {
+      return invalidDelta(`project '${projectId}' is already linked to ref '${externalRefId}'`);
+    }
+    const record: ProjectExternalRefRecord = {
+      projectId,
+      externalRefId,
+      relation: input.relation ?? null,
+      isPrimary: input.isPrimary ?? false,
+    };
+    return this.mutate<ProjectExternalRefRecord>({
+      operation: 'project.linked',
+      targetType: 'project',
+      targetId: projectExternalRefTargetId(projectId, externalRefId),
+      actor,
+      before: null,
+      after: record,
+      write: () => this.insertProjectExternalRefStmt.run(projectExternalRefParams(record)),
+    });
+  }
+
+  unlinkProjectFromRef(
+    projectId: string,
+    externalRefId: string,
+    actor: string | null,
+  ): Result<void> {
+    const before = this.getProjectExternalRef(projectId, externalRefId);
+    if (!before) {
+      return invalidDelta(`project '${projectId}' is not linked to ref '${externalRefId}'`);
+    }
+    return this.mutate<void>({
+      operation: 'project.unlinked',
+      targetType: 'project',
+      targetId: projectExternalRefTargetId(projectId, externalRefId),
+      actor,
+      before,
+      after: null,
+      write: () => this.deleteProjectExternalRefStmt.run(projectId, externalRefId),
+    });
+  }
+
+  listRefsForProject(projectId: string): ProjectExternalRefRecord[] {
+    return (this.selectRefsForProjectStmt.all(projectId) as ProjectExternalRefRow[]).map(
+      rowToProjectExternalRef,
+    );
+  }
+
+  listProjectsForRef(externalRefId: string): ProjectExternalRefRecord[] {
+    return (this.selectProjectsForRefStmt.all(externalRefId) as ProjectExternalRefRow[]).map(
+      rowToProjectExternalRef,
+    );
+  }
+
+  private getProjectExternalRef(
+    projectId: string,
+    externalRefId: string,
+  ): ProjectExternalRefRecord | null {
+    const row = this.selectProjectExternalRefStmt.get(projectId, externalRefId) as
+      | ProjectExternalRefRow
+      | undefined;
+    return row ? rowToProjectExternalRef(row) : null;
   }
 }

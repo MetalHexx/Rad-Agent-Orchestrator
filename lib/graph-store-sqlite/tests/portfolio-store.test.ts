@@ -387,6 +387,199 @@ describe('SqlitePortfolioStore — edges', () => {
   });
 });
 
+describe('SqlitePortfolioStore — external refs', () => {
+  it('dedups upsertExternalRef on the (system, external_id) key, updating url/refType/data', () => {
+    const db = openDatabase(':memory:');
+    const store = new SqlitePortfolioStore(db);
+
+    const first = store.upsertExternalRef(
+      { system: 'jira', externalId: 'PROJ-1', url: 'https://jira/PROJ-1', refType: 'story' },
+      'alice',
+    );
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    expect(first.data).toMatchObject({
+      system: 'jira',
+      externalId: 'PROJ-1',
+      url: 'https://jira/PROJ-1',
+      refType: 'story',
+      parentRefId: null,
+      data: null,
+    });
+
+    const second = store.upsertExternalRef(
+      {
+        system: 'jira',
+        externalId: 'PROJ-1',
+        url: 'https://jira/PROJ-1-renamed',
+        refType: 'epic',
+        data: '{"points":3}',
+      },
+      'bob',
+    );
+    expect(second.ok).toBe(true);
+    if (!second.ok) return;
+    expect(second.data.id).toBe(first.data.id);
+    expect(second.data.url).toBe('https://jira/PROJ-1-renamed');
+    expect(second.data.refType).toBe('epic');
+    expect(second.data.data).toBe('{"points":3}');
+
+    expect(tableCount(db, 'external_refs')).toBe(1);
+    expect(store.getExternalRef(first.data.id)).toEqual(second.data);
+  });
+
+  it('round-trips data as an opaque string, never parsed or interpreted', () => {
+    const db = openDatabase(':memory:');
+    const store = new SqlitePortfolioStore(db);
+    const payload = '{"anything":["goes"],"nested":{"a":1}}';
+
+    const created = store.upsertExternalRef(
+      { system: 'github', externalId: '42', url: 'https://github/42', data: payload },
+      null,
+    );
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+    expect(created.data.data).toBe(payload);
+    expect(store.getExternalRef(created.data.id)?.data).toBe(payload);
+  });
+
+  it('resolves a subtask -> story hierarchy via parentRefId and listChildRefs', () => {
+    const db = openDatabase(':memory:');
+    const store = new SqlitePortfolioStore(db);
+
+    const story = store.upsertExternalRef(
+      { system: 'jira', externalId: 'STORY-1', url: 'https://jira/STORY-1', refType: 'story' },
+      null,
+    );
+    expect(story.ok).toBe(true);
+    if (!story.ok) return;
+
+    const subtask = store.upsertExternalRef(
+      {
+        system: 'jira',
+        externalId: 'SUB-1',
+        url: 'https://jira/SUB-1',
+        refType: 'subtask',
+        parentRefId: story.data.id,
+      },
+      null,
+    );
+    expect(subtask.ok).toBe(true);
+    if (!subtask.ok) return;
+    expect(subtask.data.parentRefId).toBe(story.data.id);
+
+    expect(store.listChildRefs(story.data.id)).toEqual([subtask.data]);
+    expect(store.listChildRefs(subtask.data.id)).toEqual([]);
+  });
+
+  it('rejects upserting a new ref against a parentRefId that does not exist', () => {
+    const db = openDatabase(':memory:');
+    const store = new SqlitePortfolioStore(db);
+
+    const result = store.upsertExternalRef(
+      { system: 'jira', externalId: 'SUB-1', url: 'https://jira/SUB-1', parentRefId: 'ghost' },
+      null,
+    );
+
+    expect(result.ok).toBe(false);
+    expect(tableCount(db, 'external_refs')).toBe(0);
+  });
+});
+
+describe('SqlitePortfolioStore — project external ref links', () => {
+  it('links the same ticket from two projects onto one entity row (two join rows)', () => {
+    const db = openDatabase(':memory:');
+    const store = new SqlitePortfolioStore(db);
+    store.createProject({ id: 'proj-a' }, null);
+    store.createProject({ id: 'proj-b' }, null);
+    const ref = store.upsertExternalRef(
+      { system: 'jira', externalId: 'PROJ-1', url: 'https://jira/PROJ-1' },
+      null,
+    );
+    expect(ref.ok).toBe(true);
+    if (!ref.ok) return;
+
+    const linkedA = store.linkProjectToRef(
+      'proj-a',
+      ref.data.id,
+      { relation: 'implements', isPrimary: true },
+      'alice',
+    );
+    const linkedB = store.linkProjectToRef('proj-b', ref.data.id, { relation: 'references' }, 'bob');
+    expect(linkedA.ok).toBe(true);
+    expect(linkedB.ok).toBe(true);
+    if (!linkedA.ok || !linkedB.ok) return;
+    expect(linkedA.data).toEqual({
+      projectId: 'proj-a',
+      externalRefId: ref.data.id,
+      relation: 'implements',
+      isPrimary: true,
+    });
+    expect(linkedB.data).toEqual({
+      projectId: 'proj-b',
+      externalRefId: ref.data.id,
+      relation: 'references',
+      isPrimary: false,
+    });
+
+    expect(tableCount(db, 'external_refs')).toBe(1);
+    expect(tableCount(db, 'project_external_refs')).toBe(2);
+    expect(store.listProjectsForRef(ref.data.id)).toEqual([linkedA.data, linkedB.data]);
+  });
+
+  it('links a project to multiple tickets; listRefsForProject and listProjectsForRef both resolve', () => {
+    const db = openDatabase(':memory:');
+    const store = new SqlitePortfolioStore(db);
+    store.createProject({ id: 'proj-a' }, null);
+    const refA = store.upsertExternalRef({ system: 'jira', externalId: 'A-1', url: 'u1' }, null);
+    const refB = store.upsertExternalRef({ system: 'jira', externalId: 'B-1', url: 'u2' }, null);
+    expect(refA.ok && refB.ok).toBe(true);
+    if (!refA.ok || !refB.ok) return;
+
+    store.linkProjectToRef('proj-a', refA.data.id, {}, null);
+    store.linkProjectToRef('proj-a', refB.data.id, {}, null);
+
+    expect(store.listRefsForProject('proj-a').map((l) => l.externalRefId).sort()).toEqual(
+      [refA.data.id, refB.data.id].sort(),
+    );
+    expect(store.listProjectsForRef(refA.data.id)).toEqual([
+      { projectId: 'proj-a', externalRefId: refA.data.id, relation: null, isPrimary: false },
+    ]);
+  });
+
+  it('unlinks a project from a ref round-trip', () => {
+    const db = openDatabase(':memory:');
+    const store = new SqlitePortfolioStore(db);
+    store.createProject({ id: 'proj-a' }, null);
+    const ref = store.upsertExternalRef({ system: 'jira', externalId: 'A-1', url: 'u1' }, null);
+    expect(ref.ok).toBe(true);
+    if (!ref.ok) return;
+    store.linkProjectToRef('proj-a', ref.data.id, {}, null);
+
+    const unlinked = store.unlinkProjectFromRef('proj-a', ref.data.id, 'alice');
+
+    expect(unlinked.ok).toBe(true);
+    expect(store.listRefsForProject('proj-a')).toEqual([]);
+    expect(store.listProjectsForRef(ref.data.id)).toEqual([]);
+  });
+
+  it('rejects linking to/from a project or ref that does not exist, a duplicate link, and unlinking a link that does not exist', () => {
+    const db = openDatabase(':memory:');
+    const store = new SqlitePortfolioStore(db);
+    store.createProject({ id: 'proj-a' }, null);
+    const ref = store.upsertExternalRef({ system: 'jira', externalId: 'A-1', url: 'u1' }, null);
+    expect(ref.ok).toBe(true);
+    if (!ref.ok) return;
+
+    expect(store.linkProjectToRef('ghost-project', ref.data.id, {}, null).ok).toBe(false);
+    expect(store.linkProjectToRef('proj-a', 'ghost-ref', {}, null).ok).toBe(false);
+    expect(store.unlinkProjectFromRef('proj-a', ref.data.id, null).ok).toBe(false);
+
+    store.linkProjectToRef('proj-a', ref.data.id, {}, null);
+    expect(store.linkProjectToRef('proj-a', ref.data.id, {}, null).ok).toBe(false);
+  });
+});
+
 describe('SqlitePortfolioStore — audit fidelity', () => {
   it('writes exactly one portfolio_change_log row per successful mutation, with faithful before/after', () => {
     const db = openDatabase(':memory:');
@@ -448,6 +641,48 @@ describe('SqlitePortfolioStore — audit fidelity', () => {
       expect(result.ok).toBe(true);
       expect(changeLogRows(db)).toHaveLength(baseline + index + 1);
     });
+  });
+
+  it('writes exactly one portfolio_change_log row per external-ref and link mutation', () => {
+    const db = openDatabase(':memory:');
+    const store = new SqlitePortfolioStore(db);
+    store.createProject({ id: 'proj-a' }, null);
+    const baseline = changeLogRows(db).length;
+    let refId = '';
+
+    const mutations: Array<() => Result<unknown>> = [
+      () => {
+        const result = store.upsertExternalRef(
+          { system: 'jira', externalId: 'PROJ-1', url: 'https://jira/PROJ-1' },
+          'alice',
+        );
+        if (result.ok) refId = result.data.id;
+        return result;
+      },
+      () =>
+        store.upsertExternalRef(
+          { system: 'jira', externalId: 'PROJ-1', url: 'https://jira/PROJ-1-renamed' },
+          'alice',
+        ),
+      () => store.linkProjectToRef('proj-a', refId, { relation: 'implements' }, 'alice'),
+      () => store.unlinkProjectFromRef('proj-a', refId, 'alice'),
+    ];
+
+    mutations.forEach((mutation, index) => {
+      const result = mutation();
+      expect(result.ok).toBe(true);
+      expect(changeLogRows(db)).toHaveLength(baseline + index + 1);
+    });
+
+    const operations = changeLogRows(db)
+      .slice(baseline)
+      .map((row) => row.operation);
+    expect(operations).toEqual([
+      'external_ref.upserted',
+      'external_ref.upserted',
+      'project.linked',
+      'project.unlinked',
+    ]);
   });
 
   it('writes no audit row when a mutation is rejected before any write', () => {

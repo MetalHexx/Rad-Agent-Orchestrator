@@ -125,6 +125,56 @@ export interface ProjectEdgeRecord {
 }
 
 /**
+ * An `external_refs` row, camelCased for the store's public surface. `system` + `externalId` is the
+ * deduplication key (`UNIQUE (system, external_id)`); `parentRefId` is self-referential and captures
+ * the external hierarchy (e.g. a subtask row points at its story row). `data` is an opaque JSON
+ * string — the store never parses or interprets it, it is the reserved sync bag for later tasks.
+ */
+export interface ExternalRefRecord {
+  readonly id: string;
+  readonly system: string;
+  readonly externalId: string;
+  readonly url: string | null;
+  readonly refType: string | null;
+  readonly parentRefId: string | null;
+  readonly data: string | null;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+/**
+ * Caller-supplied fields for `upsertExternalRef`. `system` + `externalId` locate an existing row
+ * (dedup key); `parentRefId` is only honored on first insert — an existing row's hierarchy position
+ * is not moved by a later upsert.
+ */
+export interface ExternalRefUpsertInput {
+  readonly system: string;
+  readonly externalId: string;
+  readonly url: string | null;
+  readonly refType?: string | null;
+  readonly parentRefId?: string | null;
+  readonly data?: string | null;
+}
+
+/** The relation a `project_external_refs` row expresses between a project and an external ticket. */
+export type RefRelation = 'implements' | 'fixes' | 'references';
+
+/** A `project_external_refs` row, camelCased for the store's public surface. */
+export interface ProjectExternalRefRecord {
+  readonly projectId: string;
+  readonly externalRefId: string;
+  readonly relation: RefRelation | null;
+  readonly isPrimary: boolean;
+}
+
+/** Caller-supplied fields for `linkProjectToRef`. An omitted field takes the store's default:
+ * `relation: null`, `isPrimary: false`. */
+export interface LinkProjectToRefInput {
+  readonly relation?: RefRelation | null;
+  readonly isPrimary?: boolean;
+}
+
+/**
  * The portfolio graph's CRUD surface — distinct from the engine's `StateStore`, since projects,
  * worktrees, and the rest of the portfolio graph are host-managed metadata, not execution-DAG
  * state. Every mutation returns a `Result` and writes exactly one `portfolio_change_log` row in the
@@ -175,4 +225,22 @@ export interface PortfolioStore {
   ): Result<void>;
   listEdgesFrom(projectId: string): ProjectEdgeRecord[];
   listEdgesTo(projectId: string): ProjectEdgeRecord[];
+
+  upsertExternalRef(input: ExternalRefUpsertInput, actor: string | null): Result<ExternalRefRecord>;
+  getExternalRef(id: string): ExternalRefRecord | null;
+  listChildRefs(parentRefId: string): ExternalRefRecord[];
+
+  linkProjectToRef(
+    projectId: string,
+    externalRefId: string,
+    input: LinkProjectToRefInput,
+    actor: string | null,
+  ): Result<ProjectExternalRefRecord>;
+  unlinkProjectFromRef(
+    projectId: string,
+    externalRefId: string,
+    actor: string | null,
+  ): Result<void>;
+  listRefsForProject(projectId: string): ProjectExternalRefRecord[];
+  listProjectsForRef(externalRefId: string): ProjectExternalRefRecord[];
 }
