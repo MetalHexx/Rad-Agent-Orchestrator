@@ -8,9 +8,9 @@ export type AutoPolicy = 'ask' | 'always' | 'never';
 
 /**
  * The entity kinds `SqlitePortfolioStore`'s private mutate-and-audit helper accepts as
- * `portfolio_change_log.target_type`. `project` and `worktree` are implemented by this task;
- * `group`/`edge`/`doc`/`external_ref` are reserved for the portfolio entities later tasks add
- * against this same store and audit spine.
+ * `portfolio_change_log.target_type`. `project`, `worktree`, `group`, and `edge` are implemented;
+ * `doc`/`external_ref` are reserved for the portfolio entities later tasks add against this same
+ * store and audit spine.
  */
 export type PortfolioTargetType = 'project' | 'group' | 'edge' | 'doc' | 'worktree' | 'external_ref';
 
@@ -75,6 +75,55 @@ export interface WorktreeInput {
   readonly prUrl?: string | null;
 }
 
+/** A `project_groups` row, camelCased for the store's public surface. */
+export interface GroupRecord {
+  readonly id: string;
+  readonly name: string | null;
+  readonly description: string;
+  readonly parentGroupId: string | null;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+/** Caller-supplied fields for `createGroup`. `description` is required and rejected when empty. */
+export interface GroupCreateInput {
+  readonly id: string;
+  readonly description: string;
+  readonly name?: string | null;
+  readonly parentGroupId?: string | null;
+}
+
+/**
+ * Caller-supplied fields for `updateGroup` — name and description only; containment
+ * (`parentGroupId`) moves through `setParentGroup` instead. An omitted field leaves that column
+ * unchanged.
+ */
+export interface GroupUpdateInput {
+  readonly name?: string | null;
+  readonly description?: string;
+}
+
+/** `listGroupChildren`'s result: a group's direct project members and direct sub-groups. */
+export interface GroupChildren {
+  readonly projects: readonly ProjectRecord[];
+  readonly subGroups: readonly GroupRecord[];
+}
+
+/**
+ * The relation a `project_edges` row expresses between two projects. Acyclicity is enforced by
+ * `SqlitePortfolioStore#addEdge` independently per `type` — a `follows` cycle and a `spawned-from`
+ * cycle are unrelated checks, so an edge of one type never blocks a legal edge of the other type
+ * between the same pair.
+ */
+export type EdgeType = 'follows' | 'spawned-from';
+
+/** A `project_edges` row, camelCased for the store's public surface. */
+export interface ProjectEdgeRecord {
+  readonly fromProjectId: string;
+  readonly toProjectId: string;
+  readonly type: EdgeType;
+}
+
 /**
  * The portfolio graph's CRUD surface — distinct from the engine's `StateStore`, since projects,
  * worktrees, and the rest of the portfolio graph are host-managed metadata, not execution-DAG
@@ -95,4 +144,35 @@ export interface PortfolioStore {
   addWorktree(input: WorktreeInput, actor: string | null): Result<WorktreeRecord>;
   listWorktrees(projectId: string): WorktreeRecord[];
   removeWorktree(projectId: string, repo: string, actor: string | null): Result<void>;
+
+  createGroup(input: GroupCreateInput, actor: string | null): Result<GroupRecord>;
+  getGroup(id: string): GroupRecord | null;
+  updateGroup(id: string, patch: GroupUpdateInput, actor: string | null): Result<GroupRecord>;
+  deleteGroup(id: string, actor: string | null): Result<void>;
+  setProjectGroup(
+    projectId: string,
+    groupId: string | null,
+    actor: string | null,
+  ): Result<ProjectRecord>;
+  setParentGroup(
+    groupId: string,
+    parentGroupId: string | null,
+    actor: string | null,
+  ): Result<GroupRecord>;
+  listGroupChildren(groupId: string): GroupChildren;
+
+  addEdge(
+    fromProjectId: string,
+    toProjectId: string,
+    type: EdgeType,
+    actor: string | null,
+  ): Result<ProjectEdgeRecord>;
+  removeEdge(
+    fromProjectId: string,
+    toProjectId: string,
+    type: EdgeType,
+    actor: string | null,
+  ): Result<void>;
+  listEdgesFrom(projectId: string): ProjectEdgeRecord[];
+  listEdgesTo(projectId: string): ProjectEdgeRecord[];
 }

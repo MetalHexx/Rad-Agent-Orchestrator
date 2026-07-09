@@ -5,8 +5,14 @@ export { SqliteStateStore } from './sqlite-state-store.js';
 export { SqlitePortfolioStore } from './portfolio-store.js';
 export type {
   AutoPolicy,
+  EdgeType,
+  GroupChildren,
+  GroupCreateInput,
+  GroupRecord,
+  GroupUpdateInput,
   PortfolioStore,
   ProjectCreateInput,
+  ProjectEdgeRecord,
   ProjectRecord,
   ProjectStatus,
   ProjectUpdateInput,
