@@ -27,7 +27,7 @@ Every review looks through exactly two lenses. Both feed one findings list; the 
    - **Tooling honesty** — no silenced type-checker/linter/compiler (`any`, ignore-pragmas, disabled rules, empty `catch`) used to turn red green.
    - **Diff discipline** — the diff is exactly the task's change; no secrets, build artifacts (`/dist`), dependencies (`node_modules`), temporary test scripts, or unrelated files staged.
    - **Architecture & reuse** — DRY with judgment; respects module boundaries and dependency direction (no import cycles); keeps logic, I/O, and presentation in their layers; follows the patterns the codebase already establishes.
-   - **Tests that assert real behavior** — cover the contract's high-value behavior; no mock-only assertions, meta-tests, or static-content pinning; no test-only hooks added to production code; no dead-on-arrival exports nothing imports.
+   - **Tests that assert real behavior** — cover the contract's high-value behavior; no mock-only assertions, meta-tests, or static-content pinning; no test-only hooks added to production code; no dead-on-arrival exports that nothing imports.
    - **Comments & docs** — sparing and true; doc-comments updated when behavior changed (a stale one is a defect).
    - **Dependencies** — adding, upgrading, or removing a package is authorized-by-task only, never unilateral.
 

@@ -73,7 +73,7 @@ Every handoff shares one shape. Read whichever `handoff_doc` the pipeline hands 
 ### Environment self-sufficiency
 
 - **Assume the workspace is set up; diagnose only when a command actually fails.** A worktree is usually already hydrated, so don't spend turns pre-probing an environment (e.g., `node_modules`, `dist`, etc), or hoisted deps to confirm a healthy environment. When a build or test *does* fail on a missing dep or artifact, *then* resolve your own environment rather than skipping the step: hydrate already-declared deps (*adding* a package is the authorized-only path above), build a missing `dist`, etc. React to a real failure, don't hunt for a hypothetical one.
-- **Never silently skip the relevant tests** because the environment wasn't ready. If setup is too large to solve, return a `Blocked` report and ask for help rather than reporting untested work as done.
+- **Never silently skip the relevant tests** because the environment wasn't ready. If setup is too large to solve, return a **Blocked report** and ask for help rather than reporting untested work as done.
 
 ## Testing
 
@@ -101,7 +101,7 @@ When the spawn prompt directs you to commit:
 - Commit your task's work following the `rad-source-control` skill's commit reference (`references/creating-commits.md`) — it carries the message format, the pre-commit on-branch gate, and the push-if-remote procedure.  Read this skill only when you're ready to commit, reading it too early is dead weight in your context.
 - **Push only when the worktree has a remote.** A standard worktree has an `origin` → commit and push; a side-project worktree has none → the commit stays local. The commit reference handles this; there is no push flag to read.
 - **Report your commit hash and push status per repo.** The hash is not optional — downstream review scopes its diff to it.
-- **Raise commit issues** — if the commit fails, you cannot proceed. Raise a `Blocked report` instead of trying to paper over the problem.
+- **Raise commit issues** — if the commit fails, you cannot proceed. Raise a **Blocked report** instead of trying to paper over the problem.
 
 When the spawn prompt does not direct a commit, leave your changes uncommitted.
 

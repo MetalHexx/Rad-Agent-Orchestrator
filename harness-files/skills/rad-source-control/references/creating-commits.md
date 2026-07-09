@@ -45,12 +45,16 @@ The last two lines echo your new commit hash and confirm HEAD is still attached 
 
 ## 5. Push — only if the worktree has a remote
 
-Chain the remote check with the push so it is one call, not two — the check short-circuits the push:
+Push in one call, but skip cleanly when there is no remote — an absent `origin` must **exit zero** (an expected skip), not return a non-zero status that an agent could misread as a real failure and escalate:
 
-    git -C "<path>" remote get-url origin && git -C "<path>" push -u origin <branch>
+    if git -C "<path>" remote get-url origin >/dev/null 2>&1; then
+        git -C "<path>" push -u origin <branch>
+    else
+        echo "no origin remote — commit stays local (expected, not a failure)"
+    fi
 
-- Has an `origin` → both run and the branch pushes. `-u` sets upstream; it is harmless (and a plain `push`) on a branch already tracking its remote.
-- No `origin` (a side-project worktree) → the first command fails, so the push is skipped and the commit stays local. That is expected, not a failure.
+- Has an `origin` → the push runs. `-u` sets upstream on a new branch and is harmless on a branch already tracking its remote. A genuine push failure still exits non-zero, so a real problem is never masked.
+- No `origin` (a side-project worktree) → the push is skipped with a message and a zero exit. That is expected, not a failure.
 
 Never force-push and never rewrite history.
 
