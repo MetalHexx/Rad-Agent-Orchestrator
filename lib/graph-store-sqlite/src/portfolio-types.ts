@@ -212,9 +212,11 @@ export interface DocRecord {
 }
 
 /**
- * Caller-supplied fields for `attachDoc`. `path` is relative to `~/.radorc/projects`,
- * POSIX-separated — its first segment is the owner's folder: the project `id` for a project- or
- * node-owned doc, the group slug for a group-owned doc. An absolute path is rejected.
+ * Caller-supplied fields for `attachDoc`. `path` is a POSIX-separated ref relative to
+ * `~/.radorc/projects`. By convention its first segment is the owner's folder — the project `id`
+ * for a project- or node-owned doc, the group slug for a group-owned doc — but the store does not
+ * enforce that convention (a group's slug isn't derivable from its id here). The store *does* reject
+ * an unsafe ref: absolute paths, a `..` traversal segment, or a `\` separator.
  */
 export interface DocAttachInput {
   readonly path: string;

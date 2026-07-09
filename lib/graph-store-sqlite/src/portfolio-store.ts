@@ -342,13 +342,22 @@ function docOwnerColumns(owner: DocOwner): {
 }
 
 /**
- * Rejects a portable relative path ref (`worktrees.path`, `docs.path`) that is absolute under
- * either path convention, regardless of the host OS this process happens to run on —
- * `path.isAbsolute` alone only recognizes the current platform's convention, and a portable POSIX
- * ref must be rejected as absolute on every host.
+ * Rejects a portable relative path ref (`worktrees.path`, `docs.path`) that is unsafe to persist as
+ * a POSIX ref under a known base root. A stored ref must resolve *inside* its host-supplied root on
+ * every OS, so this rejects:
+ *   - absolute paths under either convention (`path.isAbsolute` alone only recognizes the current
+ *     platform's, and a portable POSIX ref must be rejected as absolute on every host);
+ *   - a `\\` separator (refs are canonicalized POSIX `/`, so a backslash is either a stray separator
+ *     or a literal that would mis-resolve on POSIX hosts);
+ *   - a `..` traversal segment, which would let a resolved ref escape its base root.
  */
-function isAbsolutePortablePath(candidate: string): boolean {
-  return path.win32.isAbsolute(candidate) || path.posix.isAbsolute(candidate);
+function isUnsafePortablePath(candidate: string): boolean {
+  return (
+    path.win32.isAbsolute(candidate) ||
+    path.posix.isAbsolute(candidate) ||
+    candidate.includes('\\') ||
+    candidate.split('/').includes('..')
+  );
 }
 
 /**
@@ -682,6 +691,12 @@ export class SqlitePortfolioStore implements PortfolioStore {
     // `docs.project_id` (ON DELETE RESTRICT) reject the DELETE below when live execution nodes or
     // owned docs still reference this project, and `mutate` turns that thrown constraint failure
     // into a failed Result instead of force-cascading.
+    //
+    // Audit scope: this logs only the project's own before/after. Dependent `worktrees`,
+    // `project_edges`, and `project_external_refs` rows are removed by their FK `ON DELETE CASCADE`
+    // *without* individual `portfolio_change_log` entries — cascade is a data-integrity mechanism
+    // here, not an audit one, so `portfolio_change_log` is not a complete row-level history of a
+    // project delete's fan-out.
     return this.mutate<void>({
       operation: 'project.deleted',
       targetType: 'project',
@@ -694,9 +709,10 @@ export class SqlitePortfolioStore implements PortfolioStore {
   }
 
   addWorktree(input: WorktreeInput, actor: string | null): Result<WorktreeRecord> {
-    if (input.path != null && isAbsolutePortablePath(input.path)) {
+    if (input.path != null && isUnsafePortablePath(input.path)) {
       return invalidDelta(
-        `worktree path '${input.path}' must be relative to ~/.radorc/worktrees, not absolute`,
+        `worktree path '${input.path}' must be a POSIX-relative ref under ~/.radorc/worktrees ` +
+          `(no absolute path, '..' segment, or '\\' separator)`,
       );
     }
     if (!this.getProject(input.projectId)) {
@@ -1157,9 +1173,10 @@ export class SqlitePortfolioStore implements PortfolioStore {
    * group owner, per the `docs` DDL's CHECK.
    */
   attachDoc(owner: DocOwner, input: DocAttachInput, actor: string | null): Result<DocRecord> {
-    if (isAbsolutePortablePath(input.path)) {
+    if (isUnsafePortablePath(input.path)) {
       return invalidDelta(
-        `doc path '${input.path}' must be relative to ~/.radorc/projects, not absolute`,
+        `doc path '${input.path}' must be a POSIX-relative ref under ~/.radorc/projects ` +
+          `(no absolute path, '..' segment, or '\\' separator)`,
       );
     }
     if ('dagNode' in owner) {
@@ -1222,9 +1239,10 @@ export class SqlitePortfolioStore implements PortfolioStore {
   updateDoc(id: string, patch: DocUpdateInput, actor: string | null): Result<DocRecord> {
     const before = this.getDoc(id);
     if (!before) return invalidDelta(`doc '${id}' does not exist`);
-    if (patch.path !== undefined && isAbsolutePortablePath(patch.path)) {
+    if (patch.path !== undefined && isUnsafePortablePath(patch.path)) {
       return invalidDelta(
-        `doc path '${patch.path}' must be relative to ~/.radorc/projects, not absolute`,
+        `doc path '${patch.path}' must be a POSIX-relative ref under ~/.radorc/projects ` +
+          `(no absolute path, '..' segment, or '\\' separator)`,
       );
     }
     const after: DocRecord = {

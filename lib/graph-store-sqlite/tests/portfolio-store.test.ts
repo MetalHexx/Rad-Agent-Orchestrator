@@ -179,6 +179,25 @@ describe('SqlitePortfolioStore — worktrees', () => {
     expect(store.listWorktrees('proj-a')).toEqual([]);
   });
 
+  it('rejects a worktree path with a `..` traversal segment or a `\\` separator', () => {
+    const db = openDatabase(':memory:');
+    const store = new SqlitePortfolioStore(db);
+    store.createProject({ id: 'proj-a' }, null);
+
+    const traversalResult = store.addWorktree(
+      { projectId: 'proj-a', repo: 'repo-a', path: '../escape/repo' },
+      null,
+    );
+    const backslashResult = store.addWorktree(
+      { projectId: 'proj-a', repo: 'repo-b', path: 'proj-a\\repo' },
+      null,
+    );
+
+    expect(traversalResult.ok).toBe(false);
+    expect(backslashResult.ok).toBe(false);
+    expect(store.listWorktrees('proj-a')).toEqual([]);
+  });
+
   it('rejects adding a worktree to a project that does not exist', () => {
     const db = openDatabase(':memory:');
     const store = new SqlitePortfolioStore(db);
@@ -881,6 +900,27 @@ describe('SqlitePortfolioStore — docs', () => {
     expect(tableCount(db, 'docs')).toBe(0);
   });
 
+  it('rejects a doc path with a `..` traversal segment or a `\\` separator', () => {
+    const db = openDatabase(':memory:');
+    const store = new SqlitePortfolioStore(db);
+    store.createProject({ id: 'proj-a' }, null);
+
+    const traversalResult = store.attachDoc(
+      { project: 'proj-a' },
+      { path: 'proj-a/../escape.md' },
+      null,
+    );
+    const backslashResult = store.attachDoc(
+      { project: 'proj-a' },
+      { path: 'proj-a\\README.md' },
+      null,
+    );
+
+    expect(traversalResult.ok).toBe(false);
+    expect(backslashResult.ok).toBe(false);
+    expect(tableCount(db, 'docs')).toBe(0);
+  });
+
   it("stores a group-owned doc's path with the group slug as its base and scope_project_id null", () => {
     const db = openDatabase(':memory:');
     const store = new SqlitePortfolioStore(db);
@@ -927,6 +967,26 @@ describe('SqlitePortfolioStore — docs', () => {
       'doc.updated',
       'doc.detached',
     ]);
+  });
+
+  it('clears docType when updateDoc is given an explicit null (distinct from omitting it)', () => {
+    const db = openDatabase(':memory:');
+    const store = new SqlitePortfolioStore(db);
+    store.createProject({ id: 'proj-a' }, null);
+    const attached = store.attachDoc(
+      { project: 'proj-a' },
+      { path: 'proj-a/README.md', docType: 'notes' },
+      null,
+    );
+    expect(attached.ok).toBe(true);
+    if (!attached.ok) return;
+
+    const cleared = store.updateDoc(attached.data.id, { docType: null }, 'alice');
+    expect(cleared.ok).toBe(true);
+    if (!cleared.ok) return;
+    expect(cleared.data.docType).toBeNull();
+    expect(cleared.data.path).toBe('proj-a/README.md'); // omitted path left unchanged
+    expect(store.getDoc(attached.data.id)?.docType).toBeNull();
   });
 
   it('rejects updateDoc/detachDoc against a doc that does not exist', () => {

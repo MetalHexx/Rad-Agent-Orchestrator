@@ -62,8 +62,8 @@ CREATE TABLE project_groups (
 ALTER TABLE projects ADD COLUMN project_type TEXT;
 ALTER TABLE projects ADD COLUMN status TEXT;
 ALTER TABLE projects ADD COLUMN group_id TEXT REFERENCES project_groups(id) ON DELETE SET NULL;
-ALTER TABLE projects ADD COLUMN auto_commit INTEGER;
-ALTER TABLE projects ADD COLUMN auto_pr INTEGER;
+ALTER TABLE projects ADD COLUMN auto_commit TEXT;
+ALTER TABLE projects ADD COLUMN auto_pr TEXT;
 ALTER TABLE projects ADD COLUMN source_control_initialized INTEGER;
 ALTER TABLE projects ADD COLUMN created_at TEXT;
 ALTER TABLE projects ADD COLUMN updated_at TEXT;
