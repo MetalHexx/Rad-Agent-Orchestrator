@@ -1,0 +1,43 @@
+{
+  "name": "@rad-orchestration/graph-service",
+  "version": "1.0.0-alpha.9",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "description": "In-process composition host for the steerable DAG graph engine — the DB owner, the engine/store/registry wiring, and the HTTP surface later tasks build routes onto",
+  "bin": {
+    "radorch-graph-service": "./dist/bin/serve.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.0.8",
+    "@rad-orchestration/graph-engine": "1.0.0-alpha.9",
+    "@rad-orchestration/graph-node-types": "1.0.0-alpha.9",
+    "@rad-orchestration/graph-store-sqlite": "1.0.0-alpha.9",
+    "hono": "^4.12.28"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.17",
+    "eslint": "^9.0.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.0.0",
+    "vitest": "^3.0.0"
+  }
+}

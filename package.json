@@ -8,6 +8,7 @@
     "lib/graph-engine",
     "lib/graph-node-types",
     "lib/graph-store-sqlite",
+    "graph-service",
     "cli",
     "ui",
     "harness-adapters/engine",
