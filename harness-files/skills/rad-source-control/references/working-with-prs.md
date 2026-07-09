@@ -2,6 +2,8 @@
 
 Open the project's pull request(s) yourself, with `gh`, once the final review is approved and the PR gate is cleared. The action envelope carries `data.context.repos[]`; each entry has `name`, `path`, `branch`, and `base_branch`. Run every `gh` command from the repo's own `path`. One PR per repo.
 
+**Keep it to the minimum `gh` calls.** Every shell call re-reads your whole context, so don't pad this flow with confirmatory round-trips. The detect call (step 1) must stand alone — you read its output to decide whether to create. After that, `gh pr create` prints the new PR's URL on stdout: capture it from there. Do **not** re-run `gh pr list`, `gh pr view`, or `git status` afterward to confirm the PR exists — the create output already told you.
+
 ## 1. Detect an existing PR (idempotent)
 
 A retry must not open a duplicate. Before creating, check for an open PR from the branch:

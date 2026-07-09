@@ -21,7 +21,17 @@ One review document per scope, covering every repo the scope touched — one `##
 Every review looks through exactly two lenses. Both feed one findings list; the highest-severity finding sets the verdict.
 
 1. **Conformance — did the diff deliver its scope's contract?** Read the contract (handoff / phase plan / requirements) for *what this scope owed*, then judge whether the diff delivers it. This is judgment against intent — there is no per-requirement grid to fill and no tags to match. A gap between what was owed and what the diff does is a conformance finding.
-2. **Quality — is this sound engineering?** Set the contract aside and read the diff as an engineer. The bar is the **coder's own engineer charter** — the same standard the implementer was held to, in `skills/rad-execute-coding-task/SKILL.md` → "The engineer's charter" (scope discipline, correctness & completeness, tooling honesty, diff discipline, tests that assert real behavior, no dead-on-arrival exports, no silenced tools). **Read that charter; do not restate it here.** A violation of it is a quality finding.
+2. **Quality — is this sound engineering?** Set the contract aside and read the diff as an engineer. Hold it to the **same engineer's charter the implementer was held to** — a violation of any of these is a quality finding:
+   - **Scope discipline** — the smallest change that satisfies the task; no scope creep, speculative abstraction, or unrelated drive-bys bundled in.
+   - **Correctness & completeness** — wired up end-to-end, not merely compiling; error and edge paths handled; external input validated at boundaries; existing behavior and public contracts preserved; no stubs, placeholders, or TODOs presented as done.
+   - **Tooling honesty** — no silenced type-checker/linter/compiler (`any`, ignore-pragmas, disabled rules, empty `catch`) used to turn red green.
+   - **Diff discipline** — the diff is exactly the task's change; no secrets, build artifacts (`/dist`), dependencies (`node_modules`), temporary test scripts, or unrelated files staged.
+   - **Architecture & reuse** — DRY with judgment; respects module boundaries and dependency direction (no import cycles); keeps logic, I/O, and presentation in their layers; follows the patterns the codebase already establishes.
+   - **Tests that assert real behavior** — cover the contract's high-value behavior; no mock-only assertions, meta-tests, or static-content pinning; no test-only hooks added to production code; no dead-on-arrival exports that nothing imports.
+   - **Comments & docs** — sparing and true; doc-comments updated when behavior changed (a stale one is a defect).
+   - **Dependencies** — adding, upgrading, or removing a package is authorized-by-task only, never unilateral.
+
+   You have the full bar here — you do not need to open the coder skill or a module `AGENTS.md` to review against it.
 
 The two lenses are a habit of attention, not two documents. Merge their findings into one numbered list.
 
@@ -31,6 +41,7 @@ Hold yourself to these — they are what make a review worth trusting, not a che
 
 - **The diff is truth; the contract is intent.** "Tests passed," "requirement met," execution notes — that is intent. You review the diff. If a sentence in your review would read the same whether or not you ran the diff, delete it.
 - **Run it yourself.** Test results, build status, and diff stats come from commands you ran this session — never from an upstream report. Scope the run to the change (task) or the cumulative diff (phase / final).
+- **Run lean.** Every shell call re-reads your whole context, and test/build output is bulky — so verify with the fewest, tightest runs. Build and run the suite **once**; reuse the result — don't rebuild or re-run to re-confirm a green you already saw, and don't repeat a diff you've already read. Batch inspection commands (a diff and its `--stat` in one call). (Final review is the deliberate exception — see its delta: it earns exhaustiveness.)
 - **Every finding carries evidence and a fix.** Cite `file:line` and show the code, diff excerpt, or test output. Name a concrete path forward. A finding without evidence is an opinion; a finding without a fix is a complaint.
 - **Review the diff, not the repo.** Scope to the SHA range in your context; do not wander the whole tree. Read a full source file only when the diff alone cannot confirm a finding.
 - **Number your findings** (`Finding 1`, `Finding 2`, … per review doc) so dispositions can reference them. This is a convention for addressability, not an enforced schema.

@@ -8,6 +8,8 @@ You review the **cumulative project diff** against the Requirements doc — the 
 - `phase_plan_paths` — the list of phase plans, as an **orientation map**: use them to understand how the work was decomposed and where each requirement was meant to land. They are context for navigating the diff, not a second contract to audit.
 - `repos[]`, `project_base_sha`, `project_head_sha` — the whole-project commit range (`null` when auto-commit is off).
 
+Read only these. The Requirements doc is your contract and the phase plans are an orientation map — do **not** open the Master Plan, the per-task handoffs, or the task/phase **review reports**. Those are upstream and sibling artifacts, not final-scope inputs; you judge the working tree and the diff against the requirements, not against what earlier reviews said.
+
 ## Do
 
 1. **Read the Requirements doc** in full — enumerate what the project owed. At final scope there is no partial credit: each requirement is **delivered** or **missing**.
