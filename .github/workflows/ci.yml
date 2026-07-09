@@ -81,6 +81,78 @@ jobs:
       - name: Test lib/telemetry
         run: npm test -w @rad-orchestration/telemetry
 
+  graph-engine:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install dependencies (root workspace)
+        run: npm install
+
+      - name: Build lib/graph-engine
+        run: npm run build -w @rad-orchestration/graph-engine
+
+      - name: Test lib/graph-engine
+        run: npm test -w @rad-orchestration/graph-engine
+
+      - name: Lint lib/graph-engine
+        run: npm run lint -w @rad-orchestration/graph-engine
+
+  graph-node-types:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install dependencies (root workspace)
+        run: npm install
+
+      - name: Build lib/graph-engine (graph-node-types dependency)
+        run: npm run build -w @rad-orchestration/graph-engine
+
+      - name: Build lib/graph-node-types
+        run: npm run build -w @rad-orchestration/graph-node-types
+
+      - name: Test lib/graph-node-types
+        run: npm test -w @rad-orchestration/graph-node-types
+
+      - name: Lint lib/graph-node-types
+        run: npm run lint -w @rad-orchestration/graph-node-types
+
+  graph-store-sqlite:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install dependencies (root workspace)
+        run: npm install
+
+      - name: Build lib/graph-engine (graph-store-sqlite dependency)
+        run: npm run build -w @rad-orchestration/graph-engine
+
+      - name: Build lib/graph-store-sqlite
+        run: npm run build -w @rad-orchestration/graph-store-sqlite
+
+      - name: Test lib/graph-store-sqlite
+        run: npm test -w @rad-orchestration/graph-store-sqlite
+
+      - name: Lint lib/graph-store-sqlite
+        run: npm run lint -w @rad-orchestration/graph-store-sqlite
+
   ui:
     runs-on: ubuntu-latest
     steps:
