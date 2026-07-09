@@ -158,19 +158,19 @@ describe('SqliteStateStore — durability', () => {
   });
 
   describe('migration versioning', () => {
-    it('is at user_version 1 after a fresh open, and reopening re-runs nothing', () => {
+    it('is at the latest user_version after a fresh open, and reopening re-runs nothing', () => {
       const db = openDatabase(dbPath);
       try {
-        expect(db.pragma('user_version', { simple: true })).toBe(1);
+        expect(db.pragma('user_version', { simple: true })).toBe(2);
         expect(() => runMigrations(db)).not.toThrow();
-        expect(db.pragma('user_version', { simple: true })).toBe(1);
+        expect(db.pragma('user_version', { simple: true })).toBe(2);
       } finally {
         db.close();
       }
 
       const reopenedDb = openDatabase(dbPath);
       try {
-        expect(reopenedDb.pragma('user_version', { simple: true })).toBe(1);
+        expect(reopenedDb.pragma('user_version', { simple: true })).toBe(2);
       } finally {
         reopenedDb.close();
       }
