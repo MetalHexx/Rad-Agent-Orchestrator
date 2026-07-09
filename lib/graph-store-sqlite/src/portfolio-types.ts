@@ -8,8 +8,8 @@ export type AutoPolicy = 'ask' | 'always' | 'never';
 
 /**
  * The entity kinds `SqlitePortfolioStore`'s private mutate-and-audit helper accepts as
- * `portfolio_change_log.target_type`. `project`, `worktree`, `group`, and `edge` are implemented;
- * `doc`/`external_ref` are reserved for the portfolio entities later tasks add against this same
+ * `portfolio_change_log.target_type`. `project`, `worktree`, `group`, `edge`, and `external_ref`
+ * are implemented; `doc` is reserved for the portfolio entity a later task adds against this same
  * store and audit spine.
  */
 export type PortfolioTargetType = 'project' | 'group' | 'edge' | 'doc' | 'worktree' | 'external_ref';

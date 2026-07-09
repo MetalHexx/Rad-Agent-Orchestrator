@@ -756,13 +756,43 @@ export class SqlitePortfolioStore implements PortfolioStore {
       actor,
       before,
       after,
-      write: () =>
+      // The cycle check runs inside the same transaction as the update (see `mutate`): if
+      // `parentGroupId`'s ancestor chain already reaches `groupId`, reparenting `groupId` under it
+      // would close the containment tree into a cycle, so the check throws to roll back the
+      // transaction and surface as a failed Result with no row written — mirrors `addEdge`'s
+      // in-transaction `canReach` guard.
+      write: () => {
+        if (parentGroupId != null && this.canReachAncestor(parentGroupId, groupId)) {
+          throw new Error(
+            `group '${groupId}' cannot be reparented under its own descendant '${parentGroupId}'`,
+          );
+        }
         this.setParentGroupStmt.run({
           id: groupId,
           parent_group_id: parentGroupId,
           updated_at: after.updatedAt,
-        }),
+        });
+      },
     });
+  }
+
+  /**
+   * Ancestor walk up `start`'s `parent_group_id` chain, answering whether `target` appears in it —
+   * `setParentGroup`'s cycle guard calls this as `canReachAncestor(parentGroupId, groupId)` to ask
+   * "does walking up from the proposed parent reach the group being reparented", since a
+   * `groupId -> parentGroupId` link would close that path into a cycle. A `visited` set bounds the
+   * walk even against an already-corrupt chain, so this can never spin forever.
+   */
+  private canReachAncestor(start: string, target: string): boolean {
+    const visited = new Set<string>();
+    let current: string | null = start;
+    while (current != null) {
+      if (current === target) return true;
+      if (visited.has(current)) return false;
+      visited.add(current);
+      current = this.getGroup(current)?.parentGroupId ?? null;
+    }
+    return false;
   }
 
   listGroupChildren(groupId: string): GroupChildren {

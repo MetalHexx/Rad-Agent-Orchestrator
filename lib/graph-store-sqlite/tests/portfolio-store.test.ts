@@ -270,6 +270,21 @@ describe('SqlitePortfolioStore — groups', () => {
     expect(store.getGroup('group-a')?.parentGroupId).toBeNull();
   });
 
+  it('rejects a longer transitive cycle in group re-parenting, leaving no row', () => {
+    const db = openDatabase(':memory:');
+    const store = new SqlitePortfolioStore(db);
+    store.createGroup({ id: 'group-a', description: 'Group A' }, null);
+    store.createGroup({ id: 'group-b', description: 'Group B' }, null);
+    store.createGroup({ id: 'group-c', description: 'Group C' }, null);
+    store.setParentGroup('group-b', 'group-a', null);
+    store.setParentGroup('group-c', 'group-b', null);
+
+    const result = store.setParentGroup('group-a', 'group-c', null);
+
+    expect(result.ok).toBe(false);
+    expect(store.getGroup('group-a')?.parentGroupId).toBeNull();
+  });
+
   it('orphans child projects and promotes sub-groups to the root on group delete (DDL SET NULL)', () => {
     const db = openDatabase(':memory:');
     const store = new SqlitePortfolioStore(db);
