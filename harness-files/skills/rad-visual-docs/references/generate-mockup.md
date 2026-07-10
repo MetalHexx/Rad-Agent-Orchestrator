@@ -84,7 +84,7 @@ Close to the real app. Brand hints, design tokens, polished components.
 
 - Apply any available design tokens for the project's design system.
 - Replace grayscale interactive fills with the brand color (or `#4A90E2` as a neutral stand-in).
-- Add icon placeholders (SVG outlines), micro-copy, hover-state annotations, and spacing guides.
+- Add icon placeholders (SVG outlines), micro-copy, and spacing guides.
 - Still no real assets — SVG placeholders only.
 
 #### Design Principles (apply at all fidelity levels)
@@ -92,9 +92,9 @@ Close to the real app. Brand hints, design tokens, polished components.
 **Rules:**
 - No real images — use SVG placeholders: `<rect>` + diagonal `<line>` cross.
 - No lorem ipsum — use realistic placeholder copy based on the feature (e.g. "Schedule Follow-up", "First Name", "Event Title").
-- Annotate intent — add small gray labels next to key elements explaining behavior (e.g. `→ opens modal`, `→ disabled until selection`, `→ fires validation`).
+- Stay grounded — every screen, section, field, and label must trace to what's actually been discussed, shown in a screenshot, or read from a ticket. Don't add nav items, screens, fields, or copy to make the layout feel complete — if something's ambiguous, ask, or leave it minimal rather than inventing it.
+- Clean by default — render the mockup as a pure visual with no annotations, callouts, or explanatory labels. Only add them if the user explicitly asks (e.g. "annotate this," "explain the behavior"). When requested, add behavior notes (e.g. `→ opens modal`, `→ disabled until selection`) or component names (e.g. `// DropdownMenu`) as a distinct, clearly-separated layer — never woven through the default render.
 - Responsive — use a `max-width` wrapper matching the target device width. No hardcoded full-page layouts.
-- Component-aware — for React surfaces, label reusable elements with the likely component name in annotation (e.g. `// DropdownMenu`, `// ConfirmationModal`).
 
 **HTML rules:**
 - All CSS inline in `<style>` — no external files, no CDN.
