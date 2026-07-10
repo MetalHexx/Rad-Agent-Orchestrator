@@ -1,7 +1,10 @@
-// graph-service/src/http/app.ts — builds the Hono app the daemon serves: `/health`, plus the
-// envelope-shaped not-found/error fallbacks every later route inherits.
+// graph-service/src/http/app.ts — builds the Hono app the daemon serves: `/health`, the
+// `/engine-graph/*` execution-DAG sub-router, plus the envelope-shaped not-found/error fallbacks
+// every route inherits (the sub-router defines no `onError`/`notFound` of its own, so these two stay
+// the single source for the whole app).
 import { Hono } from 'hono';
 import type { GraphService } from '../compose.js';
+import { buildEngineGraphRouter } from './engine-graph.js';
 import { err, ok } from './respond.js';
 
 interface HealthPayload {
@@ -28,6 +31,8 @@ export function buildApp(service: GraphService): Hono {
     };
     return c.json(ok(payload));
   });
+
+  app.route('/engine-graph', buildEngineGraphRouter(service));
 
   app.notFound((c) => c.json(err('not_found', `no route for ${c.req.method} ${c.req.path}`), 404));
 
