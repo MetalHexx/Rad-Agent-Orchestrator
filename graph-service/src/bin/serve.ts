@@ -6,7 +6,8 @@ import { serve } from '@hono/node-server';
 import { compose } from '../compose.js';
 import { buildApp } from '../http/app.js';
 
-const DEFAULT_PORT = 4600;
+// 1336 is the locked default (the service's neighbor, the dashboard, is 1337).
+const DEFAULT_PORT = 1336;
 
 const dbPath = process.env['GRAPH_SERVICE_DB_PATH'] ?? ':memory:';
 const port = Number(process.env['GRAPH_SERVICE_PORT'] ?? DEFAULT_PORT);

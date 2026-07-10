@@ -11,10 +11,11 @@ These conventions are enforced from this package's first file and apply to every
 going forward:
 
 - **The composition object is the seam.** `compose()` (`src/compose.ts`) builds the one
-  `GraphService` — the DB handle, `execStore`, `engine`, `registry`, `portfolio`, `version`, and
-  `dbPath` — that every HTTP handler closes over. A handler reaches state through this object,
-  never through a module-level singleton, a second `openDatabase` call, or a fresh registry of its
-  own. This package is the single production host and the sole owner of the SQLite handle (D9).
+  `GraphService` — the DB handle, `execStore`, `engine`, `registry`, `portfolio`, `capabilities`,
+  `resolvers`, `version`, and `dbPath` — that every HTTP handler closes over. A handler reaches
+  state through this object, never through a module-level singleton, a second `openDatabase` call,
+  or a fresh registry of its own. This package is the single production host and the sole owner of
+  the SQLite handle (D9).
 - **Barrel-only imports from the three libs.** `@rad-orchestration/graph-engine`,
   `@rad-orchestration/graph-node-types`, and `@rad-orchestration/graph-store-sqlite` are consumed
   exclusively by their scoped package name, through each package's own `src/index.ts` barrel —
