@@ -21,6 +21,11 @@ describe('compose', () => {
     // The portfolio store is usable through the same handle.
     expect(service.portfolio.listProjects()).toEqual([]);
 
+    // The capability ports + their per-node-type resolvers are wired and ready for the driver.
+    expect(service.capabilities.docRead).toBeDefined();
+    expect(service.capabilities.spawnAgent).toBeDefined();
+    expect(service.resolvers['rad-orc:task']).toBeInstanceOf(Function);
+
     expect(service.version.service).toEqual(expect.any(String));
     expect(service.version.engine).toEqual(expect.any(String));
   });

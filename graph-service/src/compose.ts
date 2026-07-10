@@ -12,10 +12,15 @@ import {
   createNodeTypeRegistry,
   ENGINE_SCHEMA_VERSION,
   type Engine,
+  type NodeTypeName,
   type NodeTypeRegistry,
 } from '@rad-orchestration/graph-engine';
 import { BUILT_IN_NODE_TYPES } from '@rad-orchestration/graph-node-types';
 import { openDatabase, SqlitePortfolioStore, SqliteStateStore } from '@rad-orchestration/graph-store-sqlite';
+import type { CapabilityPorts } from './capabilities/ports.js';
+import { createFakedCapabilityPorts } from './capabilities/fakes.js';
+import type { NodeOutcomeResolver } from './driver/drive.js';
+import { createBuiltInResolvers } from './driver/resolvers.js';
 
 /**
  * The shared services object the whole app closes over — the composition root every route
@@ -28,6 +33,14 @@ export interface GraphService {
   readonly engine: Engine;
   readonly registry: NodeTypeRegistry;
   readonly portfolio: SqlitePortfolioStore;
+  /**
+   * The six capability ports the driver dispatches an engaged node's `ActResult` against —
+   * `capabilities/fakes.ts`'s faked implementations today, so no real agent/git/PR side effects
+   * occur yet. A real implementation drops in here unchanged in a later phase (the 2.4 seam).
+   */
+  readonly capabilities: CapabilityPorts;
+  /** The per-node-type outcome resolver set (`driver/resolvers.ts`), closed over `capabilities` — what `advance`/`runToQuiescence` dispatch a frontier node's `ActResult` through. */
+  readonly resolvers: Readonly<Record<NodeTypeName, NodeOutcomeResolver>>;
   readonly version: { readonly service: string; readonly engine: string };
   readonly dbPath: string;
   // SSE sources (the two store-level change hooks) are added to this object in P02-T03.
@@ -67,6 +80,9 @@ export function compose(opts: ComposeOptions): GraphService {
   const registry = createNodeTypeRegistry(BUILT_IN_NODE_TYPES);
   const engine = createEngine(execStore, registry);
   const portfolio = new SqlitePortfolioStore(db);
+  // P01-T02: faked until the real capability ports land (2.4) — no real agent/git/PR side effects.
+  const capabilities = createFakedCapabilityPorts();
+  const resolvers = createBuiltInResolvers(capabilities);
 
   return {
     db,
@@ -74,6 +90,8 @@ export function compose(opts: ComposeOptions): GraphService {
     engine,
     registry,
     portfolio,
+    capabilities,
+    resolvers,
     version: { service: readServiceVersion(), engine: ENGINE_SCHEMA_VERSION },
     dbPath,
   };

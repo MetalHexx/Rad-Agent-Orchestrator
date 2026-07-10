@@ -36,8 +36,12 @@ going forward:
 ## Seam rules
 
 - **Consumed only through `src/index.ts`.** The barrel exports `compose`, `GraphService`,
-  `buildApp`, and the envelope helpers/types; nothing outside this package imports `compose.ts` or
-  `http/*.ts` by path. Tests inside this package may import internals by their direct module path.
+  `buildApp`, the envelope helpers/types, the capability port bundle (`CapabilityPorts`) and its
+  faked implementations (`capabilities/fakes.ts`), and the driver (`capabilities+driver`:
+  `advance`/`runToQuiescence`, `applyOutcome`, `globalFrontier`/`isGloballyQuiescent`,
+  `createBuiltInResolvers`); nothing outside this package imports `compose.ts`, `http/*.ts`,
+  `capabilities/*.ts`, or `driver/*.ts` by path. Tests inside this package may import internals by
+  their direct module path.
 - **The uniform response envelope.** Every route replies `{ ok: true, data }` on success or
   `{ ok: false, error: { code, message } }` on failure — never a thrown, unhandled 500. `src/http/
   respond.ts`'s `ok`/`err`/`fromResult` are the only place this shape is constructed; a route
