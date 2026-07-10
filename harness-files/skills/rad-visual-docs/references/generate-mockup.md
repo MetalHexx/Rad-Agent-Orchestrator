@@ -42,7 +42,7 @@ Before generating, determine the target surface from the brief:
 | Signal in the brief | Surface | Layout style |
 |---|---|---|
 | Panel-based, real-time, session-style screens | Legacy / classic app | Top nav bar, sidebar, panel-based layout — approximate in clean HTML/CSS |
-| New feature, component-driven, modern web | Modern web app | Component card pattern — label reusable pieces with likely component names |
+| New feature, component-driven, modern web | Modern web app | Component card pattern (component names only if the user asks for annotations) |
 | Admin, account management | Admin / settings UI | Dense table/form layout, sidebar nav |
 | Ambiguous | Ask: "Is this the legacy app or the modern web app?" | — |
 
