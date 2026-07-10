@@ -6,7 +6,7 @@
 export const FIXTURE_REPO = {
   name: 'rad-orc-source',
   path: '/repos/rad-orc-source',
-  branch: 'radorch/STEERABLE-DAG-2.3',
+  branch: 'radorch/STEERABLE-DAG-1',
 } as const;
 
 export const FIXTURE_PR_REPO = { ...FIXTURE_REPO, base_branch: 'main' } as const;
