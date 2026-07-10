@@ -83,6 +83,63 @@ describe('SqliteStateStore — change_log', () => {
   });
 });
 
+describe('SqliteStateStore — subscribe', () => {
+  it('emits the appended change_log row exactly once per committed apply', () => {
+    const db = openDatabase(':memory:');
+    const store = new SqliteStateStore(db);
+    const received: unknown[] = [];
+    store.subscribe((row) => received.push(row));
+
+    const delta = createDelta([node('task-a')], 'add_node', { id: 'task-a' });
+    const result = store.apply(SCOPE, delta);
+
+    expect(result.ok).toBe(true);
+    expect(received).toHaveLength(1);
+    const [row] = received as Array<{
+      seq: number;
+      project_id: string;
+      primitive: string;
+      node_changes: unknown;
+      edge_changes: unknown;
+    }>;
+    expect(row.project_id).toBe(SCOPE.projectId);
+    expect(row.primitive).toBe('add_node');
+    expect(typeof row.seq).toBe('number');
+    expect(row.node_changes).toEqual(delta.nodeChanges);
+    expect(row.edge_changes).toEqual([]);
+  });
+
+  it('does not emit on a rejected (rolled-back) apply', () => {
+    const db = openDatabase(':memory:');
+    const store = new SqliteStateStore(db);
+    const received: unknown[] = [];
+    store.subscribe((row) => received.push(row));
+
+    const result = store.apply(SCOPE, {
+      primitive: 'remove_node',
+      params: {},
+      nodeChanges: [{ op: 'removed', before: node('ghost'), after: null }],
+      edgeChanges: [],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(received).toHaveLength(0);
+  });
+
+  it('stops delivering to a listener after it unsubscribes', () => {
+    const db = openDatabase(':memory:');
+    const store = new SqliteStateStore(db);
+    const received: unknown[] = [];
+    const unsubscribe = store.subscribe((row) => received.push(row));
+
+    store.apply(SCOPE, createDelta([node('task-a')], 'add_node', { id: 'task-a' }));
+    unsubscribe();
+    store.apply(SCOPE, createDelta([node('task-b')], 'add_node', { id: 'task-b' }));
+
+    expect(received).toHaveLength(1);
+  });
+});
+
 describe('SqliteStateStore — optional field round-trip', () => {
   it('round-trips a node with disabled: true and a budgetAnchor', () => {
     const db = openDatabase(':memory:');

@@ -6,6 +6,7 @@ import { Hono } from 'hono';
 import type { GraphService } from '../compose.js';
 import { buildEngineGraphRouter } from './engine-graph.js';
 import { err, ok } from './respond.js';
+import { buildStreamRouter } from './streams.js';
 import { buildWorkGraphRouter } from './work-graph.js';
 
 interface HealthPayload {
@@ -35,6 +36,9 @@ export function buildApp(service: GraphService): Hono {
 
   app.route('/engine-graph', buildEngineGraphRouter(service));
   app.route('/work-graph', buildWorkGraphRouter(service));
+  // SSE: /engine-graph/stream + /work-graph/stream — mounted at root since streams.ts owns both
+  // full paths itself, rather than being sub-mounted onto either read/write router above.
+  app.route('/', buildStreamRouter(service));
 
   app.notFound((c) => c.json(err('not_found', `no route for ${c.req.method} ${c.req.path}`), 404));
 

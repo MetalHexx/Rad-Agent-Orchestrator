@@ -1051,3 +1051,62 @@ describe('SqlitePortfolioStore — docs', () => {
     expect(tableCount(db, 'docs')).toBe(1);
   });
 });
+
+describe('SqlitePortfolioStore — subscribe', () => {
+  it('emits the appended portfolio_change_log row exactly once per committed mutation', () => {
+    const db = openDatabase(':memory:');
+    const store = new SqlitePortfolioStore(db);
+    const received: unknown[] = [];
+    store.subscribe((row) => received.push(row));
+
+    const created = store.createProject({ id: 'proj-a' }, 'alice');
+
+    expect(created.ok).toBe(true);
+    expect(received).toHaveLength(1);
+    const [row] = received as Array<{
+      seq: number;
+      operation: string;
+      target_type: string;
+      target_id: string;
+      actor: string | null;
+      after: unknown;
+    }>;
+    expect(row.operation).toBe('project.created');
+    expect(row.target_type).toBe('project');
+    expect(row.target_id).toBe('proj-a');
+    expect(row.actor).toBe('alice');
+    expect(typeof row.seq).toBe('number');
+    expect(row.after).toMatchObject({ id: 'proj-a' });
+  });
+
+  it('does not emit on a rolled-back mutation', () => {
+    const db = openDatabase(':memory:');
+    const store = new SqlitePortfolioStore(db);
+    store.createProject({ id: 'proj-a' }, null);
+    db.prepare(
+      `INSERT INTO dag_nodes (project_id, id, type, status, order_key, data)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    ).run('proj-a', 'node-1', 'rad-orc:task', 'not_started', 0, '{}');
+
+    const received: unknown[] = [];
+    store.subscribe((row) => received.push(row));
+
+    const result = store.deleteProject('proj-a', null);
+
+    expect(result.ok).toBe(false);
+    expect(received).toHaveLength(0);
+  });
+
+  it('stops delivering to a listener after it unsubscribes', () => {
+    const db = openDatabase(':memory:');
+    const store = new SqlitePortfolioStore(db);
+    const received: unknown[] = [];
+    const unsubscribe = store.subscribe((row) => received.push(row));
+
+    store.createProject({ id: 'proj-a' }, null);
+    unsubscribe();
+    store.createProject({ id: 'proj-b' }, null);
+
+    expect(received).toHaveLength(1);
+  });
+});

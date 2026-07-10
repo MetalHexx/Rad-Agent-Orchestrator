@@ -43,7 +43,9 @@ export interface GraphService {
   readonly resolvers: Readonly<Record<NodeTypeName, NodeOutcomeResolver>>;
   readonly version: { readonly service: string; readonly engine: string };
   readonly dbPath: string;
-  // SSE sources (the two store-level change hooks) are added to this object in P02-T03.
+  // SSE sources: `execStore.subscribe`/`portfolio.subscribe` (P02-T03) — each store's own
+  // row-emission hook, reached directly through the fields above rather than a separate wrapper,
+  // the same way every other route reaches state through this one composition object.
 }
 
 export interface ComposeOptions {
@@ -71,7 +73,8 @@ function readServiceVersion(): string {
  *
  * Deliberately does **not** wire `withChangeStream`: its in-process `ChangeDelta` carries no
  * `project_id` and no `seq` (`seq` is assigned only at persistence), so it can't scope a stream or
- * drive resume-by-seq. The SSE sources are the store-level row-emission hooks added in P02-T03.
+ * drive resume-by-seq. The SSE sources are `execStore`/`portfolio`'s own row-emission hooks
+ * (`subscribe`), which emit the persisted `change_log`/`portfolio_change_log` row instead (D13).
  */
 export function compose(opts: ComposeOptions): GraphService {
   const { dbPath } = opts;

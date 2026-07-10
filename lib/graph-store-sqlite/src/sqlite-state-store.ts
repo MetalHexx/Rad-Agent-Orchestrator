@@ -8,9 +8,11 @@ import {
   type EdgeChange,
   type NodeChange,
   type NodeId,
+  type PrimitiveName,
   type ProjectScope,
   type Result,
   type StateStore,
+  type Unsubscribe,
 } from '@rad-orchestration/graph-engine';
 
 /** Shared read projection for `dag_nodes` — the columns `rowToNode` consumes, in `NodeRow` order. */
@@ -101,6 +103,27 @@ function edgeParams(
 }
 
 /**
+ * The just-appended `change_log` row, handed to every `subscribe` listener after a successful
+ * `apply` commits. `seq`/`project_id` are the identity a `ChangeDelta` alone never carries (`seq`
+ * is assigned only at persistence) — D13: this is why the row, not the in-process delta, is what
+ * an SSE stream scopes and resumes by. Field names mirror the `change_log` columns verbatim, same
+ * as this file's other `*Row` shapes.
+ */
+export interface ChangeLogRow {
+  readonly seq: number;
+  readonly project_id: string;
+  readonly ts: string;
+  readonly actor: string | null;
+  readonly primitive: PrimitiveName;
+  readonly params: Readonly<Record<string, unknown>>;
+  readonly node_changes: readonly NodeChange[];
+  readonly edge_changes: readonly EdgeChange[];
+}
+
+/** A `SqliteStateStore.subscribe` listener — see {@link ChangeLogRow}. */
+export type ChangeLogListener = (row: ChangeLogRow) => void;
+
+/**
  * The durable `StateStore` over the P01 schema. Every `db` operation is synchronous
  * (better-sqlite3), so `StateStore`'s interface needs no adaptation. Each `scope.projectId` is
  * seeded on first touch — a `projects` row plus, if the scope has zero nodes, the project-scoped
@@ -127,11 +150,16 @@ export class SqliteStateStore implements StateStore {
   private readonly deleteEdgeStmt: Database.Statement;
   private readonly insertChangeLogStmt: Database.Statement;
   private readonly applyTransaction: Database.Transaction<
-    (projectId: string, delta: ChangeDelta) => Result<void>
+    (projectId: string, delta: ChangeDelta) => Result<ChangeLogRow>
   >;
 
   /** Scopes whose `projects` row has been ensured this session — lets reads skip re-seeding work. */
   private readonly seededScopes = new Set<string>();
+
+  // D9: this package is the single production host and sole owner of the SQLite handle, so a
+  // row-emission listener registered here is the only observer of every commit — never a second
+  // store instance or a poll of the change_log table.
+  private readonly changeListeners = new Set<ChangeLogListener>();
 
   constructor(private readonly db: Database.Database) {
     this.insertProjectStmt = this.db.prepare('INSERT OR IGNORE INTO projects (id) VALUES (?)');
@@ -317,9 +345,10 @@ export class SqliteStateStore implements StateStore {
    * Validates every node change then every edge change against current rows, checks referential
    * integrity of the projected final state, and only then writes nodes, edges, and the
    * `change_log` row — in that order. Returning early on an invalid delta happens before any
-   * write, so `applyTransaction` commits nothing rather than needing a rollback.
+   * write, so `applyTransaction` commits nothing rather than needing a rollback. Returns the
+   * appended `change_log` row on success, so `apply` can emit it once the transaction commits.
    */
-  private commitDelta(projectId: string, delta: ChangeDelta): Result<void> {
+  private commitDelta(projectId: string, delta: ChangeDelta): Result<ChangeLogRow> {
     const nodeMutations: NodeMutation[] = [];
     for (const change of delta.nodeChanges) {
       const planned = this.planNodeChange(projectId, change);
@@ -349,9 +378,10 @@ export class SqliteStateStore implements StateStore {
 
     // The store is a host component outside the engine's determinism boundary, so a wall-clock
     // timestamp here is fine; `actor` arrives with the service (2.3).
-    this.insertChangeLogStmt.run(
+    const ts = new Date().toISOString();
+    const info = this.insertChangeLogStmt.run(
       projectId,
-      new Date().toISOString(),
+      ts,
       null,
       delta.primitive,
       JSON.stringify(delta.params),
@@ -359,7 +389,17 @@ export class SqliteStateStore implements StateStore {
       JSON.stringify(delta.edgeChanges),
     );
 
-    return { ok: true, data: undefined };
+    const row: ChangeLogRow = {
+      seq: Number(info.lastInsertRowid),
+      project_id: projectId,
+      ts,
+      actor: null,
+      primitive: delta.primitive,
+      params: delta.params,
+      node_changes: delta.nodeChanges,
+      edge_changes: delta.edgeChanges,
+    };
+    return { ok: true, data: row };
   }
 
   getNode(scope: ProjectScope, id: NodeId): DagNode | null {
@@ -380,6 +420,26 @@ export class SqliteStateStore implements StateStore {
 
   apply(scope: ProjectScope, delta: ChangeDelta): Result<void> {
     this.ensureSeeded(scope);
-    return this.applyTransaction(scope.projectId, delta);
+    const result = this.applyTransaction(scope.projectId, delta);
+    if (!result.ok) return result;
+    // Emitted only once `applyTransaction` has returned — i.e. strictly after the transaction's
+    // own COMMIT — so a rolled-back delta (which never reaches this line) emits nothing.
+    this.emitChangeLogRow(result.data);
+    return { ok: true, data: undefined };
+  }
+
+  /**
+   * Subscribes `listener` to every `change_log` row this store appends from here on, in commit
+   * order — additive to `StateStore`, no existing method's behavior changes. Mirrors the engine's
+   * `ChangeStream` shape (`subscribe(listener): Unsubscribe`); see {@link ChangeLogRow} for why the
+   * persisted row, not a bare `ChangeDelta`, is what gets emitted.
+   */
+  subscribe(listener: ChangeLogListener): Unsubscribe {
+    this.changeListeners.add(listener);
+    return () => this.changeListeners.delete(listener);
+  }
+
+  private emitChangeLogRow(row: ChangeLogRow): void {
+    for (const listener of this.changeListeners) listener(row);
   }
 }
