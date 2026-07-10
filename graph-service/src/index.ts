@@ -27,3 +27,18 @@ export type { AdvanceResult, NodeOutcomeResolver, QuiescenceNotSettled, Quiescen
 export { advance, runToQuiescence } from './driver/drive.js';
 export type { CommitResultLike, DriverScript } from './driver/resolvers.js';
 export { createBuiltInResolvers } from './driver/resolvers.js';
+
+export type { ServiceDiscovery } from './lifecycle/discovery.js';
+export {
+  discoveryFilePath,
+  readDiscoveryFile,
+  removeDiscoveryFile,
+  resolveRadorcRoot,
+  writeDiscoveryFile,
+} from './lifecycle/discovery.js';
+
+export type { EnsureOptions, EnsureResult, StatusOptions, StatusResult } from './lifecycle/ensure.js';
+export { ensure, status } from './lifecycle/ensure.js';
+
+export type { StartOptions, StartResult, StopOptions, StopResult } from './lifecycle/daemon.js';
+export { start, stop } from './lifecycle/daemon.js';

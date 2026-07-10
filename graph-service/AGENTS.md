@@ -34,6 +34,33 @@ going forward:
   design decision in `STEERABLE-DAG-DESIGN`, e.g. `// D9: ...` — matching that design doc's own
   `D<N>` decision numbering.
 
+## Lifecycle (`ensure`/`start`/`stop`/`status`)
+
+`src/lifecycle/` is how any caller (an agent via the CLI, in a later iteration) guarantees a
+running daemon with one cheap call:
+
+- **`ensure()`** (`src/lifecycle/ensure.ts`) is idempotent and fast: a healthy daemon on record is
+  reused with no spawn; otherwise exactly one racing caller wins an exclusive-create lockfile
+  (`~/.radorc/service.lock`), spawns the daemon **detached**, and polls `/health` until it's green
+  (bounded timeout); every other racing caller waits on the same probe instead of spawning its own.
+- **`status()`** (`src/lifecycle/ensure.ts`) is read-only: it reports running/endpoint/version from
+  a `/health` probe and never spawns or mutates anything.
+- **`start()`/`stop()`** (`src/lifecycle/daemon.ts`) are the daemon process's own half: `start()`
+  binds loopback-only (falling back to the next free port on `EADDRINUSE`), writes the discovery
+  file, and installs the `SIGINT`/`SIGTERM` graceful-shutdown handler (drain the server, close the
+  DB handle, remove the discovery file, then exit — a restart always finds a clean slate); `stop()`
+  reads the discovery file and signals the pid it names.
+- **The discovery file — a public seam.** `~/.radorc/service.json` (`src/lifecycle/discovery.ts`)
+  is the one place a running daemon's endpoint is recorded; nothing bakes in a port — the default
+  is `1336`, but a bind collision falls back to the next free one and the file records whatever
+  actually bound. Shape (kept intentionally minimal):
+  ```json
+  { "pid": 12345, "port": 1336, "url": "http://127.0.0.1:1336", "startedAt": "2026-07-09T00:00:00.000Z" }
+  ```
+  Written atomically (temp-write + rename) so a reader never observes a partial file, and removed
+  on graceful shutdown. `~/.radorc` is resolved at runtime (`os.homedir()`) — never a path baked
+  in at build/install time, so the same code works across machines/users.
+
 ## Seam rules
 
 - **Consumed only through `src/index.ts`.** The barrel exports `compose`, `GraphService`,
