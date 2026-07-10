@@ -133,6 +133,13 @@ test-run.log
 /prompt-tests/rad-master-plan-benchmark-v2/output/run-*/*/template.yml
 /prompt-tests/rad-master-plan-benchmark-v2/output/run-*/*/backups/
 
+# handoff A/B benchmark — ignore all per-run output, keep the folder placeholder.
+# The pristine sandbox (_handoff-sandbox/) is a committed fixture, NOT ignored.
+/prompt-tests/handoff-original-e2e/output/run-*/
+!/prompt-tests/handoff-original-e2e/output/.gitkeep
+/prompt-tests/handoff-improved-e2e/output/run-*/
+!/prompt-tests/handoff-improved-e2e/output/.gitkeep
+
 # Plugin artifacts
 # NOTE: .claude/ (above) is the gitignored dogfood build output;
 # .claude-plugin/ is the COMMITTED Claude marketplace manifest folder
