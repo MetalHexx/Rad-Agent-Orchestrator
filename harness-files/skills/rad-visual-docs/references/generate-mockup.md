@@ -84,7 +84,7 @@ Close to the real app. Brand hints, design tokens, polished components.
 
 - Apply any available design tokens for the project's design system.
 - Replace grayscale interactive fills with the brand color (or `#4A90E2` as a neutral stand-in).
-- Add icon placeholders (SVG outlines), micro-copy, and spacing guides.
+- Add icon placeholders (SVG outlines), micro-copy, and precise spacing.
 - Still no real assets — SVG placeholders only.
 
 #### Design Principles (apply at all fidelity levels)
