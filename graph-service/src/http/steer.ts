@@ -4,14 +4,11 @@
 // `engage` are driver-contract primitives (P01-T02's `applyOutcome`/`advance`), never dispatched
 // from a client-supplied envelope here.
 import type {
-  AddCorrectiveOptions,
   AddNodeOptions,
   ChangeDelta,
-  Expansion,
   NodeTypeName,
   NodeTypeRegistry,
   PrimitiveContext,
-  RemoveNodeStrategy,
   Result,
 } from '@rad-orchestration/graph-engine';
 import {
@@ -28,6 +25,7 @@ import {
   set_order,
   toggle,
 } from '@rad-orchestration/graph-engine';
+import { parseSharedMutation } from './mutation-spec.js';
 import type { FailureEnvelope, SuccessEnvelope } from './respond.js';
 import { err, ok } from './respond.js';
 
@@ -97,12 +95,17 @@ export function parseSteerRequest(body: unknown): SuccessEnvelope<SteerRequest> 
 /**
  * Dispatches one validated {@link SteerRequest} against the injected `ctx`/`registry`. Dispatch is
  * not uniform: each primitive reads its own `params` shape here, one arm at a time; `add_node`/
- * `expand` are the only two that also need `registry`. Never reads inside `params.data` — an opaque
- * blob is passed through verbatim to the primitive, never inspected by this dispatcher
- * (core-opacity). Validates only enough of each `params` shape to avoid an `undefined` silently
- * reaching the primitive (a malformed field surfaces as a structured `invalid_delta` rejection, the
- * same code a malformed delta would itself carry); everything else — cycle/unknown-type/
- * not-in-frontier legality — is the primitive's own `Result` to return.
+ * `expand` are the only two that also need `registry`. The six kinds the engine's `MutationSpec`
+ * union also covers (`add_dependency`, `remove_node`, `move_node`, `expand`, `add_corrective`,
+ * `reset`) parse `params` through the same {@link parseSharedMutation} `dry-run` reads through — the
+ * one pinned shape the Phase Plan's Integration Seams section calls for, so a client's dry-run body
+ * for one of these kinds is reusable verbatim as its steer body. The remaining five (`add_node`,
+ * `remove_dependency`, `set_order`, `toggle`, `resume`) have no dry-run equivalent and stay parsed
+ * locally. Never reads inside `params.data` — an opaque blob is passed through verbatim to the
+ * primitive, never inspected by this dispatcher (core-opacity). A malformed `params` shape surfaces
+ * as a structured `invalid_delta` rejection, the same code a malformed delta would itself carry;
+ * everything else — cycle/unknown-type/not-in-frontier legality — is the primitive's own `Result` to
+ * return.
  */
 export function dispatchSteerPrimitive(
   ctx: PrimitiveContext,
@@ -122,19 +125,14 @@ export function dispatchSteerPrimitive(
       return add_node(ctx, registry, id, type as NodeTypeName, parent, options as AddNodeOptions | undefined);
     }
     case 'remove_node': {
-      const { node, strategy } = params;
-      if (!isNonEmptyString(node)) return malformedParams("remove_node params requires string 'node'");
-      if (!isPlainObject(strategy) || !['heal', 'cascade', 'detach'].includes(strategy.dependents as string)) {
-        return malformedParams("remove_node params requires a 'strategy' object with dependents 'heal'|'cascade'|'detach'");
-      }
-      return remove_node(ctx, node, strategy as unknown as RemoveNodeStrategy);
+      const parsed = parseSharedMutation('remove_node', params);
+      if (!parsed.ok) return malformedParams(parsed.error.message);
+      return remove_node(ctx, parsed.data.nodeId, parsed.data.strategy);
     }
     case 'add_dependency': {
-      const { from, to } = params;
-      if (!isNonEmptyString(from) || !isNonEmptyString(to)) {
-        return malformedParams("add_dependency params requires string 'from' and 'to'");
-      }
-      return add_dependency(ctx, from, to);
+      const parsed = parseSharedMutation('add_dependency', params);
+      if (!parsed.ok) return malformedParams(parsed.error.message);
+      return add_dependency(ctx, parsed.data.from, parsed.data.to);
     }
     case 'remove_dependency': {
       const { from, to } = params;
@@ -144,11 +142,9 @@ export function dispatchSteerPrimitive(
       return remove_dependency(ctx, from, to);
     }
     case 'move_node': {
-      const { node, newParent } = params;
-      if (!isNonEmptyString(node) || !isNonEmptyString(newParent)) {
-        return malformedParams("move_node params requires string 'node' and 'newParent'");
-      }
-      return move_node(ctx, node, newParent);
+      const parsed = parseSharedMutation('move_node', params);
+      if (!parsed.ok) return malformedParams(parsed.error.message);
+      return move_node(ctx, parsed.data.nodeId, parsed.data.newParent);
     }
     case 'set_order': {
       const { node, order } = params;
@@ -168,29 +164,19 @@ export function dispatchSteerPrimitive(
       return resume(ctx, node);
     }
     case 'expand': {
-      const { node, expansion } = params;
-      if (!isNonEmptyString(node) || !isPlainObject(expansion) || !Array.isArray(expansion.specs)) {
-        return malformedParams("expand params requires string 'node' and an 'expansion' with a 'specs' array");
-      }
-      return expand(ctx, registry, node, expansion as unknown as Expansion);
+      const parsed = parseSharedMutation('expand', params);
+      if (!parsed.ok) return malformedParams(parsed.error.message);
+      return expand(ctx, registry, parsed.data.node, parsed.data.expansion);
     }
     case 'add_corrective': {
-      const { id, type, review, options } = params;
-      if (!isNonEmptyString(id) || !isNonEmptyString(type) || !isNonEmptyString(review)) {
-        return malformedParams("add_corrective params requires string 'id', 'type', and 'review'");
-      }
-      if (options !== undefined && !isPlainObject(options)) {
-        return malformedParams("add_corrective params 'options' must be an object when present");
-      }
-      return add_corrective(ctx, id, type as NodeTypeName, review, options as AddCorrectiveOptions | undefined);
+      const parsed = parseSharedMutation('add_corrective', params);
+      if (!parsed.ok) return malformedParams(parsed.error.message);
+      return add_corrective(ctx, parsed.data.id, parsed.data.type, parsed.data.review, parsed.data.options);
     }
     case 'reset': {
-      const { node, cascade } = params;
-      if (!isNonEmptyString(node)) return malformedParams("reset params requires string 'node'");
-      if (cascade !== undefined && typeof cascade !== 'boolean') {
-        return malformedParams("reset params 'cascade' must be a boolean when present");
-      }
-      return reset(ctx, node, cascade as boolean | undefined);
+      const parsed = parseSharedMutation('reset', params);
+      if (!parsed.ok) return malformedParams(parsed.error.message);
+      return reset(ctx, parsed.data.node, parsed.data.cascade);
     }
     default:
       return assertNever(primitive);

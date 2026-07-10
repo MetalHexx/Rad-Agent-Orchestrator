@@ -361,3 +361,72 @@ describe('POST /engine-graph/dry-run', () => {
     expect(body.data?.preview).toBeNull();
   });
 });
+
+describe('steer/dry-run share one pinned mutation request shape', () => {
+  it('move_node: the identical {nodeId, newParent} fields dry-run validates are the exact fields steer commits', async () => {
+    const { app } = buildTestService();
+    await postJson(app, '/engine-graph/seed', {
+      project: 'proj-shared-move',
+      seed: {
+        steps: [
+          { primitive: 'add_node', id: 'a', type: 'rad-orc:task', parent: ROOT_NODE_ID, data: TASK_DATA },
+          { primitive: 'add_node', id: 'b', type: 'rad-orc:approval', parent: ROOT_NODE_ID, data: { level: 'plan' } },
+        ],
+      },
+    });
+
+    const fields = { nodeId: 'a', newParent: 'b' };
+
+    const dryRunRes = await postJson(app, '/engine-graph/dry-run', {
+      project: 'proj-shared-move',
+      mutation: { kind: 'move_node', ...fields },
+    });
+    expect(dryRunRes.status).toBe(200);
+    const dryRunBody = (await dryRunRes.json()) as EnvelopeBody<{ valid: boolean }>;
+    expect(dryRunBody.data?.valid).toBe(true);
+
+    const steerRes = await postJson(app, '/engine-graph/steer', {
+      project: 'proj-shared-move',
+      primitive: 'move_node',
+      params: fields,
+    });
+    expect(steerRes.status).toBe(200);
+    const steerBody = (await steerRes.json()) as EnvelopeBody<{ nodeChanges: unknown[] }>;
+    expect(steerBody.ok).toBe(true);
+
+    const nodeRes = await app.request('/engine-graph/node?project=proj-shared-move&node=a');
+    const nodeBody = (await nodeRes.json()) as EnvelopeBody<DagNode>;
+    expect(nodeBody.data?.parent).toBe('b');
+  });
+
+  it('remove_node: the identical {nodeId, strategy} fields dry-run previews are the exact fields steer commits', async () => {
+    const { app } = buildTestService();
+    await postJson(app, '/engine-graph/seed', {
+      project: 'proj-shared-remove',
+      seed: {
+        steps: [{ primitive: 'add_node', id: 'a', type: 'rad-orc:task', parent: ROOT_NODE_ID, data: TASK_DATA }],
+      },
+    });
+
+    const fields = { nodeId: 'a', strategy: { dependents: 'cascade' as const } };
+
+    const dryRunRes = await postJson(app, '/engine-graph/dry-run', {
+      project: 'proj-shared-remove',
+      mutation: { kind: 'remove_node', ...fields },
+    });
+    expect(dryRunRes.status).toBe(200);
+    const dryRunBody = (await dryRunRes.json()) as EnvelopeBody<{ valid: boolean; preview: { nodeIds: string[] } }>;
+    expect(dryRunBody.data?.valid).toBe(true);
+    expect(dryRunBody.data?.preview.nodeIds).toEqual(['a']);
+
+    const steerRes = await postJson(app, '/engine-graph/steer', {
+      project: 'proj-shared-remove',
+      primitive: 'remove_node',
+      params: fields,
+    });
+    expect(steerRes.status).toBe(200);
+
+    const nodeRes = await app.request('/engine-graph/node?project=proj-shared-remove&node=a');
+    expect(nodeRes.status).toBe(404);
+  });
+});

@@ -6,7 +6,6 @@
 import { Hono } from 'hono';
 import type { Context } from 'hono';
 import type {
-  AddCorrectiveOptions,
   AddCorrectivePreview,
   ChangeDelta,
   DagEdge,
@@ -45,6 +44,7 @@ import type { GraphService } from '../compose.js';
 import { advance } from '../driver/drive.js';
 import { globalFrontier } from '../driver/frontier.js';
 import { applyOutcome } from '../driver/outcome.js';
+import { SHARED_MUTATION_KINDS, isSharedMutationKind, parseSharedMutation, toEngineMutationSpec } from './mutation-spec.js';
 import type { FailureEnvelope, SuccessEnvelope } from './respond.js';
 import { err, fromResult, ok } from './respond.js';
 import { dispatchSteerPrimitive, parseSteerRequest } from './steer.js';
@@ -174,77 +174,6 @@ function previewFor(
   }
 }
 
-/**
- * Reconstructs a `MutationSpec` from a `dry-run` request body. `expand`'s `registry` field is never
- * client-suppliable (it is a function-bearing engine object, not JSON) — this always injects the
- * server's own `registry` for that one kind, ignoring anything the client sent for it.
- */
-function parseMutationSpec(raw: unknown, registry: NodeTypeRegistry): Checked<MutationSpec> {
-  if (!isPlainObject(raw)) return err('invalid_request', "'mutation' must be an object");
-
-  switch (raw.kind) {
-    case 'add_dependency': {
-      const { from, to } = raw;
-      if (!isNonEmptyString(from) || !isNonEmptyString(to)) {
-        return err('invalid_request', "'add_dependency' mutation requires string 'from' and 'to'");
-      }
-      return ok({ kind: 'add_dependency', from, to });
-    }
-    case 'remove_node': {
-      const { nodeId, cascade, dependentsCascade } = raw;
-      if (!isNonEmptyString(nodeId) || typeof cascade !== 'boolean') {
-        return err('invalid_request', "'remove_node' mutation requires string 'nodeId' and boolean 'cascade'");
-      }
-      if (dependentsCascade !== undefined && typeof dependentsCascade !== 'boolean') {
-        return err('invalid_request', "'remove_node' mutation's 'dependentsCascade' must be a boolean when present");
-      }
-      return ok({ kind: 'remove_node', nodeId, cascade, dependentsCascade });
-    }
-    case 'move_node': {
-      const { nodeId, newParent } = raw;
-      if (!isNonEmptyString(nodeId) || !isNonEmptyString(newParent)) {
-        return err('invalid_request', "'move_node' mutation requires string 'nodeId' and 'newParent'");
-      }
-      return ok({ kind: 'move_node', nodeId, newParent });
-    }
-    case 'expand': {
-      const { node, expansion } = raw;
-      if (!isNonEmptyString(node) || !isPlainObject(expansion) || !Array.isArray(expansion.specs)) {
-        return err('invalid_request', "'expand' mutation requires string 'node' and an 'expansion' with a 'specs' array");
-      }
-      return ok({ kind: 'expand', node, expansion: expansion as unknown as Expansion, registry });
-    }
-    case 'add_corrective': {
-      const { review, id, type, options } = raw;
-      if (!isNonEmptyString(review) || !isNonEmptyString(id) || !isNonEmptyString(type)) {
-        return err('invalid_request', "'add_corrective' mutation requires string 'review', 'id', and 'type'");
-      }
-      if (options !== undefined && !isPlainObject(options)) {
-        return err('invalid_request', "'add_corrective' mutation's 'options' must be an object when present");
-      }
-      return ok({
-        kind: 'add_corrective',
-        review,
-        id,
-        type: type as NodeTypeName,
-        options: options as AddCorrectiveOptions | undefined,
-      });
-    }
-    case 'reset': {
-      const { node, cascade } = raw;
-      if (!isNonEmptyString(node) || typeof cascade !== 'boolean') {
-        return err('invalid_request', "'reset' mutation requires string 'node' and boolean 'cascade'");
-      }
-      return ok({ kind: 'reset', node, cascade });
-    }
-    default:
-      return err(
-        'invalid_request',
-        "'mutation.kind' must be one of: add_dependency, remove_node, move_node, expand, add_corrective, reset",
-      );
-  }
-}
-
 // ── seed: replay add_node / add_dependency / expand to stamp a project's initial dag ──────────
 
 interface SeedAddNodeStep {
@@ -350,6 +279,13 @@ function applySeedStep(ctx: PrimitiveContext, registry: NodeTypeRegistry, step: 
  * `http/app.ts` via `app.route('/engine-graph', buildEngineGraphRouter(service))`. */
 export function buildEngineGraphRouter(service: GraphService): Hono {
   const app = new Hono();
+
+  /** Touches the execution store so `ensureSeeded`'s first-touch side effect (the bare `projects`
+   * row + root node) has run for `scope` — the return value is never read; the call exists purely
+   * for that side effect, ahead of `/seed`'s own portfolio-project adoption check. */
+  function ensureExecStoreSeeded(scope: ProjectScope): void {
+    service.execStore.listNodes(scope);
+  }
 
   app.get('/dag', (c) => {
     const projectResult = requireField(c.req.query('project'), 'project');
@@ -480,9 +416,17 @@ export function buildEngineGraphRouter(service: GraphService): Hono {
     if (!projectResult.ok) return c.json(projectResult, 400);
     const scope: ProjectScope = { projectId: projectResult.data };
 
-    const specResult = parseMutationSpec(body.mutation, service.registry);
-    if (!specResult.ok) return c.json(specResult, 400);
-    const mutationSpec = specResult.data;
+    const mutationRaw = body.mutation;
+    const kind = isPlainObject(mutationRaw) ? mutationRaw.kind : undefined;
+    if (!isSharedMutationKind(kind)) {
+      return c.json(err('invalid_request', `'mutation.kind' must be one of: ${SHARED_MUTATION_KINDS.join(', ')}`), 400);
+    }
+    // The shared shape steer's dispatch parses through too (Integration Seams: `steer`/`dry-run`
+    // pin one `MutationSpec` request shape) — translated to the engine's own `MutationSpec` only
+    // here, since `validate`/`preview` are the read-only routes that actually take that type.
+    const requestResult = parseSharedMutation(kind, mutationRaw);
+    if (!requestResult.ok) return c.json(requestResult, 400);
+    const mutationSpec = toEngineMutationSpec(requestResult.data, service.registry);
 
     // Read-only: `validate`/`preview` never write, so this never emits a delta.
     const graph: GraphSnapshot = { nodes: service.execStore.listNodes(scope), edges: service.execStore.listEdges(scope) };
@@ -514,7 +458,7 @@ export function buildEngineGraphRouter(service: GraphService): Hono {
     // to be a project's very first touch, so it then adopts that scaffold row into a genuine
     // portfolio project (create-if-absent) before replaying anything — a genuine `/engine-graph`
     // <-> portfolio coupling.
-    service.execStore.listNodes(scope);
+    ensureExecStoreSeeded(scope);
     if (!service.portfolio.getProject(scope.projectId)) {
       const created = service.portfolio.createProject({ id: scope.projectId }, null);
       if (!created.ok) return c.json(fromResult(created), 400);
