@@ -20,7 +20,7 @@ interface RawBlock {
 }
 interface RawTLine {
   type?: string; requestId?: string; timestamp?: string;
-  message?: { role?: string; model?: string; content?: string | RawBlock[]; usage?: Record<string, number> };
+  message?: { role?: string; id?: string; model?: string; content?: string | RawBlock[]; usage?: Record<string, number> };
 }
 
 // Selective by design (AD-5): only the modeled shapes emit events; unmodeled lines/blocks
@@ -75,9 +75,22 @@ export function parseTranscript(file: string, ctx: ParseContext): AgentTranscrip
   const errors = events.filter((e) => e.kind === 'tool_result' && e.result?.isError).length;
   const filesTouched = [...new Set(events.filter((e) => e.kind === 'file_change').map((e) => e.file!.path))];
   const model = [...new Set(raw.map((r) => r.message?.model).filter((m): m is string => Boolean(m)))];
-  let tin = 0, tout = 0, tcr = 0, tcc = 0;
+  // One contribution per request, not per raw line. A request streams across several
+  // lines that repeat its input/cache values and grow its output_tokens; summing every
+  // line counts a multi-line request 3-4x and inflates cache-read, diverging from the
+  // deduped harvest row. Collapse to the winning line per request — the one carrying the
+  // max/final output — keyed by requestId (falling back to message.id), and sum those.
+  const winners = new Map<string, Record<string, number>>();
   for (const r of raw) {
     const u = r.message?.usage; if (!u) continue;
+    const key = r.requestId ?? r.message?.id ?? '';
+    const prev = winners.get(key);
+    // >= keeps the later line on an output tie, so the final line's cache_creation
+    // (present only on the terminal line) wins the representative slot.
+    if (!prev || (u.output_tokens ?? 0) >= (prev.output_tokens ?? 0)) winners.set(key, u);
+  }
+  let tin = 0, tout = 0, tcr = 0, tcc = 0;
+  for (const u of winners.values()) {
     tin += u.input_tokens ?? 0; tout += u.output_tokens ?? 0;
     tcr += u.cache_read_input_tokens ?? 0; tcc += u.cache_creation_input_tokens ?? 0;
   }
