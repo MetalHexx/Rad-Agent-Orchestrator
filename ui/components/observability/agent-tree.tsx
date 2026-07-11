@@ -1,11 +1,12 @@
 'use client';
 import * as React from 'react';
+import { cn } from '@/lib/utils';
 import { humanizeTokens } from '@/lib/observability/format';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { SubagentTree, AgentTreeNode } from '@/lib/observability/subagent-tree';
 import { freezeSubagentOrder } from '@/lib/observability/subagent-tree';
 import { rowTranscriptId, isInspectable } from '@/lib/observability/transcript-identity';
-import { AgentRow } from './agent-row';
+import { AgentRow, ROW_GRID_COLS } from './agent-row';
 import { ModelLegend } from './model-legend';
 
 export interface AgentTreeProps {
@@ -36,6 +37,26 @@ function Header({ title }: { title: string }) {
 function leafFrom(group: AgentTreeNode): AgentTreeNode {
   const run = group.runs?.[0];
   return run ? { ...run, label: group.label, key: group.key } : group;   // single-run group → leaf row keeps group label
+}
+
+// Light column header — reuses AgentRow's exact grid template so columns align to the rows below it.
+function RowGridHeader() {
+  return (
+    <div
+      className={cn(
+        'grid items-center px-2 pb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground',
+        ROW_GRID_COLS
+      )}
+    >
+      <span>Agent</span>
+      <span className="mx-2">Model spend</span>
+      <span className="text-right">New</span>
+      <span className="text-right">Cost (wtd)</span>
+      <span className="text-right">Cost</span>
+      <span aria-hidden="true" />
+      <span aria-hidden="true" />
+    </div>
+  );
 }
 
 // Pure & reusable: owns ONLY expand state; no data fetch, no page/live imports (AD-1).
@@ -97,6 +118,7 @@ export function AgentTree({ tree, title = 'Agent Breakdown', coverage, ready = t
         Bars and % show share of spend in the selected window · in execution order{coverageNote}
       </p>
       <div className="px-3 pb-3 pt-2">
+        <RowGridHeader />
         <AgentRow
           node={tree.main}
           scaleMax={tree.windowTotal}

@@ -9,11 +9,11 @@ import type { SubagentTree } from '@/lib/observability/subagent-tree';
 
 const tree = (over: Partial<SubagentTree> = {}): SubagentTree => ({
   windowTotal: 1000,
-  main: { key: 'main', kind: 'main', label: 'main-agent', runCount: 1, tokens: 700, models: [{ model: 'opus', tokens: 700 }], reqs: 10, firstMs: 0, lastMs: 100 },
-  subagents: [{ key: 'coder', kind: 'group', label: 'coder', agentType: 'coder', runCount: 2, tokens: 300, models: [{ model: 'sonnet', tokens: 300 }], reqs: 5, firstMs: 0, lastMs: 100,
+  main: { key: 'main', kind: 'main', label: 'main-agent', runCount: 1, tokens: 700, models: [{ model: 'opus', tokens: 700, dollars: 7 }], reqs: 10, firstMs: 0, lastMs: 100, newTokens: 100, dollars: 7 },
+  subagents: [{ key: 'coder', kind: 'group', label: 'coder', agentType: 'coder', runCount: 2, tokens: 300, models: [{ model: 'sonnet', tokens: 300, dollars: 3 }], reqs: 5, firstMs: 0, lastMs: 100, newTokens: 50, dollars: 3,
     runs: [
-      { key: 'a1', kind: 'run', label: 'coder 1', runCount: 1, tokens: 200, models: [{ model: 'sonnet', tokens: 200 }], reqs: 3, firstMs: 0, lastMs: 100 },
-      { key: 'a2', kind: 'run', label: 'coder 2', runCount: 1, tokens: 100, models: [{ model: 'sonnet', tokens: 100 }], reqs: 2, firstMs: 0, lastMs: 100 },
+      { key: 'a1', kind: 'run', label: 'coder 1', runCount: 1, tokens: 200, models: [{ model: 'sonnet', tokens: 200, dollars: 2 }], reqs: 3, firstMs: 0, lastMs: 100, newTokens: 30, dollars: 2 },
+      { key: 'a2', kind: 'run', label: 'coder 2', runCount: 1, tokens: 100, models: [{ model: 'sonnet', tokens: 100, dollars: 1 }], reqs: 2, firstMs: 0, lastMs: 100, newTokens: 20, dollars: 1 },
     ] }],
   subagentTotal: 300, subagentPct: 0.3, ...over,
 });
@@ -29,9 +29,20 @@ const tree = (over: Partial<SubagentTree> = {}): SubagentTree => ({
   console.log('✓ populated panel: header/title, main row, divider, card, no tabs');
 }
 
+// Light column header renders labels and shares AgentRow's exact grid template so columns align (Done when, DD-3).
+{
+  const html = renderToStaticMarkup(createElement(AgentTree, { tree: tree(), ready: true, now: 100 }));
+  assert.ok(html.includes('Agent') && html.includes('Model spend'), 'header names the agent + bar columns');
+  assert.ok(html.includes('New') && html.includes('Cost (wtd)') && html.includes('Cost'), 'header names the New / Cost (wtd) / Cost columns');
+  const gridTemplates = [...html.matchAll(/grid-cols-\[[^\]]*\]/g)].map((m) => m[0]);
+  assert.ok(gridTemplates.length >= 2, 'both the header row and data rows carry a grid-cols template');
+  assert.ok(gridTemplates.every((t) => t === gridTemplates[0]), 'header and row grid templates are identical (columns align)');
+  console.log('✓ header row shares the row grid template');
+}
+
 // Empty state when windowTotal === 0 (FR-10).
 {
-  const html = renderToStaticMarkup(createElement(AgentTree, { tree: tree({ windowTotal: 0, subagents: [], subagentTotal: 0, subagentPct: 0, main: { key: 'main', kind: 'main', label: 'main-agent', runCount: 1, tokens: 0, models: [], reqs: 0, firstMs: 0, lastMs: 0 } }), ready: true, now: 100 }));
+  const html = renderToStaticMarkup(createElement(AgentTree, { tree: tree({ windowTotal: 0, subagents: [], subagentTotal: 0, subagentPct: 0, main: { key: 'main', kind: 'main', label: 'main-agent', runCount: 1, tokens: 0, models: [], reqs: 0, firstMs: 0, lastMs: 0, newTokens: 0, dollars: 0 } }), ready: true, now: 100 }));
   assert.ok(html.includes('No agent activity'), 'empty state copy shown (FR-10)');
   console.log('✓ empty state');
 }

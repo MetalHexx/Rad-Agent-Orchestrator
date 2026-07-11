@@ -9,7 +9,8 @@ import type { AgentTreeNode } from '@/lib/observability/subagent-tree';
 
 const node = (p: Partial<AgentTreeNode>): AgentTreeNode => ({
   key: 'coder', kind: 'group', label: 'coder', runCount: 3, tokens: 100,
-  models: [{ model: 'opus', tokens: 100 }], reqs: 4, firstMs: 0, lastMs: 1000, ...p,
+  models: [{ model: 'opus', tokens: 100, dollars: 1.23 }], reqs: 4, firstMs: 0, lastMs: 1000,
+  newTokens: 20, dollars: 1.23, ...p,
 });
 
 // Group variant: shows ×count badge + an aria-expanded caret button, and carries NO inspect button (FR-7, DD-5, NFR-6).
@@ -74,7 +75,7 @@ const node = (p: Partial<AgentTreeNode>): AgentTreeNode => ({
 // Active agent dot pulses in the model color via ActivityDot (FR-2, DD-1, AD-3).
 {
   const html = renderToStaticMarkup(createElement(AgentRow, {
-    node: node({ kind: 'main', label: 'main-agent', models: [{ model: 'opus', tokens: 100 }], lastMs: 1000 }),
+    node: node({ kind: 'main', label: 'main-agent', models: [{ model: 'opus', tokens: 100, dollars: 1.23 }], lastMs: 1000 }),
     scaleMax: 200, variant: 'main', now: 1000,
   }));
   assert.ok(html.includes('activity-dot-pulse'), 'fresh agent dot pulses (FR-2)');
@@ -87,12 +88,33 @@ const node = (p: Partial<AgentTreeNode>): AgentTreeNode => ({
 // finished subagent no longer reads as "live" while the next one runs (the sequential-looks-parallel bug).
 {
   const html = renderToStaticMarkup(createElement(AgentRow, {
-    node: node({ kind: 'main', label: 'main-agent', models: [{ model: 'opus', tokens: 100 }], lastMs: 0 }),
+    node: node({ kind: 'main', label: 'main-agent', models: [{ model: 'opus', tokens: 100, dollars: 1.23 }], lastMs: 0 }),
     scaleMax: 200, variant: 'main', now: 120_000,
   }));
   assert.ok(!html.includes('activity-dot-pulse'), 'agent dot idle for 2 min does not pulse (settles within 60s)');
   assert.ok(html.includes('var(--model-red)'), 'settled dot still rests in its opus model color (not grey)');
   console.log('✓ agent dot: settles after 60s, rests at model color');
+}
+
+// New / Cost (wtd) / Cost cells render honest labeled values, not a bare humanized token count (Done when).
+{
+  const html = renderToStaticMarkup(createElement(AgentRow, {
+    node: node({ newTokens: 12_000, tokens: 100_000, dollars: 4.5 }), scaleMax: 200_000, variant: 'main', now: 1000,
+  }));
+  assert.ok(html.includes('12.0K'), 'New cell shows humanized newTokens (Σ cacheCreationTokens)');
+  assert.ok(html.includes('100.0K'), 'Cost (wtd) cell shows humanized effective tokens (relabeled spend number)');
+  assert.ok(html.includes('$4.50'), 'Cost cell shows the formatted dollar figure');
+  console.log('✓ row: New / Cost (wtd) / Cost cells render');
+}
+
+// A node with an unknown-priced model renders "price unavailable" for its dollar cell, never $0 (Done when).
+{
+  const html = renderToStaticMarkup(createElement(AgentRow, {
+    node: node({ dollars: null }), scaleMax: 200, variant: 'main', now: 1000,
+  }));
+  assert.ok(html.includes('price unavailable'), 'unpriced node renders "price unavailable"');
+  assert.ok(!html.includes('$0.00'), 'never silently renders $0 for an unpriced node');
+  console.log('✓ row: unpriced node renders unavailable, not $0');
 }
 
 console.log('\nAll AgentRow/ModelLegend tests passed');

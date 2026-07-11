@@ -7,8 +7,8 @@ Object.assign(globalThis, { React });
 
 const tree: SubagentTree = {
   windowTotal: 100, subagentTotal: 40, subagentPct: 0.4,
-  main: { key: 'main', kind: 'main', label: 'main-agent', runCount: 1, tokens: 60, models: [{ model: 'opus', tokens: 60 }], reqs: 1, firstMs: 0, lastMs: 1 },
-  subagents: [{ key: 'run-bb', kind: 'group', label: 'Explore', agentType: 'Explore', runCount: 1, tokens: 40, models: [{ model: 'haiku', tokens: 40 }], reqs: 1, firstMs: 0, lastMs: 1, runs: [{ key: 'run-bb', kind: 'run', label: 'Explore 1', agentType: 'Explore', runCount: 1, tokens: 40, models: [], reqs: 1, firstMs: 0, lastMs: 1 }] }],
+  main: { key: 'main', kind: 'main', label: 'main-agent', runCount: 1, tokens: 60, models: [{ model: 'opus', tokens: 60, dollars: 0.6 }], reqs: 1, firstMs: 0, lastMs: 1, newTokens: 10, dollars: 0.6 },
+  subagents: [{ key: 'run-bb', kind: 'group', label: 'Explore', agentType: 'Explore', runCount: 1, tokens: 40, models: [{ model: 'haiku', tokens: 40, dollars: 0.4 }], reqs: 1, firstMs: 0, lastMs: 1, newTokens: 5, dollars: 0.4, runs: [{ key: 'run-bb', kind: 'run', label: 'Explore 1', agentType: 'Explore', runCount: 1, tokens: 40, models: [], reqs: 1, firstMs: 0, lastMs: 1, newTokens: 5, dollars: 0.4 }] }],
 };
 // main (sessionId 'sess-1') AND the single-run leaf (runId 'run-bb') both have transcripts.
 // The leaf row is rendered from leafFrom(group) whose key is the agentType ('Explore'), NOT

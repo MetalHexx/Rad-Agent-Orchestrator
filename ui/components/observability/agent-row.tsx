@@ -6,6 +6,7 @@ import { modelColor } from '@/lib/observability/model-color';
 import { AGENT_ACTIVE_WINDOW_MS } from '@/lib/observability/activity-dot-color';
 import { humanizeTokens } from '@/lib/observability/format';
 import { formatDuration } from '@/lib/observability/duration-format';
+import { SPEND_LABELS, formatUsd } from '@/lib/observability/spend-display';
 import type { AgentTreeNode } from '@/lib/observability/subagent-tree';
 import { SpendBar } from './spend-bar';
 import { InspectAgentButton } from './inspect-agent-button';
@@ -22,8 +23,10 @@ export interface AgentRowProps {
   inspect?: { available: boolean; onInspect: () => void };
 }
 
-// Uniform CSS grid so name·bar·tokens·%·seam align across all depths (DD-3).
-const ROW_GRID = 'grid grid-cols-[200px_minmax(0,1fr)_64px_44px_78px]';
+// Uniform CSS grid so name·bar·New·Cost(wtd)·Cost·%·seam align across all depths (DD-3).
+// Shared with agent-tree.tsx's header row so the two templates never drift apart.
+export const ROW_GRID_COLS = 'grid-cols-[200px_minmax(0,1fr)_64px_64px_72px_44px_78px]';
+const ROW_GRID = `grid ${ROW_GRID_COLS}`;
 
 export function AgentRow({ node, scaleMax, variant, now, expanded, onToggle, inspect }: AgentRowProps) {
   const pct = scaleMax > 0 ? (node.tokens / scaleMax) * 100 : 0;
@@ -51,7 +54,9 @@ export function AgentRow({ node, scaleMax, variant, now, expanded, onToggle, ins
         {variant === 'group' && node.runCount > 1 && <Badge variant="outline" className="ml-1">×{node.runCount}</Badge>}
       </div>
       <SpendBar segments={node.models} total={node.tokens} scaleMax={scaleMax} className="mx-2" />
-      <span className="text-right tabular-nums font-semibold text-sm">{humanizeTokens(node.tokens)}</span>
+      <span className="text-right tabular-nums text-xs text-muted-foreground" title={SPEND_LABELS.newTokens}>{humanizeTokens(node.newTokens)}</span>
+      <span className="text-right tabular-nums font-semibold text-sm" title={SPEND_LABELS.costWeighted}>{humanizeTokens(node.tokens)}</span>
+      <span className="text-right tabular-nums text-sm" title={SPEND_LABELS.cost}>{formatUsd(node.dollars)}</span>
       <span className="text-right tabular-nums text-xs text-muted-foreground">{Math.round(pct)}%</span>
       <div className="flex justify-end">
         {showSeam && inspect?.available ? (
