@@ -1,0 +1,286 @@
+<title>Coder Efficiency — Plan-to-Code A/B</title>
+<style>
+  :root{
+    --surface:#F5F7F8; --card:#FFFFFF; --card-2:#FBFCFD;
+    --ink:#111820; --muted:#5B6771; --faint:#8A96A1; --line:#E3E8EC;
+    --accent:#0E9E8E; --accent-ink:#0A736A; --accent-soft:#E4F4F1;
+    --base:#9BA7B2; --base-soft:#EDF0F2;
+    --gold:#B4740E; --gold-fill:#D9982B; --gold-soft:#FBEFD6;
+    --track:#EEF1F3;
+    --shadow:0 1px 2px rgba(16,24,32,.05), 0 6px 20px rgba(16,24,32,.05);
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --surface:#0D1219; --card:#151C24; --card-2:#111820;
+      --ink:#E8EDF1; --muted:#98A5B1; --faint:#6C7A86; --line:#232D37;
+      --accent:#2CBBAA; --accent-ink:#57D2C3; --accent-soft:#123029;
+      --base:#65717E; --base-soft:#1B242D;
+      --gold:#E7AA3E; --gold-fill:#E4A63A; --gold-soft:#2E2513;
+      --track:#1C2530;
+      --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.28);
+    }
+  }
+  :root[data-theme="light"]{
+    --surface:#F5F7F8; --card:#FFFFFF; --card-2:#FBFCFD;
+    --ink:#111820; --muted:#5B6771; --faint:#8A96A1; --line:#E3E8EC;
+    --accent:#0E9E8E; --accent-ink:#0A736A; --accent-soft:#E4F4F1;
+    --base:#9BA7B2; --base-soft:#EDF0F2;
+    --gold:#B4740E; --gold-fill:#D9982B; --gold-soft:#FBEFD6;
+    --track:#EEF1F3; --shadow:0 1px 2px rgba(16,24,32,.05), 0 6px 20px rgba(16,24,32,.05);
+  }
+  :root[data-theme="dark"]{
+    --surface:#0D1219; --card:#151C24; --card-2:#111820;
+    --ink:#E8EDF1; --muted:#98A5B1; --faint:#6C7A86; --line:#232D37;
+    --accent:#2CBBAA; --accent-ink:#57D2C3; --accent-soft:#123029;
+    --base:#65717E; --base-soft:#1B242D;
+    --gold:#E7AA3E; --gold-fill:#E4A63A; --gold-soft:#2E2513;
+    --track:#1C2530; --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.28);
+  }
+
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--surface); color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.5; -webkit-font-smoothing:antialiased;
+  }
+  .num{font-family:ui-monospace,"SF Mono","Cascadia Code","JetBrains Mono",Menlo,Consolas,monospace; font-variant-numeric:tabular-nums;}
+  .wrap{max-width:1000px; margin:0 auto; padding:clamp(20px,4vw,44px) clamp(16px,4vw,40px) 60px;}
+  .eyebrow{font-size:11px; letter-spacing:.16em; text-transform:uppercase; color:var(--faint); font-weight:600;}
+
+  /* header */
+  header{border-bottom:1px solid var(--line); padding-bottom:26px; margin-bottom:30px;}
+  h1{font-size:clamp(26px,4.4vw,40px); line-height:1.08; margin:.5rem 0 0; letter-spacing:-.02em; text-wrap:balance; font-weight:680;}
+  h1 .hl{color:var(--accent-ink);}
+  .sub{color:var(--muted); font-size:15px; max-width:62ch; margin-top:12px;}
+  .sub b{color:var(--ink); font-weight:600;}
+
+  /* KPI row */
+  .kpis{display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:34px;}
+  @media(max-width:720px){.kpis{grid-template-columns:repeat(2,1fr);}}
+  .kpi{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px 16px 15px; box-shadow:var(--shadow);}
+  .kpi .lab{font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--faint); font-weight:600;}
+  .kpi .big{font-size:clamp(30px,5vw,40px); font-weight:640; color:var(--accent-ink); letter-spacing:-.02em; margin-top:6px; line-height:1;}
+  .kpi .flow{font-size:12.5px; color:var(--muted); margin-top:9px;}
+  .kpi .flow .o{color:var(--faint);} .kpi .flow .arw{color:var(--faint); padding:0 5px;}
+
+  section{margin-bottom:34px;}
+  .shead{display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:14px;}
+  .shead .cap{font-size:12.5px; color:var(--muted);}
+
+  /* bar chart */
+  .chart{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:20px 22px 14px; box-shadow:var(--shadow);}
+  .row{display:grid; grid-template-columns:118px 1fr 132px; align-items:center; gap:14px; padding:9px 0;}
+  .row + .row{border-top:1px solid var(--line);}
+  @media(max-width:640px){.row{grid-template-columns:96px 1fr; } .row .val{grid-column:2; text-align:right;}}
+  .rlab{display:flex; flex-direction:column; gap:3px;}
+  .rlab .r{font-weight:600; font-size:13.5px;}
+  .chip{align-self:start; font-size:10px; letter-spacing:.04em; padding:2px 7px; border-radius:999px; border:1px solid var(--line); color:var(--muted); background:var(--card-2);}
+  .track{position:relative; height:22px; background:var(--track); border-radius:6px; overflow:hidden;}
+  .track::before,.track::after{content:""; position:absolute; top:0; bottom:0; width:1px; background:var(--line);}
+  .track::before{left:45.5%} /* 25% gridline on 0-55 scale */
+  .track::after{left:90.9%}  /* 50% gridline */
+  .fill{position:absolute; left:0; top:0; bottom:0; border-radius:6px; background:var(--accent); transform-origin:left center;}
+  .fill.best{background:var(--gold-fill);}
+  .val{text-align:right;}
+  .val .pct{font-weight:670; font-size:15px;}
+  .val .best-pct{color:var(--gold);}
+  .val .amt{display:block; font-size:11.5px; color:var(--muted); margin-top:1px;}
+  .val .amt .o{color:var(--faint);} .val .amt .arw{color:var(--faint); padding:0 3px;}
+  .tag{display:inline-block; font-size:9.5px; letter-spacing:.08em; text-transform:uppercase; font-weight:700; padding:2px 6px; border-radius:5px; margin-left:7px; vertical-align:2px;}
+  .tag.best{background:var(--gold-soft); color:var(--gold);}
+  .tag.low{background:var(--base-soft); color:var(--muted);}
+  .xaxis{position:relative; height:22px; font-size:10.5px; color:var(--faint); padding-top:8px; border-top:1px solid var(--line); margin-top:6px;}
+  .xaxis span{position:absolute; top:8px; transform:translateX(-50%);}
+  .xaxis span:first-child{transform:none;}
+  .xaxis span:last-child{transform:translateX(-100%);}
+
+  /* driver chain */
+  .chain{display:grid; grid-template-columns:1fr auto 1fr auto 1fr; align-items:stretch; gap:0; background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px; box-shadow:var(--shadow);}
+  @media(max-width:720px){.chain{grid-template-columns:1fr; gap:6px;} .chain .arrow{transform:rotate(90deg); justify-self:center; padding:2px 0;}}
+  .node{text-align:center; padding:10px 12px;}
+  .node .d{font-size:clamp(22px,3.4vw,30px); font-weight:660; letter-spacing:-.02em; color:var(--accent-ink);}
+  .node.out .d{color:var(--gold);}
+  .node .n{font-size:12px; color:var(--muted); margin-top:4px;}
+  .node .sub2{font-size:10.5px; color:var(--faint); margin-top:3px;}
+  .arrow{display:flex; align-items:center; color:var(--faint); font-size:18px; padding:0 4px;}
+  .chain-note{font-size:12.5px; color:var(--muted); margin-top:12px; text-align:center;}
+  .chain-note b{color:var(--ink); font-weight:600;}
+
+  /* spotlight */
+  .spot{display:grid; grid-template-columns:1fr 1fr; gap:14px;}
+  @media(max-width:640px){.spot{grid-template-columns:1fr;}}
+  .card{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px 20px; box-shadow:var(--shadow);}
+  .card.best{border-color:color-mix(in srgb, var(--gold) 40%, var(--line));}
+  .card .ctop{display:flex; align-items:baseline; justify-content:space-between; gap:8px;}
+  .card .k{font-size:11px; letter-spacing:.12em; text-transform:uppercase; font-weight:700; color:var(--faint);}
+  .card.best .k{color:var(--gold);}
+  .card .model{font-size:11px; color:var(--muted);}
+  .card .lead{font-size:19px; font-weight:640; margin:8px 0 12px; letter-spacing:-.01em;}
+  .mrow{display:flex; justify-content:space-between; align-items:baseline; gap:10px; padding:6px 0; border-top:1px dashed var(--line); font-size:13px;}
+  .mrow:first-of-type{border-top:none;}
+  .mrow .ml{color:var(--muted);}
+  .mrow .mv .o{color:var(--faint);} .mrow .mv .arw{color:var(--faint); padding:0 4px;} .mrow .mv .n2{font-weight:640;}
+  .mrow .mp{color:var(--accent-ink); font-weight:660; min-width:56px; text-align:right;}
+  .card.best .mrow .mp{color:var(--gold);}
+
+  footer{border-top:1px solid var(--line); margin-top:8px; padding-top:16px; color:var(--muted); font-size:12px;}
+  footer .fr{display:flex; gap:8px; padding:3px 0;}
+  footer .fk{color:var(--faint); min-width:70px; font-weight:600; text-transform:uppercase; letter-spacing:.08em; font-size:10.5px; padding-top:1px;}
+
+  code{font-family:ui-monospace,"SF Mono","Cascadia Code",Menlo,Consolas,monospace; font-size:.88em; background:var(--base-soft); padding:1px 5px; border-radius:5px; color:var(--ink);}
+  .speedbar{display:flex; flex-wrap:wrap; gap:6px 12px; align-items:baseline; background:var(--card-2); border:1px solid var(--line); border-left:3px solid var(--accent); border-radius:10px; padding:11px 15px; margin:-16px 0 34px; font-size:13px; color:var(--muted);}
+  .speedbar .sk{font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; font-weight:700; color:var(--accent-ink);}
+  .speedbar b{color:var(--ink); font-weight:640;}
+  .grouplab{display:flex; align-items:baseline; gap:10px; font-size:11px; letter-spacing:.1em; text-transform:uppercase; font-weight:700; color:var(--muted); padding:15px 0 5px;}
+  .grouplab:first-child{padding-top:2px;}
+  .grouplab .gsub{font-size:10px; letter-spacing:.02em; text-transform:none; font-weight:500; color:var(--faint);}
+
+  .fill{width:0; animation:grow .9s cubic-bezier(.2,.7,.2,1) forwards;}
+  @keyframes grow{from{transform:scaleX(0)} to{transform:scaleX(1)}}
+  @media(prefers-reduced-motion:reduce){.fill{animation:none;}}
+</style>
+
+<div class="wrap">
+
+  <header>
+    <div class="eyebrow">rad-orc · plan-to-code A/B · coder subagent</div>
+    <h1>Half the reading, faster runs, <span class="hl">a third off the bill</span>.</h1>
+    <p class="sub"><b>New planning and coding instructions have improved cost and performance efficiency.</b> 6 paired A/B tests across the same coding task using new Planning + Coding instructions. Coder subagents were measured in isolation to ship a working, fully tested DAG API.</p>
+  </header>
+
+  <!-- KPI -->
+  <div class="eyebrow" style="margin-bottom:12px">Averages across all 6 runs · Old → New</div>
+  <div class="kpis">
+    <div class="kpi">
+      <div class="lab">Avg cost / run</div>
+      <div class="big num">−38%</div>
+      <div class="flow num"><span class="o">$11.31</span><span class="arw">→</span>$6.98</div>
+    </div>
+    <div class="kpi">
+      <div class="lab">Avg file reads</div>
+      <div class="big num">−50%</div>
+      <div class="flow num"><span class="o">44.0</span><span class="arw">→</span>21.8</div>
+    </div>
+    <div class="kpi">
+      <div class="lab">Avg cache-read</div>
+      <div class="big num">−45%</div>
+      <div class="flow num"><span class="o">17.7M</span><span class="arw">→</span>9.8M</div>
+    </div>
+    <div class="kpi">
+      <div class="lab">Avg run time</div>
+      <div class="big num">−16%</div>
+      <div class="flow num"><span class="o">16.8m</span><span class="arw">→</span>14.2m</div>
+    </div>
+  </div>
+
+  <!-- per-run chart -->
+  <section>
+    <div class="shead">
+      <div class="eyebrow">Cost reduction — best first, grouped by model</div>
+      <div class="cap">Every run improved — range <b>−29%</b> to <b>−52%</b></div>
+    </div>
+    <div class="chart">
+
+      <div class="grouplab">Sonnet 5 <span class="gsub">production tier · 4 runs</span></div>
+
+      <div class="row">
+        <div class="rlab"><span class="r">Run 6 <span class="tag best">best</span></span></div>
+        <div class="track"><div class="fill best" style="width:94.9%"></div></div>
+        <div class="val"><span class="pct best-pct num">−52.2%</span><span class="amt num"><span class="o">$10.42</span><span class="arw">→</span>$4.98</span></div>
+      </div>
+
+      <div class="row">
+        <div class="rlab"><span class="r">Run 3</span></div>
+        <div class="track"><div class="fill" style="width:76.5%"></div></div>
+        <div class="val"><span class="pct num">−42.1%</span><span class="amt num"><span class="o">$9.73</span><span class="arw">→</span>$5.64</span></div>
+      </div>
+
+      <div class="row">
+        <div class="rlab"><span class="r">Run 5</span></div>
+        <div class="track"><div class="fill" style="width:65.1%"></div></div>
+        <div class="val"><span class="pct num">−35.8%</span><span class="amt num"><span class="o">$9.93</span><span class="arw">→</span>$6.38</span></div>
+      </div>
+
+      <div class="row">
+        <div class="rlab"><span class="r">Run 4</span></div>
+        <div class="track"><div class="fill" style="width:64.7%"></div></div>
+        <div class="val"><span class="pct num">−35.6%</span><span class="amt num"><span class="o">$11.06</span><span class="arw">→</span>$7.12</span></div>
+      </div>
+
+      <div class="grouplab">Opus 4.8 <span class="gsub">2 runs</span></div>
+
+      <div class="row">
+        <div class="rlab"><span class="r">Run 1</span></div>
+        <div class="track"><div class="fill" style="width:70.0%"></div></div>
+        <div class="val"><span class="pct num">−38.5%</span><span class="amt num"><span class="o">$13.20</span><span class="arw">→</span>$8.12</span></div>
+      </div>
+
+      <div class="row">
+        <div class="rlab"><span class="r">Run 2 <span class="tag low">floor</span></span></div>
+        <div class="track"><div class="fill" style="width:52.0%"></div></div>
+        <div class="val"><span class="pct num">−28.6%</span><span class="amt num"><span class="o">$13.53</span><span class="arw">→</span>$9.67</span></div>
+      </div>
+
+      <div class="xaxis num"><span style="left:0">0%</span><span style="left:45.5%">25%</span><span style="left:90.9%">50%</span><span style="left:100%">55%</span></div>
+    </div>
+  </section>
+
+  <!-- driver chain -->
+  <section>
+    <div class="shead"><div class="eyebrow">Why it works</div><div class="cap">figures are per-run averages</div></div>
+    <div class="chain">
+      <div class="node">
+        <div class="d num">−50%</div>
+        <div class="n">fewer file reads</div>
+        <div class="sub2">the handoff carries the contracts inline</div>
+      </div>
+      <div class="arrow">→</div>
+      <div class="node">
+        <div class="d num">−45%</div>
+        <div class="n">cache-read tokens</div>
+        <div class="sub2">smaller transcript replayed each turn</div>
+      </div>
+      <div class="arrow">→</div>
+      <div class="node out">
+        <div class="d num">−38%</div>
+        <div class="n">lower cost per run</div>
+        <div class="sub2">cache-read is the coder's main cost line</div>
+      </div>
+    </div>
+    <p class="chain-note"><b>Same job, less rummaging:</b> output tokens fell only −20% and tool-errors stayed flat (4→3) — the coder does the same work, it just stops re-reading the codebase.</p>
+  </section>
+
+  <!-- spotlight -->
+  <section>
+    <div class="shead"><div class="eyebrow">Strongest run vs. honest floor</div></div>
+    <div class="spot">
+
+      <div class="card best">
+        <div class="ctop"><span class="k">Best · Run 6</span><span class="model">Sonnet 5</span></div>
+        <div class="lead">Under half the cost, same model.</div>
+        <div class="mrow"><span class="ml">Cost</span><span class="mv num"><span class="o">$10.42</span><span class="arw">→</span><span class="n2">$4.98</span></span><span class="mp num">−52%</span></div>
+        <div class="mrow"><span class="ml">File reads</span><span class="mv num"><span class="o">48</span><span class="arw">→</span><span class="n2">20</span></span><span class="mp num">−58%</span></div>
+        <div class="mrow"><span class="ml">Total tokens</span><span class="mv num"><span class="o">22.0M</span><span class="arw">→</span><span class="n2">10.0M</span></span><span class="mp num">−55%</span></div>
+        <div class="mrow"><span class="ml">Run time</span><span class="mv num"><span class="o">18.2m</span><span class="arw">→</span><span class="n2">13.6m</span></span><span class="mp num">−26%</span></div>
+      </div>
+
+      <div class="card">
+        <div class="ctop"><span class="k">Floor · Run 2</span><span class="model">Opus 4.8</span></div>
+        <div class="lead">Weakest run still landed −29%.</div>
+        <div class="mrow"><span class="ml">Cost</span><span class="mv num"><span class="o">$13.53</span><span class="arw">→</span><span class="n2">$9.67</span></span><span class="mp num">−29%</span></div>
+        <div class="mrow"><span class="ml">File reads</span><span class="mv num"><span class="o">38</span><span class="arw">→</span><span class="n2">21</span></span><span class="mp num">−45%</span></div>
+        <div class="mrow"><span class="ml">Total tokens</span><span class="mv num"><span class="o">15.2M</span><span class="arw">→</span><span class="n2">9.5M</span></span><span class="mp num">−37%</span></div>
+        <div class="mrow"><span class="ml">Run time</span><span class="mv num"><span class="o">15.5m</span><span class="arw">→</span><span class="n2">15.5m</span></span><span class="mp num">~0%</span></div>
+      </div>
+
+    </div>
+  </section>
+
+  <footer>
+    <div class="fr"><span class="fk">Scope</span><span>Coder subagent only, isolated from the orchestrator. 6 Old (original instructions) vs 6 New (new planning + coding instructions + new skills), paired 1:1 by run and model — 2× Opus 4.8, 4× Sonnet 5.</span></div>
+    <div class="fr"><span class="fk">Working</span><span>Both arms' emitted API type-checks clean (<span class="num">tsc</span> exit 0) and passes its full suite — New <span class="num">71/71</span> tests, Old <span class="num">79/79</span>. The efficiency win did not trade away working code.</span></div>
+    <div class="fr"><span class="fk">Cost</span><span>Modeled from measured token counts × list price on each run's actual model (cache-read 0.1×, cache-write 1.25×). Sonnet-5 intro pricing would lower Sonnet actuals ~⅓ but barely moves the percentages.</span></div>
+    <div class="fr"><span class="fk">Caveats</span><span>n=6 per arm; costs are modeled, not invoiced. Token, read, and duration figures verified against the observability dashboard's subagent view.</span></div>
+  </footer>
+
+</div>

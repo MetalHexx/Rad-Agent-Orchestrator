@@ -133,6 +133,37 @@ test-run.log
 /prompt-tests/rad-master-plan-benchmark-v2/output/run-*/*/template.yml
 /prompt-tests/rad-master-plan-benchmark-v2/output/run-*/*/backups/
 
+# handoff A/B benchmark — ignore all per-run output, keep the folder placeholder.
+# The pristine sandbox (_handoff-sandbox/) is a committed fixture, NOT ignored.
+/prompt-tests/handoff-original-e2e/output/run-*/
+!/prompt-tests/handoff-original-e2e/output/.gitkeep
+/prompt-tests/handoff-improved-e2e/output/run-*/
+!/prompt-tests/handoff-improved-e2e/output/.gitkeep
+
+# plan-to-code A/B benchmark (final leg — coder executes the frozen planner-generated task under a
+# pinned coder-skill version). Same shape as the handoff arms: ignore all per-run output, keep the
+# folder placeholder. Fixtures (frozen handoff + pinned skill) ARE committed.
+/prompt-tests/plan-to-code-original-e2e/output/run-*/
+!/prompt-tests/plan-to-code-original-e2e/output/.gitkeep
+/prompt-tests/plan-to-code-improved-e2e/output/run-*/
+!/prompt-tests/plan-to-code-improved-e2e/output/.gitkeep
+
+# Prompt harness — masterplan A/B benchmark (planner-skill A/B on the /engine-graph task).
+# INVERTED pattern like rad-master-plan-benchmark: the small planning artifacts (Requirements,
+# Master Plan, exploded phases/tasks) under each run-*/ ARE committed for cross-arm / cross-run
+# diffing. The per-run sandbox copy (workspace/) and runtime churn (state.json/template.yml/backups)
+# are ignored — workspace/ is just a throwaway copy of the committed _handoff-sandbox fixture.
+/prompt-tests/masterplan-original-e2e/output/run-*/workspace/
+/prompt-tests/masterplan-original-e2e/output/run-*/*/state.json
+/prompt-tests/masterplan-original-e2e/output/run-*/*/template.yml
+/prompt-tests/masterplan-original-e2e/output/run-*/*/backups/
+!/prompt-tests/masterplan-original-e2e/output/.gitkeep
+/prompt-tests/masterplan-improved-e2e/output/run-*/workspace/
+/prompt-tests/masterplan-improved-e2e/output/run-*/*/state.json
+/prompt-tests/masterplan-improved-e2e/output/run-*/*/template.yml
+/prompt-tests/masterplan-improved-e2e/output/run-*/*/backups/
+!/prompt-tests/masterplan-improved-e2e/output/.gitkeep
+
 # Plugin artifacts
 # NOTE: .claude/ (above) is the gitignored dogfood build output;
 # .claude-plugin/ is the COMMITTED Claude marketplace manifest folder

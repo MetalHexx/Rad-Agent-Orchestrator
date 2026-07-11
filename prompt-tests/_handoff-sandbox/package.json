@@ -1,0 +1,11 @@
+{
+  "name": "handoff-sandbox",
+  "private": true,
+  "version": "0.0.0",
+  "workspaces": [
+    "lib/graph-engine",
+    "lib/graph-store-sqlite",
+    "lib/graph-node-types",
+    "graph-service"
+  ]
+}

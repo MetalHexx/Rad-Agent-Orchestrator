@@ -59,11 +59,6 @@ like, and what to test — enough contract for a coding agent to execute a task
    from a self-contained handoff and is told not to read upstream docs, so a
    convention you leave out is a convention it won't apply.
 
-   **Capture what you read as the External surface.** The grounding read already hands you
-   each dependency's exact reference (import / require / use) and resolved shape — pin those
-   into the task's **External surface** rather than paraphrase and discard them. A named-but-
-   unresolved type just sends the coder to re-read the source you already paid to open.
-
 5. **Decide the phase and task breakdown.** Phases group work by natural seam and
    are the integration unit — a phase can span repos (a UI view and its API
    endpoint are two single-repo tasks under one phase). Tasks are the smallest
@@ -207,17 +202,15 @@ never a finished implementation.
   non-obvious and prose would be clumsier. Never pre-write the full implementation
   or a complete test file — that's the coding agent's job, and over-specifying it invents
   bugs (a pre-written test that contradicts a pre-written impl).
-- **Procedure scales with tier; resolution doesn't.** How much *procedure* you spell out —
-  the algorithm, the edge handling — scales inversely to tier: a `simple` task (junior)
-  says more, a `complex` task (senior) leans on judgment and says less. But the **External
-  surface is flat** — full references and resolved shapes at *every* tier. Judgment can't
-  derive a real import path or a type's true fields; a dangling name sends even a senior to
-  read source, and its re-read costs more, not less.
+- **Specificity scales inversely to agent tier.** A `simple` task needs the *most*
+  concrete contract — it routes to the junior agent with the least judgment to fill
+  gaps, so pin the shape tightly. A `complex` task routes to the senior agent and
+  can lean more on its judgment and say less. Calibrate density to the complexity
+  you stamped.
 - **Aim slightly over-specified, never thin.** Snippets are encouraged where they
   de-risk the change. The one test for "too much": *could a coding agent paste it verbatim
   and call the task done?* If yes, you wrote the answer, not a contract — cut back
-  to the shape. (This tests the *body* — the External surface is exempt: its resolved shapes
-  are ground truth, meant to be used verbatim, not the answer.)
+  to the shape.
 
 *Shape, not body — a quick before/after:*
 
@@ -311,8 +304,8 @@ shape):
 
 **A worked task block**
 
-A realistic block at the target density — a pinned signature, a named seam, a resolved
-external surface, and no full implementation. Match this bar.
+A realistic block at the target density — a pinned signature, a named seam, a small
+illustrative snippet, and no full implementation. Match this bar.
 
 ````markdown
 ### P02-T03: Add cursor-paginated search endpoint
@@ -338,7 +331,7 @@ results against a stable contract.
   ```ts
   // GET /api/search?q=string&cursor=string&limit=number (1–50, default 20)
   type SearchResponse = {
-    results: ArticleSummary[];   // shape resolved under External surface, below
+    results: ArticleSummary[];   // reuse the shared ArticleSummary type
     nextCursor: string | null;   // null when this is the last page
   };
   ```
@@ -349,31 +342,6 @@ results against a stable contract.
 - **The seam to get right:** the cursor is an opaque base64 of `{ publishedAt, id }`,
   and the query pages by that composite key — paging by `publishedAt` alone drops
   articles that share a timestamp. `feed.ts` already handles the tie-break.
-
-**External surface**
-- Bring these into scope — exact symbols and their module:
-  ```ts
-  import { searchArticles } from '../db/queries';
-  import { decodeCursor } from '../db/cursor';
-  import type { ArticleSummary } from '../db/types';   // its real module — see source note
-  ```
-- Resolved shapes — everything named above, so nothing under `src/db` has to be opened:
-  ```ts
-  type ArticleSummary = {
-    id: string;
-    title: string;
-    publishedAt: string;   // ISO-8601
-    author: string;
-  };
-  // already exists — pinned here so the handler needn't open queries.ts
-  function searchArticles(
-    q: string,
-    page: { after?: { publishedAt: string; id: string }; limit: number },
-  ): Promise<ArticleSummary[]>;
-  function decodeCursor(raw: string): { publishedAt: string; id: string } | null;  // null → 400
-  ```
-- Source note: `ArticleSummary` lives in `src/db/types.ts`, not the `queries` barrel it
-  re-exports through — pin symbols to their real module.
 
 **Done when**
 - `GET /api/search?q=climate` returns a page of matches and a `nextCursor`.
@@ -387,21 +355,3 @@ results against a stable contract.
 - Skip snapshotting full payloads and asserting exact ordering beyond the tie-break
   — assert the shape and the boundary behavior.
 ````
-
-*Same two moves, another language — only the syntax changes. The same task in Python:*
-
-```python
-# How to reference it — exact symbols and their real module
-from app.db.queries import search_articles
-from app.db.models import ArticleSummary   # defined in models, not re-exported via queries
-
-# Resolved shapes — so nothing under app/db has to be opened to build against it
-@dataclass
-class ArticleSummary:
-    id: str
-    title: str
-    published_at: str   # ISO-8601
-    author: str
-
-def search_articles(q: str, *, after: tuple[str, str] | None, limit: int) -> list[ArticleSummary]: ...
-```
