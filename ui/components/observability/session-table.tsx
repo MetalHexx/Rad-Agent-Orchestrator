@@ -15,14 +15,15 @@ import { formatDuration } from "@/lib/observability/duration-format";
 import { sessionDuration, timeBucketedRate, rowsInWindow } from "@/lib/observability/sessions";
 import { bucketsForWindow } from "@/lib/observability/time-range";
 import type { SessionAgg } from "@/lib/observability/sessions";
+import { SPEND_LABELS, formatUsd } from "@/lib/observability/spend-display";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
 import { SaveStarButton } from "./save-star-button";
 
-type SortKey = "startedMs" | "lastMs" | "spend" | "worktree" | "sessionId" | "duration";
+type SortKey = "startedMs" | "lastMs" | "spend" | "worktree" | "sessionId" | "duration" | "cost";
 type SortDir = "asc" | "desc";
 
 interface SessionTableProps {
-  sessions: SessionAgg[];
+  sessions: (SessionAgg & { cost: number | null })[];
   now: number;
   /** The shared now-anchored window (same as the Total Rate chart). When supplied, each row's
    *  scanline buckets over it so it slides/updates live; absent, it falls back to the session's
@@ -54,6 +55,8 @@ export function SessionTable({ sessions, now, rangeStart, rangeEnd, nominalWindo
         case "worktree": av = a.worktree ?? "unknown"; bv = b.worktree ?? "unknown"; break;
         case "sessionId": av = a.sessionId; bv = b.sessionId; break;
         case "duration": av = sessionDuration(a); bv = sessionDuration(b); break;
+        // Unpriced (null) sorts as the lowest value so it lands last under the default desc order.
+        case "cost": av = a.cost ?? -Infinity; bv = b.cost ?? -Infinity; break;
         default: av = a.startedMs; bv = b.startedMs;
       }
       if (av < bv) return sortDir === "asc" ? -1 : 1;
@@ -114,7 +117,8 @@ export function SessionTable({ sessions, now, rangeStart, rangeEnd, nominalWindo
           <col style={{ width: "auto" }} />{/* Session */}
           <col style={{ width: "176px" }} />{/* Started — full toLocaleString */}
           <col style={{ width: "96px" }} />{/* Duration */}
-          <col style={{ width: "120px" }} />{/* Total Spend */}
+          <col style={{ width: "120px" }} />{/* Total Spend (weighted) */}
+          <col style={{ width: "120px" }} />{/* Cost (USD) */}
           <col style={{ width: "220px" }} />{/* Current Rate (hidden < sm) — wide enough to decompress the scanline */}
         </colgroup>
         <TableHeader>
@@ -128,11 +132,12 @@ export function SessionTable({ sessions, now, rangeStart, rangeEnd, nominalWindo
             <SortableHead colKey="spend">
               <TooltipProvider>
                 <Tooltip>
-                  <TooltipTrigger>Total Spend</TooltipTrigger>
+                  <TooltipTrigger>Total Spend (weighted)</TooltipTrigger>
                   <TooltipContent>Cache-weighted effective tokens — a cost-shaped count, not a dollar amount.</TooltipContent>
                 </Tooltip>
               </TooltipProvider>
             </SortableHead>
+            <SortableHead colKey="cost">{SPEND_LABELS.cost}</SortableHead>
             <TableHead className="hidden sm:table-cell">Current Rate</TableHead>
           </TableRow>
         </TableHeader>
@@ -176,6 +181,9 @@ export function SessionTable({ sessions, now, rangeStart, rangeEnd, nominalWindo
               </TableCell>
               <TableCell className="whitespace-nowrap text-sm font-semibold tabular-nums">
                 {humanizeTokens(s.spend)}
+              </TableCell>
+              <TableCell className="whitespace-nowrap text-sm font-semibold tabular-nums">
+                {formatUsd(s.cost)}
               </TableCell>
               <TableCell className="hidden sm:table-cell">
                 <RateSparkline
