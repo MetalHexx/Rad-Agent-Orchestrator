@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import type Database from 'better-sqlite3';
-import type { Result } from '@rad-orchestration/graph-engine';
+import type { Result, Unsubscribe } from '@rad-orchestration/graph-engine';
 import type {
   DocAttachInput,
   DocOwner,
@@ -27,6 +27,27 @@ import type {
   WorktreeInput,
   WorktreeRecord,
 } from './portfolio-types.js';
+
+/**
+ * The just-appended `portfolio_change_log` row, handed to every `subscribe` listener after a
+ * successful mutation commits. `before`/`after` are the caller-shaped values `mutate` was given
+ * (not the raw JSON text column), so a listener never has to re-parse them. D13: this persisted
+ * row — not a bare mutation result — is what carries the `seq` an SSE stream scopes and resumes
+ * by; field names mirror the `portfolio_change_log` columns verbatim.
+ */
+export interface PortfolioChangeLogRow {
+  readonly seq: number;
+  readonly ts: string;
+  readonly actor: string | null;
+  readonly operation: string;
+  readonly target_type: PortfolioTargetType;
+  readonly target_id: string;
+  readonly before: unknown | null;
+  readonly after: unknown | null;
+}
+
+/** A `SqlitePortfolioStore.subscribe` listener — see {@link PortfolioChangeLogRow}. */
+export type PortfolioChangeListener = (row: PortfolioChangeLogRow) => void;
 
 /** Shared read projection for `projects`' portfolio-enrichment columns, in `ProjectRow` order. */
 const PROJECT_COLUMNS =
@@ -416,6 +437,11 @@ export class SqlitePortfolioStore implements PortfolioStore {
   private readonly dagNodeExistsStmt: Database.Statement;
   private readonly insertChangeLogStmt: Database.Statement;
 
+  // D9: this package is the single production host and sole owner of the SQLite handle, so a
+  // row-emission listener registered here is the only observer of every commit — never a second
+  // store instance or a poll of the portfolio_change_log table.
+  private readonly changeListeners = new Set<PortfolioChangeListener>();
+
   constructor(private readonly db: Database.Database) {
     // ON CONFLICT DO UPDATE: `id` may already exist as a bare engine-seeded scaffold row (see
     // `rowToProject`'s comment) — that row is adopted and enriched rather than rejected as a
@@ -593,7 +619,9 @@ export class SqlitePortfolioStore implements PortfolioStore {
    * this host store); `actor` is passed through from the caller. A thrown error — a business-rule
    * pre-check that slipped through, or a SQLite constraint violation such as the FK guard on
    * `deleteProject` — rolls back both the write and the audit row, and surfaces as a failed
-   * `Result` instead of propagating.
+   * `Result` instead of propagating. On success, the appended `portfolio_change_log` row is
+   * emitted to `subscribe` listeners only once this transaction has returned — i.e. strictly after
+   * its own COMMIT — so a rolled-back mutation (which never reaches that point) emits nothing.
    */
   private mutate<T>(entry: {
     readonly operation: string;
@@ -605,10 +633,11 @@ export class SqlitePortfolioStore implements PortfolioStore {
     readonly write: () => void;
   }): Result<T> {
     try {
-      this.db.transaction(() => {
+      const appended = this.db.transaction((): PortfolioChangeLogRow => {
         entry.write();
-        this.insertChangeLogStmt.run(
-          new Date().toISOString(),
+        const ts = new Date().toISOString();
+        const info = this.insertChangeLogStmt.run(
+          ts,
           entry.actor,
           entry.operation,
           entry.targetType,
@@ -616,10 +645,46 @@ export class SqlitePortfolioStore implements PortfolioStore {
           entry.before === null ? null : JSON.stringify(entry.before),
           entry.after === null ? null : JSON.stringify(entry.after),
         );
+        return {
+          seq: Number(info.lastInsertRowid),
+          ts,
+          actor: entry.actor,
+          operation: entry.operation,
+          target_type: entry.targetType,
+          target_id: entry.targetId,
+          before: entry.before,
+          after: entry.after,
+        };
       })();
+      this.emitChangeLogRow(appended);
       return { ok: true, data: entry.after as T };
     } catch (err) {
       return invalidDelta(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  /**
+   * Subscribes `listener` to every `portfolio_change_log` row this store appends from here on, in
+   * commit order — additive to `PortfolioStore`, no existing method's behavior changes. Mirrors
+   * the engine's `ChangeStream` shape (`subscribe(listener): Unsubscribe`); see
+   * {@link PortfolioChangeLogRow} for why the persisted row is what gets emitted.
+   */
+  subscribe(listener: PortfolioChangeListener): Unsubscribe {
+    this.changeListeners.add(listener);
+    return () => this.changeListeners.delete(listener);
+  }
+
+  private emitChangeLogRow(row: PortfolioChangeLogRow): void {
+    // Each listener is isolated: a throwing subscriber must never surface as (or be mistaken for)
+    // a failure of the write it's reacting to — this runs after `mutate()`'s transaction has
+    // already committed, and a rethrow here would otherwise be caught by `mutate()`'s own
+    // try/catch and misreported as an `invalid_delta` Result.
+    for (const listener of this.changeListeners) {
+      try {
+        listener(row);
+      } catch {
+        // Swallowed — a broadcast failure downstream of the store is the subscriber's problem.
+      }
     }
   }
 
