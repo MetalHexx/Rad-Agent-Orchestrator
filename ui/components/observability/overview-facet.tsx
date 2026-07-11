@@ -1,10 +1,10 @@
 import * as React from "react";
-import type { AgentTranscript } from "@rad-orchestration/telemetry";
+import type { AgentTranscript, ObservabilityUsageRow } from "@rad-orchestration/telemetry";
 import { SummaryCard, SummaryCardGrid } from "./summary-card";
 import { RichText } from "./rich-text";
 import { humanizeTokens } from "@/lib/observability/format";
 import { formatDuration } from "@/lib/observability/duration-format";
-import { effectiveTokens } from "@/lib/observability/effective-tokens";
+import { SPEND_LABELS, formatUsd, spendReceipt } from "@/lib/observability/spend-display";
 import { TokenBreakdown } from "./token-breakdown";
 
 const CARD = "rounded-xl bg-card ring-1 ring-foreground/10"; // matches summary-card.tsx + agent-tree.tsx (DD-3)
@@ -20,35 +20,48 @@ function PanelHeader({ title }: { title: string }) {
 export interface OverviewFacetProps {
   /** The already-fetched transcript — read directly, no further fetching (AD-1, NFR-2). */
   transcript: AgentTranscript;
+  /** The inspected agent's deduped harvested-usage rows — the single source (R8) every spend
+   *  figure on this panel derives from, so the modal agrees with the session-view row by construction. */
+  rows: ObservabilityUsageRow[];
 }
 
 /**
  * OverviewFacet — at-a-glance summary panel for an agent (FR-1..FR-5).
  * Container-agnostic and props-only (NFR-2); reads the transcript straight off the prop (AD-1).
  */
-export function OverviewFacet({ transcript }: OverviewFacetProps) {
-  const { tokens, toolSummary, filesTouched, prompt, result, durationMs } = transcript;
+export function OverviewFacet({ transcript, rows }: OverviewFacetProps) {
+  const { toolSummary, filesTouched, prompt, result, durationMs } = transcript;
 
-  // Canonical cache-aware Spend unit, reused — weights are never duplicated here (AD-2).
-  const spend = effectiveTokens({
-    inputTokens: tokens.in,
-    outputTokens: tokens.out,
-    cacheReadTokens: tokens.cacheRead,
-    cacheCreationTokens: tokens.cacheCreate,
-  });
+  // Single source for every spend figure on this panel — the same deduped harvested rows the
+  // session-view row derives from (R8), so the modal's spend numbers agree with the row by
+  // construction. The transcript stays the source for the operational cards below.
+  const receipt = spendReceipt(rows);
 
   const toolEntries = Object.entries(toolSummary.byName).sort((a, b) => b[1] - a[1]);
 
   return (
     <div className="h-full overflow-y-auto p-5">
       <div className="flex flex-col gap-4">
-        {/* (1) Scorecard — reused summary-card kit, no subtext, five-up (FR-2, DD-1, DD-2) */}
-        <SummaryCardGrid columns={5}>
+        {/* (1) Cost trio — Total Spend (weighted) / Cost (USD) / New tokens, from spendReceipt(rows) */}
+        <SummaryCardGrid columns={3}>
           <SummaryCard
-            label="Total Spend"
-            value={humanizeTokens(spend)}
-            tooltip="Effective tokens for this agent: a cache-aware, cost-shaped count, not a dollar cost."
+            label="Total Spend (weighted)"
+            value={humanizeTokens(receipt.costWeighted)}
+            tooltip="Effective tokens for this agent — a cache-aware, cost-weighted count matching the Agent Breakdown row. Dollar cost is shown separately, not blended into this count."
           />
+          <SummaryCard
+            label={SPEND_LABELS.costUsd}
+            value={formatUsd(receipt.dollars)}
+            tooltip="Dollar cost for this agent at current model pricing; an unpriced model shows as unavailable, never $0."
+          />
+          <SummaryCard
+            label={SPEND_LABELS.newTokens}
+            value={humanizeTokens(receipt.newTokens)}
+            tooltip="Net-new context tokens created by this agent (cache-creation total) — the harness headline figure."
+          />
+        </SummaryCardGrid>
+        {/* (2) Operational grid — Duration / Tool Calls / Errors / Files (FR-2, DD-1, DD-2) */}
+        <SummaryCardGrid columns={4}>
           <SummaryCard
             label="Duration"
             value={durationMs != null ? formatDuration(durationMs) : "—"}
@@ -59,11 +72,12 @@ export function OverviewFacet({ transcript }: OverviewFacetProps) {
           <SummaryCard label="Files" value={filesTouched.length} tooltip="Distinct files this agent created or edited." />
         </SummaryCardGrid>
         <TokenBreakdown
-          input={tokens.in}
-          output={tokens.out}
-          cacheRead={tokens.cacheRead}
-          cacheCreate={tokens.cacheCreate}
-          spend={spend}
+          input={receipt.raw.input}
+          output={receipt.raw.output}
+          cacheRead={receipt.raw.cacheRead}
+          cacheCreate={receipt.raw.cacheCreate}
+          spend={receipt.costWeighted}
+          dollars={receipt.dollars}
         />
 
         {/* (2) Tools card — chips by descending count + Tools-facet hint (FR-3, DD-5, DD-7) */}

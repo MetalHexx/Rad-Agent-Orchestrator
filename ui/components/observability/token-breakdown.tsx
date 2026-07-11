@@ -1,28 +1,39 @@
 import { Info } from "lucide-react";
 import { humanizeTokens } from "@/lib/observability/format";
+import { SPEND_LABELS, formatUsd } from "@/lib/observability/spend-display";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
-/** Normalized raw-token shape both surfaces map onto; `spend` is the pre-derived effective figure (AD-2, AD-3). */
+/**
+ * Normalized raw-token shape both surfaces map onto. `spend` and `dollars` are the pre-derived
+ * cost-weighted total and dollar figure (both sourced from the same `spendReceipt` as the caller's
+ * cost trio, so this breakdown always agrees with it — AD-2, AD-3).
+ */
 export interface TokenBreakdownProps {
   input: number;
   output: number;
   cacheRead: number;
   cacheCreate: number;
   spend: number;
+  dollars: number | null;
 }
 
 const CELLS = [
-  { label: "Input", key: "input" },
-  { label: "Output", key: "output" },
-  { label: "Cache read", key: "cacheRead" },
-  { label: "Cache create", key: "cacheCreate" },
+  { label: "Input", key: "input", weight: "×1" },
+  { label: "Output", key: "output", weight: "×5" },
+  { label: "Cache read", key: "cacheRead", weight: "×0.1" },
+  { label: "Cache create", key: "cacheCreate", weight: "×1.25" },
 ] as const;
 
+const BREAKDOWN_TOOLTIP =
+  "Raw API token counts, each weighted by relative cost (input ×1, output ×5, cache read ×0.1, " +
+  `cache create ×1.25) into ${SPEND_LABELS.costWeighted}. ${SPEND_LABELS.costUsd} prices cache-creation ` +
+  "tokens at the 5-minute-TTL write rate, using pricing as of the current rate table's effective date.";
+
 /**
- * TokenBreakdown — one-line raw-token receipt, strictly subordinate to Total Spend (DD-1).
+ * TokenBreakdown — one-line raw-token receipt, strictly subordinate to the caller's spend cards (DD-1).
  * Pure, props-only, container-agnostic (NFR-3); never duplicates the cache weights (NFR-2).
  */
-export function TokenBreakdown({ input, output, cacheRead, cacheCreate, spend }: TokenBreakdownProps) {
+export function TokenBreakdown({ input, output, cacheRead, cacheCreate, spend, dollars }: TokenBreakdownProps) {
   const values = { input, output, cacheRead, cacheCreate };
   return (
     <div className="rounded-xl bg-card ring-1 ring-foreground/10 px-6 py-3">
@@ -30,14 +41,26 @@ export function TokenBreakdown({ input, output, cacheRead, cacheCreate, spend }:
         {CELLS.map((cell, i) => (
           <span key={cell.key} className="flex items-center gap-1.5">
             {i > 0 && <span className="text-border" aria-hidden="true">·</span>}
-            <span>{cell.label}</span>
+            <span>
+              {cell.label} <span className="opacity-60">{cell.weight}</span>
+            </span>
             <span className="text-foreground">{humanizeTokens(values[cell.key])}</span>
           </span>
         ))}
+        <span className="text-border" aria-hidden="true">·</span>
+        <span className="flex items-center gap-1.5">
+          <span>{SPEND_LABELS.costWeighted}</span>
+          <span className="text-foreground">{humanizeTokens(spend)}</span>
+        </span>
+        <span className="text-border" aria-hidden="true">·</span>
+        <span className="flex items-center gap-1.5">
+          <span>{SPEND_LABELS.costUsd}</span>
+          <span className="text-foreground">{formatUsd(dollars)}</span>
+        </span>
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger render={<Info className="ml-1 h-3 w-3 shrink-0 cursor-default opacity-40 hover:opacity-70" />} />
-            <TooltipContent>Raw API counts · fold into Total Spend {humanizeTokens(spend)} via cache-aware weighting</TooltipContent>
+            <TooltipContent>{BREAKDOWN_TOOLTIP}</TooltipContent>
           </Tooltip>
         </TooltipProvider>
       </div>
