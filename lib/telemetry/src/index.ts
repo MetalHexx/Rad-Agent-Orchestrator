@@ -15,3 +15,4 @@ export { readSavedIndex, isSessionSaved, savedIndexPath, computeSessionSnapshot,
   type SavedSession, type SavedSessionSnapshot, type SavedSessionsIndex } from './saved-sessions.js';
 export { saveSession, updateSavedSession, unsaveSession } from './saved-sessions.js';
 export { effectiveTokens, type TokenFields } from './read/effective-tokens.js';
+export { priceFor, dollarsFor, PRICING_VERSION, type TokenType, type PricedRow } from './read/pricing.js';
