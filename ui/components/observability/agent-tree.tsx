@@ -5,7 +5,7 @@ import { humanizeTokens } from '@/lib/observability/format';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { SubagentTree, AgentTreeNode } from '@/lib/observability/subagent-tree';
 import { freezeSubagentOrder } from '@/lib/observability/subagent-tree';
-import { rowTranscriptId, isInspectable } from '@/lib/observability/transcript-identity';
+import { rowTranscriptId } from '@/lib/observability/transcript-identity';
 import { AgentRow, ROW_GRID_COLS } from './agent-row';
 import { ModelLegend } from './model-legend';
 
@@ -17,8 +17,6 @@ export interface AgentTreeProps {
   now: number;
   /** Session id — used to resolve the main row's transcript id (FR-3, AD-7). */
   sessionId?: string;
-  /** Set of transcript ids that have available transcripts (FR-4, AD-7). */
-  availableIds?: Set<string>;
   /** Called with the transcript id when the user clicks the Inspect button (FR-3, AD-7). */
   onInspect?: (transcriptId: string) => void;
 }
@@ -50,17 +48,15 @@ function RowGridHeader() {
     >
       <span>Agent</span>
       <span className="mx-2">Model spend</span>
-      <span className="text-right">New</span>
-      <span className="text-right">Cost</span>
-      <span className="text-right">Token Spend</span>
-      <span aria-hidden="true" />
-      <span aria-hidden="true" />
+      <span className="whitespace-nowrap">Cost</span>
+      <span className="whitespace-nowrap">New Tokens</span>
+      <span className="whitespace-nowrap">Total Tokens</span>
     </div>
   );
 }
 
 // Pure & reusable: owns ONLY expand state; no data fetch, no page/live imports (AD-1).
-export function AgentTree({ tree, title = 'Agent Breakdown', coverage, ready = true, now, sessionId, availableIds, onInspect }: AgentTreeProps) {
+export function AgentTree({ tree, title = 'Agent Breakdown', coverage, ready = true, now, sessionId, onInspect }: AgentTreeProps) {
   const [expanded, setExpanded] = React.useState<Set<string>>(() => new Set());
   const toggle = React.useCallback((key: string) => {
     setExpanded((prev) => {
@@ -82,8 +78,7 @@ export function AgentTree({ tree, title = 'Agent Breakdown', coverage, ready = t
   /** Build an inspect prop for a given transcript id (or null if not inspectable). */
   function inspectProp(transcriptId: string | null) {
     if (!onInspect || !transcriptId) return undefined;
-    const available = isInspectable(transcriptId, availableIds ?? new Set());
-    return { available, onInspect: () => onInspect(transcriptId) };
+    return { onInspect: () => onInspect(transcriptId) };
   }
 
   if (!ready) {
@@ -115,7 +110,7 @@ export function AgentTree({ tree, title = 'Agent Breakdown', coverage, ready = t
     <section className={CARD}>
       <Header title={title} />
       <p className="px-5 pt-2 text-xs text-muted-foreground">
-        Bars and % show share of spend in the selected window · in execution order{coverageNote}
+        Bars show share of spend in the selected window · in execution order{coverageNote}
       </p>
       <div className="px-3 pb-3 pt-2">
         <RowGridHeader />

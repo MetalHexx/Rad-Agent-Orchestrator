@@ -33,10 +33,10 @@ const tree = (over: Partial<SubagentTree> = {}): SubagentTree => ({
 {
   const html = renderToStaticMarkup(createElement(AgentTree, { tree: tree(), ready: true, now: 100 }));
   assert.ok(html.includes('Agent') && html.includes('Model spend'), 'header names the agent + bar columns');
-  assert.ok(html.includes('New') && html.includes('Cost') && html.includes('Token Spend'), 'header names the New / Cost / Token Spend columns');
+  assert.ok(html.includes('Cost') && html.includes('New Tokens') && html.includes('Total Tokens'), 'header names the Cost / New Tokens / Total Tokens columns');
   const costIdx = html.indexOf('>Cost<');
-  const tokenSpendIdx = html.indexOf('Token Spend');
-  assert.ok(costIdx !== -1 && tokenSpendIdx !== -1 && costIdx < tokenSpendIdx, 'Cost column precedes Token Spend, matching the All Sessions table order');
+  const totalTokensIdx = html.indexOf('Total Tokens');
+  assert.ok(costIdx !== -1 && totalTokensIdx !== -1 && costIdx < totalTokensIdx, 'Cost column precedes Total Tokens, right after the bar');
   const gridTemplates = [...html.matchAll(/grid-cols-\[[^\]]*\]/g)].map((m) => m[0]);
   assert.ok(gridTemplates.length >= 2, 'both the header row and data rows carry a grid-cols template');
   assert.ok(gridTemplates.every((t) => t === gridTemplates[0]), 'header and row grid templates are identical (columns align)');

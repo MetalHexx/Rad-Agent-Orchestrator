@@ -23,7 +23,6 @@ import { readRangeState, writeRangeState, type RangeState } from "@/lib/time-ran
 import { useTimeRangeWindow } from "@/hooks/use-time-range-window";
 import { useSpendRateChart } from "@/hooks/use-spend-rate-chart";
 import { useUrlViewState } from "@/hooks/use-url-view-state";
-import { useSessionAgents } from "@/hooks/use-agent-inspector";
 import { SaveStarButton } from "@/components/observability/save-star-button";
 import { fetchIsSaved, saveSession, unsaveSession } from "@/lib/observability/saved-client";
 
@@ -134,7 +133,6 @@ export function SessionDetailView({ sessionId }: { sessionId: string }) {
   };
 
   // Agent Inspector wiring (FR-3, FR-4, AD-7).
-  const { availableIds } = useSessionAgents(sessionId);
   const [inspectId, setInspectId] = React.useState<string | null>(null);
   const [isFullScreen, setIsFullScreen] = React.useState(false);
 
@@ -184,7 +182,6 @@ export function SessionDetailView({ sessionId }: { sessionId: string }) {
                 ready={ready}
                 now={now}
                 sessionId={sessionId}
-                availableIds={availableIds}
                 onInspect={setInspectId}
               />
             )}
