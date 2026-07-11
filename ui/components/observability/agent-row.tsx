@@ -67,9 +67,9 @@ export function AgentRow({ node, scaleMax, variant, now, expanded, onToggle, ins
         {variant === 'group' && node.runCount > 1 && <Badge variant="outline" className="ml-1">×{node.runCount}</Badge>}
       </div>
       <SpendBar segments={node.models} total={node.tokens} scaleMax={scaleMax} className="mx-2" />
-      <span className="text-left tabular-nums text-sm" title={SPEND_LABELS.cost}>{formatUsd(node.dollars)}</span>
-      <span className="text-left tabular-nums text-xs text-muted-foreground" title={SPEND_LABELS.newTokens}>{humanizeTokens(node.newTokens)}</span>
-      <span className="text-left tabular-nums font-semibold text-sm" title={SPEND_LABELS.costWeighted}>{humanizeTokens(node.tokens)}</span>
+      <span className="text-center tabular-nums text-sm" title={SPEND_LABELS.cost}>{formatUsd(node.dollars)}</span>
+      <span className="text-center tabular-nums text-xs text-muted-foreground" title={SPEND_LABELS.newTokens}>{humanizeTokens(node.newTokens)}</span>
+      <span className="text-center tabular-nums font-semibold text-sm" title={SPEND_LABELS.costWeighted}>{humanizeTokens(node.tokens)}</span>
     </div>
   );
 }

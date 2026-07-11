@@ -48,9 +48,9 @@ function RowGridHeader() {
     >
       <span>Agent</span>
       <span className="mx-2">Model spend</span>
-      <span className="whitespace-nowrap">Cost</span>
-      <span className="whitespace-nowrap">New Tokens</span>
-      <span className="whitespace-nowrap">Total Tokens</span>
+      <span className="text-center whitespace-nowrap">Cost</span>
+      <span className="text-center whitespace-nowrap">New Tokens</span>
+      <span className="text-center whitespace-nowrap">Total Tokens</span>
     </div>
   );
 }
@@ -101,17 +101,17 @@ export function AgentTree({ tree, title = 'Agent Breakdown', coverage, ready = t
     );
   }
 
-  const coverageNote = coverage !== undefined && coverage < 0.99 ? ` · covers ~${Math.round(coverage * 100)}% of this session` : '';
-
   // Main row transcript id: sessionId (FR-3)
   const mainTranscriptId = sessionId ? rowTranscriptId(tree.main, 'main', sessionId) : null;
 
   return (
     <section className={CARD}>
       <Header title={title} />
-      <p className="px-5 pt-2 text-xs text-muted-foreground">
-        Bars show share of spend in the selected window · in execution order{coverageNote}
-      </p>
+      {coverage !== undefined && coverage < 0.99 && (
+        <p className="px-5 pt-2 text-xs text-muted-foreground">
+          Covers ~{Math.round(coverage * 100)}% of this session
+        </p>
+      )}
       <div className="px-3 pb-3 pt-2">
         <RowGridHeader />
         <AgentRow
