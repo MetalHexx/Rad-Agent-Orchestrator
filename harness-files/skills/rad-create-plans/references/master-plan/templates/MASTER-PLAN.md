@@ -73,6 +73,21 @@ goal, and what exists once it lands.}
 - **The seam to get right:** {the gotcha, or the cross-repo contract this task shares
   with its paired task — pin the same shape on both sides}.
 
+**External surface** *(only when this task builds against something it doesn't own — a
+library, service, or module defined elsewhere; omit for greenfield / self-defined work)*
+- How to reference it — the exact statement that brings each external symbol into scope
+  (import / require / use / include — whatever the task's language uses), and its source:
+  ```
+  {reference statements, in the task's language}
+  ```
+- Resolved shapes — every externally-defined type / struct / interface / schema /
+  signature named above, given concretely so nothing has to be opened to build against it:
+  ```
+  {the definitions, verbatim from source, in the task's language}
+  ```
+- Name the true source of each symbol — one from a sibling package or module is not the
+  same as the primary entry point.
+
 **Done when**
 - {Concrete, observable acceptance — what is true when the task is complete.}
 - {…}
