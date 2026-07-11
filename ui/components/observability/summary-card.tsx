@@ -47,9 +47,9 @@ export function SummaryCardGrid({ columns = 3, children }: SummaryCardGridProps)
 }
 
 const TOTAL_SPEND_TOOLTIP =
-  "Effective tokens — a cache-aware, cost-shaped count summed across the main agent and all subagents. Not a dollar cost.";
+  "Effective tokens — a cache-aware, cost-weighted count summed across the main agent and all subagents. Dollar cost is shown separately, not blended into this count.";
 
 /** The single shared Total-Spend card both Observability views render (FR-2). */
 export function TotalSpendCard({ spend }: { spend: number }) {
-  return <SummaryCard label="Total Spend" value={humanizeTokens(spend)} tooltip={TOTAL_SPEND_TOOLTIP} />;
+  return <SummaryCard label="Total Spend (weighted)" value={humanizeTokens(spend)} tooltip={TOTAL_SPEND_TOOLTIP} />;
 }

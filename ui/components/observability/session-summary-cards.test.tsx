@@ -25,11 +25,11 @@ const session: SessionAgg = {
   ],
 };
 
-test('renders three cards in order: Total Spend, Subagents, Duration (FR-1, DD-1)', () => {
+test('renders three cards in order: Total Spend (weighted), Subagents, Duration (FR-1, DD-1)', () => {
   const html = renderToStaticMarkup(createElement(SessionSummaryCards, { session }));
-  const ts = html.indexOf('Total Spend'), su = html.indexOf('Subagents'), du = html.indexOf('Duration');
+  const ts = html.indexOf('Total Spend (weighted)'), su = html.indexOf('Subagents'), du = html.indexOf('Duration');
   assert.ok(ts !== -1 && su !== -1 && du !== -1, 'all three labels present');
-  assert.ok(ts < su && su < du, 'ordered Total Spend → Subagents → Duration');
+  assert.ok(ts < su && su < du, 'ordered Total Spend (weighted) → Subagents → Duration');
 });
 
 test('shows shared spend, subagent count, and humanized duration; no dollars (FR-1, FR-4, NFR-4)', () => {

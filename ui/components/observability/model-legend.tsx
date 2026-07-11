@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { modelColor } from '@/lib/observability/model-color';
 
-const LEGEND_MODELS = ['opus', 'sonnet', 'haiku'] as const;   // single key for the panel (FR-12, DD-2)
+const LEGEND_MODELS = ['opus', 'sonnet', 'haiku', 'fable'] as const;   // single key for the panel (FR-12, DD-2)
 
 export function ModelLegend() {
   return (
