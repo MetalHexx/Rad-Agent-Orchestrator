@@ -16,9 +16,9 @@ test('SummaryCard renders label, value, and tooltip (DD-3)', () => {
   assert.ok(html.includes('rounded-xl') && html.includes('text-3xl'), 'shared tile styling present');
 });
 
-test('TotalSpendCard renders the shared Total Spend label, humanized spend, no dollars (FR-2)', () => {
+test('TotalSpendCard renders the shared Token Spend label, humanized spend, no dollars (FR-2)', () => {
   const html = renderToStaticMarkup(createElement(TotalSpendCard, { spend: 4_820_000 }));
-  assert.ok(html.includes('Total Spend'), 'label is Total Spend');
+  assert.ok(html.includes('Token Spend'), 'label is Token Spend');
   assert.ok(html.includes('4.82M'), 'spend humanized via the shared card');
   assert.ok(!html.includes('$'), 'no dollar cost');
 });

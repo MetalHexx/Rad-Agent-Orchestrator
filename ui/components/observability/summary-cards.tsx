@@ -18,12 +18,12 @@ export function SummaryCards({ sessions, activeNow }: SummaryCardsProps) {
 
   return (
     <SummaryCardGrid columns={4}>
-      <TotalSpendCard spend={totalSpend} />
       <SummaryCard
         label={SPEND_LABELS.costUsd}
         value={formatUsd(totalCost)}
         tooltip="Dollar cost summed across sessions in view, at current model pricing; an unpriced model shows as unavailable, never $0."
       />
+      <TotalSpendCard spend={totalSpend} />
       <SummaryCard
         label="Sessions"
         value={sessions.length}

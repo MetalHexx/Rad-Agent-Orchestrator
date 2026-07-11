@@ -5,7 +5,7 @@ import { formatDuration } from "@/lib/observability/duration-format";
 import { countSubagents } from "@/lib/observability/subagent-count";
 import { SummaryCard, SummaryCardGrid, TotalSpendCard } from "./summary-card";
 
-/** Session-detail summary strip: Total Spend (shared) · Subagents · Duration (FR-1, DD-1). */
+/** Session-detail summary strip: Token Spend (shared) · Subagents · Duration (FR-1, DD-1). */
 export function SessionSummaryCards({ session }: { session: SessionAgg }) {
   return (
     <SummaryCardGrid columns={3}>

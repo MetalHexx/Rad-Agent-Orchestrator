@@ -11,14 +11,14 @@ const sessions = [
   { sessionId: 'b', startedMs: 0, lastMs: 0, spend: 1_000, cost: 0.01, rows: [], worktree: 'w' },
 ];
 
-test('renders four cards in order: Total Spend, Cost (USD), Sessions, Active Now (FR-4, DD-1)', () => {
+test('renders four cards in order: Cost (USD), Token Spend, Sessions, Active Now (FR-4, DD-1)', () => {
   const html = renderToStaticMarkup(createElement(SummaryCards, { sessions, activeNow: 1 }));
-  const ts = html.indexOf('Total Spend'), cu = html.indexOf('Cost (USD)'), se = html.indexOf('Sessions'), an = html.indexOf('Active Now');
+  const cu = html.indexOf('Cost (USD)'), ts = html.indexOf('Token Spend'), se = html.indexOf('Sessions'), an = html.indexOf('Active Now');
   assert.ok(ts !== -1 && cu !== -1 && se !== -1 && an !== -1, 'all four labels present');
-  assert.ok(ts < cu && cu < se && se < an, 'cards are ordered Total Spend → Cost (USD) → Sessions → Active Now');
+  assert.ok(cu < ts && ts < se && se < an, 'cards are ordered Cost (USD) → Token Spend → Sessions → Active Now');
 });
 
-test('Total Spend shows summed effective tokens, Cost (USD) the summed dollars, Sessions the count, Active Now the active count (FR-4)', () => {
+test('Token Spend shows summed effective tokens, Cost (USD) the summed dollars, Sessions the count, Active Now the active count (FR-4)', () => {
   const html = renderToStaticMarkup(createElement(SummaryCards, { sessions, activeNow: 1 }));
   assert.ok(html.includes('4.82M'), 'spend is summed and humanized (4,821,000 → 4.82M)');
   assert.ok(html.includes('>2<') || html.includes('2'), 'session count is 2');

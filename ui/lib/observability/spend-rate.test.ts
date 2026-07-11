@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildSpendRateChart, visibleSeriesKeys, DEFAULT_SHOWN_KEYS, type SpendRateSeries } from './spend-rate';
+import { buildSpendRateChart, visibleSeriesKeys, DEFAULT_HIDDEN_KEYS, type SpendRateSeries } from './spend-rate';
 import { TimeWindow } from './time-window';
 import { retentionFloorMs } from '@/lib/time-range/range';
 
@@ -12,55 +12,53 @@ const row = (model: string, t: string) => ({
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 } as any);
 
-test('series is total + one sorted line per model present (AD-3, FR-3, DD-4)', () => {
+test('series is one sorted line per model present — no aggregate "All models" entry (AD-3, FR-3, DD-4)', () => {
   const rows = [row('opus', '2026-06-21T11:30:00Z'), row('haiku', '2026-06-21T11:31:00Z')];
   const { series } = buildSpendRateChart(rows, win);
-  assert.equal(series[0].key, 'total');
-  assert.equal(series[0].cssVar, '--chart-2');
-  assert.deepEqual(series.slice(1).map((s) => s.key), ['haiku', 'opus']);
+  assert.deepEqual(series.map((s) => s.key), ['haiku', 'opus']);
+  assert.ok(!series.some((s) => s.key === 'total'), 'no total/"All models" series — it is not a real filterable model');
 });
 
-test('empty rows → only the total series, no model lines (AD-3, FR-3)', () => {
+test('empty rows → no series at all (AD-3, FR-3)', () => {
   const { series, data } = buildSpendRateChart([], win);
-  assert.equal(series.length, 1);
-  assert.equal(series[0].key, 'total');
+  assert.equal(series.length, 0);
   assert.ok(Array.isArray(data));
 });
 
-// --- Chart line visibility (FR-4): default total-only, per-model opt-in, no load flash ---
+// --- Chart line visibility (FR-4): every model on by default, opt-OUT per line, no load flash ---
 
 const VIZ_SERIES: SpendRateSeries[] = [
-  { key: 'total',  label: 'All models', cssVar: '--chart-2' },
   { key: 'opus',   label: 'opus',       cssVar: '--c-a' },
   { key: 'sonnet', label: 'sonnet',     cssVar: '--c-b' },
 ];
 
-test('default shows only the total / "All models" line (FR-4)', () => {
-  assert.deepEqual(visibleSeriesKeys(VIZ_SERIES, DEFAULT_SHOWN_KEYS), ['total']);
+test('default shows every model line — nothing hidden (FR-4)', () => {
+  assert.deepEqual(visibleSeriesKeys(VIZ_SERIES, DEFAULT_HIDDEN_KEYS), ['opus', 'sonnet']);
 });
 
-test('late-arriving model lines stay hidden — the flash invariant (FR-4, FR-7)', () => {
-  // Simulate the post-mount data load / SSE live-tail: `series` grows from [total] to
-  // [total, …models] while the opt-in set is unchanged. Visibility must NOT depend on that
-  // growth or render order — this is exactly what kills the one-frame flash on load.
-  const shown = new Set(DEFAULT_SHOWN_KEYS);
+test('a newly-arriving model is shown immediately, same as every other model (FR-4, FR-7)', () => {
+  // Simulate the post-mount data load / SSE live-tail: `series` grows from [opus, sonnet] to
+  // [opus, sonnet, haiku] while the hidden set is unchanged (still empty). The new model must
+  // appear visible on its very first frame — it should be "activated" the moment it shows up,
+  // not hidden until the user opts it in.
+  const hidden = new Set(DEFAULT_HIDDEN_KEYS);
   const grown: SpendRateSeries[] = [...VIZ_SERIES, { key: 'haiku', label: 'haiku', cssVar: '--c-c' }];
-  assert.deepEqual(visibleSeriesKeys(grown, shown), ['total'], 'models that appear after mount remain hidden');
+  assert.deepEqual(visibleSeriesKeys(grown, hidden), ['opus', 'sonnet', 'haiku'], 'the new model line is visible immediately');
 });
 
-test('opting a model in via the legend reveals exactly that line (FR-4)', () => {
-  const shown = new Set([...DEFAULT_SHOWN_KEYS, 'opus']);
-  assert.deepEqual(visibleSeriesKeys(VIZ_SERIES, shown), ['total', 'opus']);
+test('hiding a model via the legend removes exactly that line (FR-4)', () => {
+  const hidden = new Set(['opus']);
+  assert.deepEqual(visibleSeriesKeys(VIZ_SERIES, hidden), ['sonnet']);
 });
 
-test('a model the user opted in stays visible when more series arrive later (FR-7)', () => {
-  // The opt-in set only changes on a legend click, so a later series update neither drops the
-  // user's opted-in model nor auto-shows the newly-arrived one.
-  const shown = new Set([...DEFAULT_SHOWN_KEYS, 'opus']);
+test('a model the user hid stays hidden when more series arrive later (FR-7)', () => {
+  // The hidden set only changes on a legend click, so a later series update neither un-hides the
+  // user's hidden model nor hides the newly-arrived one.
+  const hidden = new Set(['opus']);
   const grown: SpendRateSeries[] = [...VIZ_SERIES, { key: 'haiku', label: 'haiku', cssVar: '--c-c' }];
-  assert.deepEqual(visibleSeriesKeys(grown, shown), ['total', 'opus'], 'opted-in model kept, new model not auto-shown');
+  assert.deepEqual(visibleSeriesKeys(grown, hidden), ['sonnet', 'haiku'], 'hidden model stays hidden, new model shown');
 });
 
-test('the user can also hide the total line (toggled fully off)', () => {
-  assert.deepEqual(visibleSeriesKeys(VIZ_SERIES, new Set<string>()), []);
+test('the user can hide every line at once', () => {
+  assert.deepEqual(visibleSeriesKeys(VIZ_SERIES, new Set(['opus', 'sonnet'])), []);
 });

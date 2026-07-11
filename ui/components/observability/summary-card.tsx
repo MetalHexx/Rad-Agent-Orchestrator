@@ -51,5 +51,5 @@ const TOTAL_SPEND_TOOLTIP =
 
 /** The single shared Total-Spend card both Observability views render (FR-2). */
 export function TotalSpendCard({ spend }: { spend: number }) {
-  return <SummaryCard label="Total Spend (weighted)" value={humanizeTokens(spend)} tooltip={TOTAL_SPEND_TOOLTIP} />;
+  return <SummaryCard label="Token Spend" value={humanizeTokens(spend)} tooltip={TOTAL_SPEND_TOOLTIP} />;
 }

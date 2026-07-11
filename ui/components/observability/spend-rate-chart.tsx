@@ -3,7 +3,7 @@ import * as React from "react";
 import { AreaChart, ResponsiveContainer } from "recharts";
 import { XAxis, YAxis, Legend, Area } from "@/components/observability/recharts-compat";
 import type { ModelRatePoint } from "@/lib/observability/sessions";
-import { DEFAULT_SHOWN_KEYS, visibleSeriesKeys } from "@/lib/observability/spend-rate";
+import { DEFAULT_HIDDEN_KEYS, visibleSeriesKeys } from "@/lib/observability/spend-rate";
 import { niceAxis } from "@/lib/observability/chart-scale";
 import { humanizeTokens } from "@/lib/observability/format";
 import { FilteredBadge } from "@/components/observability/filtered-badge";
@@ -38,15 +38,15 @@ export function SpendRateChart({
   const animate = ready && !animatedOnce.current;
   React.useEffect(() => { if (ready) animatedOnce.current = true; }, [ready]);
 
-  // Default total-only (FR-4): track the user's explicit opt-ins in `shown`, seeded with just
-  // the `total` key. A line is visible iff its key is in `shown`, derived synchronously during
-  // render (not patched by a post-paint effect) — so a model series that first appears AFTER
-  // mount (async data load / SSE live-tail) is hidden on its very first frame and never flashes
-  // in before being hidden. Opt-ins survive live-tail ticks because `shown` only changes on a
-  // legend click (FR-7).
-  const [shown, setShown] = React.useState<Set<string>>(() => new Set(DEFAULT_SHOWN_KEYS));
+  // Every model line defaults to visible (FR-4): track explicit opt-OUTs in `hidden`, seeded
+  // empty. A line is visible iff its key is NOT in `hidden`, derived synchronously during render
+  // (not patched by a post-paint effect) — so a model series that first appears AFTER mount
+  // (async data load / SSE live-tail) is shown on its very first frame, same as every other model
+  // already on screen. Hides survive live-tail ticks because `hidden` only changes on a legend
+  // click (FR-7).
+  const [hidden, setHidden] = React.useState<Set<string>>(() => new Set(DEFAULT_HIDDEN_KEYS));
   const toggle = React.useCallback((key: string) => {
-    setShown((prev) => {
+    setHidden((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key); else next.add(key);
       return next;
@@ -56,7 +56,7 @@ export function SpendRateChart({
   // Fit the Y-axis to the currently visible series (FR-5, FR-3) via niceAxis: a tight, Grafana-style
   // ceiling (the data peak plus a little padding — not a coarse round-up) with nice integer gridlines,
   // so lines nearly fill the panel and an empty/idle window reads 0,1,2,3,4 instead of "0 0 1 1 1".
-  const visibleKeys = visibleSeriesKeys(series, shown);
+  const visibleKeys = visibleSeriesKeys(series, hidden);
   const dataMax = Math.max(0, ...data.flatMap((p) => visibleKeys.map((k) => (p[k] as number) ?? 0)));
   const { max: yMax, ticks: yTicks } = niceAxis(dataMax, AXIS_TICKS);
 
@@ -69,7 +69,7 @@ export function SpendRateChart({
   // independent of recharts' auto-derivation from the Line children (DD-3, AD-4).
   const legendPayload = series.map((s) => ({
     value: s.label, dataKey: s.key, type: "line" as const,
-    color: `var(${s.cssVar})`, inactive: !shown.has(s.key),
+    color: `var(${s.cssVar})`, inactive: hidden.has(s.key),
   }));
 
   return (
@@ -112,7 +112,7 @@ export function SpendRateChart({
                     key={s.key} type="monotone" dataKey={s.key} name={s.label}
                     stroke={`var(${s.cssVar})`} strokeWidth={2} dot={false}
                     fill={`url(#spend-fill-${s.key})`}
-                    hide={!shown.has(s.key)} isAnimationActive={animate}
+                    hide={hidden.has(s.key)} isAnimationActive={animate}
                   />
                 ))}
               </AreaChart>
