@@ -153,6 +153,37 @@ jobs:
       - name: Lint lib/graph-store-sqlite
         run: npm run lint -w @rad-orchestration/graph-store-sqlite
 
+  graph-service:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install dependencies (root workspace)
+        run: npm install
+
+      - name: Build lib/graph-engine (graph-service dependency)
+        run: npm run build -w @rad-orchestration/graph-engine
+
+      - name: Build lib/graph-node-types (graph-service dependency)
+        run: npm run build -w @rad-orchestration/graph-node-types
+
+      - name: Build lib/graph-store-sqlite (graph-service dependency)
+        run: npm run build -w @rad-orchestration/graph-store-sqlite
+
+      - name: Build graph-service
+        run: npm run build -w @rad-orchestration/graph-service
+
+      - name: Test graph-service
+        run: npm test -w @rad-orchestration/graph-service
+
+      - name: Lint graph-service
+        run: npm run lint -w @rad-orchestration/graph-service
+
   ui:
     runs-on: ubuntu-latest
     steps:
