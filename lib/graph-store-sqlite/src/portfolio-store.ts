@@ -675,7 +675,17 @@ export class SqlitePortfolioStore implements PortfolioStore {
   }
 
   private emitChangeLogRow(row: PortfolioChangeLogRow): void {
-    for (const listener of this.changeListeners) listener(row);
+    // Each listener is isolated: a throwing subscriber must never surface as (or be mistaken for)
+    // a failure of the write it's reacting to — this runs after `mutate()`'s transaction has
+    // already committed, and a rethrow here would otherwise be caught by `mutate()`'s own
+    // try/catch and misreported as an `invalid_delta` Result.
+    for (const listener of this.changeListeners) {
+      try {
+        listener(row);
+      } catch {
+        // Swallowed — a broadcast failure downstream of the store is the subscriber's problem.
+      }
+    }
   }
 
   createProject(input: ProjectCreateInput, actor: string | null): Result<ProjectRecord> {

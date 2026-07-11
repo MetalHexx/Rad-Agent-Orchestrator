@@ -440,6 +440,14 @@ export class SqliteStateStore implements StateStore {
   }
 
   private emitChangeLogRow(row: ChangeLogRow): void {
-    for (const listener of this.changeListeners) listener(row);
+    // Each listener is isolated: a throwing subscriber must never surface as (or be mistaken for)
+    // a failure of the write it's reacting to, which has already committed by this point.
+    for (const listener of this.changeListeners) {
+      try {
+        listener(row);
+      } catch {
+        // Swallowed — a broadcast failure downstream of the store is the subscriber's problem.
+      }
+    }
   }
 }

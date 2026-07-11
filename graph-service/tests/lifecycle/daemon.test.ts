@@ -100,4 +100,33 @@ describe('stop', () => {
       child.kill('SIGKILL');
     }
   });
+
+  it('reports stopped: false and keeps the discovery file when the daemon is still healthy at the poll timeout', async () => {
+    // A real child process stands in for a live daemon pid (so `process.kill` succeeds rather than
+    // hitting the "already dead" branch), but health is faked via `_fetch` — on Windows,
+    // `process.kill(pid, 'SIGTERM')` terminates the target unconditionally (there's no real signal
+    // delivery to ignore), so a live process can't itself simulate "still draining" across
+    // platforms. Faking the probe isolates the poll-timeout branch from that platform difference.
+    const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)']);
+    try {
+      const url = 'http://127.0.0.1:1';
+      await writeDiscoveryFile({ pid: child.pid!, port: 1, url, startedAt: new Date().toISOString() }, root);
+
+      const alwaysHealthy: typeof fetch = (() =>
+        Promise.resolve(new Response(JSON.stringify({ ok: true, data: {} }), { status: 200 }))) as typeof fetch;
+
+      const result = await stop({
+        root,
+        pollIntervalMs: 5,
+        pollTimeoutMs: 50,
+        probeTimeoutMs: 20,
+        _fetch: alwaysHealthy,
+      });
+
+      expect(result).toEqual({ stopped: false, pid: child.pid });
+      await expect(readDiscoveryFile(root)).resolves.toMatchObject({ pid: child.pid, port: 1, url });
+    } finally {
+      child.kill('SIGKILL');
+    }
+  });
 });

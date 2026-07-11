@@ -116,6 +116,12 @@ export function parseSharedMutation(kind: SharedMutationKind, raw: unknown): Env
           "'remove_node' requires a 'strategy' object with dependents 'heal'|'cascade'|'detach'",
         );
       }
+      if (strategy.children !== undefined && !['cascade', 'promote'].includes(strategy.children as string)) {
+        return err(
+          'invalid_request',
+          "'remove_node' strategy's optional 'children' must be 'cascade'|'promote' when present",
+        );
+      }
       return ok({ kind, nodeId, strategy: strategy as unknown as RemoveNodeStrategy });
     }
     case 'move_node': {

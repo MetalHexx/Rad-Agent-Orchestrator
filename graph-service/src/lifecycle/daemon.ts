@@ -125,16 +125,18 @@ export interface StopOptions {
 }
 
 export interface StopResult {
-  readonly stopped: true;
+  readonly stopped: boolean;
   readonly pid?: number;
 }
 
 /**
  * Signals the daemon named by `service.json`: `SIGTERM`, then poll `/health` until it stops
  * answering (or a bounded timeout elapses). Reports `stopped: true` even when no daemon was on
- * record — "no daemon running" is already the goal state. Always clears `service.json` on the
- * way out as a best-effort backstop for a daemon that died without running its own shutdown
- * handler (e.g. `SIGKILL`, a crash).
+ * record — "no daemon running" is already the goal state. Clears `service.json` only once the
+ * daemon has actually stopped answering — either confirmed dead here, or already dead before the
+ * signal (e.g. a stale entry from a `SIGKILL`/crash) — so a daemon that's still healthy when the
+ * poll times out is reported as `stopped: false` and stays discoverable rather than being silently
+ * orphaned by deleting the file that names it.
  */
 export async function stop(opts: StopOptions = {}): Promise<StopResult> {
   const root = opts.root ?? resolveRadorcRoot();
@@ -156,12 +158,18 @@ export async function stop(opts: StopOptions = {}): Promise<StopResult> {
   const pollTimeoutMs = opts.pollTimeoutMs ?? STOP_POLL_TIMEOUT_MS;
   const probeTimeoutMs = opts.probeTimeoutMs ?? STOP_PROBE_TIMEOUT_MS;
 
+  let stillAlive = true;
   const deadline = now() + pollTimeoutMs;
   while (now() < deadline) {
     const health = await probeHealth(entry.url, probeTimeoutMs, fetchImpl);
-    if (!health) break;
+    if (!health) {
+      stillAlive = false;
+      break;
+    }
     await sleep(pollIntervalMs);
   }
+
+  if (stillAlive) return { stopped: false, pid: entry.pid };
 
   await removeDiscoveryFile(root);
   return { stopped: true, pid: entry.pid };
