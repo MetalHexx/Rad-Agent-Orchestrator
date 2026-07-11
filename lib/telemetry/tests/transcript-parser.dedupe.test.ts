@@ -63,6 +63,19 @@ describe('parseTranscript token dedupe (modal path)', () => {
     expect(t.tokens.out).toBe(99 + 6);
     expect(t.tokens.in).toBe(10);
   });
+
+  it('keeps lines with neither requestId nor message.id distinct, instead of merging them into one bucket', () => {
+    const line = (output: number) => ({
+      type: 'assistant', timestamp: '2026-06-15T12:00:00Z',
+      message: { model: 'claude-opus-4-8', usage: { input_tokens: 5, output_tokens: output, cache_read_input_tokens: 10 } },
+    });
+    const file = write([line(4), line(6), line(9)]);
+    const t = parseTranscript(file, { transcriptId: 's1', sessionId: 's1', harness: 'claude-code', role: 'main' });
+    // Without a requestId or message.id there is no basis to treat these as the same
+    // streamed request, so each unkeyed line must be counted on its own — summed, not collapsed.
+    expect(t.tokens.out).toBe(4 + 6 + 9);
+    expect(t.tokens.in).toBe(5 * 3);
+  });
 });
 
 describe('row/modal parity — golden subagent fixture', () => {

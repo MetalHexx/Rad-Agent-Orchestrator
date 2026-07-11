@@ -80,15 +80,17 @@ export function parseTranscript(file: string, ctx: ParseContext): AgentTranscrip
   // line counts a multi-line request 3-4x and inflates cache-read, diverging from the
   // deduped harvest row. Collapse to the winning line per request — the one carrying the
   // max/final output — keyed by requestId (falling back to message.id), and sum those.
+  // Lines with neither id are kept distinct (indexed key) rather than sharing one bucket,
+  // so unrelated unkeyed usage can't be collapsed together and silently undercounted.
   const winners = new Map<string, Record<string, number>>();
-  for (const r of raw) {
-    const u = r.message?.usage; if (!u) continue;
-    const key = r.requestId ?? r.message?.id ?? '';
+  raw.forEach((r, i) => {
+    const u = r.message?.usage; if (!u) return;
+    const key = r.requestId ?? r.message?.id ?? `__unkeyed_${i}`;
     const prev = winners.get(key);
     // >= keeps the later line on an output tie, so the final line's cache_creation
     // (present only on the terminal line) wins the representative slot.
     if (!prev || (u.output_tokens ?? 0) >= (prev.output_tokens ?? 0)) winners.set(key, u);
-  }
+  });
   let tin = 0, tout = 0, tcr = 0, tcc = 0;
   for (const u of winners.values()) {
     tin += u.input_tokens ?? 0; tout += u.output_tokens ?? 0;
