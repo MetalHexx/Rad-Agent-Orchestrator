@@ -1,10 +1,11 @@
 "use client";
 import * as React from "react";
 import { useState } from "react";
-import { Pencil, Save } from "lucide-react";
+import { Pencil, Save, ExternalLink } from "lucide-react";
 import type { SavedSession } from "@rad-orchestration/telemetry";
 import { humanizeTokens } from "@/lib/observability/format";
 import { formatDuration } from "@/lib/observability/duration-format";
+import { formatUsd } from "@/lib/observability/spend-display";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -21,9 +22,10 @@ export interface SavedRowProps {
 }
 
 /**
- * Row in the Saved Benchmarks table: [checkbox · star · Title · Saved · Spend · Duration].
+ * Row in the Saved Benchmarks table: [checkbox · star · Title · Saved · Spend · Cost · Duration · jump-to-session].
  * Title is shown monospace when it equals the session id (i.e. user has not renamed it).
  * Spend uses humanizeTokens; Duration uses formatDuration (same helpers as SessionTable).
+ * Cost renders the frozen costUsd from the snapshot (or "price unavailable" if null).
  * Selected rows apply the --live accent for highlight (FR-4, DD-3, DD-9).
  */
 export function SavedRow({ session, selected = false, isBaseline = false, onSelect, onUnsave, onRenamed }: SavedRowProps) {
@@ -41,7 +43,7 @@ export function SavedRow({ session, selected = false, isBaseline = false, onSele
     <div
       role="row"
       className={cn(
-        "grid grid-cols-[2rem_2rem_1fr_10rem_7rem_6rem] items-center gap-x-3 px-4 py-2 border-b border-border last:border-0 hover:bg-muted/70 transition-colors text-sm",
+        "grid grid-cols-[2rem_2rem_1fr_10rem_7rem_6rem_6rem_2rem] items-center gap-x-3 px-4 py-2 border-b border-border last:border-0 hover:bg-muted/70 transition-colors text-sm",
         selected && "bg-[color:var(--live)]/10 ring-inset ring-1 ring-[color:var(--live)]/40"
       )}
     >
@@ -123,6 +125,30 @@ export function SavedRow({ session, selected = false, isBaseline = false, onSele
       {/* Duration */}
       <div role="gridcell" className="whitespace-nowrap text-xs tabular-nums">
         {formatDuration(snapshot.durationMs)}
+      </div>
+
+      {/* Cost */}
+      <div role="gridcell" className="whitespace-nowrap text-sm font-semibold tabular-nums">
+        {formatUsd(snapshot.costUsd)}
+      </div>
+
+      {/* Jump-to-session link */}
+      <div role="gridcell" className="flex items-center justify-center">
+        <a
+          href={`/observability/session/${sessionId}`}
+          role="link"
+          title="View session detail"
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              window.location.href = `/observability/session/${sessionId}`;
+            }
+          }}
+          className="text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ExternalLink className="size-4" aria-hidden="true" />
+        </a>
       </div>
     </div>
   );
