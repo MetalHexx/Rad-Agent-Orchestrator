@@ -2,8 +2,9 @@ import { it, expect } from 'vitest';
 import os from 'node:os'; import fs from 'node:fs'; import path from 'node:path';
 import { NdjsonSink } from '../src/sink/ndjson-sink.js';
 import { SCHEMA_VERSION, type TelemetryRecord } from '../src/types.js';
-import { computeSessionSnapshot } from '../src/saved-sessions.js';
+import { computeSessionSnapshot, saveSession, readSavedIndex } from '../src/saved-sessions.js';
 import { effectiveTokens } from '../src/read/effective-tokens.js';
+import { dollarsFor, PRICING_VERSION } from '../src/read/pricing.js';
 
 function rec(id: string, day: string, over: Partial<TelemetryRecord>): TelemetryRecord {
   return { schemaVersion: SCHEMA_VERSION, harness: 'claude-code', usageId: id, sessionId: 'sX',
@@ -40,4 +41,41 @@ it('computes a snapshot from usage + transcripts (FR-9, NFR-3)', () => {
   expect(snap.durationMs).toBe(5 * 60 * 1000);
   expect(snap.tokens.input).toBe(200);      // summed across the two usage rows
   expect(snap.totalSpend).toBeGreaterThan(0);
+  expect(snap.harness).toBe('claude-code');
+  expect(snap.pricingVersion).toBe(PRICING_VERSION);
+  expect(snap.costUsd).toBeCloseTo(dollarsFor(rec('u1', '2026-06-20', {}))! * 2, 6);
+});
+
+it('sums costUsd per-record by that record own model on a mixed-model session (not a blended rate)', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'snap-mixed-'));
+  const opusRec = rec('u1', '2026-06-20', { model: 'claude-opus-4-8' });
+  const haikuRec = rec('u2', '2026-06-20', { model: 'claude-haiku-4-5', timestamp: '2026-06-20T12:05:00Z' });
+  new NdjsonSink({ root }).write([opusRec, haikuRec]);
+
+  const snap = computeSessionSnapshot(root, 'sX');
+  const expected = dollarsFor(opusRec)! + dollarsFor(haikuRec)!;
+  expect(snap.costUsd).not.toBeNull();
+  expect(snap.costUsd).toBeCloseTo(expected, 6);
+});
+
+it('yields costUsd null (not 0) when every record has an unknown model', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'snap-unknown-'));
+  new NdjsonSink({ root }).write([rec('u1', '2026-06-20', { model: 'claude-unknown-9' })]);
+
+  const snap = computeSessionSnapshot(root, 'sX');
+  expect(snap.costUsd).toBeNull();
+});
+
+it('round-trips harness, costUsd, and pricingVersion through save + read of the index', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'snap-roundtrip-'));
+  new NdjsonSink({ root }).write([rec('u1', '2026-06-20', {})]);
+  const snap = computeSessionSnapshot(root, 'sX');
+
+  saveSession(root, { sessionId: 'sX', snapshot: snap });
+  const reread = readSavedIndex(root).sessions.find((s) => s.sessionId === 'sX')!;
+
+  expect(reread.snapshot.harness).toBe(snap.harness);
+  expect(reread.snapshot.costUsd).toBe(snap.costUsd);
+  expect(reread.snapshot.pricingVersion).toBe(snap.pricingVersion);
+  expect(reread.snapshot.tokens).toEqual(snap.tokens);
 });

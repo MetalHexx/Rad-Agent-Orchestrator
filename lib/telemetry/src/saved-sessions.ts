@@ -4,6 +4,7 @@ import type { AgentNode } from './transcript-model.js';
 import { readUsageForDates } from './read/usage-reader.js';
 import { listSessionAgents, getAgentTranscript } from './read/transcript-reader.js';
 import { effectiveTokens } from './read/effective-tokens.js';
+import { dollarsFor, PRICING_VERSION } from './read/pricing.js';
 
 export interface SavedSessionSnapshot {
   worktree: string | null;
@@ -16,6 +17,9 @@ export interface SavedSessionSnapshot {
   toolErrors: number;
   subagents: number;
   filesTouched: number;
+  harness: string | null;
+  costUsd: number | null;
+  pricingVersion: string;
 }
 
 export interface SavedSession {
@@ -108,7 +112,8 @@ export function computeSessionSnapshot(root: string, sessionId: string): SavedSe
   const records = readUsageForDates({ root, dates: sessionUsageDates(root, sessionId), filter: (r) => r.sessionId === sessionId });
   let input = 0, output = 0, cacheRead = 0, cacheCreation = 0, totalSpend = 0;
   let startMs = Infinity, lastMs = -Infinity;
-  let worktree: string | null = null, model: string | null = null;
+  let worktree: string | null = null, model: string | null = null, harness: string | null = null;
+  let costUsd = 0, costKnown = true;
   for (const r of records) {
     input += r.inputTokens; output += r.outputTokens;
     cacheRead += r.cacheReadTokens ?? 0; cacheCreation += r.cacheCreationTokens ?? 0;
@@ -118,6 +123,9 @@ export function computeSessionSnapshot(root: string, sessionId: string): SavedSe
     if (t > lastMs) lastMs = t;
     if (!worktree && r.worktree) worktree = r.worktree;
     if (!model && r.source === 'main-agent') model = r.model;
+    if (!harness && r.harness) harness = r.harness;
+    const dollars = dollarsFor(r);
+    if (dollars === null) costKnown = false; else costUsd += dollars;
   }
   let toolCalls = 0, toolErrors = 0, subagents = 0;
   const files = new Set<string>();
@@ -134,5 +142,8 @@ export function computeSessionSnapshot(root: string, sessionId: string): SavedSe
     totalSpend,
     tokens: { input, output, cacheRead, cacheCreation },
     toolCalls, toolErrors, subagents, filesTouched: files.size,
+    harness,
+    costUsd: costKnown ? costUsd : null,
+    pricingVersion: PRICING_VERSION,
   };
 }

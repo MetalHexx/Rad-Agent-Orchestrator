@@ -1,9 +1,11 @@
 import { it, expect } from 'vitest';
 import os from 'node:os'; import fs from 'node:fs'; import path from 'node:path';
 import { saveSession, updateSavedSession, unsaveSession, readSavedIndex, type SavedSessionSnapshot } from '../src/saved-sessions.js';
+import { PRICING_VERSION } from '../src/read/pricing.js';
 
 const SNAP: SavedSessionSnapshot = { worktree: null, model: null, startedAt: '', durationMs: 0, totalSpend: 0,
-  tokens: { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 }, toolCalls: 0, toolErrors: 0, subagents: 0, filesTouched: 0 };
+  tokens: { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 }, toolCalls: 0, toolErrors: 0, subagents: 0, filesTouched: 0,
+  harness: null, costUsd: 0, pricingVersion: PRICING_VERSION };
 
 it('saves with title defaulting to the session id, then renames, then unsaves (FR-1, FR-5, FR-2)', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mut-'));
