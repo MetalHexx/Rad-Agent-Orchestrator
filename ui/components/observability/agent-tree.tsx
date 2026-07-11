@@ -51,8 +51,8 @@ function RowGridHeader() {
       <span>Agent</span>
       <span className="mx-2">Model spend</span>
       <span className="text-right">New</span>
-      <span className="text-right">Cost (wtd)</span>
       <span className="text-right">Cost</span>
+      <span className="text-right">Token Spend</span>
       <span aria-hidden="true" />
       <span aria-hidden="true" />
     </div>

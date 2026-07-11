@@ -96,15 +96,15 @@ const node = (p: Partial<AgentTreeNode>): AgentTreeNode => ({
   console.log('✓ agent dot: settles after 60s, rests at model color');
 }
 
-// New / Cost (wtd) / Cost cells render honest labeled values, not a bare humanized token count (Done when).
+// New / Cost / Token Spend cells render honest labeled values, not a bare humanized token count (Done when).
 {
   const html = renderToStaticMarkup(createElement(AgentRow, {
     node: node({ newTokens: 12_000, tokens: 100_000, dollars: 4.5 }), scaleMax: 200_000, variant: 'main', now: 1000,
   }));
   assert.ok(html.includes('12.0K'), 'New cell shows humanized newTokens (Σ cacheCreationTokens)');
-  assert.ok(html.includes('100.0K'), 'Cost (wtd) cell shows humanized effective tokens (relabeled spend number)');
+  assert.ok(html.includes('100.0K'), 'Token Spend cell shows humanized effective tokens (cost-weighted)');
   assert.ok(html.includes('$4.50'), 'Cost cell shows the formatted dollar figure');
-  console.log('✓ row: New / Cost (wtd) / Cost cells render');
+  console.log('✓ row: New / Cost / Token Spend cells render');
 }
 
 // A node with an unknown-priced model renders "price unavailable" for its dollar cell, never $0 (Done when).

@@ -1,20 +1,13 @@
 import { Info } from "lucide-react";
 import { humanizeTokens } from "@/lib/observability/format";
-import { SPEND_LABELS, formatUsd } from "@/lib/observability/spend-display";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
-/**
- * Normalized raw-token shape both surfaces map onto. `spend` and `dollars` are the pre-derived
- * cost-weighted total and dollar figure (both sourced from the same `spendReceipt` as the caller's
- * cost trio, so this breakdown always agrees with it — AD-2, AD-3).
- */
+/** Normalized raw-token shape both surfaces map onto. */
 export interface TokenBreakdownProps {
   input: number;
   output: number;
   cacheRead: number;
   cacheCreate: number;
-  spend: number;
-  dollars: number | null;
 }
 
 const CELLS = [
@@ -25,15 +18,15 @@ const CELLS = [
 ] as const;
 
 const BREAKDOWN_TOOLTIP =
-  "Raw API token counts, each weighted by relative cost (input ×1, output ×5, cache read ×0.1, " +
-  `cache create ×1.25) into ${SPEND_LABELS.costWeighted}. ${SPEND_LABELS.costUsd} prices cache-creation ` +
-  "tokens at the 5-minute-TTL write rate, using pricing as of the current rate table's effective date.";
+  "Raw API token counts, each weighted by relative cost — input ×1, output ×5, cache read ×0.1, " +
+  "cache create ×1.25 — into the Token Spend figure above. See the Cost (USD) and Token Spend cards " +
+  "above for the dollar and weighted totals; this row never duplicates them.";
 
 /**
  * TokenBreakdown — one-line raw-token receipt, strictly subordinate to the caller's spend cards (DD-1).
  * Pure, props-only, container-agnostic (NFR-3); never duplicates the cache weights (NFR-2).
  */
-export function TokenBreakdown({ input, output, cacheRead, cacheCreate, spend, dollars }: TokenBreakdownProps) {
+export function TokenBreakdown({ input, output, cacheRead, cacheCreate }: TokenBreakdownProps) {
   const values = { input, output, cacheRead, cacheCreate };
   return (
     <div className="rounded-xl bg-card ring-1 ring-foreground/10 px-6 py-3">
@@ -47,16 +40,6 @@ export function TokenBreakdown({ input, output, cacheRead, cacheCreate, spend, d
             <span className="text-foreground">{humanizeTokens(values[cell.key])}</span>
           </span>
         ))}
-        <span className="text-border" aria-hidden="true">·</span>
-        <span className="flex items-center gap-1.5">
-          <span>{SPEND_LABELS.costWeighted}</span>
-          <span className="text-foreground">{humanizeTokens(spend)}</span>
-        </span>
-        <span className="text-border" aria-hidden="true">·</span>
-        <span className="flex items-center gap-1.5">
-          <span>{SPEND_LABELS.costUsd}</span>
-          <span className="text-foreground">{formatUsd(dollars)}</span>
-        </span>
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger render={<Info className="ml-1 h-3 w-3 shrink-0 cursor-default opacity-40 hover:opacity-70" />} />

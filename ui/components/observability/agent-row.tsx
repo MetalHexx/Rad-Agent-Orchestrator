@@ -23,9 +23,9 @@ export interface AgentRowProps {
   inspect?: { available: boolean; onInspect: () => void };
 }
 
-// Uniform CSS grid so name·bar·New·Cost(wtd)·Cost·%·seam align across all depths (DD-3).
+// Uniform CSS grid so name·bar·New·Cost·Token Spend·%·seam align across all depths (DD-3).
 // Shared with agent-tree.tsx's header row so the two templates never drift apart.
-export const ROW_GRID_COLS = 'grid-cols-[200px_minmax(0,1fr)_64px_64px_72px_44px_78px]';
+export const ROW_GRID_COLS = 'grid-cols-[200px_minmax(0,1fr)_64px_72px_64px_44px_78px]';
 const ROW_GRID = `grid ${ROW_GRID_COLS}`;
 
 export function AgentRow({ node, scaleMax, variant, now, expanded, onToggle, inspect }: AgentRowProps) {
@@ -55,8 +55,8 @@ export function AgentRow({ node, scaleMax, variant, now, expanded, onToggle, ins
       </div>
       <SpendBar segments={node.models} total={node.tokens} scaleMax={scaleMax} className="mx-2" />
       <span className="text-right tabular-nums text-xs text-muted-foreground" title={SPEND_LABELS.newTokens}>{humanizeTokens(node.newTokens)}</span>
-      <span className="text-right tabular-nums font-semibold text-sm" title={SPEND_LABELS.costWeighted}>{humanizeTokens(node.tokens)}</span>
       <span className="text-right tabular-nums text-sm" title={SPEND_LABELS.cost}>{formatUsd(node.dollars)}</span>
+      <span className="text-right tabular-nums font-semibold text-sm" title={SPEND_LABELS.costWeighted}>{humanizeTokens(node.tokens)}</span>
       <span className="text-right tabular-nums text-xs text-muted-foreground">{Math.round(pct)}%</span>
       <div className="flex justify-end">
         {showSeam && inspect?.available ? (
