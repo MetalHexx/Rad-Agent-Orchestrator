@@ -27,20 +27,21 @@ describe('priceFor', () => {
     }
   });
 
-  it('crosses the Sonnet 5 intro/standard boundary correctly across all token types', () => {
+  it('prices Sonnet 5 at its list rate on every date (intro discount not applied)', () => {
     const model = 'claude-sonnet-5-20260101';
     for (const type of TOKEN_TYPES) {
-      const introSide = priceFor(model, type, '2026-08-31');
-      const standardSide = priceFor(model, type, '2026-09-01');
-      expect(introSide).not.toBeNull();
-      expect(standardSide).not.toBeNull();
-      // The standard row is strictly higher than the intro row for every token type.
-      expect(standardSide! > introSide!).toBe(true);
+      const early = priceFor(model, type, '2026-07-12'); // during the (unapplied) intro window
+      const later = priceFor(model, type, '2026-12-01'); // after the intro window
+      expect(early).not.toBeNull();
+      expect(later).not.toBeNull();
+      // Flat: no intro→standard step. The dashboard matches Claude Code's /cost, which
+      // bills Sonnet 5 at list rate regardless of the intro promo.
+      expect(early).toBeCloseTo(later!, 12);
     }
   });
 
-  it('prices Sonnet 5 input tokens exactly at the documented per-MTok rates on each side', () => {
-    expect(priceFor('claude-sonnet-5-20260101', 'input', '2026-08-31')).toBeCloseTo(2 / 1_000_000, 12);
+  it('prices Sonnet 5 input tokens at the list $3/MTok rate on every date', () => {
+    expect(priceFor('claude-sonnet-5-20260101', 'input', '2026-07-12')).toBeCloseTo(3 / 1_000_000, 12);
     expect(priceFor('claude-sonnet-5-20260101', 'input', '2026-09-01')).toBeCloseTo(3 / 1_000_000, 12);
   });
 
@@ -89,10 +90,10 @@ describe('dollarsFor', () => {
     expect(mixedTotal).toBeCloseTo(haikuDollars + opusDollars, 9);
   });
 
-  it('selects the Sonnet 5 rate by the row own timestamp, not a fixed rate', () => {
-    const introRow = row('claude-sonnet-5-20260101', '2026-08-31');
-    const standardRow = row('claude-sonnet-5-20260101', '2026-09-01');
-    expect(dollarsFor(standardRow)! > dollarsFor(introRow)!).toBe(true);
+  it('prices Sonnet 5 at the list rate regardless of the row timestamp (intro discount not applied)', () => {
+    const early = row('claude-sonnet-5-20260101', '2026-07-12'); // during the (unapplied) intro window
+    const later = row('claude-sonnet-5-20260101', '2026-12-01'); // after the intro window
+    expect(dollarsFor(early)).toBeCloseTo(dollarsFor(later)!, 9);
   });
 
   it('returns null (never 0) for an unknown model', () => {

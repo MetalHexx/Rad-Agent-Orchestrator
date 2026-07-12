@@ -1,12 +1,12 @@
 /**
  * Model-keyed, date-aware dollar pricing. No pricing API exists, so dollar cost
- * comes from this maintained table — verified against the pricing docs on 2026-07-09.
+ * comes from this maintained table — verified against the pricing docs on 2026-07-12.
  * Dependency-free, browser-safe (no `node:*` imports) so it can be imported as a
  * client leaf, mirroring `./effective-tokens.js`.
  */
 
 /** Recorded into snapshots as a reproducibility marker for the table version used. */
-export const PRICING_VERSION = '2026-07-09';
+export const PRICING_VERSION = '2026-07-12';
 
 export type TokenType = 'input' | 'output' | 'cacheRead' | 'cacheWrite5m' | 'cacheWrite1h';
 
@@ -43,8 +43,10 @@ const PRICING_TABLE: Record<PricingFamily, PricingWindow[]> = {
     { effectiveFrom: '', perMTok: { input: 1, output: 5, cacheRead: 0.10, cacheWrite5m: 1.25, cacheWrite1h: 2 } },
   ],
   'sonnet-5': [
-    { effectiveFrom: '', perMTok: { input: 2, output: 10, cacheRead: 0.20, cacheWrite5m: 2.50, cacheWrite1h: 4 } },
-    { effectiveFrom: '2026-09-01', perMTok: { input: 3, output: 15, cacheRead: 0.30, cacheWrite5m: 3.75, cacheWrite1h: 6 } },
+    // List price. The $2/$10 intro discount (through 2026-08-31) is intentionally NOT
+    // applied: Claude Code's /cost bills Sonnet 5 at list rate, and a dashboard that
+    // reads below the terminal erodes trust. Rates converge when the promo ends anyway.
+    { effectiveFrom: '', perMTok: { input: 3, output: 15, cacheRead: 0.30, cacheWrite5m: 3.75, cacheWrite1h: 6 } },
   ],
   opus: [
     { effectiveFrom: '', perMTok: { input: 5, output: 25, cacheRead: 0.50, cacheWrite5m: 6.25, cacheWrite1h: 10 } },
