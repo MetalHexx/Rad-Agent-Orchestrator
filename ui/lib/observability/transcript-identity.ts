@@ -1,14 +1,9 @@
 import type { AgentTreeNode, SubagentTree } from './subagent-tree';
-export type RowVariant = 'main' | 'group' | 'run' | 'leaf';
+export type RowVariant = 'main' | 'subagent';
 
-/** Map a Breakdown row to its transcript id. main → sessionId; run → node.key (the runId);
- *  single-run leaf → node.runs[0].key (leafFrom overwrites the row key with the agentType,
- *  so the run id must come from the underlying run); group rows are not inspectable. */
+/** Map a Breakdown row to its transcript id. main → sessionId; subagent → node.key (the runId). */
 export function rowTranscriptId(node: AgentTreeNode, variant: RowVariant, sessionId: string): string | null {
-  if (variant === 'main') return sessionId;
-  if (variant === 'run') return node.key;
-  if (variant === 'leaf') return node.runs?.[0]?.key ?? node.key;
-  return null; // group
+  return variant === 'main' ? sessionId : node.key;
 }
 export function isInspectable(transcriptId: string | null, availableIds: Set<string>): boolean {
   return !!transcriptId && availableIds.has(transcriptId);
@@ -19,13 +14,6 @@ export function isInspectable(transcriptId: string | null, availableIds: Set<str
 export function numberedAgentLabels(tree: SubagentTree, sessionId: string): Map<string, string> {
   const m = new Map<string, string>();
   m.set(sessionId, 'Main Agent');                          // main → sessionId key
-  for (const g of tree.subagents) {
-    if (g.runCount > 1) {
-      for (const r of g.runs ?? []) m.set(r.key, r.label); // r.key = runId = transcriptId; r.label = 'coder 1'
-    } else {
-      const r = g.runs?.[0];
-      if (r) m.set(r.key, g.label);                        // single-run leaf → agentType label (unnumbered)
-    }
-  }
+  for (const r of tree.subagents) m.set(r.key, r.label);   // r.key = runId = transcriptId; r.label = bare type
   return m;
 }

@@ -8,24 +8,15 @@ import type { AgentTreeNode } from '@/lib/observability/subagent-tree';
 (globalThis as any).React = React;
 
 const node = (p: Partial<AgentTreeNode>): AgentTreeNode => ({
-  key: 'coder', kind: 'group', label: 'coder', runCount: 3, tokens: 100,
+  key: 'coder', kind: 'run', label: 'coder', tokens: 100,
   models: [{ model: 'opus', tokens: 100, dollars: 1.23 }], reqs: 4, firstMs: 0, lastMs: 1000,
   newTokens: 20, dollars: 1.23, ...p,
 });
 
-// Group variant: shows ×count badge + an aria-expanded caret button, and carries NO inspect overlay (FR-7, DD-5, NFR-6).
-{
-  const html = renderToStaticMarkup(createElement(AgentRow, { node: node({}), scaleMax: 200, variant: 'group', expanded: false, now: 1000 }));
-  assert.ok(html.includes('×3'), 'group shows ×3 count badge');
-  assert.ok(html.includes('aria-expanded'), 'group caret exposes aria-expanded (NFR-6)');
-  assert.ok(!/aria-label="Inspect /.test(html), 'group rows carry no inspect overlay (FR-7)');
-  console.log('✓ group row: badge + caret, no inspect overlay');
-}
-
-// Main variant: with inspect prop renders a whole-row clickable overlay (FR-3, NFR-6).
+// Main variant: with inspect prop the whole row becomes a click target (FR-3, NFR-6).
 {
   const html = renderToStaticMarkup(createElement(AgentRow, {
-    node: node({ key: 'main', kind: 'main', label: 'main-agent', runCount: 1 }), scaleMax: 200, variant: 'main', now: 1000,
+    node: node({ key: 'main', kind: 'main', label: 'main-agent' }), scaleMax: 200, variant: 'main', now: 1000,
     inspect: { onInspect: () => {} },
   }));
   assert.ok(html.includes('main-agent'), 'label rendered');
@@ -38,30 +29,43 @@ const node = (p: Partial<AgentTreeNode>): AgentTreeNode => ({
 // Main variant without inspect prop: row is not clickable, no overlay rendered.
 {
   const html = renderToStaticMarkup(createElement(AgentRow, {
-    node: node({ key: 'main', kind: 'main', label: 'main-agent', runCount: 1 }), scaleMax: 200, variant: 'main', now: 1000,
+    node: node({ key: 'main', kind: 'main', label: 'main-agent' }), scaleMax: 200, variant: 'main', now: 1000,
   }));
   assert.ok(!/aria-label="Inspect /.test(html), 'main row without inspect prop renders no inspect overlay');
   console.log('✓ main row without inspect prop: no overlay');
 }
 
-// Run variant: monospace label, indented name cell (DD-3).
+// Subagent variant: no mono/indent furniture (former "run" styling), whole-row inspect gated on the prop
+// — present when inspect is passed, absent without it (FR-4, NFR-6).
 {
-  const html = renderToStaticMarkup(createElement(AgentRow, {
-    node: node({ key: 'a1', kind: 'run', label: 'coder 1', runCount: 1 }), scaleMax: 200, variant: 'run', now: 1000,
-  }));
-  assert.ok(html.includes('font-mono'), 'run label is monospace (DD-3)');
-  assert.ok(html.includes('pl-6'), 'run name cell is indented (DD-3)');
-  console.log('✓ run row: mono + indent');
-}
-
-// Leaf/run variant: with inspect prop renders the whole-row inspect overlay (FR-4, NFR-6).
-{
-  const html = renderToStaticMarkup(createElement(AgentRow, {
-    node: node({ key: 'run-bb', kind: 'run', label: 'Explore 1', runCount: 1 }), scaleMax: 200, variant: 'leaf', now: 1000,
+  const htmlWithInspect = renderToStaticMarkup(createElement(AgentRow, {
+    node: node({ key: 'run-bb', kind: 'run', label: 'Explore' }), scaleMax: 200, variant: 'subagent', now: 1000,
     inspect: { onInspect: () => {} },
   }));
-  assert.ok(/aria-label="Inspect /.test(html), 'leaf row with inspect renders the whole-row inspect overlay (FR-4, NFR-6)');
-  console.log('✓ leaf row: inspect overlay rendered when inspectable');
+  assert.ok(!htmlWithInspect.includes('font-mono'), 'subagent label is not monospace');
+  assert.ok(!htmlWithInspect.includes('pl-6'), 'subagent name cell is not indented');
+  assert.ok(/aria-label="Inspect /.test(htmlWithInspect), 'subagent row with inspect renders the whole-row inspect overlay (FR-4, NFR-6)');
+
+  const htmlWithoutInspect = renderToStaticMarkup(createElement(AgentRow, {
+    node: node({ key: 'run-bb', kind: 'run', label: 'Explore' }), scaleMax: 200, variant: 'subagent', now: 1000,
+  }));
+  assert.ok(!/aria-label="Inspect /.test(htmlWithoutInspect), 'subagent row without inspect prop renders no inspect overlay');
+  console.log('✓ subagent row: no mono/indent, whole-row inspect gated on the prop');
+}
+
+// No chevron/caret/badge markup exists anywhere, under any variant (the grouping UI is fully deleted).
+{
+  const mainHtml = renderToStaticMarkup(createElement(AgentRow, {
+    node: node({ key: 'main', kind: 'main', label: 'main-agent' }), scaleMax: 200, variant: 'main', now: 1000,
+  }));
+  const subagentHtml = renderToStaticMarkup(createElement(AgentRow, {
+    node: node({ key: 'run-bb', kind: 'run', label: 'Explore' }), scaleMax: 200, variant: 'subagent', now: 1000,
+  }));
+  for (const html of [mainHtml, subagentHtml]) {
+    assert.ok(!html.includes('aria-expanded'), 'no aria-expanded caret under any variant');
+    assert.ok(!html.includes('×3'), 'no ×N badge under any variant');
+  }
+  console.log('✓ no chevron/aria-expanded/badge markup under any variant');
 }
 
 // Legend states the three models once via house tokens (FR-12, DD-2, NFR-2).

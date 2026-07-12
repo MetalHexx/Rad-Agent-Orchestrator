@@ -9,17 +9,15 @@ import { normalizeModel } from '@/lib/observability/model-color';
 export interface SpendSegment { model: string; tokens: number; dollars: number | null; }
 
 export interface AgentTreeNode {
-  key: string;                       // STABLE: 'main' | agentType | agentId (NFR-7, FR-9)
-  kind: 'main' | 'group' | 'run';
-  label: string;                     // 'main-agent' | 'coder' | 'coder 1'
+  key: string;                       // STABLE unique id across the whole flat list (NFR-7, FR-9)
+  kind: 'main' | 'run';
+  label: string;                     // 'main-agent' | bare agent type, e.g. 'coder' — no instance suffix
   agentType?: string;
-  runCount: number;
   tokens: number;                    // effectiveTokens sum (AD-3)
   models: SpendSegment[];            // model split, sorted desc
   reqs: number;
   firstMs: number;
   lastMs: number;
-  runs?: AgentTreeNode[];
   newTokens: number;                 // Σ cacheCreationTokens over the node's rows
   dollars: number | null;            // Σ dollarsFor(row); null if any contributing model is unpriced
 }
@@ -27,7 +25,7 @@ export interface AgentTreeNode {
 export interface SubagentTree {
   windowTotal: number;               // == Total Spend card by construction (FR-4, AD-6)
   main: AgentTreeNode;
-  subagents: AgentTreeNode[];        // groups, sorted by first activity (execution order)
+  subagents: AgentTreeNode[];        // one row per run, flat, sorted by first activity (execution order)
   subagentTotal: number;
   subagentPct: number;
 }
@@ -68,51 +66,46 @@ function segments(acc: Acc): SpendSegment[] {
 
 export function buildSubagentTree(rows: ObservabilityUsageRow[]): SubagentTree {
   const mainAcc = emptyAcc();
-  interface Group { type: string; acc: Acc; runs: Map<string, Acc>; runOrder: string[]; }
-  const groups = new Map<string, Group>();
-  const groupOrder: string[] = [];
+  interface RunEntry { type: string; runId: string; acc: Acc; }
+  const runs = new Map<string, RunEntry>();
+  const runOrder: string[] = [];   // first-seen order, for stable unkeyed indexing below
 
   for (const r of rows) {
     if (r.source === 'main-agent') { addRow(mainAcc, r); continue; }
     const type = r.agentType ?? '(unattributed)';
-    let g = groups.get(type);
-    if (!g) { g = { type, acc: emptyAcc(), runs: new Map(), runOrder: [] }; groups.set(type, g); groupOrder.push(type); }
-    addRow(g.acc, r);
     const runId = r.agentId ?? '(unkeyed)';
-    let rAcc = g.runs.get(runId);
-    if (!rAcc) { rAcc = emptyAcc(); g.runs.set(runId, rAcc); g.runOrder.push(runId); }
-    addRow(rAcc, r);
+    const mapKey = `${type}::${runId}`;
+    let entry = runs.get(mapKey);
+    if (!entry) { entry = { type, runId, acc: emptyAcc() }; runs.set(mapKey, entry); runOrder.push(mapKey); }
+    addRow(entry.acc, r);
   }
 
   const main: AgentTreeNode = {
-    key: 'main', kind: 'main', label: 'main-agent', runCount: 1,
+    key: 'main', kind: 'main', label: 'main-agent',
     tokens: mainAcc.tokens, models: segments(mainAcc), reqs: mainAcc.reqs,
     firstMs: finiteOrZero(mainAcc.firstMs), lastMs: finiteOrZero(mainAcc.lastMs),
     newTokens: mainAcc.newTokens, dollars: mainAcc.dollars,
   };
 
-  const subagents: AgentTreeNode[] = groupOrder.map((type) => {
-    const g = groups.get(type)!;
-    const runs: AgentTreeNode[] = g.runOrder.map((runId, i) => {
-      const a = g.runs.get(runId)!;
-      return {
-        key: runId === '(unkeyed)' ? `${type}#unkeyed-${i}` : runId,
-        kind: 'run' as const,
-        label: '',                          // numbered after the activity sort below (FR-3)
-        agentType: type, runCount: 1,
-        tokens: a.tokens, models: segments(a), reqs: a.reqs,
-        firstMs: finiteOrZero(a.firstMs), lastMs: finiteOrZero(a.lastMs),
-        newTokens: a.newTokens, dollars: a.dollars,
-      };
-    }).sort((a, b) => activityRank(a.firstMs) - activityRank(b.firstMs));   // execution order (first activity)
-    runs.forEach((r, i) => { r.label = `${type} ${i + 1}`; });             // number follows activity order
+  // Assign each (unkeyed) run a stable per-type index (mirrors the prior per-type i — the
+  // type is already part of the map key, so this preserves global uniqueness without a
+  // type-scoped group to hang the index off of).
+  const unkeyedIndex = new Map<string, number>();
+  const subagents: AgentTreeNode[] = runOrder.map((mapKey) => {
+    const { type, runId, acc } = runs.get(mapKey)!;
+    let key = runId;
+    if (runId === '(unkeyed)') {
+      const i = unkeyedIndex.get(type) ?? 0;
+      unkeyedIndex.set(type, i + 1);
+      key = `${type}#unkeyed-${i}`;
+    }
     return {
-      key: type, kind: 'group' as const, label: type, agentType: type,
-      runCount: g.runOrder.length, tokens: g.acc.tokens, models: segments(g.acc), reqs: g.acc.reqs,
-      firstMs: finiteOrZero(g.acc.firstMs), lastMs: finiteOrZero(g.acc.lastMs), runs,
-      newTokens: g.acc.newTokens, dollars: g.acc.dollars,
+      key, kind: 'run' as const, label: type, agentType: type,
+      tokens: acc.tokens, models: segments(acc), reqs: acc.reqs,
+      firstMs: finiteOrZero(acc.firstMs), lastMs: finiteOrZero(acc.lastMs),
+      newTokens: acc.newTokens, dollars: acc.dollars,
     };
-  }).sort((a, b) => activityRank(a.firstMs) - activityRank(b.firstMs));     // execution order (first activity)
+  }).sort((a, b) => activityRank(a.firstMs) - activityRank(b.firstMs));   // execution order (first activity)
 
   const subagentTotal = subagents.reduce((s, n) => s + n.tokens, 0);
   const windowTotal = main.tokens + subagentTotal;
@@ -121,7 +114,7 @@ export function buildSubagentTree(rows: ObservabilityUsageRow[]): SubagentTree {
 }
 
 /**
- * Reorder current groups to match a previously-frozen key order so rows do not reshuffle
+ * Reorder current runs to match a previously-frozen key order so rows do not reshuffle
  * mid-turn; keys not in the frozen list (new agents) append in their current (spend) order (NFR-7, FR-9).
  */
 export function freezeSubagentOrder(current: AgentTreeNode[], frozenKeys: string[]): AgentTreeNode[] {

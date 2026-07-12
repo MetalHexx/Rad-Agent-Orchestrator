@@ -5,7 +5,7 @@ import { buildSubagentTree } from './subagent-tree';
 function row(p: Partial<ObservabilityUsageRow>): ObservabilityUsageRow {
   return {
     sessionId: 's1', usageId: Math.random().toString(36).slice(2), timestamp: '2026-06-21T00:00:00.000Z',
-    inputTokens: 0, outputTokens: 0, model: 'claude-opus-4-8', source: 'main-agent', ...p,
+    inputTokens: 0, outputTokens: 0, model: 'claude-opus-4-8', source: 'main-agent', harness: 'claude-code', ...p,
   };
 }
 
@@ -26,50 +26,49 @@ test('partitions main-agent vs subagents and sums windowTotal (FR-4)', () => {
   assert.ok(Math.abs(tree.subagentPct - 50 / 550) < 1e-9);
 });
 
-test('groups subagents by agentType, expands to agentId runs labelled by first-seen order (FR-3)', () => {
+test('mixed-type runs interleave in one flat list purely by firstMs, labelled by bare type (FR-3)', () => {
   const tree = buildSubagentTree([
-    row({ source: 'subagent', agentType: 'coder', agentId: 'a1', outputTokens: 1 }),
-    row({ source: 'subagent', agentType: 'coder', agentId: 'a2', outputTokens: 2 }),
-    row({ source: 'subagent', agentType: 'reviewer', agentId: 'b1', outputTokens: 1 }),
-  ]);
-  const coder = tree.subagents.find((g) => g.label === 'coder')!;
-  assert.equal(coder.runCount, 2);
-  assert.equal(coder.kind, 'group');
-  const labels = (coder.runs ?? []).map((r) => r.label).sort();
-  assert.deepEqual(labels, ['coder 1', 'coder 2']);
-});
-
-test('orders groups + runs by first activity; numbering follows execution order, not spend (FR-3)', () => {
-  const tree = buildSubagentTree([
-    // 'reviewer' is active earliest → its group sorts before 'coder'.
-    row({ source: 'subagent', agentType: 'reviewer', agentId: 'r1', outputTokens: 1, timestamp: '2026-06-21T00:00:01.000Z' }),
-    // coder run c2 spends MORE but starts LATER than c1 → must still number as 'coder 2'.
+    // Input order is deliberately NOT chronological, and spend is inverted vs. timestamp order,
+    // so a pass would only happen via a real sort by firstMs — not insertion order, not spend.
     row({ source: 'subagent', agentType: 'coder', agentId: 'c2', outputTokens: 100, timestamp: '2026-06-21T00:00:03.000Z' }),
-    row({ source: 'subagent', agentType: 'coder', agentId: 'c1', outputTokens: 5, timestamp: '2026-06-21T00:00:02.000Z' }),
+    row({ source: 'subagent', agentType: 'coder', agentId: 'c1', outputTokens: 1, timestamp: '2026-06-21T00:00:01.000Z' }),
+    row({ source: 'subagent', agentType: 'reviewer', agentId: 'r1', outputTokens: 50, timestamp: '2026-06-21T00:00:02.000Z' }),
   ]);
-  // reviewer (t=1) before coder group (earliest run t=2)
-  assert.deepEqual(tree.subagents.map((g) => g.label), ['reviewer', 'coder']);
-  const coder = tree.subagents.find((g) => g.label === 'coder')!;
-  // c1 (earlier, fewer tokens) is 'coder 1'; c2 (later, more tokens) is 'coder 2'.
-  assert.deepEqual((coder.runs ?? []).map((r) => ({ key: r.key, label: r.label })), [
-    { key: 'c1', label: 'coder 1' },
-    { key: 'c2', label: 'coder 2' },
+  assert.deepEqual(tree.subagents.map((n) => ({ key: n.key, label: n.label, kind: n.kind })), [
+    { key: 'c1', label: 'coder', kind: 'run' },
+    { key: 'r1', label: 'reviewer', kind: 'run' },
+    { key: 'c2', label: 'coder', kind: 'run' },
   ]);
 });
 
-test('a run with no parseable timestamp sinks to the end of its group (FR-3)', () => {
+test('a run with no parseable timestamp sinks to the end of the whole list, not just its type (FR-3)', () => {
   const tree = buildSubagentTree([
     row({ source: 'subagent', agentType: 'coder', agentId: 'noTs', outputTokens: 9, timestamp: 'not-a-date' }),
-    row({ source: 'subagent', agentType: 'coder', agentId: 'real', outputTokens: 1, timestamp: '2026-06-21T00:00:05.000Z' }),
+    row({ source: 'subagent', agentType: 'reviewer', agentId: 'real', outputTokens: 1, timestamp: '2026-06-21T00:00:05.000Z' }),
   ]);
-  const coder = tree.subagents.find((g) => g.label === 'coder')!;
-  assert.deepEqual((coder.runs ?? []).map((r) => r.key), ['real', 'noTs']);   // dated run first, undated last
+  assert.deepEqual(tree.subagents.map((n) => n.key), ['real', 'noTs']);   // dated run first, undated last regardless of type
 });
 
-test('falls back to (unattributed) when agentType missing, (unkeyed) run key is stable', () => {
-  const tree = buildSubagentTree([row({ source: 'subagent', outputTokens: 5 })]);
-  assert.equal(tree.subagents[0].label, '(unattributed)');
-  assert.equal(tree.subagents[0].runCount, 1);
+test('(unattributed) rows of the same type merge; rows with a genuinely different type do not (FR-3)', () => {
+  const tree = buildSubagentTree([
+    row({ source: 'subagent', outputTokens: 5 }),   // no agentType, no agentId → (unattributed)::(unkeyed)
+    row({ source: 'subagent', outputTokens: 3 }),   // same fallback bucket → merges
+    row({ source: 'subagent', agentType: 'coder', outputTokens: 1 }),   // real type, no agentId → distinct bucket
+  ]);
+  assert.equal(tree.subagents.length, 2);
+  const unattributed = tree.subagents.find((n) => n.label === '(unattributed)')!;
+  assert.equal(unattributed.tokens, 40);   // 5*5 + 3*5 effective tokens merged
+  const coder = tree.subagents.find((n) => n.label === 'coder')!;
+  assert.equal(coder.tokens, 5);
+  assert.notEqual(unattributed.key, coder.key);
+});
+
+test('(unkeyed) run key is stable and scoped to its type', () => {
+  const tree = buildSubagentTree([
+    row({ source: 'subagent', agentType: 'coder', outputTokens: 5 }),
+  ]);
+  assert.equal(tree.subagents[0].label, 'coder');
+  assert.equal(tree.subagents[0].key, 'coder#unkeyed-0');
 });
 
 test('empty input yields zero windowTotal (FR-4)', () => {
@@ -98,7 +97,7 @@ test('splits node tokens by model, accumulating per model, sorted desc (NFR-8)',
   ]);
 });
 
-test('accumulates newTokens (Σ cacheCreationTokens) per node', () => {
+test('accumulates newTokens (Σ cacheCreationTokens) on the flat nodes', () => {
   const tree = buildSubagentTree([
     row({ source: 'main-agent', cacheCreationTokens: 40 }),
     row({ source: 'main-agent', cacheCreationTokens: 10 }),
@@ -108,7 +107,7 @@ test('accumulates newTokens (Σ cacheCreationTokens) per node', () => {
   assert.equal(tree.subagents[0].newTokens, 5);
 });
 
-test('attributes dollars per model and sums to the node total (per-model dollar split)', () => {
+test('attributes dollars per model and sums to the flat node total (per-model dollar split)', () => {
   const tree = buildSubagentTree([
     row({ source: 'main-agent', model: 'claude-opus-4-8', outputTokens: 100 }),
     row({ source: 'main-agent', model: 'claude-opus-4-8', outputTokens: 100 }),
@@ -121,7 +120,7 @@ test('attributes dollars per model and sums to the node total (per-model dollar 
   assert.ok(Math.abs(tree.main.dollars! - (opus.dollars! + haiku.dollars!)) < 1e-9, 'node dollars sums the per-model dollars');
 });
 
-test('an unknown-priced model makes the node dollars null, never a silent $0 (Done when)', () => {
+test('an unknown-priced model makes the flat node dollars null, never a silent $0 (Done when)', () => {
   const tree = buildSubagentTree([
     row({ source: 'main-agent', model: 'claude-opus-4-8', outputTokens: 10 }),
     row({ source: 'main-agent', model: 'some-mystery-model', outputTokens: 10 }),
@@ -131,10 +130,19 @@ test('an unknown-priced model makes the node dollars null, never a silent $0 (Do
   assert.equal(mystery.dollars, null);
 });
 
+test('flat subagent run nodes carry pricing (newTokens + dollars) (FR-3, pricing)', () => {
+  const tree = buildSubagentTree([
+    row({ source: 'subagent', agentType: 'coder', agentId: 'a1', model: 'claude-opus-4-8', outputTokens: 100, cacheCreationTokens: 7 }),
+  ]);
+  const run = tree.subagents[0];
+  assert.equal(run.newTokens, 7);
+  assert.ok(run.dollars !== null && run.dollars > 0, 'a priced run node carries a positive dollar figure');
+});
+
 import { freezeSubagentOrder } from './subagent-tree';
 
-test('freezeSubagentOrder keeps prior order, appends new groups in spend order (NFR-7)', () => {
-  const mk = (key: string, tokens: number) => ({ key, kind: 'group' as const, label: key, agentType: key, runCount: 1, tokens, models: [], reqs: 1, firstMs: 0, lastMs: 1, newTokens: 0, dollars: 0 });
+test('freezeSubagentOrder keeps prior order, appends new runs in spend order (NFR-7)', () => {
+  const mk = (key: string, tokens: number) => ({ key, kind: 'run' as const, label: key, agentType: key, tokens, models: [], reqs: 1, firstMs: 0, lastMs: 1, newTokens: 0, dollars: 0 });
   // Frozen order saw [A, B]; current spend order is [C(new,300), B(200), A(100)].
   const current = [mk('C', 300), mk('B', 200), mk('A', 100)];
   const result = freezeSubagentOrder(current, ['A', 'B']);
@@ -142,7 +150,7 @@ test('freezeSubagentOrder keeps prior order, appends new groups in spend order (
 });
 
 test('freezeSubagentOrder with empty frozen list is identity (first turn) (NFR-7)', () => {
-  const mk = (key: string, tokens: number) => ({ key, kind: 'group' as const, label: key, agentType: key, runCount: 1, tokens, models: [], reqs: 1, firstMs: 0, lastMs: 1, newTokens: 0, dollars: 0 });
+  const mk = (key: string, tokens: number) => ({ key, kind: 'run' as const, label: key, agentType: key, tokens, models: [], reqs: 1, firstMs: 0, lastMs: 1, newTokens: 0, dollars: 0 });
   const current = [mk('B', 200), mk('A', 100)];
   assert.deepEqual(freezeSubagentOrder(current, []).map((n) => n.key), ['B', 'A']);
 });
