@@ -5,6 +5,7 @@ import {
   deriveRingArc,
   deriveWholeGraphProgress,
   deriveTaskNumber,
+  formatComplexity,
   parsePrLabel,
   deriveFinalReviewInfo,
   deriveFinalGatePending,
@@ -131,6 +132,28 @@ test('deriveTaskNumber is 1-based from the iteration index', () => {
 
 test('deriveTaskNumber is null when no iteration resolved', () => {
   assert.equal(deriveTaskNumber(undefined), null);
+});
+
+// ─── formatComplexity ─────────────────────────────────────────────────────
+
+test('formatComplexity capitalizes simple to Simple', () => {
+  assert.equal(formatComplexity('simple'), 'Simple');
+});
+
+test('formatComplexity capitalizes standard to Standard', () => {
+  assert.equal(formatComplexity('standard'), 'Standard');
+});
+
+test('formatComplexity capitalizes complex to Complex', () => {
+  assert.equal(formatComplexity('complex'), 'Complex');
+});
+
+test('formatComplexity returns null for undefined', () => {
+  assert.equal(formatComplexity(undefined), null);
+});
+
+test('formatComplexity returns null for empty string', () => {
+  assert.equal(formatComplexity(''), null);
 });
 
 // ─── parsePrLabel ─────────────────────────────────────────────────────────────

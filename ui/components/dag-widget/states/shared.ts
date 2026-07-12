@@ -85,6 +85,12 @@ export function deriveTaskNumber(iteration: IterationEntry | undefined): number 
   return iteration ? iteration.index + 1 : null;
 }
 
+/** Capitalizes a complexity value; returns `null` when absent or empty. */
+export function formatComplexity(complexity: string | undefined): string | null {
+  if (!complexity) return null;
+  return complexity.charAt(0).toUpperCase() + complexity.slice(1);
+}
+
 /** `PR #{n}` label parsed from a GitHub pull-request URL; `PR` when the number can't be read. */
 export function parsePrLabel(url: string): string {
   const match = url.match(/\/pull\/(\d+)/);
