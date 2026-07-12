@@ -201,13 +201,14 @@ test('dag-corrective-task-group.tsx imports DocumentLink from @/components/docum
   );
 });
 
-test('dag-corrective-task-group.tsx renders a <DocumentLink path={entry.doc_path} label="Task Handoff" onDocClick={onDocClick} /> in the accordion header row', () => {
+test('dag-corrective-task-group.tsx renders a <DocumentLink path={entry.doc_path} label={handoffLabel} onDocClick={onDocClick} /> in the accordion header row', () => {
   // Mirrors the iteration-panel pattern (dag-iteration-panel.tsx:132-138): post-unify corrective
   // handoff docs are carried on CorrectiveTaskEntry.doc_path and entry.nodes can be empty, so
   // the group component itself must render the Task Handoff button off entry.doc_path to keep
   // corrective handoffs accessible from the timeline now that the synthetic task_handoff step node
-  // is gone. Label is "Task Handoff" (matching regular task iterations) so the corrective task
-  // handoff doc is presented identically to a normal task handoff (FR-11).
+  // is gone. The label is phase-aware (P01-T04): "Task Handoff" for a task corrective, "Phase Plan"
+  // for a phase corrective, so the corrective task handoff doc is presented identically to a
+  // normal task/phase handoff.
   assert.ok(
     correctiveTaskGroupSource.includes('<DocumentLink'),
     'corrective task group must render <DocumentLink> for the corrective task\'s doc link'
@@ -217,12 +218,49 @@ test('dag-corrective-task-group.tsx renders a <DocumentLink path={entry.doc_path
     '<DocumentLink> path prop must be entry.doc_path (the new CorrectiveTaskEntry.doc_path field). Trailing `!` non-null assertion accepted when callsite is gated on a hasHandoff boolean derived from entry.doc_path.'
   );
   assert.ok(
-    /<DocumentLink[^/]*label="Task Handoff"/.test(correctiveTaskGroupSource),
-    '<DocumentLink> label prop must be "Task Handoff" so corrective task handoff docs share the same label as normal task handoffs (FR-11)'
+    /<DocumentLink[^/]*label=\{handoffLabel\}/.test(correctiveTaskGroupSource),
+    '<DocumentLink> label prop must be {handoffLabel} so the phase-vs-task label selection (P01-T04) applies to the handoff link'
   );
   assert.ok(
     /<DocumentLink[^/]*onDocClick=\{onDocClick\}/.test(correctiveTaskGroupSource),
     '<DocumentLink> must forward the onDocClick prop plumbed through to the corrective task group'
+  );
+});
+
+test('dag-corrective-task-group.tsx (P01-T04) selects "Phase Plan"/"Task Handoff" and "Phase Report"/"Code Review" labels from isPhaseCorrective', () => {
+  assert.ok(
+    /const handoffLabel = isPhaseCorrective \? 'Phase Plan' : 'Task Handoff';/.test(correctiveTaskGroupSource),
+    'handoffLabel must select "Phase Plan" for a phase corrective and "Task Handoff" otherwise'
+  );
+  assert.ok(
+    /const reportLabel = isPhaseCorrective \? 'Phase Report' : 'Code Review';/.test(correctiveTaskGroupSource),
+    'reportLabel must select "Phase Report" for a phase corrective and "Code Review" otherwise'
+  );
+  assert.ok(
+    !/label="Task Handoff"/.test(correctiveTaskGroupSource) && !/label="Code Review"/.test(correctiveTaskGroupSource),
+    'no bare "Task Handoff" or "Code Review" string literal may remain on a <DocumentLink label=...> — both must route through the phase-aware label selection'
+  );
+});
+
+test('dag-corrective-task-group.tsx (P01-T04) Report DocumentLink resolves its path from phaseReviewDocPath for a phase corrective', () => {
+  assert.ok(
+    /const reportDocPath = isPhaseCorrective \? phaseReviewDocPath : codeReviewDocPath;/.test(correctiveTaskGroupSource),
+    'reportDocPath must resolve to phaseReviewDocPath for a phase corrective and codeReviewDocPath otherwise'
+  );
+  assert.ok(
+    /<DocumentLink\s+path=\{reportDocPath!?\}\s+label=\{reportLabel\}/.test(correctiveTaskGroupSource),
+    'the Report <DocumentLink> must use reportDocPath/reportLabel so a phase corrective\'s "Phase Report" link targets the phase_review doc'
+  );
+});
+
+test('dag-corrective-task-group.tsx (P01-T04) recursive self-call forwards isPhaseCorrective={false} and phaseReviewDocPath={null} for nested correctives', () => {
+  assert.ok(
+    /isPhaseCorrective=\{false\}/.test(correctiveTaskGroupSource),
+    'a corrective nested under a corrective task is never phase-level — the recursive self-call must force isPhaseCorrective={false}'
+  );
+  assert.ok(
+    /phaseReviewDocPath=\{null\}/.test(correctiveTaskGroupSource),
+    'the recursive self-call must force phaseReviewDocPath={null} for nested correctives'
   );
 });
 
@@ -403,9 +441,9 @@ test4("FR-1 hideLabel SpinnerBadge no longer rendered on corrective trigger", ()
     "no SpinnerBadge … hideLabel on corrective trigger (FR-1)");
 });
 
-test4("FR-11 corrective DocumentLink label is 'Task Handoff', not 'Doc'", () => {
-  assert.ok(/label="Task Handoff"/.test(CG_SOURCE),
-    "corrective DocumentLink label must be 'Task Handoff' to match regular task iterations (FR-11)");
+test4("FR-11 corrective DocumentLink label is 'Task Handoff' for a task corrective (P01-T04: routed via handoffLabel), not 'Doc'", () => {
+  assert.ok(/'Task Handoff'/.test(CG_SOURCE),
+    "corrective DocumentLink label must resolve to 'Task Handoff' for a task corrective, matching regular task iterations (FR-11)");
   assert.ok(!/label="Doc"/.test(CG_SOURCE),
     "literal 'Doc' label is forbidden on corrective DocumentLink (FR-11)");
 });
@@ -461,17 +499,19 @@ test4("FR-7/FR-10/AD-5 corrective row references entry.nodes['code_review'].doc_
     "CorrectiveRow must render a 'Code Review' link label (FR-7, FR-10)");
 });
 
-test4("FR-8/FR-10/DD-7/FR-15 corrective row trailing-link slot order: CommitChips → Task Handoff → Code Review", () => {
+test4("FR-8/FR-10/DD-7/FR-15 corrective row trailing-link slot order: CommitChips → handoff → report (P01-T04: phase-aware labels)", () => {
   // FR-15: single-commit ExternalLink (label="Commit") retired in favour of CommitChips.
-  // Trailing slot order is now: CommitChips (per-repo chips) → Task Handoff → Code Review.
-  // Verify CommitChips is present and the two DocumentLink labels appear in order.
+  // Trailing slot order is now: CommitChips (per-repo chips) → handoff link → report link.
+  // P01-T04 replaced the literal "Task Handoff"/"Code Review" label props with the
+  // phase-aware handoffLabel/reportLabel selection, so locate the slots by their prop
+  // expression instead of a literal string.
   const commitChipsIdx = CT_SOURCE.indexOf('<CommitChips');
-  const handoffIdx     = CT_SOURCE.indexOf('label="Task Handoff"');
-  const reviewIdx      = CT_SOURCE.indexOf('label="Code Review"');
+  const handoffIdx     = CT_SOURCE.indexOf('label={handoffLabel}');
+  const reviewIdx      = CT_SOURCE.indexOf('label={reportLabel}');
   assert.ok(commitChipsIdx !== -1 && handoffIdx !== -1 && reviewIdx !== -1,
-    "CommitChips and both trailing DocumentLink labels must be present (FR-15, FR-8, DD-7)");
+    "CommitChips and both trailing DocumentLink label slots must be present (FR-15, FR-8, DD-7)");
   assert.ok(commitChipsIdx < handoffIdx && handoffIdx < reviewIdx,
-    "trailing-link order must be CommitChips → Task Handoff → Code Review (FR-15, FR-8, DD-7)");
+    "trailing-link order must be CommitChips → handoff → report (FR-15, FR-8, DD-7)");
 });
 
 test4("FR-5/FR-10/DD-6 corrective row renders 'Corrected' trailing pill when entry recovered from nested correctives", () => {
@@ -503,7 +543,7 @@ test4("NFR-3 P02-T02 source-shape tests run under the test4 helper so failed4 > 
     'FR-1/FR-10 corrective row AccordionContent no longer maps entry.nodes onto <DAGNodeRow>',
     "FR-9/FR-10/DD-8 corrective row renders flat (no AccordionItem) when entry.corrective_tasks.length === 0",
     "FR-7/FR-10/AD-5 corrective row references entry.nodes['code_review'].doc_path for the Code Review link",
-    'FR-8/FR-10/DD-7/FR-15 corrective row trailing-link slot order: CommitChips → Task Handoff → Code Review',
+    'FR-8/FR-10/DD-7/FR-15 corrective row trailing-link slot order: CommitChips → handoff → report (P01-T04: phase-aware labels)',
     "FR-5/FR-10/DD-6 corrective row renders 'Corrected' trailing pill when entry recovered from nested correctives",
     'FR-2/FR-4/FR-6/FR-10 corrective row badge resolves Coding/Correcting/Failed labels at the same vocabulary as task iterations',
   ];

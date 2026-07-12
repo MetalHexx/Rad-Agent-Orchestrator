@@ -20,6 +20,10 @@ interface DAGCorrectiveTaskGroupProps {
   onFocusChange: (nodeId: string) => void;
   expandedLoopIds: string[];
   onAccordionChange: (value: string[], eventDetails: { reason: string }) => void;
+  /** True when this group belongs to a phase-level corrective (parentKind === 'for_each_phase'). */
+  isPhaseCorrective: boolean;
+  /** Resolved phase_review doc for a phase corrective; null for task correctives. */
+  phaseReviewDocPath: string | null;
 }
 
 export const GROUP_ARIA_LABEL = "Corrective tasks";
@@ -45,6 +49,8 @@ function CorrectiveRow({
   focusedRowKey,
   expandedLoopIds,
   onAccordionChange,
+  isPhaseCorrective,
+  phaseReviewDocPath,
 }: {
   entry: CorrectiveTaskEntry;
   parentIterationKey: string;
@@ -57,6 +63,8 @@ function CorrectiveRow({
   focusedRowKey: string | null;
   expandedLoopIds: string[];
   onAccordionChange: (value: string[], eventDetails: { reason: string }) => void;
+  isPhaseCorrective: boolean;
+  phaseReviewDocPath: string | null;
 }) {
   const itemValue = buildCorrectiveItemValue(parentIterationKey, entry.index);
   const handleFocus = useCallback(() => onFocusChange(itemValue), [itemValue, onFocusChange]);
@@ -96,7 +104,10 @@ function CorrectiveRow({
   const hasHandoff = entry.doc_path != null && entry.doc_path !== '';
   const codeReviewNode = entry.nodes['code_review'];
   const codeReviewDocPath = (codeReviewNode && 'doc_path' in codeReviewNode) ? codeReviewNode.doc_path : null;
-  const hasCodeReview = codeReviewDocPath != null && codeReviewDocPath !== '';
+  const reportDocPath = isPhaseCorrective ? phaseReviewDocPath : codeReviewDocPath;
+  const hasCodeReview = reportDocPath != null && reportDocPath !== '';
+  const handoffLabel = isPhaseCorrective ? 'Phase Plan' : 'Task Handoff';
+  const reportLabel = isPhaseCorrective ? 'Phase Report' : 'Code Review';
   // FR-15: commit rendering is now solely CommitChips; hasAnyTrailing includes repos presence.
   const hasAnyTrailing = hasHandoff || hasCodeReview || (entry.repos != null && entry.repos.length > 0);
   // FR-9 / FR-10 / DD-8 — chevron is gated on entry.corrective_tasks.length > 0.
@@ -118,13 +129,13 @@ function CorrectiveRow({
           {hasHandoff && (
             <span className="inline-flex items-center gap-1.5">
               <span className="inline-block h-3.5 w-3.5" />
-              <span>Task Handoff</span>
+              <span>{handoffLabel}</span>
             </span>
           )}
           {hasCodeReview && (
             <span className="inline-flex items-center gap-1.5">
               <span className="inline-block h-3.5 w-3.5" />
-              <span>Code Review</span>
+              <span>{reportLabel}</span>
             </span>
           )}
         </span>
@@ -148,10 +159,10 @@ function CorrectiveRow({
       )}
       <CommitChips repos={entry.repos} compareUrlByRepo={compareUrlByRepo} singleRepo={Object.keys(compareUrlByRepo).length <= 1} />
       {hasHandoff && (
-        <DocumentLink path={entry.doc_path!} label="Task Handoff" onDocClick={onDocClick} />
+        <DocumentLink path={entry.doc_path!} label={handoffLabel} onDocClick={onDocClick} />
       )}
       {hasCodeReview && (
-        <DocumentLink path={codeReviewDocPath!} label="Code Review" onDocClick={onDocClick} />
+        <DocumentLink path={reportDocPath!} label={reportLabel} onDocClick={onDocClick} />
       )}
     </div>
   );
@@ -188,6 +199,8 @@ function CorrectiveRow({
             onFocusChange={onFocusChange}
             expandedLoopIds={expandedLoopIds}
             onAccordionChange={onAccordionChange}
+            isPhaseCorrective={false}
+            phaseReviewDocPath={null}
           />
         </AccordionContent>
       </AccordionItem>
@@ -223,6 +236,8 @@ export function DAGCorrectiveTaskGroup({
   onFocusChange,
   expandedLoopIds,
   onAccordionChange,
+  isPhaseCorrective,
+  phaseReviewDocPath,
 }: DAGCorrectiveTaskGroupProps) {
   if (correctiveTasks.length === 0) return null;
   return (
@@ -247,6 +262,8 @@ export function DAGCorrectiveTaskGroup({
             focusedRowKey={focusedRowKey}
             expandedLoopIds={expandedLoopIds}
             onAccordionChange={onAccordionChange}
+            isPhaseCorrective={isPhaseCorrective}
+            phaseReviewDocPath={phaseReviewDocPath}
           />
         ))}
       </Accordion>

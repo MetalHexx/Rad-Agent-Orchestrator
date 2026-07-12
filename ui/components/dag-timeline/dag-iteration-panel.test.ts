@@ -628,6 +628,40 @@ test('dag-iteration-panel.tsx renders <DAGCorrectiveTaskGroup> in BOTH the for_e
   );
 });
 
+test('dag-iteration-panel.tsx (P01-T04) threads isPhaseCorrective and phaseReviewDocPath into BOTH <DAGCorrectiveTaskGroup> call sites', () => {
+  const src = readFileSync(
+    join(__dirname, 'dag-iteration-panel.tsx'),
+    'utf-8'
+  );
+  // The phase-branch call site (parentKind is not yet narrowed there) resolves both
+  // props from parentKind/iteration.nodes['phase_review']. The task-branch call site
+  // is only reachable once TS has narrowed parentKind to the 'for_each_task' literal
+  // (the phase branch returns earlier), so `parentKind === 'for_each_phase'` there would
+  // be a TS2367 impossible-comparison error — it instead hardcodes isPhaseCorrective={false}
+  // and phaseReviewDocPath={null}, which is semantically identical (a task corrective is
+  // never phase-level).
+  assert.ok(
+    /isPhaseCorrective=\{parentKind === ['"]for_each_phase['"]\}/.test(src),
+    "the for_each_phase-branch <DAGCorrectiveTaskGroup> call site must pass isPhaseCorrective={parentKind === 'for_each_phase'}"
+  );
+  assert.ok(
+    /phaseReviewDocPath=\{parentKind === ['"]for_each_phase['"]\s*\?\s*\(\(iteration\.nodes\[['"]phase_review['"]\]\s+as\s+StepNodeState\s*\|\s*undefined\)\?\.\s*doc_path\s*\?\?\s*null\)\s*:\s*null\}/.test(src),
+    "the for_each_phase-branch <DAGCorrectiveTaskGroup> call site must resolve phaseReviewDocPath from iteration.nodes['phase_review'] as a StepNodeState, falling back to null"
+  );
+  const isPhaseCorrectiveFalseMatches = src.match(/isPhaseCorrective=\{false\}/g) ?? [];
+  const phaseReviewDocPathNullMatches = src.match(/phaseReviewDocPath=\{null\}/g) ?? [];
+  assert.strictEqual(
+    isPhaseCorrectiveFalseMatches.length,
+    1,
+    `the for_each_task-branch <DAGCorrectiveTaskGroup> call site must hardcode isPhaseCorrective={false} — found ${isPhaseCorrectiveFalseMatches.length}`
+  );
+  assert.strictEqual(
+    phaseReviewDocPathNullMatches.length,
+    1,
+    `the for_each_task-branch <DAGCorrectiveTaskGroup> call site must hardcode phaseReviewDocPath={null} — found ${phaseReviewDocPathNullMatches.length}`
+  );
+});
+
 test('dag-iteration-panel.tsx passes showCount={...} to <ProgressBar> so 0/0 tasks is suppressed (DD-3, FR-8)', () => {
   const src = readFileSync(
     join(__dirname, 'dag-iteration-panel.tsx'),
