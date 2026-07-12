@@ -3,7 +3,7 @@ import { Ring } from '../ring';
 import { RingSlot, HeadingSlot, MetaSlot, ControlsSlot } from '../card-slots';
 import { CardControlsRow, DocButton } from '../card-controls';
 import type { StateView } from '../types';
-import type { AnyProjectState, CorrectiveTaskEntry } from '@/types/state';
+import type { AnyProjectState, CorrectiveTaskEntry, StepNodeState } from '@/types/state';
 import { deriveRingArc } from './shared';
 import { deriveCardHeading } from './heading';
 
@@ -79,8 +79,9 @@ export const correctiveView: StateView = {
     const arc = deriveRetryArc(ctx.correctiveEntry, ctx.state);
     const singleRepo = Object.keys(ctx.compareUrlByRepo).length <= 1;
     const retryBudget = deriveRetryBudgetLabel(ctx.correctiveEntry, ctx.state);
-    const reviewNode = ctx.iteration?.nodes['code_review'];
-    const reviewReportPath = reviewNode && 'doc_path' in reviewNode ? reviewNode.doc_path : null;
+    const reviewReportPath = ctx.isPhaseCorrective
+      ? (ctx.iteration?.nodes['phase_review'] as StepNodeState | undefined)?.doc_path ?? null
+      : (ctx.iteration?.nodes['code_review'] as StepNodeState | undefined)?.doc_path ?? null;
     const { heading, meta } = deriveCardHeading(ctx);
     const reason = ctx.correctiveEntry?.reason ?? null;
     const metaWithReason =
@@ -99,13 +100,13 @@ export const correctiveView: StateView = {
           <CardControlsRow>
             <DocButton
               path={ctx.correctiveEntry?.doc_path ?? null}
-              label="Task Handoff"
+              label={ctx.isPhaseCorrective ? 'Phase Plan' : 'Task Handoff'}
               onDocClick={ctx.onDocClick}
               iconCssVar={TIER_CSS_VAR}
             />
             <DocButton
               path={reviewReportPath}
-              label="Review Report"
+              label={ctx.isPhaseCorrective ? 'Phase Report' : 'Review Report'}
               onDocClick={ctx.onDocClick}
               iconCssVar={TIER_CSS_VAR}
             />
