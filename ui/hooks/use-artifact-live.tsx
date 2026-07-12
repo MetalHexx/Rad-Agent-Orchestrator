@@ -29,6 +29,10 @@ interface ArtifactLiveValue {
   mtimes: Record<string, number>;
   degraded: boolean;
   markActive: (fileName: string | null) => void;
+  /** Requirements-doc frontmatter status from the latest snapshot — carried
+   *  live so the Planning docs list's Draft pill clears on the next
+   *  `artifact_change` refresh instead of a one-time fetch going stale. */
+  requirementsStatus: string | null;
 }
 
 export const defaultArtifactLiveValue: ArtifactLiveValue = {
@@ -38,6 +42,7 @@ export const defaultArtifactLiveValue: ArtifactLiveValue = {
   mtimes: {},
   degraded: false,
   markActive: () => {},
+  requirementsStatus: null,
 };
 
 export const ArtifactLiveContext = React.createContext<ArtifactLiveValue>(defaultArtifactLiveValue);
@@ -58,6 +63,7 @@ export function ArtifactLiveProvider({
 }) {
   const [files, setFiles] = React.useState<string[]>([]);
   const [mtimes, setMtimes] = React.useState<Record<string, number>>({});
+  const [requirementsStatus, setRequirementsStatus] = React.useState<string | null>(null);
   const [live, setLive] = React.useState<LiveState>(emptyLiveState);
   const [degraded, setDegraded] = React.useState(false);
   const activeRef = React.useRef<string | null>(activeFileName);
@@ -107,6 +113,7 @@ export function ArtifactLiveProvider({
 
     setFiles(snap.files);
     setMtimes(snap.mtimes);
+    setRequirementsStatus(snap.requirementsStatus);
 
     // Only a 'live' refresh (an artifact_change event landed for THIS project) may
     // pulse. The initial 'baseline' snapshot just records state, so visiting or
@@ -126,7 +133,7 @@ export function ArtifactLiveProvider({
   // On project change: reset the diff baseline and take an initial snapshot.
   React.useEffect(() => {
     if (!projectName) {
-      setFiles([]); setLive(emptyLiveState());
+      setFiles([]); setLive(emptyLiveState()); setRequirementsStatus(null);
       prevFilesRef.current = null; prevMtimesRef.current = {};
       return;
     }
@@ -188,8 +195,8 @@ export function ArtifactLiveProvider({
   );
 
   const value = React.useMemo<ArtifactLiveValue>(
-    () => ({ artifacts, unseen: live.unseen, activePulse: live.activePulse, mtimes, degraded, markActive }),
-    [artifacts, live.unseen, live.activePulse, mtimes, degraded, markActive],
+    () => ({ artifacts, unseen: live.unseen, activePulse: live.activePulse, mtimes, degraded, markActive, requirementsStatus }),
+    [artifacts, live.unseen, live.activePulse, mtimes, degraded, markActive, requirementsStatus],
   );
 
   return <ArtifactLiveContext.Provider value={value}>{children}</ArtifactLiveContext.Provider>;

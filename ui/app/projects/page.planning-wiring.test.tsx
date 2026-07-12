@@ -34,15 +34,15 @@ test('the card inputs are threaded from live state into PlanningSection', () => 
   assert.ok(/requirementsStatus=\{requirementsStatus\}/.test(mount), 'requirements status threaded to the docs list');
 });
 
-test('requirementsStatus is captured from the existing /files fetch (its client origin is pinned here)', () => {
-  assert.ok(/setRequirementsStatus/.test(pageSrc), 'a requirementsStatus state setter exists');
+test('requirementsStatus is sourced from the live artifact context, not a standalone fetch (P03-T02)', () => {
+  assert.ok(!/setRequirementsStatus/.test(pageSrc), 'the standalone requirementsStatus state setter is gone');
   assert.ok(
-    /requirementsStatus\?\s*:\s*string\s*\|\s*null/.test(pageSrc),
-    'the /files response type is widened to carry requirementsStatus',
+    !/requirementsStatus\?\s*:\s*string\s*\|\s*null/.test(pageSrc),
+    'the /files response type in this page no longer carries requirementsStatus (it lives in the live snapshot)',
   );
   assert.ok(
-    /setRequirementsStatus\(data\.requirementsStatus/.test(pageSrc),
-    'the status is read off the files response payload',
+    /const requirementsStatus = live\.requirementsStatus/.test(pageSrc),
+    'requirementsStatus is read off the live artifact context',
   );
 });
 
