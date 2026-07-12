@@ -175,6 +175,40 @@ test('plan_approval_gate maps to plan-approval', () => {
   assert.equal(resolveStateId(makeState('plan_approval_gate')), 'plan-approval');
 });
 
+// ─── planning → plan-approval advancement when the gate is active ──────────
+
+test('a planning leaf advances to plan-approval when the plan_approval_gate is active', () => {
+  const nodes: NodesRecord = {
+    ...RICH_NODES,
+    plan_approval_gate: { kind: 'gate', status: 'in_progress', gate_active: true },
+  };
+  const state = { ...makeState('master_plan'), graph: { ...makeState('master_plan').graph, nodes } };
+  assert.equal(resolveStateId(state), 'plan-approval');
+});
+
+test('a planning leaf stays planning when the plan_approval_gate is inactive', () => {
+  // RICH_NODES already carries plan_approval_gate as gate_active: false.
+  assert.equal(resolveStateId(makeState('master_plan')), 'planning');
+});
+
+test('a planning leaf stays planning when the plan_approval_gate is active but already completed', () => {
+  const nodes: NodesRecord = {
+    ...RICH_NODES,
+    plan_approval_gate: { kind: 'gate', status: 'completed', gate_active: true },
+  };
+  const state = { ...makeState('master_plan'), graph: { ...makeState('master_plan').graph, nodes } };
+  assert.equal(resolveStateId(state), 'planning');
+});
+
+test('an active plan_approval_gate does not affect a non-planning (coding) path', () => {
+  const nodes: NodesRecord = {
+    ...RICH_NODES,
+    plan_approval_gate: { kind: 'gate', status: 'in_progress', gate_active: true },
+  };
+  const state = { ...makeState(`${TASK_PATH}.task_executor`), graph: { ...makeState(`${TASK_PATH}.task_executor`).graph, nodes } };
+  assert.equal(resolveStateId(state), 'coding');
+});
+
 test('task_executor leaf under the task loop maps to coding', () => {
   assert.equal(resolveStateId(makeState(`${TASK_PATH}.task_executor`)), 'coding');
 });

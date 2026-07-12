@@ -207,7 +207,10 @@ function normalizeFocus(focus: string | undefined, currentNodePath: string | nul
  *  1. A completed graph is `complete` regardless of node.
  *  2. A `.ct{N}.` path is `corrective` (wins over the leaf's own mapping).
  *  3. Skip-set leaves and unknown/unresolvable nodes are `fallback`.
- *  4. A mapped leaf id yields its state.
+ *  4. A mapped leaf id yields its state — except a `planning` leaf advances to
+ *     `plan-approval` once the plan-approval gate is active, so the widget
+ *     stops showing "Building Execution Plan" while the plan sits parked at
+ *     the gate.
  */
 export function resolveStateId(state: AnyProjectState, focus?: string): StateId {
   if (state.graph.status === 'completed') return 'complete';
@@ -219,7 +222,15 @@ export function resolveStateId(state: AnyProjectState, focus?: string): StateId 
   if (isCorrective) return 'corrective';
   if (node === undefined) return 'fallback';
   if (SKIP_STATE_NODE_IDS.has(leaf)) return 'fallback';
-  return NODE_ID_TO_STATE[leaf] ?? 'fallback';
+
+  const mapped = NODE_ID_TO_STATE[leaf] ?? 'fallback';
+  if (mapped === 'planning') {
+    const planGate = state.graph.nodes['plan_approval_gate'];
+    if (planGate?.kind === 'gate' && planGate.gate_active && planGate.status !== 'completed') {
+      return 'plan-approval';
+    }
+  }
+  return mapped;
 }
 
 /**
