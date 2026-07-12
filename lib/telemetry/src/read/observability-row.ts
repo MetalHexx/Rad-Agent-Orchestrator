@@ -7,7 +7,8 @@ export interface ObservabilityUsageRow {
   inputTokens: number;
   outputTokens: number;
   cacheReadTokens?: number;
-  cacheCreationTokens?: number;
+  cacheCreationTokens?: number;        // total cache-write tokens (5m + 1h)
+  cacheCreation1hTokens?: number;      // 1h-TTL subset; undefined => price all cache-write at 5m
   worktree?: string;
   // Identity fields un-stripped for per-model / -source / -agent attribution (AD-2).
   model: string;                          // always present on TelemetryRecord
@@ -30,6 +31,7 @@ export function toObservabilityUsageRow(r: TelemetryRecord): ObservabilityUsageR
   };
   if (r.cacheReadTokens !== undefined) row.cacheReadTokens = r.cacheReadTokens;
   if (r.cacheCreationTokens !== undefined) row.cacheCreationTokens = r.cacheCreationTokens;
+  if (r.cacheCreation1hTokens !== undefined) row.cacheCreation1hTokens = r.cacheCreation1hTokens;
   if (r.worktree !== undefined) row.worktree = r.worktree;
   if (r.agentType !== undefined) row.agentType = r.agentType;
   const legacy = r.pointers as { agentId?: string } | undefined;

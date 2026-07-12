@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 2 as const;
+export const SCHEMA_VERSION = 3 as const; // 3: cacheCreation1hTokens (cache-write TTL split)
 
 export type OpKind =
   | 'requirements' | 'master_plan' | 'coding' | 'code_review'
@@ -18,7 +18,8 @@ export interface TelemetryRecord {
   inputTokens: number;
   outputTokens: number;
   cacheReadTokens?: number;
-  cacheCreationTokens?: number;
+  cacheCreationTokens?: number;        // total cache-write tokens (5m + 1h)
+  cacheCreation1hTokens?: number;      // 1h-TTL subset of cacheCreationTokens; undefined => unknown (legacy rows price all at 5m)
   serverToolUse?: Record<string, number>;
   toolCalls?: { total: number; byName?: Record<string, number>; errors?: number };
   agentType?: string;

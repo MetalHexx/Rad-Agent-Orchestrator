@@ -1,12 +1,12 @@
 /**
  * Model-keyed, date-aware dollar pricing. No pricing API exists, so dollar cost
- * comes from this maintained table — verified against the pricing docs on 2026-07-09.
+ * comes from this maintained table — verified against the pricing docs on 2026-07-12.
  * Dependency-free, browser-safe (no `node:*` imports) so it can be imported as a
  * client leaf, mirroring `./effective-tokens.js`.
  */
 
 /** Recorded into snapshots as a reproducibility marker for the table version used. */
-export const PRICING_VERSION = '2026-07-09';
+export const PRICING_VERSION = '2026-07-12';
 
 export type TokenType = 'input' | 'output' | 'cacheRead' | 'cacheWrite5m' | 'cacheWrite1h';
 
@@ -16,7 +16,8 @@ export interface PricedRow {
   inputTokens: number;
   outputTokens: number;
   cacheReadTokens?: number;
-  cacheCreationTokens?: number;
+  cacheCreationTokens?: number;        // total cache-write tokens (5m + 1h)
+  cacheCreation1hTokens?: number;      // 1h-TTL subset; undefined => price all cache-write at 5m
 }
 
 type PricingFamily = 'haiku' | 'sonnet-5' | 'opus' | 'fable';
@@ -42,8 +43,10 @@ const PRICING_TABLE: Record<PricingFamily, PricingWindow[]> = {
     { effectiveFrom: '', perMTok: { input: 1, output: 5, cacheRead: 0.10, cacheWrite5m: 1.25, cacheWrite1h: 2 } },
   ],
   'sonnet-5': [
-    { effectiveFrom: '', perMTok: { input: 2, output: 10, cacheRead: 0.20, cacheWrite5m: 2.50, cacheWrite1h: 4 } },
-    { effectiveFrom: '2026-09-01', perMTok: { input: 3, output: 15, cacheRead: 0.30, cacheWrite5m: 3.75, cacheWrite1h: 6 } },
+    // List price. The $2/$10 intro discount (through 2026-08-31) is intentionally NOT
+    // applied: Claude Code's /cost bills Sonnet 5 at list rate, and a dashboard that
+    // reads below the terminal erodes trust. Rates converge when the promo ends anyway.
+    { effectiveFrom: '', perMTok: { input: 3, output: 15, cacheRead: 0.30, cacheWrite5m: 3.75, cacheWrite1h: 6 } },
   ],
   opus: [
     { effectiveFrom: '', perMTok: { input: 5, output: 25, cacheRead: 0.50, cacheWrite5m: 6.25, cacheWrite1h: 10 } },
@@ -91,19 +94,24 @@ export function priceFor(model: string, type: TokenType, at: string): number | n
 
 /**
  * Σ tokenType × priceFor(model, type, row.timestamp); null when the model is unknown
- * ("unavailable"), never a silent $0. Cache-creation tokens price at the 5-minute-TTL
- * write rate — telemetry doesn't record cache TTL and Claude Code uses the 5-min
- * ephemeral cache.
+ * ("unavailable"), never a silent $0. Cache-creation is split by TTL: the 1h subset
+ * (`cacheCreation1hTokens`) prices at the 1h write rate and the remainder at the 5m rate.
+ * Claude Code caches its stable prefix for 1h, so pricing the whole total at the 5m rate
+ * undercounts. Rows without the split (legacy / other harnesses) price entirely at 5m.
  */
 export function dollarsFor(row: PricedRow): number | null {
   const family = normalizePricingKey(row.model);
   if (!family) return null;
   const prices = pricesFor(family, row.timestamp);
   if (!prices) return null;
+  const cacheCreate = row.cacheCreationTokens ?? 0;
+  const cache1h = Math.min(cacheCreate, row.cacheCreation1hTokens ?? 0); // clamp: 1h ≤ total
+  const cache5m = cacheCreate - cache1h;
   return (
     row.inputTokens * prices.input
     + row.outputTokens * prices.output
     + (row.cacheReadTokens ?? 0) * prices.cacheRead
-    + (row.cacheCreationTokens ?? 0) * prices.cacheWrite5m
+    + cache5m * prices.cacheWrite5m
+    + cache1h * prices.cacheWrite1h
   ) / 1_000_000;
 }
