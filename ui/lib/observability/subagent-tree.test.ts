@@ -92,16 +92,49 @@ test('splits node tokens by model, accumulating per model, sorted desc (NFR-8)',
     row({ source: 'main-agent', model: 'claude-opus-4-8', outputTokens: 100 }),   // 500 eff → opus = 1000
     row({ source: 'main-agent', model: 'claude-haiku-4-5', outputTokens: 10 }),   // 50 eff  → haiku
   ]);
-  assert.deepEqual(tree.main.models, [
+  assert.deepEqual(tree.main.models.map(({ model, tokens }) => ({ model, tokens })), [
     { model: 'opus', tokens: 1000 },
     { model: 'haiku', tokens: 50 },
   ]);
 });
 
+test('accumulates newTokens (Σ cacheCreationTokens) per node', () => {
+  const tree = buildSubagentTree([
+    row({ source: 'main-agent', cacheCreationTokens: 40 }),
+    row({ source: 'main-agent', cacheCreationTokens: 10 }),
+    row({ source: 'subagent', agentType: 'coder', agentId: 'a1', cacheCreationTokens: 5 }),
+  ]);
+  assert.equal(tree.main.newTokens, 50);
+  assert.equal(tree.subagents[0].newTokens, 5);
+});
+
+test('attributes dollars per model and sums to the node total (per-model dollar split)', () => {
+  const tree = buildSubagentTree([
+    row({ source: 'main-agent', model: 'claude-opus-4-8', outputTokens: 100 }),
+    row({ source: 'main-agent', model: 'claude-opus-4-8', outputTokens: 100 }),
+    row({ source: 'main-agent', model: 'claude-haiku-4-5', outputTokens: 10 }),
+  ]);
+  const opus = tree.main.models.find((m) => m.model === 'opus')!;
+  const haiku = tree.main.models.find((m) => m.model === 'haiku')!;
+  assert.ok(opus.dollars !== null && haiku.dollars !== null, 'both known-priced models attribute a dollar figure');
+  assert.ok(opus.dollars! > haiku.dollars!, 'opus (pricier + more tokens) attributes more dollars than haiku');
+  assert.ok(Math.abs(tree.main.dollars! - (opus.dollars! + haiku.dollars!)) < 1e-9, 'node dollars sums the per-model dollars');
+});
+
+test('an unknown-priced model makes the node dollars null, never a silent $0 (Done when)', () => {
+  const tree = buildSubagentTree([
+    row({ source: 'main-agent', model: 'claude-opus-4-8', outputTokens: 10 }),
+    row({ source: 'main-agent', model: 'some-mystery-model', outputTokens: 10 }),
+  ]);
+  assert.equal(tree.main.dollars, null);
+  const mystery = tree.main.models.find((m) => m.model !== 'opus')!;
+  assert.equal(mystery.dollars, null);
+});
+
 import { freezeSubagentOrder } from './subagent-tree';
 
 test('freezeSubagentOrder keeps prior order, appends new groups in spend order (NFR-7)', () => {
-  const mk = (key: string, tokens: number) => ({ key, kind: 'group' as const, label: key, agentType: key, runCount: 1, tokens, models: [], reqs: 1, firstMs: 0, lastMs: 1 });
+  const mk = (key: string, tokens: number) => ({ key, kind: 'group' as const, label: key, agentType: key, runCount: 1, tokens, models: [], reqs: 1, firstMs: 0, lastMs: 1, newTokens: 0, dollars: 0 });
   // Frozen order saw [A, B]; current spend order is [C(new,300), B(200), A(100)].
   const current = [mk('C', 300), mk('B', 200), mk('A', 100)];
   const result = freezeSubagentOrder(current, ['A', 'B']);
@@ -109,7 +142,7 @@ test('freezeSubagentOrder keeps prior order, appends new groups in spend order (
 });
 
 test('freezeSubagentOrder with empty frozen list is identity (first turn) (NFR-7)', () => {
-  const mk = (key: string, tokens: number) => ({ key, kind: 'group' as const, label: key, agentType: key, runCount: 1, tokens, models: [], reqs: 1, firstMs: 0, lastMs: 1 });
+  const mk = (key: string, tokens: number) => ({ key, kind: 'group' as const, label: key, agentType: key, runCount: 1, tokens, models: [], reqs: 1, firstMs: 0, lastMs: 1, newTokens: 0, dollars: 0 });
   const current = [mk('B', 200), mk('A', 100)];
   assert.deepEqual(freezeSubagentOrder(current, []).map((n) => n.key), ['B', 'A']);
 });

@@ -55,11 +55,44 @@ describe('ClaudeCodeAdapter', () => {
     expect('prompt' in r || 'response' in r).toBe(false); // no bodies (NFR-8)
   });
 
-  it('skips usageIds already in the checkpoint seen-set (FR-3)', () => {
+  it('skips an already-seen single-line request but re-emits a multi-line one with its corrected final value (FR-3)', () => {
     const signal: HookEvent = { sessionId: 's1', cwd: '.', kind: 'Stop', event: 'Stop', transcriptPath: MAIN_FIXTURE };
-    const records = new ClaudeCodeAdapter().capture(signal, new Set(['req_main_1']));
-    // req_main_1 was pre-seen, so only req_main_2 survives.
-    expect(records.map((r) => r.usageId)).toEqual(['req_main_2']);
+
+    // req_main_2 is a single completed line — already final — so a seen id is skipped.
+    const skipSingle = new ClaudeCodeAdapter().capture(signal, new Set(['req_main_2']));
+    expect(skipSingle.map((r) => r.usageId)).toEqual(['req_main_1']);
+
+    // req_main_1 streamed across two lines (3 -> 98). If the partial (3) was captured and
+    // committed to seen by an earlier hook, the final sweep must re-emit it so the read-side
+    // last-wins dedupe overwrites the stale partial with the max (98).
+    const reemit = new ClaudeCodeAdapter().capture(signal, new Set(['req_main_1']));
+    expect(reemit.find((r) => r.usageId === 'req_main_1')!.outputTokens).toBe(98);
+  });
+
+  it('records the max/final output for a multi-line request whose output streams [4,4,4,347] (FR-3)', () => {
+    const file = writeTranscript([
+      asst('req_stream', 4), asst('req_stream', 4), asst('req_stream', 4), asst('req_stream', 347),
+    ]);
+    const signal: HookEvent = { sessionId: 's1', cwd: '.', kind: 'Stop', event: 'Stop', transcriptPath: file };
+    const [r] = new ClaudeCodeAdapter().capture(signal, new Set());
+    expect(r.usageId).toBe('req_stream');
+    expect(r.outputTokens).toBe(347);
+  });
+
+  it('takes the max output even when a lower partial line arrives last (FR-3)', () => {
+    const file = writeTranscript([asst('req_stream', 4), asst('req_stream', 347), asst('req_stream', 4)]);
+    const signal: HookEvent = { sessionId: 's1', cwd: '.', kind: 'Stop', event: 'Stop', transcriptPath: file };
+    const [r] = new ClaudeCodeAdapter().capture(signal, new Set());
+    expect(r.outputTokens).toBe(347);
+  });
+
+  it('re-emits the corrected final output when only a mid-stream partial was checkpointed (FR-3)', () => {
+    const file = writeTranscript([
+      asst('req_stream', 4), asst('req_stream', 4), asst('req_stream', 4), asst('req_stream', 347),
+    ]);
+    const signal: HookEvent = { sessionId: 's1', cwd: '.', kind: 'Stop', event: 'Stop', transcriptPath: file };
+    const records = new ClaudeCodeAdapter().capture(signal, new Set(['req_stream']));
+    expect(records.find((r) => r.usageId === 'req_stream')!.outputTokens).toBe(347);
   });
 
   it('SessionEnd unions distinct main + subagent usageIds with disjoint per-source tagging — fixture-backed (FR-3, NFR-5)', () => {

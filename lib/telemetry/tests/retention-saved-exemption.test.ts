@@ -4,9 +4,11 @@ import { NdjsonSink } from '../src/sink/ndjson-sink.js';
 import { pruneAgedPartitions } from '../src/retention.js';
 import { saveSession, type SavedSessionSnapshot } from '../src/saved-sessions.js';
 import { SCHEMA_VERSION, type TelemetryRecord } from '../src/types.js';
+import { PRICING_VERSION } from '../src/read/pricing.js';
 
 const SNAP: SavedSessionSnapshot = { worktree: null, model: null, startedAt: '', durationMs: 0, totalSpend: 0,
-  tokens: { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 }, toolCalls: 0, toolErrors: 0, subagents: 0, filesTouched: 0 };
+  tokens: { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 }, toolCalls: 0, toolErrors: 0, subagents: 0, filesTouched: 0,
+  harness: null, costUsd: 0, pricingVersion: PRICING_VERSION };
 function rec(id: string, session: string, day: string): TelemetryRecord {
   return { schemaVersion: SCHEMA_VERSION, harness: 'claude-code', usageId: id, sessionId: session,
     timestamp: `${day}T12:00:00Z`, model: 'm', inputTokens: 1, outputTokens: 2, source: 'subagent',

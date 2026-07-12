@@ -7,7 +7,7 @@ export interface RawUsage {
 }
 export interface RawLine {
   type?: string; isSidechain?: boolean; requestId?: string; timestamp?: string;
-  message?: { model?: string; usage?: RawUsage };
+  message?: { id?: string; model?: string; usage?: RawUsage };
 }
 
 export function readJsonl(file: string): RawLine[] {

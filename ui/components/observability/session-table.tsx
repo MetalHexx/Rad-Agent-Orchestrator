@@ -15,14 +15,14 @@ import { formatDuration } from "@/lib/observability/duration-format";
 import { sessionDuration, timeBucketedRate, rowsInWindow } from "@/lib/observability/sessions";
 import { bucketsForWindow } from "@/lib/observability/time-range";
 import type { SessionAgg } from "@/lib/observability/sessions";
-import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
+import { SPEND_LABELS, formatUsd } from "@/lib/observability/spend-display";
 import { SaveStarButton } from "./save-star-button";
 
-type SortKey = "startedMs" | "lastMs" | "spend" | "worktree" | "sessionId" | "duration";
+type SortKey = "startedMs" | "lastMs" | "spend" | "worktree" | "sessionId" | "duration" | "cost";
 type SortDir = "asc" | "desc";
 
 interface SessionTableProps {
-  sessions: SessionAgg[];
+  sessions: (SessionAgg & { cost: number | null })[];
   now: number;
   /** The shared now-anchored window (same as the Total Rate chart). When supplied, each row's
    *  scanline buckets over it so it slides/updates live; absent, it falls back to the session's
@@ -54,6 +54,8 @@ export function SessionTable({ sessions, now, rangeStart, rangeEnd, nominalWindo
         case "worktree": av = a.worktree ?? "unknown"; bv = b.worktree ?? "unknown"; break;
         case "sessionId": av = a.sessionId; bv = b.sessionId; break;
         case "duration": av = sessionDuration(a); bv = sessionDuration(b); break;
+        // Unpriced (null) sorts as the lowest value so it lands last under the default desc order.
+        case "cost": av = a.cost ?? -Infinity; bv = b.cost ?? -Infinity; break;
         default: av = a.startedMs; bv = b.startedMs;
       }
       if (av < bv) return sortDir === "asc" ? -1 : 1;
@@ -103,19 +105,20 @@ export function SessionTable({ sessions, now, rangeStart, rangeEnd, nominalWindo
     <div className="rounded-xl bg-card ring-1 ring-foreground/10 overflow-x-auto">
       <Table className="table-fixed w-full">
         <colgroup>
-          {/* table-fixed makes these widths authoritative. Identity columns flex
-              (auto) and truncate; metric columns get explicit widths sized to
-              content/header. NB: the percentage shrink-to-content trick does NOT
-              work under table-fixed (a percent width is taken literally → a sliver
-              of the table), so metric columns must carry real pixel widths. */}
+          {/* table-fixed makes these widths authoritative. Every column is sized to what its real
+              content needs (measured against live session data), not an unbounded flex column —
+              that sized value doubles as the max, so a pathological outlier still truncates
+              gracefully (title attribute) instead of stretching a column past reason. Current
+              Rate is fixed and modest: a sparkline doesn't need much room to read. */}
           <col style={{ width: "40px" }} />{/* star (DD-2) */}
           <col style={{ width: "60px" }} />{/* Activity */}
-          <col style={{ width: "auto" }} />{/* Worktree */}
-          <col style={{ width: "auto" }} />{/* Session */}
+          <col style={{ width: "660px" }} />{/* Worktree — fits real paths (measured max ~627px + padding) */}
+          <col style={{ width: "260px" }} />{/* Session — fits a full session-id UUID */}
           <col style={{ width: "176px" }} />{/* Started — full toLocaleString */}
           <col style={{ width: "96px" }} />{/* Duration */}
-          <col style={{ width: "120px" }} />{/* Total Spend */}
-          <col style={{ width: "220px" }} />{/* Current Rate (hidden < sm) — wide enough to decompress the scanline */}
+          <col style={{ width: "90px" }} />{/* Cost (USD) */}
+          <col style={{ width: "200px" }} />{/* Token Spend — wide enough for the full header */}
+          <col style={{ width: "240px" }} />{/* Current Rate (hidden < sm) — static, doesn't need more */}
         </colgroup>
         <TableHeader>
           <TableRow>
@@ -125,14 +128,8 @@ export function SessionTable({ sessions, now, rangeStart, rangeEnd, nominalWindo
             <SortableHead colKey="sessionId">Session</SortableHead>
             <SortableHead colKey="startedMs">Started</SortableHead>
             <SortableHead colKey="duration">Duration</SortableHead>
-            <SortableHead colKey="spend">
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger>Total Spend</TooltipTrigger>
-                  <TooltipContent>Cache-weighted effective tokens — a cost-shaped count, not a dollar amount.</TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </SortableHead>
+            <SortableHead colKey="cost">{SPEND_LABELS.cost}</SortableHead>
+            <SortableHead colKey="spend">Token Spend</SortableHead>
             <TableHead className="hidden sm:table-cell">Current Rate</TableHead>
           </TableRow>
         </TableHeader>
@@ -150,7 +147,10 @@ export function SessionTable({ sessions, now, rangeStart, rangeEnd, nominalWindo
                 }
               }}
             >
-              <TableCell onClick={(e) => { e.stopPropagation(); onToggleSave?.(s.sessionId); }}>
+              <TableCell
+                className="cursor-pointer"
+                onClick={(e) => { e.stopPropagation(); onToggleSave?.(s.sessionId); }}
+              >
                 <SaveStarButton saved={Boolean(savedIds?.has(s.sessionId))} onToggle={() => onToggleSave?.(s.sessionId)} />
               </TableCell>
               <TableCell className="text-center">
@@ -173,6 +173,9 @@ export function SessionTable({ sessions, now, rangeStart, rangeEnd, nominalWindo
               </TableCell>
               <TableCell className="whitespace-nowrap text-xs tabular-nums">
                 {formatDuration(sessionDuration(s))}
+              </TableCell>
+              <TableCell className="whitespace-nowrap text-sm font-semibold tabular-nums">
+                {formatUsd(s.cost)}
               </TableCell>
               <TableCell className="whitespace-nowrap text-sm font-semibold tabular-nums">
                 {humanizeTokens(s.spend)}

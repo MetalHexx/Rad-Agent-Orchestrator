@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import type { ObservabilityUsageRow } from "@rad-orchestration/telemetry";
 import { cn } from "@/lib/utils";
 import { ModalShell } from "@/components/modal/modal-shell";
 import { FacetTabs } from "./facet-tabs";
@@ -64,6 +65,9 @@ export interface AgentInspectorModalProps {
   /** transcriptId → display label from the breakdown table (authoritative numbering,
    *  e.g. 'coder 1', 'Main Agent'). Keeps the modal's title + chips in lockstep with the table. */
   labels?: Map<string, string>;
+  /** The inspected agent's deduped harvested-usage rows — the single source (R8) OverviewFacet's
+   *  spend cards derive from, so the modal agrees with the session-view row by construction. */
+  rows?: ObservabilityUsageRow[];
   /** Call when the user changes the active agent (chip or prev/next). */
   onSelectAgent: (transcriptId: string) => void;
   onClose: () => void;
@@ -73,7 +77,7 @@ export interface AgentInspectorModalProps {
 }
 
 export function AgentInspectorModal({
-  sessionId, agentId, labels, onSelectAgent, onClose, isFullScreen, onToggleFullScreen, dataState = "open",
+  sessionId, agentId, labels, rows = [], onSelectAgent, onClose, isFullScreen, onToggleFullScreen, dataState = "open",
 }: AgentInspectorModalProps) {
   const { navList } = useSessionAgents(sessionId);
   const { transcript, activeFacet, setActiveFacet, prevId, nextId } = useAgentInspector(
@@ -140,7 +144,7 @@ export function AgentInspectorModal({
             {transcript != null ? (
               /* Raw transcript view — shown when transcript is present (FR-9) */
               activeFacet === 'overview' ? (
-                <OverviewFacet transcript={transcript} />
+                <OverviewFacet transcript={transcript} rows={rows} />
               ) : activeFacet === 'transcript' ? (
                 // Keyed by agentId so the scroller (and its useStickToBottom
                 // instance) remounts fresh on every agent switch — otherwise

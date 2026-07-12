@@ -21,8 +21,9 @@ export function SaveStarButton({ saved, busy, onToggle }: SaveStarButtonProps) {
       disabled={busy}
       onClick={onToggle}
       className={cn(
+        "cursor-pointer",
         saved
-          ? "text-[var(--live)] hover:text-destructive hover:bg-destructive/10"
+          ? "text-[var(--live)] hover:text-[var(--live)]"
           : "text-muted-foreground hover:text-[var(--live)]"
       )}
     >

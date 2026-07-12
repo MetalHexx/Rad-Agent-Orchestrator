@@ -23,7 +23,6 @@ import { readRangeState, writeRangeState, type RangeState } from "@/lib/time-ran
 import { useTimeRangeWindow } from "@/hooks/use-time-range-window";
 import { useSpendRateChart } from "@/hooks/use-spend-rate-chart";
 import { useUrlViewState } from "@/hooks/use-url-view-state";
-import { useSessionAgents } from "@/hooks/use-agent-inspector";
 import { SaveStarButton } from "@/components/observability/save-star-button";
 import { fetchIsSaved, saveSession, unsaveSession } from "@/lib/observability/saved-client";
 
@@ -134,9 +133,18 @@ export function SessionDetailView({ sessionId }: { sessionId: string }) {
   };
 
   // Agent Inspector wiring (FR-3, FR-4, AD-7).
-  const { availableIds } = useSessionAgents(sessionId);
   const [inspectId, setInspectId] = React.useState<string | null>(null);
   const [isFullScreen, setIsFullScreen] = React.useState(false);
+
+  // The inspected agent's harvested rows — the single source (R8) the modal's spend cards derive
+  // from, so they agree with the session-view row by construction. Main agent's transcriptId is the
+  // sessionId (see rowTranscriptId); every other agent is keyed by its own agentId.
+  const inspectedAgentRows = React.useMemo(() => {
+    if (!inspectId) return [];
+    return inspectId === sessionId
+      ? windowRows.filter((r) => r.source === 'main-agent')
+      : windowRows.filter((r) => r.agentId === inspectId);
+  }, [windowRows, inspectId, sessionId]);
 
   return (
     <>
@@ -165,9 +173,7 @@ export function SessionDetailView({ sessionId }: { sessionId: string }) {
           <>
             <SpendRateChart data={chart.data} series={chart.series} title="Token Spend Rate · This Session" rangeStart={rangeStart} rangeEnd={rangeEnd} ready={ready} />
             {session && <SessionSummaryCards session={windowedSession!} />}
-            {session && (
-              <TokenBreakdown {...sumRawTokens(windowedSession!.rows)} spend={windowedSession!.spend} />
-            )}
+            {session && <TokenBreakdown {...sumRawTokens(windowedSession!.rows)} />}
             {session && (
               <AgentTree
                 tree={subagentTree}
@@ -176,7 +182,6 @@ export function SessionDetailView({ sessionId }: { sessionId: string }) {
                 ready={ready}
                 now={now}
                 sessionId={sessionId}
-                availableIds={availableIds}
                 onInspect={setInspectId}
               />
             )}
@@ -187,6 +192,7 @@ export function SessionDetailView({ sessionId }: { sessionId: string }) {
             sessionId={sessionId}
             agentId={inspectId}
             labels={agentLabels}
+            rows={inspectedAgentRows}
             onSelectAgent={setInspectId}
             onClose={() => setInspectId(null)}
             isFullScreen={isFullScreen}

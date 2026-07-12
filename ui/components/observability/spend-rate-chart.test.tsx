@@ -29,9 +29,9 @@ test('each Area has a hard stroke over a per-series soft-fade gradient fill (reg
   assert.ok(/stopOpacity=\{0\}/.test(src), 'bottom stop fades fully to transparent');
 });
 
-test('default view is total-only — visibility is an opt-in `shown` set seeded total-only (FR-4)', () => {
-  assert.ok(/DEFAULT_SHOWN_KEYS/.test(src), 'seeds the opt-in set from DEFAULT_SHOWN_KEYS (total-only)');
-  assert.ok(/hide=\{!shown\.has\(/.test(src), "each Area's hide is driven by the opt-in `shown` set");
+test('default view shows every model line — visibility is an opt-OUT `hidden` set seeded empty (FR-4)', () => {
+  assert.ok(/DEFAULT_HIDDEN_KEYS/.test(src), 'seeds the hidden set from DEFAULT_HIDDEN_KEYS (empty — nothing hidden)');
+  assert.ok(/hide=\{hidden\.has\(/.test(src), "each Area's hide is driven by the opt-out `hidden` set");
 });
 
 test('legend click toggles series via onClick(dataKey) + inactive greying (FR-5, AD-4, DD-3)', () => {
@@ -51,21 +51,21 @@ test('Y axis fits the visible series tightly via niceAxis (FR-5, FR-3)', () => {
   assert.ok(!/niceMax\(/.test(src), 'no longer uses the coarse niceMax round-up directly');
 });
 
-test('per-model lines never flash: visibility is derived at render, not patched by a post-paint effect (FR-4, FR-7)', () => {
-  // The bug was a [series]-keyed effect that pushed late-arriving keys into a `hidden` set AFTER
-  // paint, so model lines flashed in for one frame on load. Visibility is now a pure render-time
-  // function of (series, shown) via visibleSeriesKeys — late / live-tail models are hidden on
-  // their very first frame, so there is no flash.
+test('newly-arrived model lines never flash hidden: visibility is derived at render, not patched by a post-paint effect (FR-4, FR-7)', () => {
+  // A [series]-keyed effect that re-seeded `hidden` AFTER paint would risk a late-arriving model
+  // flashing hidden for one frame before showing. Visibility is instead a pure render-time
+  // function of (series, hidden) via visibleSeriesKeys — a live-tail model that first appears is
+  // absent from `hidden` (which only grows from an explicit legend click), so it renders visible
+  // on its very first frame.
   assert.ok(/visibleSeriesKeys\(/.test(src), 'derives the visible keys via the pure visibleSeriesKeys helper at render');
-  assert.ok(!/setHidden\(/.test(src), 'no post-paint setHidden re-seed (the old flash source) remains');
-  assert.ok(!/}\s*,\s*\[\s*series\s*\]\s*\)/.test(src), 'no [series]-keyed effect re-hides keys after mount');
+  assert.ok(!/}\s*,\s*\[\s*series\s*\]\s*\)/.test(src), 'no [series]-keyed effect re-derives hidden state after mount');
 });
 
-test('models the user opted in are tracked in a `shown` state, not re-derived from series (FR-4, FR-7)', () => {
-  // Opt-ins live in component state that only changes on a legend click, so a later live-tail
-  // series update neither drops a user-shown model nor auto-shows a newly-arrived one.
-  assert.ok(/setShown\(/.test(src), 'legend toggle flips membership in the `shown` opt-in state');
-  assert.ok(/useState<Set<string>>/.test(src), 'the opt-in set is component state (survives re-renders)');
+test('models the user hides are tracked in a `hidden` state, not re-derived from series (FR-4, FR-7)', () => {
+  // Hides live in component state that only changes on a legend click, so a later live-tail
+  // series update neither un-hides a user-hidden model nor hides a newly-arrived one.
+  assert.ok(/setHidden\(/.test(src), 'legend toggle flips membership in the `hidden` opt-out state');
+  assert.ok(/useState<Set<string>>/.test(src), 'the hidden set is component state (survives re-renders)');
 });
 
 test('chart holds until data is ready, then fades in — no flat-axis flash on load (smooth-load)', () => {

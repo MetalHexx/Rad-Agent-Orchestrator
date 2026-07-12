@@ -1,6 +1,7 @@
 import type { SavedSessionSnapshot } from "@rad-orchestration/telemetry";
 import { humanizeTokens } from "@/lib/observability/format";
 import { formatDuration } from "@/lib/observability/duration-format";
+import { formatUsd } from "@/lib/observability/spend-display";
 
 export type MetricDirection = "lower-better" | "neutral";
 export interface Delta { pct: number | null; improved: boolean | null; }
@@ -23,7 +24,8 @@ export interface MetricSpec {
 }
 /** Every captured metric, in report order. Spend/duration/tools/tokens are lower-better; model is neutral. (DD-6, DD-7) */
 export const METRICS: MetricSpec[] = [
-  { key: "totalSpend", label: "Total Spend", direction: "lower-better", get: (s) => s.totalSpend, format: humanizeTokens },
+  { key: "totalSpend", label: "Total Spend (weighted)", direction: "lower-better", get: (s) => s.totalSpend, format: humanizeTokens },
+  { key: "costUsd", label: "Cost (USD)", direction: "lower-better", get: (s) => s.costUsd ?? null, format: (v) => formatUsd(v) },
   { key: "durationMs", label: "Duration", direction: "lower-better", get: (s) => s.durationMs, format: formatDuration },
   { key: "toolCalls", label: "Tool Calls", direction: "lower-better", get: (s) => s.toolCalls },
   { key: "toolErrors", label: "Tool Errors", direction: "lower-better", get: (s) => s.toolErrors },

@@ -14,6 +14,7 @@ const MODEL_COLOR_MAP: Record<string, ModelToken> = {
   opus: "--model-red",
   sonnet: "--model-amber",   // the execution yellowy-orange hue
   haiku: "--model-green",
+  fable: "--model-purple",
 };
 
 /** Resolve a harness-specific model id to a stable slot key (DD-2). @internal — exported for unit tests; production code uses `modelColor()`. */
@@ -22,6 +23,7 @@ export function normalizeModel(raw: string): string {
   if (m.includes("opus")) return "opus";
   if (m.includes("sonnet")) return "sonnet";
   if (m.includes("haiku")) return "haiku";
+  if (m.includes("fable")) return "fable";
   return m;
 }
 

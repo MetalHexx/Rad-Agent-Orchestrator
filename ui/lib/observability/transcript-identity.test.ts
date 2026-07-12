@@ -4,7 +4,8 @@ import { rowTranscriptId, isInspectable, numberedAgentLabels } from './transcrip
 import type { AgentTreeNode, SubagentTree } from './subagent-tree';
 
 const tn = (p: Partial<AgentTreeNode>): AgentTreeNode => ({
-  key: 'k', kind: 'run', label: 'l', runCount: 1, tokens: 0, models: [], reqs: 0, firstMs: 0, lastMs: 0, ...p,
+  key: 'k', kind: 'run', label: 'l', runCount: 1, tokens: 0, models: [], reqs: 0, firstMs: 0, lastMs: 0,
+  newTokens: 0, dollars: 0, ...p,
 });
 
 test('main resolves to the session id (FR-5)', () => {

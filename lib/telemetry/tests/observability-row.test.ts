@@ -13,6 +13,7 @@ it('carries the four identity fields (model, source, agentType, agentId) alongsi
     sessionId: 's1', usageId: 'u1', timestamp: '2026-06-17T00:00:00Z',
     inputTokens: 1, outputTokens: 2, cacheReadTokens: 3, cacheCreationTokens: 4, worktree: 'C:\\r',
     model: 'claude-opus-4-8', source: 'subagent', agentType: 'coder', agentId: 'a_42',
+    harness: 'claude-code',
   });
   expect('pointers' in row).toBe(false);
   expect('schemaVersion' in row).toBe(false);

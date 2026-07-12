@@ -14,6 +14,7 @@ export interface ObservabilityUsageRow {
   source: 'main-agent' | 'subagent';      // always present
   agentType?: string;                     // optional (present => a subagent row)
   agentId?: string;                       // optional — lifted top-level field; legacy rows fall back to pointers.agentId
+  harness: string;                        // always present — attribution axis, independent of model/pricing
 }
 
 export function toObservabilityUsageRow(r: TelemetryRecord): ObservabilityUsageRow {
@@ -25,6 +26,7 @@ export function toObservabilityUsageRow(r: TelemetryRecord): ObservabilityUsageR
     outputTokens: r.outputTokens,
     model: r.model,
     source: r.source,
+    harness: r.harness,
   };
   if (r.cacheReadTokens !== undefined) row.cacheReadTokens = r.cacheReadTokens;
   if (r.cacheCreationTokens !== undefined) row.cacheCreationTokens = r.cacheCreationTokens;

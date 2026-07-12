@@ -1,5 +1,4 @@
 import type { RehypeShikiOptions } from '@shikijs/rehype';
-import { codeToHtml } from 'shiki';
 
 /**
  * Returns the options object for @shikijs/rehype.
@@ -21,6 +20,7 @@ export function getShikiRehypeOptions(): RehypeShikiOptions {
  * Returns highlighted HTML with dual-theme CSS variables.
  */
 export async function highlightCode(code: string, lang: string): Promise<string> {
+  const { codeToHtml } = await import('shiki');
   try {
     return await codeToHtml(code, {
       lang,

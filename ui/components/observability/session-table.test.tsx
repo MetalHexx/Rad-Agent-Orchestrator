@@ -15,13 +15,13 @@ const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 const sessionTableSource = fs.readFileSync(path.join(__dirname, 'session-table.tsx'), 'utf8');
 
 const sessions = [
-  { sessionId: 'sess-1111aaaa', worktree: 'C:\\dev\\orchestration\\v3', startedMs: Date.parse('2026-06-18T10:00:00Z'), lastMs: Date.parse('2026-06-18T11:23:00Z'), spend: 1_230_000, rows: [] },
-  { sessionId: 'sess-2222bbbb', worktree: undefined, startedMs: Date.parse('2026-06-18T09:00:00Z'), lastMs: Date.parse('2026-06-18T09:12:00Z'), spend: 5_000, rows: [] },
+  { sessionId: 'sess-1111aaaa', worktree: 'C:\\dev\\orchestration\\v3', startedMs: Date.parse('2026-06-18T10:00:00Z'), lastMs: Date.parse('2026-06-18T11:23:00Z'), spend: 1_230_000, cost: 3.21, rows: [] },
+  { sessionId: 'sess-2222bbbb', worktree: undefined, startedMs: Date.parse('2026-06-18T09:00:00Z'), lastMs: Date.parse('2026-06-18T09:12:00Z'), spend: 5_000, cost: null, rows: [] },
 ];
 
 test('renders the exact column headers in order (FR-7, DD-5)', () => {
   const html = renderToStaticMarkup(createElement(SessionTable, { sessions, now: Date.parse('2026-06-18T11:30:00Z') }));
-  const order = ['Activity', 'Worktree', 'Session', 'Started', 'Duration', 'Total Spend', 'Current Rate'];
+  const order = ['Activity', 'Worktree', 'Session', 'Started', 'Duration', 'Cost', 'Token Spend', 'Current Rate'];
   let last = -1;
   for (const h of order) { const i = html.indexOf(h); assert.ok(i > last, `header ${h} present and ordered`); last = i; }
   assert.ok(!html.includes('Status') && !html.includes('Model'), 'no Status or Model column (DD-5)');
@@ -34,23 +34,31 @@ test('absent worktree renders "unknown"; spend is humanized; default sort is new
   assert.ok(html.indexOf('sess-1111aaaa') < html.indexOf('sess-2222bbbb'), 'newest started first');
 });
 
-test('Total Spend column header carries an explanatory tooltip (FR-14, DD-10)', () => {
+test('Cost column renders per-session dollars, "price unavailable" for an unpriced session (FR-4)', () => {
+  const html = renderToStaticMarkup(createElement(SessionTable, { sessions, now: Date.parse('2026-06-18T11:30:00Z') }));
+  assert.ok(html.includes('$3.21'), 'priced session shows its dollar figure');
+  assert.ok(html.includes('price unavailable'), 'unpriced session shows unavailable, never $0');
+});
+
+test('the Cost column is wired into the sort comparator (SortKey + switch case)', () => {
+  // Rendering can't exercise the click-to-sort interaction under SSR (renderToStaticMarkup has no
+  // event handlers), so — consistent with this file's other wiring checks — assert the comparator
+  // itself sorts by cost, with unpriced (null) sessions sorting as the lowest value.
+  assert.match(sessionTableSource, /"startedMs"\s*\|\s*"lastMs"\s*\|\s*"spend"[\s\S]*?"cost"/, '"cost" is a recognized SortKey');
   assert.match(
     sessionTableSource,
-    /from\s*["']@\/components\/ui\/tooltip["']/,
-    "session-table imports from the house tooltip module"
+    /case\s*"cost":\s*av\s*=\s*a\.cost\s*\?\?\s*-Infinity;\s*bv\s*=\s*b\.cost\s*\?\?\s*-Infinity;/,
+    'cost sort comparator treats an unpriced session as the lowest value'
   );
-  assert.ok(
-    sessionTableSource.includes('TooltipTrigger') && sessionTableSource.includes('TooltipContent'),
-    "session-table uses TooltipTrigger and TooltipContent"
-  );
-  // The Total Spend column header must be enclosed by TooltipTrigger/TooltipContent
-  // Find the block around the JSX 'Total Spend' literal and check it's wrapped
-  assert.match(
-    sessionTableSource,
-    /TooltipTrigger[\s\S]{0,200}Total Spend[\s\S]{0,200}TooltipContent/,
-    "Total Spend header text is enclosed by TooltipTrigger/TooltipContent"
-  );
+});
+
+test('column headers carry no tooltips, so the pointer cursor covers the whole header, not just the text (FR-14)', () => {
+  assert.ok(!sessionTableSource.includes('Tooltip'), 'session-table does not import or render any Tooltip primitive');
+  const html = renderToStaticMarkup(createElement(SessionTable, { sessions, now: Date.parse('2026-06-18T11:30:00Z') }));
+  assert.ok(!html.includes('data-slot="tooltip'), 'no tooltip markup renders in the header row');
+  // The sortable headers' cursor-pointer is applied to the <th> itself, so hovering anywhere in the
+  // cell (not just over the text) shows the hand icon.
+  assert.match(sessionTableSource, /className="cursor-pointer select-none"/, 'SortableHead applies cursor-pointer to the whole <th>');
 });
 
 test('Activity column is centered and columns use a fixed colgroup layout (DD-7, DD-8)', () => {
@@ -60,14 +68,19 @@ test('Activity column is centered and columns use a fixed colgroup layout (DD-7,
   assert.ok(!html.includes('max-w-[160px]') && !html.includes('max-w-[120px]'), 'identity columns no longer hard-capped');
 });
 
-test('metric columns carry explicit widths, not the broken width:1% trick (table-fixed)', () => {
+test('metric columns carry explicit pixel widths, not the broken width:1% trick (table-fixed)', () => {
   // Under table-layout:fixed, width:1% is taken literally (~15px), collapsing the
   // metric columns. They must use explicit pixel widths instead. Regression guard.
   assert.ok(!/width:\s*["']?1%/.test(sessionTableSource), 'no metric column uses the width:1% trick');
   assert.match(sessionTableSource, /width:\s*["']?176px/, 'Started column has an explicit pixel width');
-  assert.match(sessionTableSource, /width:\s*["']?120px/, 'Total Spend column has an explicit pixel width');
-  // identity columns still flex
-  assert.match(sessionTableSource, /width:\s*["']?auto/, 'identity columns remain auto-width (flex + truncate)');
+  assert.match(sessionTableSource, /width:\s*["']?200px/, 'Token Spend column has an explicit pixel width');
+  assert.match(sessionTableSource, /width:\s*["']?260px/, 'Session column has an explicit pixel width');
+  assert.match(sessionTableSource, /width:\s*["']?660px/, 'Worktree column is sized to fit real paths (measured), not an arbitrary small cap');
+  // Current Rate is now a fixed, modest width — a sparkline chart doesn't need to flex, and
+  // giving it a static size keeps it from soaking up leftover space (past regression).
+  assert.match(sessionTableSource, /width:\s*["']?240px/, 'Current Rate has a fixed, modest pixel width');
+  assert.ok(!/width:\s*["']?auto/.test(sessionTableSource), 'no column is left as an unbounded auto-width flex column');
+  assert.match(sessionTableSource, /<Table className="[^"]*\bw-full\b/, 'the table fills the card (w-full)');
 });
 
 test('Current Rate column is hidden below the sm breakpoint (DD-10, FR-8)', () => {

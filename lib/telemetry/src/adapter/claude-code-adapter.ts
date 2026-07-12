@@ -26,17 +26,37 @@ export class ClaudeCodeAdapter implements HarnessAdapter {
 
   capture(signal: CaptureSignal, seen: Set<string>): TelemetryRecord[] {
     const ev = signal as HookEvent;
-    const byKey = new Map<string, { line: RawLine; file: string; source: Source; identity?: SubagentIdentity }>();
+    const byKey = new Map<string, { line: RawLine; file: string; source: Source; identity?: SubagentIdentity; lines: number }>();
     for (const { file, source, identity } of this.sourcesFor(ev)) {
       for (const line of readJsonl(file)) {
         if (line.type !== 'assistant' || (source !== 'subagent' && line.isSidechain)) continue; // skip sidechain only in the main sweep; subagent transcripts are entirely sidechain (FR-3)
         if (!line.message?.usage || !line.requestId) continue;
         const id = this.identity(line);
-        if (seen.has(id)) continue;
-        byKey.set(id, { line, file, source, identity }); // last line per usageId wins — the complete one (FR-3)
+        const prev = byKey.get(id);
+        // output_tokens grows across a request's streamed lines; take the max/final
+        // (>= keeps the later line on a tie, so the terminal line's cache_creation wins)
+        // rather than merely last-wins, so a lower late line can never demote the total.
+        if (!prev) {
+          byKey.set(id, { line, file, source, identity, lines: 1 });
+        } else {
+          prev.lines += 1;
+          if ((line.message.usage.output_tokens ?? 0) >= (prev.line.message!.usage!.output_tokens ?? 0)) {
+            Object.assign(prev, { line, file, source, identity });
+          }
+        }
       }
     }
-    return [...byKey.values()].map(({ line, file, source, identity }) => this.toRecord(ev, line, file, source, identity));
+    // Emit un-seen requests, plus already-seen requests that streamed across more than one
+    // line here: those are the only ones whose persisted value could still be a mid-stream
+    // partial committed in an earlier hook invocation. Re-emitting them with the corrected
+    // max lets the read-side last-wins dedupe (usage-reader) resolve to the final output. A
+    // single-line seen request is already final — skipping it keeps the sweep idempotent.
+    const records: TelemetryRecord[] = [];
+    for (const [id, v] of byKey) {
+      if (seen.has(id) && v.lines < 2) continue;
+      records.push(this.toRecord(ev, v.line, v.file, v.source, v.identity));
+    }
+    return records;
   }
 
   private sourcesFor(ev: HookEvent): { file: string; source: Source; identity?: SubagentIdentity }[] {

@@ -7,6 +7,7 @@ import { humanizeTokens } from "@/lib/observability/format";
 import { formatDuration } from "@/lib/observability/duration-format";
 import { computeDelta, METRICS } from "@/lib/observability/comparison";
 import type { Delta, MetricSpec } from "@/lib/observability/comparison";
+import { formatUsd } from "@/lib/observability/spend-display";
 
 export interface ComparisonReportProps {
   baseline: SavedSession;
@@ -180,17 +181,27 @@ export function ComparisonReport({ baseline, candidate }: ComparisonReportProps)
   const bs = baseline.snapshot;
   const cs = candidate.snapshot;
 
-  // Delta hero: Total Spend, Duration, Tool Errors
+  // Delta hero: Cost (USD), Total Spend (weighted), Duration
+  const bCost = bs.costUsd;
+  const cCost = cs.costUsd;
+  const costDelta: Delta = (bCost == null || cCost == null)
+    ? { pct: null, improved: null }
+    : computeDelta(bCost, cCost, "lower-better");
   const spendDelta = computeDelta(bs.totalSpend, cs.totalSpend, "lower-better");
   const durationDelta = computeDelta(bs.durationMs, cs.durationMs, "lower-better");
-  const errorsDelta = computeDelta(bs.toolErrors, cs.toolErrors, "lower-better");
 
   return (
     <div className="flex flex-col gap-6 p-4">
       {/* Delta hero — moved to the top of the report */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <DeltaHeroTile
-          label="Total Spend"
+          label="Cost (USD)"
+          baselineValue={formatUsd(bCost)}
+          candidateValue={formatUsd(cCost)}
+          delta={costDelta}
+        />
+        <DeltaHeroTile
+          label="Total Spend (weighted)"
           baselineValue={humanizeTokens(bs.totalSpend)}
           candidateValue={humanizeTokens(cs.totalSpend)}
           delta={spendDelta}
@@ -200,12 +211,6 @@ export function ComparisonReport({ baseline, candidate }: ComparisonReportProps)
           baselineValue={formatDuration(bs.durationMs)}
           candidateValue={formatDuration(cs.durationMs)}
           delta={durationDelta}
-        />
-        <DeltaHeroTile
-          label="Tool Errors"
-          baselineValue={String(bs.toolErrors)}
-          candidateValue={String(cs.toolErrors)}
-          delta={errorsDelta}
         />
       </div>
 

@@ -41,6 +41,11 @@ describe('functional: halt -> resume + restart durability', () => {
     await daemon.teardown();
   });
 
+  // This scenario is the one functional test that pays for a full daemon restart plus two
+  // `driveToQuiescence` cycles and two SSE `waitForQuiet` windows in sequence — it ran at
+  // 4.8s/5s (vitest's default `testTimeout`) even in a clean CI run, so it flaked under any
+  // extra runner load. The other functional tests stay well under a second; only this one
+  // needs the wider budget.
   it('halts recoverably, survives a hard kill + reopen on the same DB file with byte-identical state, then resumes to done', async () => {
     const project = 'halt-resume';
     await seed(daemon.baseUrl(), project, phaseChainThroughReviewSeedSteps());
@@ -103,5 +108,5 @@ describe('functional: halt -> resume + restart durability', () => {
     } finally {
       postResumeSse?.close();
     }
-  });
+  }, 15_000);
 });

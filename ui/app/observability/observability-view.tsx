@@ -10,6 +10,7 @@ import { SessionTable } from "@/components/observability/session-table";
 import { ObservabilitySubHeader } from "@/components/observability/observability-sub-header";
 import { deriveSessions, rowsInWindow, rowsSince } from "@/lib/observability/sessions";
 import { sessionSpendInRange } from "@/lib/observability/session-spend";
+import { spendReceipt } from "@/lib/observability/spend-display";
 import { countActiveNow } from "@/lib/observability/live-active";
 import { fitToSession } from "@/lib/observability/fit-to-session";
 import { retentionFloorMs } from "@/lib/time-range/range";
@@ -91,8 +92,14 @@ export function ObservabilityView() {
   // inherits from `windowedRows` (rowsSince). Session membership/order and each row's own
   // `.rows` stay untouched — only the displayed `spend` figure is overridden — so the table
   // and summary tiles agree with session-detail for the same session and range (AD-6).
+  // `cost` rides alongside as a compute-on-read dollar figure over the same windowed rows
+  // (R3 — no frozen figure is read here), at current prices via spendReceipt.
   const reconciledSessions = React.useMemo(
-    () => filteredSessions.map((s) => ({ ...s, spend: sessionSpendInRange(s.rows, s.sessionId, rangeStart, rangeEnd) })),
+    () => filteredSessions.map((s) => ({
+      ...s,
+      spend: sessionSpendInRange(s.rows, s.sessionId, rangeStart, rangeEnd),
+      cost: spendReceipt(rowsInWindow(s.rows, rangeStart, rangeEnd)).dollars,
+    })),
     [filteredSessions, rangeStart, rangeEnd]
   );
 
