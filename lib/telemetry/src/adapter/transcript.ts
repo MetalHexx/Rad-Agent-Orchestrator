@@ -4,6 +4,11 @@ import path from 'node:path';
 export interface RawUsage {
   input_tokens?: number; output_tokens?: number;
   cache_read_input_tokens?: number; cache_creation_input_tokens?: number;
+  // Claude Code splits cache-creation by TTL. `cache_creation_input_tokens` is the
+  // total (5m + 1h); the nested object carries the breakdown. We keep the total on the
+  // record and lift the 1h portion so the read side can price it at the 1h write rate
+  // (Claude Code caches its stable prefix for 1h — the flat field alone loses that).
+  cache_creation?: { ephemeral_5m_input_tokens?: number; ephemeral_1h_input_tokens?: number };
 }
 export interface RawLine {
   type?: string; isSidechain?: boolean; requestId?: string; timestamp?: string;

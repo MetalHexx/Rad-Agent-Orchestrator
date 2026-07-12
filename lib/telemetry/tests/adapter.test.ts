@@ -55,6 +55,31 @@ describe('ClaudeCodeAdapter', () => {
     expect('prompt' in r || 'response' in r).toBe(false); // no bodies (NFR-8)
   });
 
+  it('lifts the 1h cache-write subset from the nested cache_creation object (TTL split)', () => {
+    const file = writeTranscript([{
+      type: 'assistant', requestId: 'req_ttl', timestamp: '2026-07-12T00:00:00Z',
+      message: { model: 'claude-opus-4-8', usage: {
+        input_tokens: 2, output_tokens: 40, cache_read_input_tokens: 0,
+        cache_creation_input_tokens: 54852,
+        cache_creation: { ephemeral_5m_input_tokens: 0, ephemeral_1h_input_tokens: 54852 },
+      } },
+    }]);
+    const signal: HookEvent = { sessionId: 's1', cwd: '.', kind: 'Stop', event: 'Stop', transcriptPath: file };
+    const [r] = new ClaudeCodeAdapter().capture(signal, new Set());
+    expect(r.cacheCreationTokens).toBe(54852);      // total (unchanged)
+    expect(r.cacheCreation1hTokens).toBe(54852);    // full 1h subset lifted from the nested object
+  });
+
+  it('leaves cacheCreation1hTokens undefined when the transcript omits the nested breakdown (legacy back-compat)', () => {
+    const file = writeTranscript([asst('req_flat', 7, {
+      message: { model: 'claude-opus-4-8', usage: { input_tokens: 5, output_tokens: 7, cache_read_input_tokens: 10, cache_creation_input_tokens: 100 } },
+    })]);
+    const signal: HookEvent = { sessionId: 's1', cwd: '.', kind: 'Stop', event: 'Stop', transcriptPath: file };
+    const [r] = new ClaudeCodeAdapter().capture(signal, new Set());
+    expect(r.cacheCreationTokens).toBe(100);
+    expect(r.cacheCreation1hTokens).toBeUndefined(); // no nested object ⇒ unknown ⇒ read side prices all at 5m
+  });
+
   it('skips an already-seen single-line request but re-emits a multi-line one with its corrected final value (FR-3)', () => {
     const signal: HookEvent = { sessionId: 's1', cwd: '.', kind: 'Stop', event: 'Stop', transcriptPath: MAIN_FIXTURE };
 

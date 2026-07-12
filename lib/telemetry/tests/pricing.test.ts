@@ -106,3 +106,57 @@ describe('dollarsFor', () => {
     expect(dollarsFor(r)).toBeCloseTo(effectiveTokens(r) * inputPrice, 6);
   });
 });
+
+describe('cache-write TTL split (1h vs 5m)', () => {
+  const MODEL = 'claude-opus-4-8-20260101';
+  const AT = '2026-07-11';
+
+  it('prices the 1h subset at the 1h rate and the remainder at the 5m rate', () => {
+    // 1,000,000 cache-creation tokens, 600k of them 1-hour writes.
+    const r: PricedRow = {
+      model: MODEL, timestamp: AT, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0,
+      cacheCreationTokens: 1_000_000, cacheCreation1hTokens: 600_000,
+    };
+    const write5m = priceFor(MODEL, 'cacheWrite5m', AT)!;
+    const write1h = priceFor(MODEL, 'cacheWrite1h', AT)!;
+    const expected = 400_000 * write5m + 600_000 * write1h;
+    expect(dollarsFor(r)).toBeCloseTo(expected, 9);
+  });
+
+  it('prices an all-1h cache-write row strictly higher than the all-5m default (the undercount fix)', () => {
+    const base = { model: MODEL, timestamp: AT, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 1_000_000 };
+    const all5m: PricedRow = { ...base };                                // legacy: no split → all 5m
+    const all1h: PricedRow = { ...base, cacheCreation1hTokens: 1_000_000 };
+    expect(dollarsFor(all1h)! > dollarsFor(all5m)!).toBe(true);
+    // Opus: 1h write $10/MTok vs 5m $6.25/MTok → 1.6× more for the cache-creation line.
+    expect(dollarsFor(all1h)!).toBeCloseTo(10, 6);
+    expect(dollarsFor(all5m)!).toBeCloseTo(6.25, 6);
+  });
+
+  it('effectiveTokens weights the 1h subset at 2x and the remainder at 1.25x', () => {
+    const r = {
+      inputTokens: 0, outputTokens: 0, cacheReadTokens: 0,
+      cacheCreationTokens: 1_000_000, cacheCreation1hTokens: 600_000,
+    };
+    expect(effectiveTokens(r)).toBeCloseTo(400_000 * 1.25 + 600_000 * 2, 6);
+  });
+
+  it('keeps the effectiveTokens×inputRate == dollarsFor identity exact even with 1h writes present', () => {
+    const r: PricedRow = {
+      model: MODEL, timestamp: AT, inputTokens: 123, outputTokens: 456, cacheReadTokens: 7_890,
+      cacheCreationTokens: 1_000_000, cacheCreation1hTokens: 1_000_000,
+    };
+    const inputPrice = priceFor(MODEL, 'input', AT)!;
+    expect(dollarsFor(r)).toBeCloseTo(effectiveTokens(r) * inputPrice, 9);
+  });
+
+  it('clamps a 1h count that exceeds the total (never a negative 5m share)', () => {
+    const r: PricedRow = {
+      model: MODEL, timestamp: AT, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0,
+      cacheCreationTokens: 1_000_000, cacheCreation1hTokens: 5_000_000, // malformed: 1h > total
+    };
+    const write1h = priceFor(MODEL, 'cacheWrite1h', AT)!;
+    expect(dollarsFor(r)).toBeCloseTo(1_000_000 * write1h, 6); // clamped to the total, all at 1h
+    expect(effectiveTokens(r)).toBeCloseTo(1_000_000 * 2, 6);
+  });
+});

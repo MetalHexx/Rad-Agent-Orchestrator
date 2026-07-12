@@ -113,6 +113,9 @@ export class ClaudeCodeAdapter implements HarnessAdapter {
       outputTokens: u.output_tokens ?? 0,
       cacheReadTokens: u.cache_read_input_tokens,
       cacheCreationTokens: u.cache_creation_input_tokens,
+      // 1h-TTL subset of the cache-write total; undefined when the harness omits the
+      // nested breakdown (older transcripts), which the read side treats as all-5m.
+      cacheCreation1hTokens: u.cache_creation?.ephemeral_1h_input_tokens,
       agentType, agentId, toolUseId,
       worktree: worktreeFromCwd(ev.cwd),
       source,

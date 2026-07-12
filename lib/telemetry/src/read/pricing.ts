@@ -16,7 +16,8 @@ export interface PricedRow {
   inputTokens: number;
   outputTokens: number;
   cacheReadTokens?: number;
-  cacheCreationTokens?: number;
+  cacheCreationTokens?: number;        // total cache-write tokens (5m + 1h)
+  cacheCreation1hTokens?: number;      // 1h-TTL subset; undefined => price all cache-write at 5m
 }
 
 type PricingFamily = 'haiku' | 'sonnet-5' | 'opus' | 'fable';
@@ -91,19 +92,24 @@ export function priceFor(model: string, type: TokenType, at: string): number | n
 
 /**
  * Σ tokenType × priceFor(model, type, row.timestamp); null when the model is unknown
- * ("unavailable"), never a silent $0. Cache-creation tokens price at the 5-minute-TTL
- * write rate — telemetry doesn't record cache TTL and Claude Code uses the 5-min
- * ephemeral cache.
+ * ("unavailable"), never a silent $0. Cache-creation is split by TTL: the 1h subset
+ * (`cacheCreation1hTokens`) prices at the 1h write rate and the remainder at the 5m rate.
+ * Claude Code caches its stable prefix for 1h, so pricing the whole total at the 5m rate
+ * undercounts. Rows without the split (legacy / other harnesses) price entirely at 5m.
  */
 export function dollarsFor(row: PricedRow): number | null {
   const family = normalizePricingKey(row.model);
   if (!family) return null;
   const prices = pricesFor(family, row.timestamp);
   if (!prices) return null;
+  const cacheCreate = row.cacheCreationTokens ?? 0;
+  const cache1h = Math.min(cacheCreate, row.cacheCreation1hTokens ?? 0); // clamp: 1h ≤ total
+  const cache5m = cacheCreate - cache1h;
   return (
     row.inputTokens * prices.input
     + row.outputTokens * prices.output
     + (row.cacheReadTokens ?? 0) * prices.cacheRead
-    + (row.cacheCreationTokens ?? 0) * prices.cacheWrite5m
+    + cache5m * prices.cacheWrite5m
+    + cache1h * prices.cacheWrite1h
   ) / 1_000_000;
 }
