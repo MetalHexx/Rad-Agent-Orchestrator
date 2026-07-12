@@ -53,7 +53,6 @@ interface ProjectsPageContentProps {
   onActivePathChange: (path: string | null) => void;
   registerOnDeleted: (fn: () => void) => void;
   urlDoc: string | null;
-  requirementsStatus: string | null;
   modalDocs: ModalDoc[];
 }
 
@@ -73,11 +72,11 @@ function ProjectsPageContent({
   onActivePathChange,
   registerOnDeleted,
   urlDoc,
-  requirementsStatus,
   modalDocs,
 }: ProjectsPageContentProps) {
   const live = useArtifactLive();
   const artifacts = live.artifacts;
+  const requirementsStatus = live.requirementsStatus;
 
   const { store: registryStore } = useRegistryStore();
   const bindByName = React.useMemo(() => buildBindLookup(registryStore.repos), [registryStore.repos]);
@@ -391,10 +390,6 @@ export default function ProjectsPage() {
 
   const [fileList, setFileList] = useState<string[]>([]);
   const [filesLoaded, setFilesLoaded] = useState(false);
-  // Requirements-doc frontmatter status, captured here because it rides the
-  // /files response (not the artifact live store) and cannot be derived from
-  // filenames. Threaded down to the Planning docs list for its Draft pill.
-  const [requirementsStatus, setRequirementsStatus] = useState<string | null>(null);
 
   const v6State: ProjectStateV6 | null =
     projectState && isV6State(projectState) ? projectState : null;
@@ -461,7 +456,6 @@ export default function ProjectsPage() {
   useEffect(() => {
     if (!selectedProject) {
       setFileList([]);
-      setRequirementsStatus(null);
       return;
     }
     let cancelled = false;
@@ -470,17 +464,15 @@ export default function ProjectsPage() {
         if (!res.ok) throw new Error("Failed to fetch files");
         return res.json();
       })
-      .then((data: { files: string[]; mtimes?: Record<string, number>; requirementsStatus?: string | null }) => {
+      .then((data: { files: string[] }) => {
         if (!cancelled) {
           setFileList(data.files);
-          setRequirementsStatus(data.requirementsStatus ?? null);
           setFilesLoaded(true);
         }
       })
       .catch(() => {
         if (!cancelled) {
           setFileList([]);
-          setRequirementsStatus(null);
           // Mark loaded even on failure so the DAG still reveals (the Planning
           // docs just stay empty) rather than hanging on the skeleton forever.
           setFilesLoaded(true);
@@ -543,7 +535,6 @@ export default function ProjectsPage() {
                 onActivePathChange={setActivePath}
                 registerOnDeleted={registerOnDeleted}
                 urlDoc={urlDoc}
-                requirementsStatus={requirementsStatus}
                 modalDocs={modalDocs}
               />
             </ArtifactLiveProvider>

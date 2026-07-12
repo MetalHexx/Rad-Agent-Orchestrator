@@ -15,14 +15,28 @@ test('snapshot pulls the file list over REST and derives the established set (FR
 test('snapshot resolves to an empty set when the fetch rejects (no unhandled rejection)', async () => {
   const rejectingFetch = async () => { throw new TypeError('network down'); };
   const snap = await fetchArtifactSnapshot('DEMO', rejectingFetch as typeof fetch);
-  assert.deepEqual(snap, { ok: false, files: [], artifacts: [], mtimes: {} });
+  assert.deepEqual(snap, { ok: false, files: [], artifacts: [], mtimes: {}, requirementsStatus: null });
 });
 
 test('snapshot resolves to an empty set when the body fails to parse', async () => {
   const badJsonFetch = async () =>
     ({ ok: true, json: async () => { throw new SyntaxError('bad json'); } } as unknown as Response);
   const snap = await fetchArtifactSnapshot('DEMO', badJsonFetch as typeof fetch);
-  assert.deepEqual(snap, { ok: false, files: [], artifacts: [], mtimes: {} });
+  assert.deepEqual(snap, { ok: false, files: [], artifacts: [], mtimes: {}, requirementsStatus: null });
+});
+
+test('snapshot carries requirementsStatus from the /files response', async () => {
+  const fakeFetch = async () =>
+    ({ ok: true, json: async () => ({ files: ['A.md'], mtimes: {}, requirementsStatus: 'draft' }) } as Response);
+  const snap = await fetchArtifactSnapshot('DEMO', fakeFetch as typeof fetch);
+  assert.equal(snap.requirementsStatus, 'draft');
+});
+
+test('snapshot resolves requirementsStatus to null when the response omits it', async () => {
+  const fakeFetch = async () =>
+    ({ ok: true, json: async () => ({ files: ['A.md'], mtimes: {} }) } as Response);
+  const snap = await fetchArtifactSnapshot('DEMO', fakeFetch as typeof fetch);
+  assert.equal(snap.requirementsStatus, null);
 });
 
 test('snapshot flags ok=true on a successful fetch and ok=false on a non-OK response', async () => {

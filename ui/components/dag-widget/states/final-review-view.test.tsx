@@ -69,10 +69,11 @@ test('deriveVerdictTone falls back safely on an unrecognized verdict string', ()
   assert.equal(tone.cssVar, '--status-not-started');
 });
 
-test('deriveVerdictTone falls back to Pending on a null verdict (not yet reviewed)', () => {
+test('deriveVerdictTone maps a null verdict (not yet reviewed) to the in-progress "Final Review" tone', () => {
   const tone = deriveVerdictTone(null);
-  assert.equal(tone.label, 'Pending');
+  assert.equal(tone.label, 'Final Review');
   assert.equal(tone.detail, 'Review in progress.');
+  assert.equal(tone.cssVar, '--tier-review');
 });
 
 // ─── source shape ─────────────────────────────────────────────────────────────
@@ -81,8 +82,8 @@ test('final review view id is "final-review"', () => {
   assert.equal(finalReviewView.id, 'final-review');
 });
 
-test('final review view plots phase progress (the run-wide milestone position)', () => {
-  assert.match(source, /deriveRingArc\(ctx\.phaseProgress\)/);
+test('final review view plots whole-graph progress (the run-wide milestone position)', () => {
+  assert.match(source, /deriveRingArc\(ctx\.wholeGraphProgress\)/);
 });
 
 test('final review view renders a determinate ring tinted to the verdict color with the short verdict label as its sublabel', () => {
@@ -111,6 +112,10 @@ test('final review view wraps its controls in CardControlsRow and uses DocButton
   assert.match(source, /CardControlsRow/);
   assert.match(source, /DocButton/);
   assert.ok(!source.includes('DocumentLink'), 'the text doc link is retired in favor of the real button');
+});
+
+test('final review view renders the Report DocButton only when a report document exists', () => {
+  assert.match(source, /docPath !== null &&/);
 });
 
 test('final review view renders no commit chip', () => {
@@ -145,6 +150,29 @@ test('Final Review renders no PR link when pr_url is null', () => {
   assert.ok(!html.includes('<a '), 'no PR anchor rendered');
 });
 
+// ─── in-progress vs completed presentation — Done-when: the in-progress card is honest ──
+
+test('Final Review with no verdict and no report yet renders the "Final Review" sublabel and no Report button', () => {
+  const { view, ctx } = resolveStateView(makeState(null, null, null), undefined, {
+    onDocClick: () => {},
+    compareUrlByRepo: {},
+    projectName: 'demo',
+  });
+  const html = renderToStaticMarkup(createElement('div', null, view.render(ctx)));
+  assert.match(html, />Final Review</, 'the ring sublabel reads "Final Review", not "Pending"');
+  assert.ok(!html.includes('>Report<'), 'no Report button while no report document exists');
+});
+
+test('Final Review renders the Report button once a report document exists, even before a verdict lands', () => {
+  const { view, ctx } = resolveStateView(makeState(null, 'reviews/FINAL.md', null), undefined, {
+    onDocClick: () => {},
+    compareUrlByRepo: {},
+    projectName: 'demo',
+  });
+  const html = renderToStaticMarkup(createElement('div', null, view.render(ctx)));
+  assert.match(html, />Report</, 'the Report button appears once the document exists');
+});
+
 // ─── independence from ctx.node — the resolved leaf may be final_pr, not final_review ──
 
 test('Final Review reads the report + verdict from the top-level final_review node even when ctx.node resolves elsewhere', () => {
@@ -159,11 +187,13 @@ test('Final Review reads the report + verdict from the top-level final_review no
     nodeId: 'final_pr',
     node: state.graph.nodes['final_pr'],
     isCorrective: false,
+    isPhaseCorrective: false,
     iteration: undefined,
     correctiveEntry: undefined,
     phaseName: null,
     phaseProgress: null,
     taskProgress: null,
+    wholeGraphProgress: null,
     repos: [],
     prUrl: null,
     onDocClick: () => {},

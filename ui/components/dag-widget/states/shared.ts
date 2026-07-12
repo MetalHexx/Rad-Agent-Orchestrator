@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react';
-import type { AnyProjectState, IterationEntry } from '@/types/state';
+import type { AnyProjectState, CorrectiveTaskEntry, IterationEntry, NodesRecord } from '@/types/state';
 
 /**
  * Builds a style object that overrides `--primary` for the wrapped subtree so
@@ -17,8 +17,10 @@ export function tierTintStyle(cssVar: string): CSSProperties {
  * Ring arc `{ value, max }` from a `{ completed, total }` progress pair. Falls
  * back to an empty-but-valid `{ 0, 1 }` domain (never `{ 0, 0 }`, which would
  * hand the ring a degenerate arc domain) when no progress is derivable yet.
- * The caller decides which progress the arc means — task-scoped for the
- * work states, phase-scoped for the review milestones.
+ * The caller decides which progress the arc means — the Coding, Reviewing,
+ * Phase Review, Final Review, and Complete cards pass whole-graph progress
+ * (`deriveWholeGraphProgress`), while the Corrective card passes its
+ * retry-budget ratio.
  */
 export function deriveRingArc(
   progress: { completed: number; total: number } | null,
@@ -27,9 +29,68 @@ export function deriveRingArc(
   return { value: progress.completed, max: progress.total };
 }
 
+/**
+ * Tallies every `kind: 'step'` node reachable from `state.graph.nodes` —
+ * phases, tasks, milestones, and injected correctives alike — into one
+ * whole-graph `{ completed, total }` pair so a card's ring can read as
+ * overall project progress instead of a phase/task-scoped slice. In-progress
+ * steps count as completed for this tally so the first active step already
+ * fills the ring instead of showing an empty arc. `gate` / `conditional` /
+ * `parallel` / `for_each_phase` / `for_each_task` nodes are never counted
+ * themselves, only recursed through to reach their nested step children.
+ * `null` only for a graph with no step nodes at all.
+ */
+export function deriveWholeGraphProgress(
+  state: AnyProjectState,
+): { completed: number; total: number } | null {
+  let completed = 0;
+  let total = 0;
+
+  function visitEntries(entries: (IterationEntry | CorrectiveTaskEntry)[]): void {
+    for (const entry of entries) {
+      visitNodes(entry.nodes);
+      // A nested corrective's `corrective_tasks` is carried at runtime but not
+      // typed on `CorrectiveTaskEntry` (only `IterationEntry` declares it), so
+      // read it defensively — mirrors the resolver's walk (resolver.ts).
+      const nested = (entry as { corrective_tasks?: CorrectiveTaskEntry[] }).corrective_tasks ?? [];
+      visitEntries(nested);
+    }
+  }
+
+  function visitNodes(nodes: NodesRecord): void {
+    for (const node of Object.values(nodes)) {
+      switch (node.kind) {
+        case 'step':
+          total += 1;
+          if (node.status === 'completed' || node.status === 'in_progress') completed += 1;
+          break;
+        case 'parallel':
+          visitNodes(node.nodes);
+          break;
+        case 'for_each_phase':
+        case 'for_each_task':
+          visitEntries(node.iterations);
+          break;
+        case 'gate':
+        case 'conditional':
+          break;
+      }
+    }
+  }
+
+  visitNodes(state.graph.nodes);
+  return total > 0 ? { completed, total } : null;
+}
+
 /** 1-based task number for display, derived from the active task iteration. */
 export function deriveTaskNumber(iteration: IterationEntry | undefined): number | null {
   return iteration ? iteration.index + 1 : null;
+}
+
+/** Capitalizes a complexity value; returns `null` when absent or empty. */
+export function formatComplexity(complexity: string | undefined): string | null {
+  if (!complexity) return null;
+  return complexity.charAt(0).toUpperCase() + complexity.slice(1);
 }
 
 /** `PR #{n}` label parsed from a GitHub pull-request URL; `PR` when the number can't be read. */

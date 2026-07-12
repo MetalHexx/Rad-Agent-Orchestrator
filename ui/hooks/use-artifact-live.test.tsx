@@ -21,6 +21,13 @@ test('default value exposes artifacts, unseen, activePulse, degraded, and markAc
   assert.ok(defaultArtifactLiveValue.activePulse instanceof Set);
   assert.equal(defaultArtifactLiveValue.degraded, false);
   assert.equal(typeof defaultArtifactLiveValue.markActive, 'function');
+  assert.equal(defaultArtifactLiveValue.requirementsStatus, null);
+});
+
+test('refreshSnapshot threads requirementsStatus from the snapshot into context state', () => {
+  const src = readFileSync(path.join(process.cwd(), 'hooks', 'use-artifact-live.tsx'), 'utf-8');
+  assert.ok(/setRequirementsStatus\(snap\.requirementsStatus\)/.test(src), 'refreshSnapshot sets requirementsStatus from the fetched snapshot');
+  assert.ok(/requirementsStatus/.test(src.match(/const value = React\.useMemo[\s\S]*?\[[^\]]*\]\s*,?\s*\);/)?.[0] ?? ''), 'requirementsStatus is exposed on the memoized context value');
 });
 
 test('provider is a Context provider with no new state-management dependency (NFR-9, AD-11)', () => {

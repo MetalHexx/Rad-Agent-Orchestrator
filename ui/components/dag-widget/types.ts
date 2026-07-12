@@ -40,6 +40,12 @@ export interface StateViewContext {
   node: NodeState | undefined;
   /** True when the active path descends through a `.ct{N}.` corrective segment. */
   isCorrective: boolean;
+  /**
+   * True when `isCorrective` is set and the innermost iteration the corrective
+   * hangs off was selected from a `for_each_phase` loop (`phase_loop.iterN.ctM`)
+   * rather than a `for_each_task` loop (`phase_loop.iterN.task_loop.iterK.ctM`).
+   */
+  isPhaseCorrective: boolean;
   /** Innermost iteration entry descended into, if the path entered a loop. */
   iteration: IterationEntry | undefined;
   /** Corrective-task entry descended into, if the path entered `.ct{N}.`. */
@@ -55,6 +61,13 @@ export interface StateViewContext {
    * use. `null` when no phase iteration is active or it carries no task loop.
    */
   taskProgress: { completed: number; total: number } | null;
+  /**
+   * Completed / total `kind: 'step'` nodes across the entire materialized
+   * graph — phases, tasks, milestones, and injected correctives alike —
+   * so a card's ring can plot overall project progress rather than a
+   * phase/task-scoped slice. `null` for a graph with no step nodes.
+   */
+  wholeGraphProgress: { completed: number; total: number } | null;
   /** Repos of the enclosing iteration / corrective entry (empty when none). */
   repos: RepoCommitEntry[];
   /** PR URL surfaced by the completion states; `null` when unavailable. */

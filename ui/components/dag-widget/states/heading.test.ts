@@ -174,6 +174,47 @@ test('deriveCardHeading prepends "Correcting: " for the Corrective state', () =>
   assert.deepEqual(deriveCardHeading(ctx), { heading: 'Correcting: Auth Guard', meta: 'Phase 1 · Task 1' });
 });
 
+test('deriveCardHeading reads a phase corrective as "Correcting: Phase N — <title>" with a Phase-only meta', () => {
+  const nodes: NodesRecord = {
+    phase_loop: {
+      kind: 'for_each_phase',
+      status: 'in_progress',
+      iterations: [
+        {
+          index: 1,
+          status: 'in_progress',
+          doc_path: 'phases/DEMO-PHASE-02-OVERVIEW-FACET.md',
+          repos: [],
+          corrective_tasks: [
+            {
+              index: 1,
+              status: 'in_progress',
+              doc_path: 'tasks/DEMO-CT-P02.md',
+              reason: 'fix the phase',
+              injected_after: 'phase_review',
+              repos: [],
+              nodes: {
+                task_executor: { kind: 'step', status: 'in_progress', doc_path: null, retries: 0 },
+              },
+            },
+          ],
+          nodes: {
+            phase_review: { kind: 'step', status: 'completed', doc_path: null, retries: 0 },
+          },
+        },
+      ],
+    },
+  };
+  const state = makeState(nodes, 'phase_loop.iter1.ct1.task_executor');
+  const { ctx } = resolveStateView(state, undefined, noopDeps);
+  assert.equal(ctx.stateId, 'corrective');
+  assert.equal(ctx.isPhaseCorrective, true);
+  assert.deepEqual(deriveCardHeading(ctx), {
+    heading: 'Correcting: Phase 2 — Overview Facet',
+    meta: 'Phase 2',
+  });
+});
+
 test('deriveCardHeading strips the "Phase N — " prefix and prepends "Phase Review: " for the Phase Review state', () => {
   const nodes: NodesRecord = {
     phase_loop: {

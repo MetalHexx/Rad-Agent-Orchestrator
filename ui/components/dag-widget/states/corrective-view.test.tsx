@@ -142,8 +142,17 @@ test('corrective view tints its doc controls to the red failed tier', () => {
 
 test('corrective view references both the handoff and the triggering review-report doc paths', () => {
   assert.match(source, /correctiveEntry\?\.doc_path/);
-  assert.match(source, /label="Task Handoff"/);
-  assert.match(source, /label="Review Report"/);
+});
+
+test('corrective view branches its control labels on ctx.isPhaseCorrective', () => {
+  assert.match(source, /ctx\.isPhaseCorrective\s*\?\s*'Phase Plan'\s*:\s*'Task Handoff'/);
+  assert.match(source, /ctx\.isPhaseCorrective\s*\?\s*'Phase Report'\s*:\s*'Review Report'/);
+});
+
+test('corrective view derives the report doc from phase_review for a phase corrective and code_review for a task corrective', () => {
+  assert.match(source, /ctx\.iteration\?\.nodes\['phase_review'\]/);
+  assert.match(source, /ctx\.iteration\?\.nodes\['code_review'\]/);
+  assert.match(source, /const reviewReportPath = ctx\.isPhaseCorrective/);
 });
 
 test('corrective view never renders the retry budget as a button', () => {
@@ -259,4 +268,96 @@ test('Corrective renders both doc links and a commit chip from a realistic itera
 
   // The full "meta — reason" string still surfaces as the meta's hover title.
   assert.match(html, /title="Phase 1 · Task 1 — code review found issues"/);
+});
+
+// ─── phase-corrective vs task-corrective control shape ────────────────────────
+
+const PHASE_CORRECTIVE_NODES: NodesRecord = {
+  phase_loop: {
+    kind: 'for_each_phase',
+    status: 'in_progress',
+    iterations: [
+      {
+        index: 0,
+        status: 'in_progress',
+        doc_path: 'phases/PHASE-01-SETUP.md',
+        repos: [{ name: 'api', commit_hash: 'phasecthash' }],
+        corrective_tasks: [
+          {
+            index: 1,
+            reason: 'phase review found issues',
+            injected_after: 'phase_review',
+            status: 'in_progress',
+            doc_path: 'phases/PHASE-CORRECTIVE-1.md',
+            repos: [{ name: 'api', commit_hash: 'phasecthash' }],
+            nodes: {
+              task_executor: { kind: 'step', status: 'in_progress', doc_path: null, retries: 0 },
+            },
+          },
+        ],
+        nodes: {
+          phase_review: { kind: 'step', status: 'completed', doc_path: 'reviews/PHASE-REVIEW-1.md', retries: 0 },
+          phase_gate: { kind: 'gate', status: 'not_started', gate_active: false },
+        },
+      },
+    ],
+  },
+};
+
+function makePhaseCorrectiveState(): AnyProjectState {
+  return {
+    $schema: 'orchestration-state-v5',
+    project: { name: 'demo', created: '2026-01-01', updated: '2026-01-01' },
+    config: {
+      gate_mode: 'task',
+      limits: { max_phases: 3, max_tasks_per_phase: 3, max_retries_per_task: 2 },
+      source_control: { auto_commit: 'never', auto_pr: 'never' },
+    },
+    pipeline: { gate_mode: 'task', source_control: null, current_tier: 'execution', halt_reason: null },
+    graph: {
+      template_id: 'std',
+      status: 'in_progress',
+      current_node_path: 'phase_loop.iter0.ct1.task_executor',
+      nodes: PHASE_CORRECTIVE_NODES,
+    },
+  };
+}
+
+test('a phase corrective shows enabled "Phase Plan" and "Phase Report" controls resolving to the phase handoff and phase_review doc', () => {
+  const { view, ctx } = resolveStateView(makePhaseCorrectiveState(), undefined, {
+    onDocClick: () => {},
+    compareUrlByRepo: { api: 'https://github.com/example/api/compare/main...branch' },
+    projectName: 'demo',
+  });
+  assert.equal(ctx.stateId, 'corrective');
+  assert.equal(ctx.isPhaseCorrective, true);
+
+  const html = renderToStaticMarkup(createElement('div', null, view.render(ctx)));
+
+  assert.match(html, />Phase Plan</);
+  assert.match(html, />Phase Report</);
+  assert.ok(!html.includes('>Task Handoff<'));
+  assert.ok(!html.includes('>Review Report<'));
+
+  // Both doc buttons render as active (non-disabled) buttons: the phase
+  // handoff (correctiveEntry.doc_path) and the phase_review doc that
+  // triggered the corrective.
+  const buttonCount = (html.match(/<button/g) ?? []).length;
+  assert.equal(buttonCount, 2, 'both the Phase Plan and Phase Report doc links render as active buttons');
+});
+
+test('a task corrective keeps unchanged "Task Handoff" / "Review Report" labels', () => {
+  const { view, ctx } = resolveStateView(makeRichState(), undefined, {
+    onDocClick: () => {},
+    compareUrlByRepo: { api: 'https://github.com/example/api/compare/main...branch' },
+    projectName: 'demo',
+  });
+  assert.equal(ctx.isPhaseCorrective, false);
+
+  const html = renderToStaticMarkup(createElement('div', null, view.render(ctx)));
+
+  assert.match(html, />Task Handoff</);
+  assert.match(html, />Review Report</);
+  assert.ok(!html.includes('>Phase Plan<'));
+  assert.ok(!html.includes('>Phase Report<'));
 });

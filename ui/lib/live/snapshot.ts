@@ -8,6 +8,10 @@ export interface ArtifactSnapshot {
   files: string[];
   artifacts: Artifact[];
   mtimes: Record<string, number>;
+  /** Requirements-doc frontmatter status (trimmed+lower-cased or null) from
+   *  the `/files` response — carried here so it rides the same live refresh
+   *  as everything else instead of a separate one-time fetch. */
+  requirementsStatus: string | null;
 }
 
 export interface SnapshotChange {
@@ -17,7 +21,7 @@ export interface SnapshotChange {
 
 // Fresh per call so a caller that stores/mutates the arrays can't corrupt a
 // shared instance — matches the original non-OK return.
-const emptySnapshot = (): ArtifactSnapshot => ({ ok: false, files: [], artifacts: [], mtimes: {} });
+const emptySnapshot = (): ArtifactSnapshot => ({ ok: false, files: [], artifacts: [], mtimes: {}, requirementsStatus: null });
 
 export async function fetchArtifactSnapshot(
   projectName: string,
@@ -26,11 +30,11 @@ export async function fetchArtifactSnapshot(
   try {
     const res = await fetchImpl(`/api/projects/${encodeURIComponent(projectName)}/files`);
     if (!res.ok) return emptySnapshot();
-    const data = (await res.json()) as { files: string[]; mtimes?: Record<string, number> };
+    const data = (await res.json()) as { files: string[]; mtimes?: Record<string, number>; requirementsStatus?: string | null };
     const files = data.files ?? [];
     const mtimes = data.mtimes ?? {};
     const artifacts = deriveArtifacts(projectName, files);
-    return { ok: true, files, artifacts, mtimes };
+    return { ok: true, files, artifacts, mtimes, requirementsStatus: data.requirementsStatus ?? null };
   } catch {
     // A rejected fetch (offline/DNS/CORS) or a thrown res.json() resolves to the
     // same empty snapshot as a non-OK response, so callers that `void` this

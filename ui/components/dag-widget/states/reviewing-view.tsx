@@ -3,7 +3,7 @@ import { Ring } from '../ring';
 import { RingSlot, HeadingSlot, MetaSlot, ControlsSlot } from '../card-slots';
 import { CardControlsRow, DocButton } from '../card-controls';
 import type { StateView } from '../types';
-import { deriveRingArc, deriveTaskNumber } from './shared';
+import { deriveRingArc, deriveTaskNumber, formatComplexity } from './shared';
 import { deriveCardHeading } from './heading';
 
 const TIER_CSS_VAR = '--tier-review';
@@ -11,20 +11,23 @@ const TIER_CSS_VAR = '--tier-review';
 /**
  * The Reviewing work-state view (`code_review`). Purple tier. Ring center
  * shows the current task number under a "TASK REVIEW" sublabel; its arc
- * plots task progress within the active phase. Heading is
- * `Reviewing: <task title>` (via `deriveCardHeading`'s state-name prefix);
- * meta is `Phase N · Task M`. Controls surface the task handoff, the task's
- * own code-review doc, and a commit chip for the iteration's repos.
+ * plots whole-graph progress. Heading is `Reviewing: <task title>` (via
+ * `deriveCardHeading`'s state-name prefix); meta is `Phase N · Task M`, plus
+ * a `· Difficulty: <Complexity>` segment when the task iteration carries a
+ * complexity. Controls surface the task handoff, the task's own code-review
+ * doc, and a commit chip for the iteration's repos.
  */
 export const reviewingView: StateView = {
   id: 'reviewing',
   render(ctx) {
     const taskNumber = deriveTaskNumber(ctx.iteration);
-    const arc = deriveRingArc(ctx.taskProgress);
+    const arc = deriveRingArc(ctx.wholeGraphProgress);
     const singleRepo = Object.keys(ctx.compareUrlByRepo).length <= 1;
     const codeReviewNode = ctx.iteration?.nodes['code_review'];
     const codeReviewDocPath = codeReviewNode && 'doc_path' in codeReviewNode ? codeReviewNode.doc_path : null;
-    const { heading, meta } = deriveCardHeading(ctx);
+    const { heading, meta: baseMeta } = deriveCardHeading(ctx);
+    const difficulty = formatComplexity(ctx.iteration?.complexity);
+    const meta = difficulty ? `${baseMeta} · Difficulty: ${difficulty}` : baseMeta;
 
     return (
       <>

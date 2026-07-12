@@ -11,7 +11,7 @@ import { NodeStatusBadge } from './node-status-badge';
 import { isLoopNode, parsePhaseNameFromDocPath, parseTaskNameFromDocPath, buildIterationItemValue, deriveIterationTaskProgress, deriveIterationBadgeLabel, shouldRenderTimelineRow, resolveStageBadge } from './dag-timeline-helpers';
 import type { CompatibleNodeState } from './dag-timeline-helpers';
 import { CommitChips } from './commit-chips';
-import type { IterationEntry } from '@/types/state';
+import type { IterationEntry, StepNodeState } from '@/types/state';
 
 interface DAGIterationPanelProps {
   iteration: IterationEntry;
@@ -290,6 +290,10 @@ export function DAGIterationPanel({
               onFocusChange={onFocusChange}
               expandedLoopIds={expandedLoopIds}
               onAccordionChange={onAccordionChange}
+              isPhaseCorrective={parentKind === 'for_each_phase'}
+              phaseReviewDocPath={parentKind === 'for_each_phase'
+                ? ((iteration.nodes['phase_review'] as StepNodeState | undefined)?.doc_path ?? null)
+                : null}
             />
             {postLoopEntries.map(([childNodeId, childNode]) => {
               const childKey = buildIterationChildNodeId(parentNodeId, iterationIndex, childNodeId);
@@ -450,6 +454,8 @@ export function DAGIterationPanel({
               onFocusChange={onFocusChange}
               expandedLoopIds={expandedLoopIds}
               onAccordionChange={onAccordionChange}
+              isPhaseCorrective={false}
+              phaseReviewDocPath={null}
             />
           </AccordionContent>
         </AccordionItem>

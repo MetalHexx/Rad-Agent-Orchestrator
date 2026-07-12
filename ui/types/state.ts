@@ -180,6 +180,7 @@ export interface IterationEntry {
   corrective_tasks: CorrectiveTaskEntry[];
   doc_path?: string | null;
   repos: RepoCommitEntry[];
+  complexity?: string;                    // 'simple' | 'standard' | 'complex'
 }
 
 export interface CorrectiveTaskEntry {

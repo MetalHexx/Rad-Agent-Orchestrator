@@ -3,7 +3,7 @@ import { Ring } from '../ring';
 import { RingSlot, HeadingSlot, MetaSlot, ControlsSlot } from '../card-slots';
 import { CardControlsRow, DocButton, ExternalLinkButton } from '../card-controls';
 import type { StateView } from '../types';
-import { parsePrLabel, deriveFinalReviewInfo } from './shared';
+import { deriveRingArc, parsePrLabel, deriveFinalReviewInfo } from './shared';
 
 const TIER_CSS_VAR = '--tier-complete';
 
@@ -27,7 +27,8 @@ export function deriveVerdictTone(verdict: string | null): { label: string; cssV
 
 /**
  * The Complete milestone view (`graph.status === 'completed'`). Green tier,
- * full ring (a determinate arc at its max) with a centered, unconditional
+ * a determinate ring arc derived from whole-graph progress (which reads full
+ * at completion, since every step is done) with a centered, unconditional
  * `Check` and "SHIPPED" sublabel — the run's satisfying end-cap, regardless
  * of the final verdict's actual value (the verdict itself still surfaces in
  * the meta line). Reads the report + verdict via `deriveFinalReviewInfo`
@@ -41,13 +42,14 @@ export const completeView: StateView = {
   render(ctx) {
     const { docPath, verdict } = deriveFinalReviewInfo(ctx.state);
     const tone = deriveVerdictTone(verdict);
+    const arc = deriveRingArc(ctx.wholeGraphProgress);
     const heading = 'Run Complete';
     const meta = tone.label;
 
     return (
       <>
         <RingSlot>
-          <Ring value={1} max={1} color={`var(${TIER_CSS_VAR})`} mode="determinate" sublabel="SHIPPED">
+          <Ring value={arc.value} max={arc.max} color={`var(${TIER_CSS_VAR})`} mode="determinate" sublabel="SHIPPED">
             <Check className="h-6 w-6" style={{ color: `var(${TIER_CSS_VAR})` }} aria-hidden="true" />
           </Ring>
         </RingSlot>

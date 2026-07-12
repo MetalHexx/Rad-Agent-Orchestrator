@@ -41,6 +41,11 @@ function parsePhaseNumberFromName(phaseName: string | null): number | null {
 /**
  * Derives the card's `{ heading, meta }` text for the active state.
  *
+ * - Phase corrective (`stateId === 'corrective'` with `ctx.isPhaseCorrective`)
+ *   — `ctx.iteration` is the *phase* iteration here, not a task iteration, so
+ *   this branch runs ahead of the work-state one below and reads the phase
+ *   number/title directly instead of misreading it as a task. Heading is
+ *   "Correcting: Phase N — <phase title>"; meta is "Phase N" only.
  * - Work states (Coding/Reviewing/Corrective) — heading is the task title
  *   (from the task iteration's handoff doc path) stripped of its
  *   "Task N — " prefix, falling back to the bare "Task N" when the doc path
@@ -56,6 +61,19 @@ function parsePhaseNumberFromName(phaseName: string | null): number | null {
  *   name; meta is always `null`.
  */
 export function deriveCardHeading(ctx: StateViewContext): CardHeading {
+  if (ctx.stateId === 'corrective' && ctx.isPhaseCorrective) {
+    // Phase corrective: `ctx.iteration` here is the phase iteration (not a
+    // task iteration), so it is read directly for the phase number/title
+    // instead of falling into the work-state branch below.
+    const phaseNumber = (ctx.iteration?.index ?? 0) + 1;
+    const phaseTitle = parsePhaseNameFromDocPath(ctx.iteration?.doc_path ?? null, ctx.iteration?.index ?? 0);
+
+    return {
+      heading: `Correcting: Phase ${phaseNumber} — ${stripDocTitlePrefix(phaseTitle)}`,
+      meta: `Phase ${phaseNumber}`,
+    };
+  }
+
   if (WORK_STATE_IDS.has(ctx.stateId)) {
     const taskName = parseTaskNameFromDocPath(ctx.iteration?.doc_path ?? null, ctx.iteration?.index ?? 0);
     const taskNumber = deriveTaskNumber(ctx.iteration);

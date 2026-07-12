@@ -20,7 +20,7 @@ export function derivePhaseNumber(iteration: { index: number } | undefined): num
 
 /**
  * The Phase Review milestone view (`phase_review`). Purple tier, determinate
- * ring showing phase position across the run with a "PHASE REVIEW" sublabel.
+ * ring plotting whole-graph progress with a "PHASE REVIEW" sublabel.
  * Heading/meta come from `deriveCardHeading`: heading is
  * `Phase Review: <phase title>`, meta is "Phase N". Controls surface only the
  * phase review report — no commit chip at this milestone.
@@ -29,7 +29,7 @@ export const phaseReviewView: StateView = {
   id: 'phase-review',
   render(ctx) {
     const phaseNumber = derivePhaseNumber(ctx.iteration);
-    const arc = deriveRingArc(ctx.phaseProgress);
+    const arc = deriveRingArc(ctx.wholeGraphProgress);
     const docPath = ctx.node && ctx.node.kind === 'step' ? ctx.node.doc_path : null;
     const { heading, meta } = deriveCardHeading(ctx);
 

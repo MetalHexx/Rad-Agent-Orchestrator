@@ -26,40 +26,42 @@ const VERDICT_TONE: Record<string, VerdictTone> = {
  * Maps a review verdict to its display tone: a short `label` for the ring
  * center and a descriptive `detail` sentence for the meta line. `verdict` is a
  * loose `string | null` at the source (`StepNodeState.verdict`), not the
- * stricter `ReviewVerdict` enum, so a recognized value maps to its tone and
- * anything else — an unrecognized string or `null` (not yet reviewed) — falls
- * back to a neutral tone rather than throwing or rendering nothing.
+ * stricter `ReviewVerdict` enum, so a recognized value maps to its tone;
+ * `null` (not yet reviewed) maps to the purple in-progress "Final Review"
+ * tone rather than implying a verdict that doesn't exist yet, and any other
+ * unrecognized string falls back to a neutral tone rather than throwing.
  */
 export function deriveVerdictTone(verdict: string | null): VerdictTone {
-  if (verdict === null) return { label: 'Pending', detail: 'Review in progress.', cssVar: '--status-not-started', Icon: Clock };
+  if (verdict === null) return { label: 'Final Review', detail: 'Review in progress.', cssVar: '--tier-review', Icon: Clock };
   return VERDICT_TONE[verdict] ?? { label: verdict, detail: 'Review complete.', cssVar: '--status-not-started', Icon: HelpCircle };
 }
 
 /**
  * The Final Review milestone view (`final_review`). The whole card is tinted to
- * the review's VERDICT rather than a fixed tier — green when the review passed,
- * amber when it needs work, red when rejected — so the ring, its center icon,
- * and the control icons all read as one status color. The determinate ring
- * shows phase position across the run, centered on the verdict icon with the
- * short verdict label (`Review Passed` / `Needs Work` / `Rejected`) as its
- * sublabel; the meta line carries the longer detail sentence.
+ * the review's VERDICT rather than a fixed tier — purple while the review is
+ * still in progress, green when it passed, amber when it needs work, red when
+ * rejected — so the ring, its center icon, and the control icons all read as
+ * one status color. The determinate ring plots whole-graph progress (this is
+ * the run's final milestone), centered on the verdict icon with the short
+ * verdict label (`Final Review` / `Review Passed` / `Needs Work` / `Rejected`)
+ * as its sublabel; the meta line carries the longer detail sentence.
  * Reads the report + verdict from the top-level `final_review` node via
  * `deriveFinalReviewInfo` rather than `ctx.node` — once the resolver folds
  * `final_pr` into this view, `ctx.node` resolves to the PR node instead, so
  * reading through the top-level node keeps this view correct regardless of
- * which leaf is active. Controls surface the report and — when present —
- * the run's PR link; no commit chip at this milestone. When the run is parked
- * at the final-approval gate (`deriveFinalGatePending`), the card also carries
- * the primary Approve action — reusing `ApproveGateButton` (the same primitive
- * the plan-approval card and the timeline use) rather than re-implementing the
- * gate POST. The Approve action is gated because this view folds the whole
- * completion phase; unlike plan-approval it must not render Approve until the
- * gate is actually active.
+ * which leaf is active. Controls surface the report — only once a report
+ * document actually exists — and, when present, the run's PR link; no commit
+ * chip at this milestone. When the run is parked at the final-approval gate
+ * (`deriveFinalGatePending`), the card also carries the primary Approve action
+ * — reusing `ApproveGateButton` (the same primitive the plan-approval card and
+ * the timeline use) rather than re-implementing the gate POST. The Approve
+ * action is gated because this view folds the whole completion phase; unlike
+ * plan-approval it must not render Approve until the gate is actually active.
  */
 export const finalReviewView: StateView = {
   id: 'final-review',
   render(ctx) {
-    const arc = deriveRingArc(ctx.phaseProgress);
+    const arc = deriveRingArc(ctx.wholeGraphProgress);
     const { docPath, verdict } = deriveFinalReviewInfo(ctx.state);
     const tone = deriveVerdictTone(verdict);
     const heading = 'Final Review';
@@ -88,7 +90,9 @@ export const finalReviewView: StateView = {
                 iconCssVar={tone.cssVar}
               />
             )}
-            <DocButton path={docPath} label="Report" onDocClick={ctx.onDocClick} iconCssVar={tone.cssVar} />
+            {docPath !== null && (
+              <DocButton path={docPath} label="Report" onDocClick={ctx.onDocClick} iconCssVar={tone.cssVar} />
+            )}
             {ctx.prUrl !== null && (
               <ExternalLinkButton href={ctx.prUrl} label={parsePrLabel(ctx.prUrl)} iconCssVar={tone.cssVar} />
             )}
