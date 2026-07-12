@@ -1,6 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { tierTintStyle, deriveRingArc, deriveTaskNumber, parsePrLabel, deriveFinalReviewInfo, deriveFinalGatePending } from './shared';
+import {
+  tierTintStyle,
+  deriveRingArc,
+  deriveWholeGraphProgress,
+  deriveTaskNumber,
+  parsePrLabel,
+  deriveFinalReviewInfo,
+  deriveFinalGatePending,
+} from './shared';
 import type { AnyProjectState, IterationEntry, NodesRecord } from '@/types/state';
 
 function makeIteration(overrides: Partial<IterationEntry> = {}): IterationEntry {
@@ -34,6 +42,84 @@ test('deriveRingArc falls back to {0, 1} when progress is null', () => {
 
 test('deriveRingArc falls back to {0, 1} when total is zero (avoids a degenerate arc domain)', () => {
   assert.deepEqual(deriveRingArc({ completed: 0, total: 0 }), { value: 0, max: 1 });
+});
+
+// ─── deriveWholeGraphProgress ─────────────────────────────────────────────────
+
+test('deriveWholeGraphProgress returns null for an empty graph (no step nodes)', () => {
+  assert.equal(deriveWholeGraphProgress(makeStateWithNodes({})), null);
+});
+
+test('deriveWholeGraphProgress counts a single in-progress step as completed (the "first tick" guarantee)', () => {
+  const state = makeStateWithNodes({
+    task_executor: { kind: 'step', status: 'in_progress', doc_path: null, retries: 0 },
+  });
+  assert.deepEqual(deriveWholeGraphProgress(state), { completed: 1, total: 1 });
+});
+
+test('deriveWholeGraphProgress counts completed and in-progress steps but not not-started ones', () => {
+  const state = makeStateWithNodes({
+    master_plan: { kind: 'step', status: 'completed', doc_path: 'docs/PLAN.md', retries: 0 },
+    task_executor: { kind: 'step', status: 'in_progress', doc_path: null, retries: 0 },
+    code_review: { kind: 'step', status: 'not_started', doc_path: null, retries: 0 },
+  });
+  assert.deepEqual(deriveWholeGraphProgress(state), { completed: 2, total: 3 });
+});
+
+test('deriveWholeGraphProgress counts an injected corrective step nested under an iteration', () => {
+  const state = makeStateWithNodes({
+    phase_loop: {
+      kind: 'for_each_phase',
+      status: 'in_progress',
+      iterations: [
+        {
+          index: 0,
+          status: 'in_progress',
+          repos: [],
+          doc_path: null,
+          nodes: {
+            task_executor: { kind: 'step', status: 'completed', doc_path: 'tasks/T01.md', retries: 0 },
+          },
+          corrective_tasks: [
+            {
+              index: 1,
+              reason: 'fix',
+              injected_after: 'task_executor',
+              status: 'in_progress',
+              doc_path: null,
+              repos: [],
+              nodes: {
+                task_executor: { kind: 'step', status: 'in_progress', doc_path: null, retries: 0 },
+              },
+            },
+          ],
+        },
+      ],
+    },
+  });
+  assert.deepEqual(deriveWholeGraphProgress(state), { completed: 2, total: 2 });
+});
+
+test('deriveWholeGraphProgress excludes gates, loop containers, and parallel wrappers from total while counting their nested step children', () => {
+  const state = makeStateWithNodes({
+    plan_approval_gate: { kind: 'gate', status: 'completed', gate_active: false },
+    parallel_group: {
+      kind: 'parallel',
+      status: 'in_progress',
+      nodes: {
+        research: { kind: 'step', status: 'completed', doc_path: 'docs/RESEARCH.md', retries: 0 },
+        design: { kind: 'step', status: 'not_started', doc_path: null, retries: 0 },
+      },
+    },
+    phase_loop: {
+      kind: 'for_each_phase',
+      status: 'in_progress',
+      iterations: [
+        { index: 0, status: 'completed', repos: [], doc_path: null, nodes: {}, corrective_tasks: [] },
+      ],
+    },
+  });
+  assert.deepEqual(deriveWholeGraphProgress(state), { completed: 1, total: 2 });
 });
 
 // ─── deriveTaskNumber ─────────────────────────────────────────────────────────

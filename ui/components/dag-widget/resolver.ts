@@ -11,6 +11,7 @@ import {
   derivePhaseProgress,
   deriveIterationTaskProgress,
 } from '@/components/dag-timeline/dag-timeline-helpers';
+import { deriveWholeGraphProgress } from './states/shared';
 import type { StateId, StateView, StateViewContext } from './types';
 import { fallbackView } from './states/fallback-view';
 import { planningView } from './states/planning-view';
@@ -298,6 +299,7 @@ export function resolveStateView(
     phaseName: deriveCurrentPhase(phaseLoop),
     phaseProgress: derivePhaseProgress(phaseLoop),
     taskProgress: activePhaseIteration ? deriveIterationTaskProgress(activePhaseIteration) : null,
+    wholeGraphProgress: deriveWholeGraphProgress(state),
     repos,
     prUrl: state.pipeline.source_control?.repos?.[0]?.pr_url ?? null,
     onDocClick: deps.onDocClick,

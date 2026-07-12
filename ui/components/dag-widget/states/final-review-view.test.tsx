@@ -165,6 +165,7 @@ test('Final Review reads the report + verdict from the top-level final_review no
     phaseName: null,
     phaseProgress: null,
     taskProgress: null,
+    wholeGraphProgress: null,
     repos: [],
     prUrl: null,
     onDocClick: () => {},
