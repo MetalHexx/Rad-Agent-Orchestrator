@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import React, { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { AgentTree } from './agent-tree';
@@ -9,12 +8,11 @@ import type { SubagentTree } from '@/lib/observability/subagent-tree';
 
 const tree = (over: Partial<SubagentTree> = {}): SubagentTree => ({
   windowTotal: 1000,
-  main: { key: 'main', kind: 'main', label: 'main-agent', runCount: 1, tokens: 700, models: [{ model: 'opus', tokens: 700, dollars: 7 }], reqs: 10, firstMs: 0, lastMs: 100, newTokens: 100, dollars: 7 },
-  subagents: [{ key: 'coder', kind: 'group', label: 'coder', agentType: 'coder', runCount: 2, tokens: 300, models: [{ model: 'sonnet', tokens: 300, dollars: 3 }], reqs: 5, firstMs: 0, lastMs: 100, newTokens: 50, dollars: 3,
-    runs: [
-      { key: 'a1', kind: 'run', label: 'coder 1', runCount: 1, tokens: 200, models: [{ model: 'sonnet', tokens: 200, dollars: 2 }], reqs: 3, firstMs: 0, lastMs: 100, newTokens: 30, dollars: 2 },
-      { key: 'a2', kind: 'run', label: 'coder 2', runCount: 1, tokens: 100, models: [{ model: 'sonnet', tokens: 100, dollars: 1 }], reqs: 2, firstMs: 0, lastMs: 100, newTokens: 20, dollars: 1 },
-    ] }],
+  main: { key: 'main', kind: 'main', label: 'main-agent', tokens: 700, models: [{ model: 'opus', tokens: 700, dollars: 7 }], reqs: 10, firstMs: 0, lastMs: 100, newTokens: 100, dollars: 7 },
+  subagents: [
+    { key: 'a1', kind: 'run', label: 'coder', agentType: 'coder', tokens: 200, models: [{ model: 'sonnet', tokens: 200, dollars: 2 }], reqs: 3, firstMs: 0, lastMs: 100, newTokens: 30, dollars: 2 },
+    { key: 'a2', kind: 'run', label: 'coder', agentType: 'coder', tokens: 100, models: [{ model: 'sonnet', tokens: 100, dollars: 1 }], reqs: 2, firstMs: 0, lastMs: 100, newTokens: 20, dollars: 1 },
+  ],
   subagentTotal: 300, subagentPct: 0.3, ...over,
 });
 
@@ -43,9 +41,17 @@ const tree = (over: Partial<SubagentTree> = {}): SubagentTree => ({
   console.log('✓ header row shares the row grid template');
 }
 
+// Pricing survives the flatten: Cost cells render non-empty on the main + each flat subagent row (invariant 2).
+{
+  const html = renderToStaticMarkup(createElement(AgentTree, { tree: tree(), ready: true, now: 100 }));
+  assert.ok(html.includes('$7.00'), 'main row renders its Cost cell (formatUsd(dollars))');
+  assert.ok(html.includes('$2.00') && html.includes('$1.00'), 'each flat subagent row renders its own Cost cell');
+  console.log('✓ pricing cells render on the flat rows');
+}
+
 // Empty state when windowTotal === 0 (FR-10).
 {
-  const html = renderToStaticMarkup(createElement(AgentTree, { tree: tree({ windowTotal: 0, subagents: [], subagentTotal: 0, subagentPct: 0, main: { key: 'main', kind: 'main', label: 'main-agent', runCount: 1, tokens: 0, models: [], reqs: 0, firstMs: 0, lastMs: 0, newTokens: 0, dollars: 0 } }), ready: true, now: 100 }));
+  const html = renderToStaticMarkup(createElement(AgentTree, { tree: tree({ windowTotal: 0, subagents: [], subagentTotal: 0, subagentPct: 0, main: { key: 'main', kind: 'main', label: 'main-agent', tokens: 0, models: [], reqs: 0, firstMs: 0, lastMs: 0, newTokens: 0, dollars: 0 } }), ready: true, now: 100 }));
   assert.ok(html.includes('No agent activity'), 'empty state copy shown (FR-10)');
   console.log('✓ empty state');
 }
@@ -58,10 +64,10 @@ const tree = (over: Partial<SubagentTree> = {}): SubagentTree => ({
   console.log('✓ loading state');
 }
 
-// Coverage note appended to scale hint when coverage < 0.99 (FR-10).
+// Coverage note shown when coverage < 0.99 (FR-10).
 {
   const html = renderToStaticMarkup(createElement(AgentTree, { tree: tree(), ready: true, coverage: 0.6, now: 100 }));
-  assert.ok(html.includes('60%') && html.toLowerCase().includes('covers'), 'partial-window note appended (FR-10)');
+  assert.ok(html.includes('60%') && html.toLowerCase().includes('covers'), 'partial-window note shown (FR-10)');
   console.log('✓ coverage note');
 }
 
@@ -73,13 +79,26 @@ const tree = (over: Partial<SubagentTree> = {}): SubagentTree => ({
   console.log('✓ fixture-session invariant');
 }
 
-// NFR-8: stable-key expand/collapse — expand state is a node.key-keyed Set (source-text invariant; SSR harness cannot drive interaction).
+// Flat, ordered render: interleaved multi-type runs render one AgentRow per node in
+// tree.subagents order, with no toggle/expand affordance anywhere (no group/leaf distinction left).
 {
-  const src = readFileSync(new URL('./agent-tree.tsx', import.meta.url), 'utf8');
-  assert.ok(/useState<Set<string>>/.test(src), 'expand state is a Set<string> (NFR-8)');
-  assert.ok(/next\.has\(key\)/.test(src), 'toggle reads membership by key (NFR-8)');
-  assert.ok(/next\.add\(key\)/.test(src) && /next\.delete\(key\)/.test(src), 'toggle mutates the set by node.key (NFR-8)');
-  console.log('✓ stable-key expand/collapse (source invariant)');
+  const interleaved = tree({
+    subagents: [
+      { key: 'r1', kind: 'run', label: 'reviewer', agentType: 'reviewer', tokens: 100, models: [{ model: 'sonnet', tokens: 100, dollars: 1 }], reqs: 1, firstMs: 0, lastMs: 50, newTokens: 10, dollars: 1 },
+      { key: 'c1', kind: 'run', label: 'coder', agentType: 'coder', tokens: 150, models: [{ model: 'sonnet', tokens: 150, dollars: 1.5 }], reqs: 2, firstMs: 50, lastMs: 100, newTokens: 15, dollars: 1.5 },
+      { key: 'c2', kind: 'run', label: 'coder', agentType: 'coder', tokens: 50, models: [{ model: 'sonnet', tokens: 50, dollars: 0.5 }], reqs: 1, firstMs: 100, lastMs: 150, newTokens: 5, dollars: 0.5 },
+    ],
+    subagentTotal: 300, subagentPct: 0.3,
+  });
+  const html = renderToStaticMarkup(createElement(AgentTree, { tree: interleaved, ready: true, now: 200 }));
+  const reviewerIdx = html.indexOf('reviewer');
+  const firstCoderIdx = html.indexOf('coder');
+  const secondCoderIdx = html.indexOf('coder', firstCoderIdx + 1);
+  assert.ok(reviewerIdx !== -1 && firstCoderIdx !== -1 && secondCoderIdx !== -1, 'all three interleaved rows render');
+  assert.ok(reviewerIdx < firstCoderIdx && firstCoderIdx < secondCoderIdx, 'rows render in tree.subagents order, not grouped by type');
+  assert.ok(!/aria-expanded/.test(html), 'no aria-expanded anywhere — no toggle affordance (flat list)');
+  assert.ok(!/lucide-chevron/i.test(html) && !html.includes('ChevronRight') && !html.includes('ChevronDown'), 'no chevron icon anywhere');
+  console.log('✓ flat ordered render: interleaved multi-type runs, no toggle affordance');
 }
 
 console.log('\nAll AgentTree tests passed');
