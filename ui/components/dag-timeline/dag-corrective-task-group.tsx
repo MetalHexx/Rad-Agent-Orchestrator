@@ -105,11 +105,11 @@ function CorrectiveRow({
   const codeReviewNode = entry.nodes['code_review'];
   const codeReviewDocPath = (codeReviewNode && 'doc_path' in codeReviewNode) ? codeReviewNode.doc_path : null;
   const reportDocPath = isPhaseCorrective ? phaseReviewDocPath : codeReviewDocPath;
-  const hasCodeReview = reportDocPath != null && reportDocPath !== '';
+  const hasReport = reportDocPath != null && reportDocPath !== '';
   const handoffLabel = isPhaseCorrective ? 'Phase Plan' : 'Task Handoff';
   const reportLabel = isPhaseCorrective ? 'Phase Report' : 'Code Review';
   // FR-15: commit rendering is now solely CommitChips; hasAnyTrailing includes repos presence.
-  const hasAnyTrailing = hasHandoff || hasCodeReview || (entry.repos != null && entry.repos.length > 0);
+  const hasAnyTrailing = hasHandoff || hasReport || (entry.repos != null && entry.repos.length > 0);
   // FR-9 / FR-10 / DD-8 — chevron is gated on entry.corrective_tasks.length > 0.
   const hasNested = nestedCorrectives.length > 0;
   const isCorrected = entry.status === 'completed' &&
@@ -132,7 +132,7 @@ function CorrectiveRow({
               <span>{handoffLabel}</span>
             </span>
           )}
-          {hasCodeReview && (
+          {hasReport && (
             <span className="inline-flex items-center gap-1.5">
               <span className="inline-block h-3.5 w-3.5" />
               <span>{reportLabel}</span>
@@ -161,7 +161,7 @@ function CorrectiveRow({
       {hasHandoff && (
         <DocumentLink path={entry.doc_path!} label={handoffLabel} onDocClick={onDocClick} />
       )}
-      {hasCodeReview && (
+      {hasReport && (
         <DocumentLink path={reportDocPath!} label={reportLabel} onDocClick={onDocClick} />
       )}
     </div>

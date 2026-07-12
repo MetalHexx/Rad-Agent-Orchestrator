@@ -10,11 +10,12 @@ const TIER_CSS_VAR = '--tier-execution';
 
 /**
  * The Coding work-state view (`task_executor`). Amber tier. Ring center shows
- * the current task number under a "TASK" sublabel; its arc plots task
- * progress within the active phase. Heading is `Coding: <task title>` (via
- * `deriveCardHeading`'s state-name prefix); meta is `Phase N · Task M`.
- * Controls surface the task's handoff doc and a commit chip for the
- * iteration's repos.
+ * the current task number under a "TASK" sublabel; its arc plots whole-graph
+ * progress. Heading is `Coding: <task title>` (via `deriveCardHeading`'s
+ * state-name prefix); meta is `Phase N · Task M`, plus a
+ * `· Difficulty: <Complexity>` segment when the task iteration carries a
+ * complexity. Controls surface the task's handoff doc and a commit chip for
+ * the iteration's repos.
  */
 export const codingView: StateView = {
   id: 'coding',

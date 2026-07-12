@@ -27,7 +27,8 @@ export function deriveVerdictTone(verdict: string | null): { label: string; cssV
 
 /**
  * The Complete milestone view (`graph.status === 'completed'`). Green tier,
- * full ring (a determinate arc at its max) with a centered, unconditional
+ * a determinate ring arc derived from whole-graph progress (which reads full
+ * at completion, since every step is done) with a centered, unconditional
  * `Check` and "SHIPPED" sublabel — the run's satisfying end-cap, regardless
  * of the final verdict's actual value (the verdict itself still surfaces in
  * the meta line). Reads the report + verdict via `deriveFinalReviewInfo`

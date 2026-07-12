@@ -17,8 +17,10 @@ export function tierTintStyle(cssVar: string): CSSProperties {
  * Ring arc `{ value, max }` from a `{ completed, total }` progress pair. Falls
  * back to an empty-but-valid `{ 0, 1 }` domain (never `{ 0, 0 }`, which would
  * hand the ring a degenerate arc domain) when no progress is derivable yet.
- * The caller decides which progress the arc means — task-scoped for the
- * work states, phase-scoped for the review milestones.
+ * The caller decides which progress the arc means — the Coding, Reviewing,
+ * Phase Review, Final Review, and Complete cards pass whole-graph progress
+ * (`deriveWholeGraphProgress`), while the Corrective card passes its
+ * retry-budget ratio.
  */
 export function deriveRingArc(
   progress: { completed: number; total: number } | null,

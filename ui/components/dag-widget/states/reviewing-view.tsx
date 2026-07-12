@@ -11,10 +11,11 @@ const TIER_CSS_VAR = '--tier-review';
 /**
  * The Reviewing work-state view (`code_review`). Purple tier. Ring center
  * shows the current task number under a "TASK REVIEW" sublabel; its arc
- * plots task progress within the active phase. Heading is
- * `Reviewing: <task title>` (via `deriveCardHeading`'s state-name prefix);
- * meta is `Phase N · Task M`. Controls surface the task handoff, the task's
- * own code-review doc, and a commit chip for the iteration's repos.
+ * plots whole-graph progress. Heading is `Reviewing: <task title>` (via
+ * `deriveCardHeading`'s state-name prefix); meta is `Phase N · Task M`, plus
+ * a `· Difficulty: <Complexity>` segment when the task iteration carries a
+ * complexity. Controls surface the task handoff, the task's own code-review
+ * doc, and a commit chip for the iteration's repos.
  */
 export const reviewingView: StateView = {
   id: 'reviewing',
