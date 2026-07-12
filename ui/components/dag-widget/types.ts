@@ -40,6 +40,12 @@ export interface StateViewContext {
   node: NodeState | undefined;
   /** True when the active path descends through a `.ct{N}.` corrective segment. */
   isCorrective: boolean;
+  /**
+   * True when `isCorrective` is set and the innermost iteration the corrective
+   * hangs off was selected from a `for_each_phase` loop (`phase_loop.iterN.ctM`)
+   * rather than a `for_each_task` loop (`phase_loop.iterN.task_loop.iterK.ctM`).
+   */
+  isPhaseCorrective: boolean;
   /** Innermost iteration entry descended into, if the path entered a loop. */
   iteration: IterationEntry | undefined;
   /** Corrective-task entry descended into, if the path entered `.ct{N}.`. */
