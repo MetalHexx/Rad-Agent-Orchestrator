@@ -33,8 +33,8 @@ test('derivePhaseNumber is null when no iteration resolved', () => {
 
 // ─── source shape ─────────────────────────────────────────────────────────────
 
-test('phase review view plots phase progress (the run-wide milestone position)', () => {
-  assert.match(source, /deriveRingArc\(ctx\.phaseProgress\)/);
+test('phase review view plots whole-graph progress', () => {
+  assert.match(source, /deriveRingArc\(ctx\.wholeGraphProgress\)/);
 });
 
 test('phase review view id is "phase-review"', () => {

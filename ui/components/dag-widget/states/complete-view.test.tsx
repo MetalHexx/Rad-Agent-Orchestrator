@@ -58,10 +58,11 @@ test('complete view id is "complete"', () => {
   assert.equal(completeView.id, 'complete');
 });
 
-test('complete view renders a full determinate ring, not a partial arc, with a fixed "SHIPPED" sublabel', () => {
+test('complete view renders a determinate ring with whole-graph arc and a fixed "SHIPPED" sublabel', () => {
+  assert.match(source, /deriveRingArc\(ctx\.wholeGraphProgress\)/);
+  assert.match(source, /value=\{arc\.value\}/);
+  assert.match(source, /max=\{arc\.max\}/);
   assert.match(source, /mode="determinate"/);
-  assert.match(source, /value=\{1\}/);
-  assert.match(source, /max=\{1\}/);
   assert.match(source, /--tier-complete/);
   assert.match(source, /sublabel="SHIPPED"/);
 });

@@ -20,7 +20,7 @@ export const codingView: StateView = {
   id: 'coding',
   render(ctx) {
     const taskNumber = deriveTaskNumber(ctx.iteration);
-    const arc = deriveRingArc(ctx.taskProgress);
+    const arc = deriveRingArc(ctx.wholeGraphProgress);
     const singleRepo = Object.keys(ctx.compareUrlByRepo).length <= 1;
     const { heading, meta } = deriveCardHeading(ctx);
 

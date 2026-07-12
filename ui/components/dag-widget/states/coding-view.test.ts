@@ -39,9 +39,8 @@ test('coding view ring center carries a "TASK" sublabel', () => {
   assert.match(source, /sublabel="TASK"/);
 });
 
-test('coding view plots task progress, not phase completion', () => {
-  assert.match(source, /deriveRingArc\(ctx\.taskProgress\)/);
-  assert.ok(!source.includes('ctx.phaseProgress'), 'the work-state ring must not read phase progress');
+test('coding view plots whole-graph progress', () => {
+  assert.match(source, /deriveRingArc\(ctx\.wholeGraphProgress\)/);
 });
 
 test('coding view renders a commit chip', () => {

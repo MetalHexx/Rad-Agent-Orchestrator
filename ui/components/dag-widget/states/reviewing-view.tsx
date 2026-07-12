@@ -20,7 +20,7 @@ export const reviewingView: StateView = {
   id: 'reviewing',
   render(ctx) {
     const taskNumber = deriveTaskNumber(ctx.iteration);
-    const arc = deriveRingArc(ctx.taskProgress);
+    const arc = deriveRingArc(ctx.wholeGraphProgress);
     const singleRepo = Object.keys(ctx.compareUrlByRepo).length <= 1;
     const codeReviewNode = ctx.iteration?.nodes['code_review'];
     const codeReviewDocPath = codeReviewNode && 'doc_path' in codeReviewNode ? codeReviewNode.doc_path : null;

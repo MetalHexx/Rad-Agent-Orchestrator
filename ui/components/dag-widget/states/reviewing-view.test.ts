@@ -38,9 +38,8 @@ test('reviewing view ring center carries a "TASK REVIEW" sublabel', () => {
   assert.match(source, /sublabel="TASK REVIEW"/);
 });
 
-test('reviewing view plots task progress, not phase completion', () => {
-  assert.match(source, /deriveRingArc\(ctx\.taskProgress\)/);
-  assert.ok(!source.includes('ctx.phaseProgress'), 'the work-state ring must not read phase progress');
+test('reviewing view plots whole-graph progress', () => {
+  assert.match(source, /deriveRingArc\(ctx\.wholeGraphProgress\)/);
 });
 
 test('reviewing view renders a commit chip', () => {

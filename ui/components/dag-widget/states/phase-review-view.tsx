@@ -29,7 +29,7 @@ export const phaseReviewView: StateView = {
   id: 'phase-review',
   render(ctx) {
     const phaseNumber = derivePhaseNumber(ctx.iteration);
-    const arc = deriveRingArc(ctx.phaseProgress);
+    const arc = deriveRingArc(ctx.wholeGraphProgress);
     const docPath = ctx.node && ctx.node.kind === 'step' ? ctx.node.doc_path : null;
     const { heading, meta } = deriveCardHeading(ctx);
 
