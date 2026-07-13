@@ -1,7 +1,7 @@
 // graph-service/tests/fixtures/plan-subgraph-seed.ts
 //
-// Stamps the plan subgraph — `rad-orc:master_plan` -> `rad-orc:explosion` -> `rad-orc:approval`
-// (`level: 'plan'`) — the root-level spine that runs ahead of the phase loop `explosion`'s own
+// Stamps the plan subgraph — `rad-orc:master_plan` -> `rad-orc:plan_audit` -> `rad-orc:explosion` ->
+// `rad-orc:approval` (`level: 'plan'`) — the root-level spine that runs ahead of the phase loop `explosion`'s own
 // `buildExecutionExpansion` materializes at runtime (gated behind the seeded plan-approval node,
 // never expanded by this fixture itself: that batch is `explosion`'s `handle` reacting to a real
 // parse, not a static seed). Node types are named by `namespace:name` string literals only — this
@@ -14,6 +14,7 @@ import type { SeedStep } from '../harness/drive.js';
 
 export const PLAN_SUBGRAPH_IDS = {
   masterPlan: 'master-plan-1',
+  planAudit: 'plan-audit-1',
   explosion: 'explosion-1',
   planApproval: 'plan-approval-1',
 } as const;
@@ -59,11 +60,11 @@ Exit Criteria:
 `;
 
 /**
- * The three-node root-level spine, in frontier order: `master_plan` (no dependency — the seeded
- * frontier starts here), `explosion` (depends on `master_plan`), and the plan-level `approval`
- * (depends on `explosion`). The phase loop `explosion` decorates at runtime is never seeded here —
- * only the spine its `buildExecutionExpansion` gates phases behind (`planApprovalNodeId`) exists
- * ahead of time.
+ * The four-node root-level spine, in frontier order: `master_plan` (no dependency — the seeded
+ * frontier starts here), `plan_audit` (depends on `master_plan`), `explosion` (depends on
+ * `plan_audit`), and the plan-level `approval` (depends on `explosion`). The phase loop `explosion`
+ * decorates at runtime is never seeded here — only the spine its `buildExecutionExpansion` gates
+ * phases behind (`planApprovalNodeId`) exists ahead of time.
  */
 export function planSubgraphSeedSteps(): readonly SeedStep[] {
   return [
@@ -77,11 +78,20 @@ export function planSubgraphSeedSteps(): readonly SeedStep[] {
     },
     {
       primitive: 'add_node',
-      id: PLAN_SUBGRAPH_IDS.explosion,
-      type: 'rad-orc:explosion',
+      id: PLAN_SUBGRAPH_IDS.planAudit,
+      type: 'rad-orc:plan_audit',
       parent: ROOT_NODE_ID,
       order: 1,
       dependsOn: [PLAN_SUBGRAPH_IDS.masterPlan],
+      data: {},
+    },
+    {
+      primitive: 'add_node',
+      id: PLAN_SUBGRAPH_IDS.explosion,
+      type: 'rad-orc:explosion',
+      parent: ROOT_NODE_ID,
+      order: 2,
+      dependsOn: [PLAN_SUBGRAPH_IDS.planAudit],
       data: { cadence: PLAN_SUBGRAPH_CADENCE },
     },
     {
@@ -89,7 +99,7 @@ export function planSubgraphSeedSteps(): readonly SeedStep[] {
       id: PLAN_SUBGRAPH_IDS.planApproval,
       type: 'rad-orc:approval',
       parent: ROOT_NODE_ID,
-      order: 2,
+      order: 3,
       dependsOn: [PLAN_SUBGRAPH_IDS.explosion],
       data: { level: 'plan' },
     },

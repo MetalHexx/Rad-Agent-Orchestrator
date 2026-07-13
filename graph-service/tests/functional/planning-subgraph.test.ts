@@ -88,12 +88,16 @@ describe('functional: planning subgraph', () => {
 
       await sse.waitForQuiet();
       // The spine's own engage order proves the frontier transition end to end: master_plan first,
-      // plan_approval engaged only once explosion's own auto-resolve has run, with no intervening node.
+      // plan_audit engaged directly after master_plan, plan_approval engaged only once explosion's
+      // own auto-resolve has run, with no intervening node.
       const ids = engagedNodeIds(sse);
       expect(ids[0]).toBe(PLAN_SUBGRAPH_IDS.masterPlan);
+      const masterPlanIndex = ids.indexOf(PLAN_SUBGRAPH_IDS.masterPlan);
+      const auditIndex = ids.indexOf(PLAN_SUBGRAPH_IDS.planAudit);
       const explosionIndex = ids.indexOf(PLAN_SUBGRAPH_IDS.explosion);
       const approvalIndex = ids.indexOf(PLAN_SUBGRAPH_IDS.planApproval);
-      expect(explosionIndex).toBeGreaterThan(-1);
+      expect(auditIndex).toBe(masterPlanIndex + 1);
+      expect(explosionIndex).toBe(auditIndex + 1);
       expect(approvalIndex).toBe(explosionIndex + 1);
     } finally {
       sse?.close();
@@ -189,11 +193,12 @@ describe('functional: planning subgraph', () => {
     const resolve = createPlanningRelay(daemon, {
       masterPlanDocs: [MALFORMED_MASTER_PLAN_DOC, MALFORMED_MASTER_PLAN_DOC, MALFORMED_MASTER_PLAN_DOC, MALFORMED_MASTER_PLAN_DOC],
     });
-    // 1 bootstrap call (no event, engages master_plan the first time) + 4 relay cycles (each
-    // authoring, then explosion's own auto-resolved parse failure) — the last of which self-halts
-    // rather than resetting master_plan again.
+    // 1 bootstrap call (no event, engages master_plan the first time) + 4 relay cycles, each now
+    // authoring, then engaging the orchestrator-inline plan_audit stop, then explosion's own
+    // auto-resolved parse failure — the last of which self-halts rather than resetting master_plan
+    // again.
     const { steps } = await driveToQuiescence(daemon.baseUrl(), project, { resolve, maxSteps: 20 });
-    expect(steps).toBe(5);
+    expect(steps).toBe(9);
 
     const explosion = await node(daemon.baseUrl(), project, PLAN_SUBGRAPH_IDS.explosion);
     expect(explosion.disabled).toBe(true);

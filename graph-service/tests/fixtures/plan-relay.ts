@@ -1,8 +1,9 @@
 // graph-service/tests/fixtures/plan-relay.ts
 //
 // The orchestrator-role `driveToQuiescence` `resolve` callback for the plan subgraph's own
-// external-actor node types (`rad-orc:master_plan`/the plan-level `rad-orc:approval`) — neither of
-// which `autoRelay` (the walking-skeleton's fixed-topology fixture) knows about. Where a real
+// external-actor node types (`rad-orc:master_plan`/`rad-orc:plan_audit`/the plan-level
+// `rad-orc:approval`) — none of which `autoRelay` (the walking-skeleton's fixed-topology fixture)
+// knows about. Where a real
 // orchestrator would doc-read/doc-write and author, this writes the real artifact via
 // `daemon.seedDoc` (never a fake capability), then relays exactly the completion the corresponding
 // node type's own `handle` expects. Every other external actor (the phase loop `rad-orc:explosion`
@@ -28,7 +29,7 @@ export interface PlanningRelayOptions {
 }
 
 /**
- * Builds a `driveToQuiescence` `resolve` callback covering the plan subgraph's own two
+ * Builds a `driveToQuiescence` `resolve` callback covering the plan subgraph's own three
  * external-actor node types, falling back to `autoRelay` (extended for `rad-orc:code_review`'s own
  * dynamically-minted report) for the phase loop `rad-orc:explosion` seeds once the plan is approved.
  */
@@ -50,6 +51,10 @@ export function createPlanningRelay(daemon: BootedDaemon, options: PlanningRelay
           event: MASTER_PLAN_AUTHORED_TOKEN,
           payload: { outcome: 'ok', data: { docPath: PLAN_SUBGRAPH_DOC_PATHS.masterPlanDocPath } },
         };
+      }
+
+      case 'rad-orc:plan_audit': {
+        return { event: 'rad-orc:plan_audit.audited', payload: { outcome: 'ok', data: {} } };
       }
 
       case 'rad-orc:approval': {
