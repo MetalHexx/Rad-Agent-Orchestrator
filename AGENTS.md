@@ -41,7 +41,7 @@ node example/build.js
 ```
 
 ## Per-module ownership
-- Every module folder (`harness-files/`, `harness-adapters/`, `harness-dogfood/`, each `harness-installers/<variant>/`, `runtime-config/`, `cli/`, `ui/`, `lib/repo-registry/`) owns its own code, tests, and `AGENTS.md`.
+- Every module folder (`harness-files/`, `harness-adapters/`, each `harness-installers/<variant>/`, `runtime-config/`, `cli/`, `ui/`, `lib/repo-registry/`) owns its own code, tests, and `AGENTS.md`.
 - Cross-module reach-ins are forbidden. A module does not `require`, import, or read another module's internal files directly.
 - Cross-module sharing happens only through documented seams — the canonical example is `harness-installers/shared/build-helpers/`, which every installer variant consumes as a published-seam package.
 - Read the target module's `AGENTS.md` before touching it; it carries that module's local conventions, build commands, and seam contract.
@@ -91,13 +91,12 @@ See `.agents/skills/rad-create-skill/SKILL.md` for the matching authoring conven
 
 ## Source Layout
 
-Canonical agent and skill source lives under `harness-files/` (at `harness-files/agents/` and `harness-files/skills/`), authored in Claude shape — the format Claude Code reads natively. Nothing is generated *at the repo root* by the build — `npm run build` stages adapter output under `dist/staging/<harness>/` and then deploys it to the harness's user-level location (`~/.claude/` or `~/.copilot/`) via the same manifest-driven library every installer uses. Edit the canonical source; never edit the deployed output.
+Canonical agent and skill source lives under `harness-files/` (at `harness-files/agents/` and `harness-files/skills/`), authored in Claude shape — the format Claude Code reads natively. Nothing is generated *at the repo root* by the build — `npm run build` projects adapter output into `harness-installers/standard/output/<harness>/` and does **not** deploy. Getting edits onto your machine (`~/.claude/` or `~/.copilot/`) is a separate reinstall step via `/rad-dogfood-harness`. Edit the canonical source; never edit the deployed output.
 
 The rest of the repo splits by job:
 
 - **`harness-adapters/`** — self-contained per-harness adapters (one folder per harness; see that folder's `AGENTS.md`).
-- **`harness-dogfood/`** — the dogfood build CLI that drives adapters into `dist/staging/<harness>/` and deploys to the active user-level location.
-- **`harness-installers/<variant>/`** — one installer per shippable variant (`standard`, `claude-plugin`, `copilot-cli-plugin`), plus a `shared/` seam consumed by all of them.
+- **`harness-installers/<variant>/`** — one installer per shippable variant (`standard`, `claude-plugin`, `copilot-cli-plugin`), plus a `shared/` seam consumed by all of them. The `standard` build is also the repo-root `npm run build`, and the `/rad-dogfood-harness` dev loop reinstalls through it.
 - **`runtime-config/`** — `orchestration.yml` and tier templates shipped verbatim by every installer into the user's `~/.radorc/`.
 - **`cli/`, `ui/`, `docs/`, `prompt-tests/`, `.agents/`, `.githooks/`, `.github/`** — unchanged contributors to the system; see their own folders.
 
@@ -107,21 +106,21 @@ The `rad-*` reserved-namespace rule above applies to `harness-files/skills/` —
 
 ## Multi-harness build (repo root)
 
-After editing any file under `harness-files/`, run the build for the harness you're testing against. The build deploys to user-level (`~/.claude/` or `~/.copilot/`) — no repo-root dogfood folder is produced:
+`npm run build` runs the standard installer build (`node harness-installers/standard/build-scripts/build.js`), which projects the canonical `harness-files/` agents and skills through every adapter into `harness-installers/standard/output/<harness>/` and emits the per-harness manifests. It builds all three harnesses (`claude`, `copilot-vscode`, `copilot-cli`) in one pass and does **not** deploy anything to your user-level `~/.claude/` or `~/.copilot/`.
 
 ```
-npm run build                  # Claude Code (default) → ~/.claude/
-npm run build:claude           # explicit
-npm run build:copilot-vscode   # → ~/.copilot/
-npm run build:copilot-cli      # → ~/.copilot/
-npm run build:all              # every adapter, sequentially (last one wins for shared user-level paths)
+npm run build   # build standard installer output for all harnesses (no deploy)
 ```
 
-All of these resolve to `node harness-dogfood/build.js` with the appropriate harness flag.
+## Deploying canonical edits to your machine (dogfood loop)
 
-**First clone of the repo requires `npm run build`** before the in-repo Claude Code instance can read up-to-date canonical content from `~/.claude/`. Note that `~/.claude/` is shared across all worktrees of this repo and across all Claude Code projects — only one branch's content can be the active dogfood at a time. Switch worktrees → re-run the build to swap.
+After editing any file under `harness-files/`, get it onto your machine by **reinstalling through the standard installer** — this is the only path that expands the `${PLUGIN_ROOT}` content token to a concrete harness root, so installed skills reference an absolute `radorch.mjs` instead of a literal token that breaks command resolution. (A plain file-copy would leave the token unexpanded — a real bug this path avoids.)
 
-**Be aware:** the system agents shipped from `harness-files/agents/` have bare names (no `rad-` prefix). If you have personal agents at `~/.claude/agents/` sharing those filenames, the build will overwrite them on deploy. The build's cleanup pass uses the prior dogfood manifest as the sole source of truth — no namespace globbing — so non-rad files outside the prior manifest are untouched.
+Run the `/rad-dogfood-harness` skill (`.claude/skills/rad-dogfood-harness/`). It builds and packs the `rad-orc` tarball, stops the UI, uninstalls the chosen harness, reinstalls it (expanding tokens), and restarts the UI. Pick one harness per run.
+
+**First clone of the repo requires a redeploy** before the in-repo Claude Code instance can read up-to-date canonical content from `~/.claude/`. Note that `~/.claude/` is shared across all worktrees of this repo and across all Claude Code projects — only one branch's content can be active at a time. Switch worktrees → redeploy to swap.
+
+**Be aware:** the system agents shipped from `harness-files/agents/` have bare names (no `rad-` prefix). If you have personal agents at `~/.claude/agents/` sharing those filenames, a reinstall will overwrite them. The installer's uninstall is manifest-scoped — it removes only the files the prior install recorded, so non-rad files outside the manifest are untouched.
 
 ## Tests by sub-package
 
@@ -149,10 +148,9 @@ This repo is a polyglot monorepo with several test runners. Pick the right one:
   ```
   cd lib/telemetry && npm test
   ```
-- **Adapters + dogfood build CLI** (`harness-adapters/`, `harness-dogfood/`) — Node's built-in test runner. Run from repo root:
+- **Adapters** (`harness-adapters/`) — Node's built-in test runner. Run from repo root:
   ```
   node --test harness-adapters/**/*.test.js
-  node --test harness-dogfood/**/*.test.mjs
   ```
 - **Installer** (`harness-installers/standard/`) — Node test runner:
   ```
@@ -189,7 +187,7 @@ The system targets multiple AI coding harnesses (Claude Code, GitHub Copilot in 
 
 - `harness-files/` is the **only** authored source — agents and skills written in Claude shape, which is also the format Claude Code reads natively.
 - `harness-adapters/<harness>/adapter.js` is a self-contained per-harness projection: filename rule, frontmatter shape, tool-name dictionary, and model alias map. Adapters never transform the body of agents or skills, never modify `rad-*` skill names, and never ship settings or top-level instruction files.
-- `harness-dogfood/build.js` discovers adapters, runs them into `dist/staging/<harness>/`, then deploys to user-level (`~/.claude/`, `~/.copilot/`) using the same manifest-driven library each installer uses — no repo-root dogfood is produced.
+- The standard installer build (`harness-installers/standard/build-scripts/build.js`, also `npm run build`) discovers adapters, runs them into `harness-installers/standard/output/<harness>/`, and emits per-harness manifests. Deploying that output to user-level (`~/.claude/`, `~/.copilot/`) happens through the installer's install flow — see the `/rad-dogfood-harness` dev loop.
 - Publish-time bundles that ship to end users are the deliverable of a follow-on iteration and are out of scope for this document.
 - A new harness is added by mirroring the template adapter under `harness-adapters/` (an empty scaffold with its own README and tests).
 
@@ -215,14 +213,13 @@ All three consume `harness-installers/shared/build-helpers/` as the cross-varian
 
 ## Skill and agent loading
 
-The canonical sources at `harness-files/agents/` and `harness-files/skills/` are **not** what Claude Code loads at runtime — Claude Code reads from `~/.claude/agents/` and `~/.claude/skills/` (user-level, shared across all projects and worktrees on your machine). `npm run build:claude` populates those paths by running the adapter into `dist/staging/claude/` and then calling the installer's `installManifestFiles` library to deploy. The same pattern applies to Copilot (`~/.copilot/`). After editing any agent or skill, run the appropriate build command before invoking it from the harness, otherwise the harness reads stale user-level content. When we edit project skills and agents, we are editing the canonical source at `harness-files/` — never edit the deployed output and expect those changes to survive a build.
+The canonical sources at `harness-files/agents/` and `harness-files/skills/` are **not** what Claude Code loads at runtime — Claude Code reads from `~/.claude/agents/` and `~/.claude/skills/` (user-level, shared across all projects and worktrees on your machine). The `/rad-dogfood-harness` skill populates those paths by building the standard installer and reinstalling the harness, which runs the installer's `installManifestFiles` library — expanding `${PLUGIN_ROOT}` to the concrete harness root — to deploy. The same pattern applies to Copilot (`~/.copilot/`). After editing any agent or skill, redeploy before invoking it from the harness, otherwise the harness reads stale user-level content. When we edit project skills and agents, we are editing the canonical source at `harness-files/` — never edit the deployed output and expect those changes to survive a redeploy.
 
 ## Where things live
 
 - `harness-files/` — canonical agent and skill source (committed)
 - `harness-adapters/<harness>/` — self-contained per-harness adapter (committed)
-- `harness-dogfood/` — dogfood build CLI: stages adapters under `dist/staging/<harness>/` and deploys to user-level (committed)
-- `harness-installers/standard/` — `rad-orchestration` npm installer package source (committed)
+- `harness-installers/standard/` — `rad-orc` npm installer package source; its build is repo-root `npm run build` and the `/rad-dogfood-harness` dev loop (committed)
 - `harness-installers/claude-plugin/` — Claude marketplace plugin source (committed)
 - `harness-installers/copilot-cli-plugin/` — Copilot CLI marketplace plugin source (committed)
 - `harness-installers/shared/build-helpers/` — installer-blind build helpers shared by every installer variant (committed)
@@ -235,7 +232,7 @@ The canonical sources at `harness-files/agents/` and `harness-files/skills/` are
 - `docs/` — user-facing docs; `docs/internals/` for refactor design notes (committed)
 - `.agents/` — non-production / dev-only skills and prompts (e.g., `rad-create-skill` scaffolding) (committed)
 - `.githooks/`, `.github/` — git and CI configuration (committed)
-- `dist/staging/<harness>/`, `dist/dogfood-prior-<harness>.json`, `dist/` — **gitignored** generated artifacts (build outputs, staging hopper, prior-manifest snapshots)
+- `dist/` — **gitignored** generated build artifacts
 - `harness-installers/<plugin>/output/`, `harness-installers/<plugin>/dogfood-marketplace/` — **gitignored** build artifacts owned by each marketplace plugin builder
 - `~/.claude/`, `~/.copilot/`, `~/.radorc/` — **user-level destinations** that the build/installer write to (NOT in the repo)
 

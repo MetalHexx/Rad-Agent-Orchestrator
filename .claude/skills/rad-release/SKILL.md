@@ -23,7 +23,7 @@ Invoke `node .claude/skills/rad-release/scripts/bump-version.mjs --from <current
 
 ## Step 4 — Build + validate
 
-Invoke `node .claude/skills/rad-release/scripts/build-and-validate.mjs` from the repo root. This first runs `node harness-dogfood/build.js --all`, which rebuilds the agents/skills output for all harnesses. It then runs `node build-scripts/build.js` from each of the three plugin directories (`claude-plugin`, `copilot-cli-plugin`, `copilot-vscode-plugin`), where each plugin's build script internally invokes the Gate 3 validator. A non-zero exit from any sub-step halts the flow immediately and prints the captured stderr to the operator.
+Invoke `node .claude/skills/rad-release/scripts/build-and-validate.mjs` from the repo root. This first runs `node harness-installers/standard/build-scripts/build.js`, the standard installer build, which translates the canonical `harness-files/` agents+skills for all three harnesses and emits `output/` + manifests (the same artifact published to npm in step 8). It then runs `node build-scripts/build.js` from each of the three plugin directories (`claude-plugin`, `copilot-cli-plugin`, `copilot-vscode-plugin`), where each plugin's build script internally invokes the Gate 3 validator. A non-zero exit from any sub-step halts the flow immediately and prints the captured stderr to the operator.
 
 After build-and-validate succeeds, invoke `node .claude/skills/rad-release/scripts/check-size-budget.mjs` to enforce the per-plugin tarball size budget (57,671,680 bytes = 50 MB + 10% headroom). Any plugin exceeding the budget halts the flow with a message naming the failing plugin and its measured size.
 

@@ -8,12 +8,15 @@ const PLUGIN_DIRS = [
 ];
 
 export async function runBuildAndValidate({ repoRoot, spawn = spawnSync }) {
-  // Step A: dogfood orchestrator builds all harnesses' agents/skills
-  const dogfood = spawn('node', ['harness-dogfood/build.js', '--all'], {
+  // Step A: the standard installer build translates canonical harness-files/
+  // agents+skills for all three harnesses and emits output/ + manifests. This
+  // is the same build published to npm in the release's publish step, so a
+  // failure here halts before we ship a broken standard installer.
+  const stdBuild = spawn('node', ['harness-installers/standard/build-scripts/build.js'], {
     cwd: repoRoot, encoding: 'utf8',
   });
-  if (dogfood.status !== 0) {
-    return { ok: false, error: dogfood.stderr || 'dogfood build failed' };
+  if (stdBuild.status !== 0) {
+    return { ok: false, error: stdBuild.stderr || 'standard installer build failed' };
   }
   // Step B: each plugin build runs its own build-scripts/build.js, which
   // invokes its validate.js Gate 3. Validator failure surfaces as

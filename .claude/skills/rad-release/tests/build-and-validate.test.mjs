@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { runBuildAndValidate } from '../scripts/build-and-validate.mjs';
 
-test('runBuildAndValidate invokes harness-dogfood/build.js --all then each plugin build', async () => {
+test('runBuildAndValidate invokes the standard installer build then each plugin build', async () => {
   const calls = [];
   const result = await runBuildAndValidate({
     repoRoot: process.cwd(),
@@ -11,8 +11,8 @@ test('runBuildAndValidate invokes harness-dogfood/build.js --all then each plugi
       return { status: 0, stdout: '', stderr: '' };
     },
   });
-  // First call: dogfood orchestrator with --all
-  assert.deepStrictEqual(calls[0].args, ['harness-dogfood/build.js', '--all']);
+  // First call: the standard installer build (all harnesses)
+  assert.deepStrictEqual(calls[0].args, ['harness-installers/standard/build-scripts/build.js']);
   // Subsequent calls: per-plugin builders invoked from the repo root with the
   // plugin's build.js as the path arg (plugin builds read process.cwd() as
   // their rootDir, so cwd must be the repo root, not the plugin dir).
