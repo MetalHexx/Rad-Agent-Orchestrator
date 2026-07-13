@@ -1,11 +1,12 @@
 // graph-service/tests/functional/planning-subgraph.test.ts
 //
-// The plan subgraph — `rad-orc:master_plan` -> `rad-orc:explosion` -> `rad-orc:plan_audit` ->
-// `rad-orc:approval` (`level: 'plan'`) -> the decorated phase loop `explosion` seeds at runtime —
-// driven end to end over HTTP against the durable store, real SSE, and real doc/explosion
-// capabilities; only the orchestrator's own relayed decisions (`tests/fixtures/plan-relay.ts`) play
-// the agent/operator role, exactly like the walking-skeleton scenarios' `autoRelay`.
+// The plan subgraph — `rad-orc:master_plan` -> `rad-orc:explosion` -> `rad-orc:approval`
+// (`level: 'plan'`) -> the decorated phase loop `explosion` seeds at runtime — driven end to end
+// over HTTP against the durable store, real SSE, and real doc/explosion capabilities; only the
+// orchestrator's own relayed decisions (`tests/fixtures/plan-relay.ts`) play the agent/operator
+// role, exactly like the walking-skeleton scenarios' `autoRelay`.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { APPROVAL_DECIDED_TOKEN } from '@rad-orchestration/graph-node-types';
 import type { BootedDaemon } from '../harness/boot.js';
 import { bootDaemon } from '../harness/boot.js';
 import { dag, driveToQuiescence, frontier, node, seed, steer } from '../harness/drive.js';
@@ -18,6 +19,25 @@ import {
   planSubgraphSeedSteps,
 } from '../fixtures/plan-subgraph-seed.js';
 import { createPlanningRelay } from '../fixtures/plan-relay.js';
+
+const CORRECTED_MASTER_PLAN_DOC = `# Master Plan
+
+## Phase 1: Foundation
+Doc: docs/phases/phase-1.md
+Exit Criteria:
+- Foundations laid
+
+### Task 1: Scaffold the module
+### Task 2: Add tests
+
+## Phase 2: Delivery
+Doc: docs/phases/phase-2.md
+Exit Criteria:
+- Delivery shipped
+
+### Task 1: Ship it
+### Task 2: Write the docs
+`;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -40,7 +60,7 @@ describe('functional: planning subgraph', () => {
     await daemon.teardown();
   });
 
-  it('drives master_plan -> explosion -> plan_audit -> plan_approval -> the seeded phase loop to done, with docs emitted on disk', async () => {
+  it('drives master_plan -> explosion -> plan_approval -> the seeded phase loop to done, with docs emitted on disk', async () => {
     const project = 'planning-happy-path';
     await seed(daemon.baseUrl(), project, planSubgraphSeedSteps());
 
@@ -68,11 +88,13 @@ describe('functional: planning subgraph', () => {
 
       await sse.waitForQuiet();
       // The spine's own engage order proves the frontier transition end to end: master_plan first,
-      // plan_audit and plan_approval only once explosion's own auto-resolve has run.
+      // plan_approval engaged only once explosion's own auto-resolve has run, with no intervening node.
       const ids = engagedNodeIds(sse);
       expect(ids[0]).toBe(PLAN_SUBGRAPH_IDS.masterPlan);
-      expect(ids).toContain(PLAN_SUBGRAPH_IDS.planAudit);
-      expect(ids).toContain(PLAN_SUBGRAPH_IDS.planApproval);
+      const explosionIndex = ids.indexOf(PLAN_SUBGRAPH_IDS.explosion);
+      const approvalIndex = ids.indexOf(PLAN_SUBGRAPH_IDS.planApproval);
+      expect(explosionIndex).toBeGreaterThan(-1);
+      expect(approvalIndex).toBe(explosionIndex + 1);
     } finally {
       sse?.close();
     }
@@ -107,77 +129,56 @@ describe('functional: planning subgraph', () => {
     expect((await dag(daemon.baseUrl(), project)).status).toBe('done');
   });
 
-  it('mints a plan_corrective on issues_found, re-explodes without resetting plan_audit, and plan_approval proceeds off both predecessors', async () => {
-    const project = 'planning-corrective-no-reaudit';
+  it('cascade-resets master_plan on a plan-level rejection, then re-explodes and grants once resumed', async () => {
+    const project = 'planning-human-rejection';
     await seed(daemon.baseUrl(), project, planSubgraphSeedSteps());
 
-    const correctedMasterPlanDoc = `# Master Plan
+    const relay = createPlanningRelay(daemon, { masterPlanDocs: [WELL_FORMED_MASTER_PLAN_DOC, CORRECTED_MASTER_PLAN_DOC] });
 
-## Phase 1: Foundation
-Doc: docs/phases/phase-1.md
-Exit Criteria:
-- Foundations laid
+    // Drive to plan_approval and deny it there — `handle`'s own routing (`reset(master_plan,
+    // cascade: true)`) tears down the rejected explosion cone and re-arms master_plan, which this
+    // same call re-authors off the relay's second staged doc, and explosion re-parses it fresh.
+    const { steps: rejectionSteps } = await driveToQuiescence(daemon.baseUrl(), project, {
+      resolve: (actor) => {
+        if (actor.type === 'rad-orc:approval' && actor.id === PLAN_SUBGRAPH_IDS.planApproval) {
+          return {
+            event: APPROVAL_DECIDED_TOKEN,
+            payload: { outcome: 'ok', data: { decision: 'denied', level: 'plan', masterPlanNodeId: PLAN_SUBGRAPH_IDS.masterPlan } },
+          };
+        }
+        return relay(actor);
+      },
+      maxSteps: 100,
+    });
+    expect(rejectionSteps).toBeGreaterThan(0);
 
-### Task 1: Scaffold the module
-### Task 2: Add tests
+    // Nothing is left eligible: the fresh explosion completed, but the denied approval's own
+    // projected status (`blocked`) never re-enters the frontier on its own — proof the rejection's
+    // cascade genuinely ran its course rather than silently no-oping.
+    expect(await frontier(daemon.baseUrl(), project)).toEqual([]);
+    const deniedApproval = await node(daemon.baseUrl(), project, PLAN_SUBGRAPH_IDS.planApproval);
+    expect(deniedApproval.status).toBe('blocked');
+    expect(deniedApproval.data.decision).toBe('denied');
 
-## Phase 2: Delivery
-Doc: docs/phases/phase-2.md
-Exit Criteria:
-- Delivery shipped
+    // The corrected doc's added task is a real graph/disk artifact, not a resurrection of the
+    // rejected plan's own expansion — direct evidence the explosion cone was torn down and rebuilt.
+    expect(daemon.readDoc('tasks/P01-T02-ADD-TESTS.md')).toBe('### Task 2: Add tests');
+    const backupStamps = daemon.listDir('backups');
+    expect(backupStamps).toHaveLength(1);
 
-### Task 1: Ship it
-### Task 2: Write the docs
-`;
+    // The operator's own steer channel lifts the recoverable halt, exactly like the parse-cap
+    // halt's own `resume` — a plan-level denial is a halt on the approval gate itself, not a
+    // silent auto-continue.
+    await steer(daemon.baseUrl(), project, 'resume', { node: PLAN_SUBGRAPH_IDS.planApproval });
+    expect((await node(daemon.baseUrl(), project, PLAN_SUBGRAPH_IDS.planApproval)).status).toBe('not_started');
 
-    let sse: SseCollector | undefined;
-    try {
-      sse = await connectSse(`${daemon.baseUrl()}/engine-graph/stream?project=${project}`);
+    const { steps: grantSteps } = await driveToQuiescence(daemon.baseUrl(), project, { resolve: relay, maxSteps: 100 });
+    expect(grantSteps).toBeGreaterThan(0);
 
-      const resolve = createPlanningRelay(daemon, {
-        masterPlanDocs: [WELL_FORMED_MASTER_PLAN_DOC],
-        auditVerdict: 'issues_found',
-        correctedMasterPlanDoc,
-      });
-      const { steps } = await driveToQuiescence(daemon.baseUrl(), project, { resolve, maxSteps: 100 });
-      expect(steps).toBeGreaterThan(0);
-
-      const correctiveId = `${PLAN_SUBGRAPH_IDS.planAudit}-corrective-1`;
-      const corrective = await node(daemon.baseUrl(), project, correctiveId);
-      expect(corrective.type).toBe('rad-orc:plan_corrective');
-      expect(corrective.derivedFrom).toBe(PLAN_SUBGRAPH_IDS.planAudit);
-      expect(corrective.status).toBe('done');
-
-      // The corrected plan's fresh batch genuinely replaced the prior expansion — the task the
-      // corrected doc adds over the original is now a real graph node.
-      const addedTask = await node(daemon.baseUrl(), project, 'phase-1-task-2');
-      expect(addedTask.data.title).toBe('Add tests');
-
-      // plan_audit never re-enters the frontier: its own status stays `done` from its one and only
-      // audit — the gate that unblocks plan_approval is add_corrective_gate's edge onto the
-      // corrective, never a reset of the audit itself.
-      const audit = await node(daemon.baseUrl(), project, PLAN_SUBGRAPH_IDS.planAudit);
-      expect(audit.status).toBe('done');
-      expect(audit.data.verdict).toBe('issues_found');
-
-      const approval = await node(daemon.baseUrl(), project, PLAN_SUBGRAPH_IDS.planApproval);
-      expect(approval.status).toBe('done');
-      expect(approval.data.decision).toBe('granted');
-
-      expect((await dag(daemon.baseUrl(), project)).status).toBe('done');
-
-      await sse.waitForQuiet();
-      const auditEngages = sse.deltas.filter(
-        (delta) =>
-          isRecord(delta.data) &&
-          delta.data.primitive === 'engage' &&
-          isRecord(delta.data.params) &&
-          delta.data.params.node === PLAN_SUBGRAPH_IDS.planAudit,
-      );
-      expect(auditEngages).toHaveLength(1);
-    } finally {
-      sse?.close();
-    }
+    expect((await dag(daemon.baseUrl(), project)).status).toBe('done');
+    expect(await frontier(daemon.baseUrl(), project)).toEqual([]);
+    const grantedApproval = await node(daemon.baseUrl(), project, PLAN_SUBGRAPH_IDS.planApproval);
+    expect(grantedApproval.data.decision).toBe('granted');
   });
 
   it('halts recoverably once repeated parse failures exceed the retry cap, disabling explosion rather than throwing', async () => {
@@ -201,7 +202,6 @@ Exit Criteria:
 
     const eligible = (await frontier(daemon.baseUrl(), project)).map((n) => n.id);
     expect(eligible).not.toContain(PLAN_SUBGRAPH_IDS.explosion);
-    expect(eligible).not.toContain(PLAN_SUBGRAPH_IDS.planAudit);
     expect((await dag(daemon.baseUrl(), project)).status).not.toBe('done');
 
     // Recoverable, never a thrown error: the operator's own steer channel lifts the halt.
