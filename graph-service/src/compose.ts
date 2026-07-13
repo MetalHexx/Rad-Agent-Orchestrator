@@ -12,6 +12,7 @@ import {
   createNodeTypeRegistry,
   ENGINE_SCHEMA_VERSION,
   type Engine,
+  type NodeTypeDefinition,
   type NodeTypeName,
   type NodeTypeRegistry,
 } from '@rad-orchestration/graph-engine';
@@ -60,6 +61,13 @@ export interface ComposeOptions {
    * other lifecycle path in this package resolves at runtime.
    */
   readonly projectRoot?: string;
+  /**
+   * Discovered custom node types (`node-types/scan.ts`'s `discoverCustomNodeTypes`) to layer over
+   * `BUILT_IN_NODE_TYPES`. `compose()` stays synchronous and pure — it never scans the filesystem
+   * itself; the caller (`start()`) resolves and passes the list. A reserved-prefix or duplicate
+   * custom throws here, at registry construction.
+   */
+  readonly customNodeTypes?: readonly NodeTypeDefinition[];
 }
 
 /** Reads this package's own `version` field — never hardcoded, so it can't drift from `package.json`. */
@@ -77,9 +85,9 @@ function readServiceVersion(): string {
  * the registry over that one handle — `portfolio` is constructed over the same handle so the
  * whole object shares a single SQLite connection.
  *
- * D3/D21 (registry-agnostic): the registry is fed exactly `BUILT_IN_NODE_TYPES` — no individual
- * type name is hardcoded here, so a later phase's discovered custom types slot in with no change
- * to this function.
+ * D3/D21 (registry-agnostic): the registry is fed `BUILT_IN_NODE_TYPES` plus whatever
+ * `opts.customNodeTypes` the caller resolved — no individual type name is hardcoded here, so
+ * `start()`'s discovered custom types slot in with no change to this function.
  *
  * Deliberately does **not** wire `withChangeStream`: its in-process `ChangeDelta` carries no
  * `project_id` and no `seq` (`seq` is assigned only at persistence), so it can't scope a stream or
@@ -90,7 +98,7 @@ export function compose(opts: ComposeOptions): GraphService {
   const { dbPath, projectRoot = resolveRadorcRoot() } = opts;
   const db = openDatabase(dbPath);
   const execStore = new SqliteStateStore(db);
-  const registry = createNodeTypeRegistry(BUILT_IN_NODE_TYPES);
+  const registry = createNodeTypeRegistry(BUILT_IN_NODE_TYPES, opts.customNodeTypes ?? []);
   const engine = createEngine(execStore, registry);
   const portfolio = new SqlitePortfolioStore(db);
   const capabilities = createRealCapabilityPorts(projectRoot);

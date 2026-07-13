@@ -2,9 +2,12 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readDiscoveryFile, writeDiscoveryFile } from '../../src/lifecycle/discovery.js';
 import { start, stop } from '../../src/lifecycle/daemon.js';
+
+const EXAMPLE_PACKAGE_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../examples/example');
 
 let root: string;
 
@@ -15,6 +18,12 @@ beforeEach(async () => {
 afterEach(async () => {
   await fs.rm(root, { recursive: true, force: true });
 });
+
+async function stageCustomPackage(nodeTypesRoot: string, pkgDirName: string, sourceDir: string): Promise<void> {
+  const dest = path.join(nodeTypesRoot, 'custom', pkgDirName);
+  await fs.mkdir(dest, { recursive: true });
+  await fs.cp(sourceDir, dest, { recursive: true });
+}
 
 describe('start', () => {
   it('binds loopback-only on an ephemeral port and writes a matching discovery file', async () => {
@@ -57,6 +66,42 @@ describe('start', () => {
     } finally {
       await new Promise<void>((resolve) => first.server.close(() => resolve()));
       first.service.db.close();
+    }
+  });
+
+  it('scans <root>/node-types, resolving a discovered custom type through the composed registry', async () => {
+    await stageCustomPackage(path.join(root, 'node-types'), 'example', EXAMPLE_PACKAGE_DIR);
+
+    const result = await start({ port: 0, dbPath: ':memory:', root, signals: [] });
+    try {
+      expect(result.service.registry.resolve('example:greet')).toBeDefined();
+    } finally {
+      await new Promise<void>((resolve) => result.server.close(() => resolve()));
+      result.service.db.close();
+    }
+  });
+
+  it('refuses to boot when a custom node-type package fails to load', async () => {
+    const nodeTypesRoot = path.join(root, 'node-types');
+    const brokenDir = path.join(nodeTypesRoot, 'custom', 'broken');
+    await fs.mkdir(brokenDir, { recursive: true });
+    await fs.writeFile(
+      path.join(brokenDir, 'manifest.yml'),
+      'namespace: broken\nversion: "1.0.0"\ndescription: "test fixture"\nnodeTypes:\n  - name: broken:thing\n    entrypoint: ./thing.js\n',
+      'utf8',
+    );
+    await fs.writeFile(path.join(brokenDir, 'thing.js'), "throw new Error('boom');\n", 'utf8');
+
+    await expect(start({ port: 0, dbPath: ':memory:', root, signals: [] })).rejects.toThrow(/broken/);
+  });
+
+  it('tolerates an absent node-types directory (empty customs, no error)', async () => {
+    const result = await start({ port: 0, dbPath: ':memory:', root, signals: [] });
+    try {
+      expect(result.service.registry.resolve('example:greet')).toBeUndefined();
+    } finally {
+      await new Promise<void>((resolve) => result.server.close(() => resolve()));
+      result.service.db.close();
     }
   });
 });
