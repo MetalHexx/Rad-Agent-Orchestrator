@@ -91,7 +91,7 @@ See `.agents/skills/rad-create-skill/SKILL.md` for the matching authoring conven
 
 ## Source Layout
 
-Canonical agent and skill source lives under `harness-files/` (at `harness-files/agents/` and `harness-files/skills/`), authored in Claude shape — the format Claude Code reads natively. Nothing is generated *at the repo root* by the build — `npm run build` stages adapter output under `dist/staging/<harness>/` and then deploys it to the harness's user-level location (`~/.claude/` or `~/.copilot/`) via the same manifest-driven library every installer uses. Edit the canonical source; never edit the deployed output.
+Canonical agent and skill source lives under `harness-files/` (at `harness-files/agents/` and `harness-files/skills/`), authored in Claude shape — the format Claude Code reads natively. Nothing is generated *at the repo root* by the build — `npm run build` projects adapter output into `harness-installers/standard/output/<harness>/` and does **not** deploy. Getting edits onto your machine (`~/.claude/` or `~/.copilot/`) is a separate reinstall step via `/rad-dogfood-harness`. Edit the canonical source; never edit the deployed output.
 
 The rest of the repo splits by job:
 

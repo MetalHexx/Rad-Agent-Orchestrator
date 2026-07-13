@@ -18,10 +18,10 @@ Rebuild the standard installer and reinstall one harness so your canonical `harn
 
 ```
 node harness-installers/standard/build-scripts/build.js
-cd harness-installers/standard && npm pack
+npm pack --workspace harness-installers/standard
 ```
 
-Read `{version}` from `harness-installers/standard/package.json`; the tarball is `harness-installers/standard/rad-orc-{version}.tgz` — capture its path as `{tarballPath}`. Stop and report if either command exits non-zero.
+Both commands run from the repo root — do **not** `cd` into the installer directory, or the repo-root-relative `{tarballPath}` below will break in the later `npx` steps. `npm pack --workspace` writes `rad-orc-{version}.tgz` into the repo root. Read `{version}` from `harness-installers/standard/package.json` and capture the **absolute** path of the tarball as `{tarballPath}`. Stop and report if either command exits non-zero.
 
 ### Step 3 — Stop the UI
 
