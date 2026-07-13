@@ -26,6 +26,18 @@ export interface BootedDaemon {
    * genuine on-disk write, so it survives a `restart()` unchanged.
    */
   seedDoc(path: string, content: string): void;
+  /**
+   * Reads back `path` (resolved the same way `seedDoc` writes it) — the black-box way a scenario
+   * asserts content the service itself wrote via the real `docWrite` port (e.g. `explosion`'s
+   * emitted phase/task docs, or a re-explode's backup copy). `null` if nothing exists there yet.
+   */
+  readDoc(path: string): string | null;
+  /**
+   * Lists the immediate entries under `dirPath` (resolved the same way `seedDoc`/`readDoc` are) —
+   * `[]` if the directory doesn't exist. Lets a scenario discover a dynamically real-clock-stamped
+   * path (e.g. `explosion`'s own `backups/{stamp}/`) without predicting the stamp itself.
+   */
+  listDir(dirPath: string): readonly string[];
   /** Abruptly tears down the server + closes the DB handle — no graceful SIGINT/SIGTERM handshake — simulating a hard kill mid-run. */
   kill(): Promise<void>;
   /** Kills the current daemon (if still alive) and boots a fresh one over the *same* `dbPath` — a fresh `compose()`, a fresh ephemeral port — proving restart durability. */
@@ -72,6 +84,24 @@ export async function bootDaemon(): Promise<BootedDaemon> {
       const target = nodePath.resolve(projectRoot, path);
       fsSync.mkdirSync(nodePath.dirname(target), { recursive: true });
       fsSync.writeFileSync(target, content, 'utf8');
+    },
+    readDoc(path: string): string | null {
+      if (!current) throw new Error('boot: daemon is not running');
+      const target = nodePath.resolve(projectRoot, path);
+      try {
+        return fsSync.readFileSync(target, 'utf8');
+      } catch {
+        return null;
+      }
+    },
+    listDir(dirPath: string): readonly string[] {
+      if (!current) throw new Error('boot: daemon is not running');
+      const target = nodePath.resolve(projectRoot, dirPath);
+      try {
+        return fsSync.readdirSync(target);
+      } catch {
+        return [];
+      }
     },
     kill,
     async restart(): Promise<void> {
