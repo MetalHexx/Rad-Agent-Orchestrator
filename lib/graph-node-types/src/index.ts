@@ -73,21 +73,6 @@ export {
   PR_CREATED_TOKEN,
 } from './rad-orc/pr.js';
 
-export type { AuditedData, PlanAuditVerdict } from './rad-orc/plan-audit.js';
-export {
-  PLAN_AUDIT_NODE_TYPE,
-  PLAN_AUDIT_DATA_SCHEMA,
-  PLAN_AUDIT_VERDICTS,
-  PLAN_AUDIT_AUDITED_TOKEN,
-} from './rad-orc/plan-audit.js';
-
-export type { PlanCorrectiveCompletedData } from './rad-orc/plan-corrective.js';
-export {
-  PLAN_CORRECTIVE_NODE_TYPE,
-  PLAN_CORRECTIVE_DATA_SCHEMA,
-  PLAN_CORRECTIVE_COMPLETED_TOKEN,
-} from './rad-orc/plan-corrective.js';
-
 export type {
   DecorationCadence,
   ExplosionNodeTypeOptions,
@@ -118,8 +103,6 @@ import { TASK_NODE_TYPE } from './rad-orc/task.js';
 import { CODE_REVIEW_NODE_TYPE } from './rad-orc/code-review.js';
 import { CORRECTIVE_NODE_TYPE } from './rad-orc/corrective.js';
 import { PR_NODE_TYPE } from './rad-orc/pr.js';
-import { PLAN_AUDIT_NODE_TYPE } from './rad-orc/plan-audit.js';
-import { PLAN_CORRECTIVE_NODE_TYPE } from './rad-orc/plan-corrective.js';
 
 /** Every `rad-orc:*` built-in this package ships, ready to hand to `createNodeTypeRegistry` as its `builtins` argument. */
 export const BUILT_IN_NODE_TYPES: readonly NodeTypeDefinition[] = [
@@ -131,6 +114,4 @@ export const BUILT_IN_NODE_TYPES: readonly NodeTypeDefinition[] = [
   CODE_REVIEW_NODE_TYPE,
   CORRECTIVE_NODE_TYPE,
   PR_NODE_TYPE,
-  PLAN_AUDIT_NODE_TYPE,
-  PLAN_CORRECTIVE_NODE_TYPE,
 ];
