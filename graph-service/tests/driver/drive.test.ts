@@ -1,9 +1,11 @@
-import type { DocReadPort, DocReadRequest, Envelope, PrimitiveContext, ProjectScope } from '@rad-orchestration/graph-engine';
+import type { EventToken, NodeEvent, NodeTypeDefinition, PrimitiveContext, ProjectScope } from '@rad-orchestration/graph-engine';
 import { InMemoryStateStore, ROOT_NODE_ID, add_node, createNodeTypeRegistry, engage } from '@rad-orchestration/graph-engine';
 import { BUILT_IN_NODE_TYPES } from '@rad-orchestration/graph-node-types';
 import { describe, expect, it } from 'vitest';
 import { createFakedCapabilityPorts } from '../../src/capabilities/fakes.js';
 import { advance, runToQuiescence } from '../../src/driver/drive.js';
+import type { NodeOutcomeResolver } from '../../src/driver/drive.js';
+import { applyOutcome } from '../../src/driver/outcome.js';
 import { createBuiltInResolvers } from '../../src/driver/resolvers.js';
 
 function scope(projectId: string): ProjectScope {
@@ -250,82 +252,131 @@ describe('advance — approval decision relayed through the request-human capabi
   });
 });
 
-/** A doc-read fake that hands back a queued content per read for one path — models a running report re-adjudicated in place across corrective cycles. Every other path falls through to the base fake. */
-class QueuedDocReadPort implements DocReadPort {
-  constructor(
-    private readonly base: DocReadPort,
-    private readonly queue: readonly string[],
-    private readonly path: string,
-  ) {}
+/** A minimal `noop`-executor node type that resolves itself the instant it's engaged — no capability port ever touched — standing in for a deterministic/host-side code-behind (e.g. `explosion`'s parser) without pulling in the real one's own preconditions. */
+function autoStepType(name: `${string}:${string}`): { definition: NodeTypeDefinition; resolver: NodeOutcomeResolver } {
+  const doneToken: EventToken = `${name}.done`;
+  const definition: NodeTypeDefinition = {
+    name,
+    dataSchema: {},
+    traits: [],
+    capabilities: [],
+    presentation: { label: name },
+    instructions: `# ${name}`,
+    act: () => ({ instructions: `resolve ${name} in-service`, executor: 'noop' }),
+    handle: (ev: NodeEvent) => (ev.token === doneToken && ev.envelope.outcome === 'ok' ? { dataChange: { ran: true } } : {}),
+    projectStatus: (data) => (data.ran === true ? 'done' : 'not_started'),
+  };
+  const resolver: NodeOutcomeResolver = (stepCtx, registry, node) => {
+    applyOutcome(stepCtx, registry, node.id, { token: doneToken, envelope: { outcome: 'ok', data: {} } });
+  };
+  return { definition, resolver };
+}
 
-  private index = 0;
-
-  async read(request: DocReadRequest): Promise<Envelope<{ readonly content: string }>> {
-    if (request.path !== this.path) return this.base.read(request);
-    const content = this.queue[Math.min(this.index, this.queue.length - 1)];
-    this.index += 1;
-    return { outcome: 'ok', data: { content } };
-  }
+/** A minimal external-actor node type (`request-human`) that carries no resolver at all — proof that the drive loop stopping before dispatch, rather than the resolver map simply having nothing to do, is what leaves it untouched. */
+function humanGateType(name: `${string}:${string}`): NodeTypeDefinition {
+  return {
+    name,
+    dataSchema: {},
+    traits: [],
+    capabilities: ['request-human'],
+    presentation: { label: name },
+    instructions: `# ${name}`,
+    act: () => ({ instructions: `ask the operator for ${name}`, executor: 'request-human' }),
+    handle: () => ({}),
+    projectStatus: () => 'not_started',
+  };
 }
 
 describe('runToQuiescence', () => {
-  it('settles a linear task -> code_review -> pr chain, the review verdict read off its report', async () => {
-    const ctx = ctxFor('proj-quiescence-chain');
+  it('auto-resolves rad-orc:explosion through its own resolver, then stops at the next external-actor node without dispatching it', async () => {
+    const ctx = ctxFor('proj-quiescence-explosion');
     const registry = createNodeTypeRegistry(BUILT_IN_NODE_TYPES);
-    add_node(ctx, registry, 'task-1', 'rad-orc:task', ROOT_NODE_ID, { data: { ...taskData('/tasks/task-1.md'), results: COMMIT_RESULTS } });
-    add_node(ctx, registry, 'review', 'rad-orc:code_review', ROOT_NODE_ID, { data: { level: 'task' }, dependsOn: ['task-1'] });
-    add_node(ctx, registry, 'pr-1', 'rad-orc:pr', ROOT_NODE_ID, { data: { repos: REPOS }, dependsOn: ['review'] });
+    add_node(ctx, registry, 'explosion', 'rad-orc:explosion', ROOT_NODE_ID, { data: { cadence: { perTask: [], perPhase: [], spine: [] } } });
+    // `master-plan`/`plan-approval` must exist for the explosion resolver's own precondition, but
+    // gate them behind `explosion` so it's the sole live frontier candidate on tick one.
+    add_node(ctx, registry, 'master-plan', 'rad-orc:master_plan', ROOT_NODE_ID, {
+      data: { docPath: 'docs/master-plan/master-plan.md' },
+      dependsOn: ['explosion'],
+    });
+    add_node(ctx, registry, 'plan-approval', 'rad-orc:approval', ROOT_NODE_ID, { data: { level: 'plan' }, dependsOn: ['explosion'] });
 
     const ports = createFakedCapabilityPorts();
-    ports.docRead.seed('reviews/review.md', reviewReport('approved', 'none'));
+    ports.docRead.seed('docs/master-plan/master-plan.md', MASTER_PLAN_DOC);
     const result = await runToQuiescence(ctx, registry, ROOT_NODE_ID, createBuiltInResolvers(ports));
 
-    expect(result).toEqual({ settled: true, steps: 3 });
-    expect(ctx.store.getNode(ctx.scope, 'task-1')?.status).toBe('done');
-    expect(ctx.store.getNode(ctx.scope, 'review')?.status).toBe('done');
-    expect(ctx.store.getNode(ctx.scope, 'pr-1')?.status).toBe('done');
+    expect(result.settled).toBe(false);
+    if (result.settled) throw new Error('expected the loop to stop at an external-actor node');
+    expect(result.reason).toBe('external-actor');
+    // explosion really ran its own parser/expansion in-service — no agent/PR side effects.
+    expect(ctx.store.getNode(ctx.scope, 'explosion')?.status).toBe('done');
+    expect(ports.docWrite.writes.length).toBeGreaterThan(0);
+    expect(ports.spawnAgent.spawned).toHaveLength(0);
+    // The next-eligible node (now unblocked) is the one the loop stopped at, still in_progress —
+    // engaged but never faked through.
+    expect(result.nodeId).toBe('master-plan');
+    expect(result.type).toBe('rad-orc:master_plan');
+    expect(result.actResult.executor).toBe('orchestrator-inline');
+    expect(ctx.store.getNode(ctx.scope, 'master-plan')?.status).toBe('in_progress');
+  });
+
+  it('drives a chain of deterministic nodes to full quiescence when nothing external ever gates it', async () => {
+    const ctx = ctxFor('proj-quiescence-settled');
+    const step1 = autoStepType('x:auto-step-1');
+    const step2 = autoStepType('x:auto-step-2');
+    const registry = createNodeTypeRegistry([step1.definition, step2.definition]);
+    add_node(ctx, registry, 'step-1', 'x:auto-step-1', ROOT_NODE_ID, {});
+    add_node(ctx, registry, 'step-2', 'x:auto-step-2', ROOT_NODE_ID, { dependsOn: ['step-1'] });
+
+    const result = await runToQuiescence(ctx, registry, ROOT_NODE_ID, { 'x:auto-step-1': step1.resolver, 'x:auto-step-2': step2.resolver });
+
+    expect(result).toEqual({ settled: true, steps: 2 });
+    expect(ctx.store.getNode(ctx.scope, 'step-1')?.status).toBe('done');
+    expect(ctx.store.getNode(ctx.scope, 'step-2')?.status).toBe('done');
+  });
+
+  it('stops at an external-actor node and never dispatches it — no resolver is even registered for it', async () => {
+    const ctx = ctxFor('proj-quiescence-stop');
+    const step1 = autoStepType('x:auto-step');
+    const gate = humanGateType('x:human-gate');
+    const registry = createNodeTypeRegistry([step1.definition, gate]);
+    add_node(ctx, registry, 'step-1', 'x:auto-step', ROOT_NODE_ID, {});
+    add_node(ctx, registry, 'gate-1', 'x:human-gate', ROOT_NODE_ID, { dependsOn: ['step-1'] });
+
+    // No entry for 'x:human-gate' — if the loop ever tried to dispatch it, this would throw.
+    const result = await runToQuiescence(ctx, registry, ROOT_NODE_ID, { 'x:auto-step': step1.resolver });
+
+    expect(result.settled).toBe(false);
+    if (result.settled) throw new Error('expected the loop to stop at the human gate');
+    expect(result.reason).toBe('external-actor');
+    expect(result.steps).toBe(2);
+    expect(result.nodeId).toBe('gate-1');
+    expect(result.actResult.executor).toBe('request-human');
+    expect(ctx.store.getNode(ctx.scope, 'step-1')?.status).toBe('done');
+    expect(ctx.store.getNode(ctx.scope, 'gate-1')?.status).toBe('in_progress');
   });
 
   it('returns the structured non-settle result once maxSteps is hit, rather than looping forever or throwing', async () => {
     const ctx = ctxFor('proj-quiescence-maxsteps');
-    const registry = createNodeTypeRegistry(BUILT_IN_NODE_TYPES);
-    add_node(ctx, registry, 'task-1', 'rad-orc:task', ROOT_NODE_ID, { data: taskData('/tasks/task-1.md') });
-    add_node(ctx, registry, 'review', 'rad-orc:code_review', ROOT_NODE_ID, { data: { level: 'task' }, dependsOn: ['task-1'] });
-    add_node(ctx, registry, 'pr-1', 'rad-orc:pr', ROOT_NODE_ID, { data: { repos: REPOS }, dependsOn: ['review'] });
+    const step1 = autoStepType('x:auto-step-1');
+    const step2 = autoStepType('x:auto-step-2');
+    const registry = createNodeTypeRegistry([step1.definition, step2.definition]);
+    add_node(ctx, registry, 'step-1', 'x:auto-step-1', ROOT_NODE_ID, {});
+    add_node(ctx, registry, 'step-2', 'x:auto-step-2', ROOT_NODE_ID, { dependsOn: ['step-1'] });
 
-    const ports = createFakedCapabilityPorts();
-    const result = await runToQuiescence(ctx, registry, ROOT_NODE_ID, createBuiltInResolvers(ports), 1);
+    const result = await runToQuiescence(
+      ctx,
+      registry,
+      ROOT_NODE_ID,
+      { 'x:auto-step-1': step1.resolver, 'x:auto-step-2': step2.resolver },
+      1,
+    );
 
     expect(result.settled).toBe(false);
-    if (!result.settled) {
-      expect(result.steps).toBe(1);
-      expect(result.remaining).toEqual(['review']);
-    }
-    expect(ctx.store.getNode(ctx.scope, 'task-1')?.status).toBe('done');
-    expect(ctx.store.getNode(ctx.scope, 'review')?.status).toBe('not_started');
-    expect(ctx.store.getNode(ctx.scope, 'pr-1')?.status).toBe('not_started');
-  });
-
-  it('converges a corrective loop: a changes_requested report mints a corrective, and the review advances once the re-read report turns approved', async () => {
-    const ctx = ctxFor('proj-quiescence-corrective');
-    const registry = createNodeTypeRegistry(BUILT_IN_NODE_TYPES);
-    add_node(ctx, registry, 'task-1', 'rad-orc:task', ROOT_NODE_ID, { data: taskData('/tasks/task-1.md') });
-    add_node(ctx, registry, 'review', 'rad-orc:code_review', ROOT_NODE_ID, { data: { level: 'task' }, dependsOn: ['task-1'] });
-
-    const fakes = createFakedCapabilityPorts();
-    const ports = {
-      ...fakes,
-      docRead: new QueuedDocReadPort(fakes.docRead, [reviewReport('changes_requested', 'medium'), reviewReport('approved', 'none')], 'reviews/review.md'),
-    };
-    const result = await runToQuiescence(ctx, registry, ROOT_NODE_ID, createBuiltInResolvers(ports));
-
-    expect(result.settled).toBe(true);
-    expect(ctx.store.getNode(ctx.scope, 'review')?.status).toBe('done');
-    expect(ctx.store.getNode(ctx.scope, 'review')?.data.verdict).toBe('approved');
-
-    const corrective = ctx.store.getNode(ctx.scope, 'review-corrective-1');
-    expect(corrective?.type).toBe('rad-orc:corrective');
-    expect(corrective?.derivedFrom).toBe('task-1');
-    expect(corrective?.status).toBe('done');
+    if (result.settled) throw new Error('expected the step cap to trip');
+    expect(result.reason).toBe('max-steps');
+    expect(result.steps).toBe(1);
+    expect(result.remaining).toEqual(['step-2']);
+    expect(ctx.store.getNode(ctx.scope, 'step-1')?.status).toBe('done');
+    expect(ctx.store.getNode(ctx.scope, 'step-2')?.status).toBe('not_started');
   });
 });

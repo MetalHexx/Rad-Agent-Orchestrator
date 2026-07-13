@@ -2,9 +2,12 @@
 // (`compose()` + `buildApp()`, real SQLite, `app.request()` — no socket). Covers each route's
 // shape and rejection path; acyclicity/readiness themselves are the engine's own suites (skipped
 // here per the handoff's own testing guidance).
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import type { DagEdge, DagNode } from '@rad-orchestration/graph-engine';
 import { ROOT_NODE_ID } from '@rad-orchestration/graph-engine';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { compose } from '../../src/compose.js';
 import { buildApp } from '../../src/http/app.js';
 
@@ -14,10 +17,26 @@ interface EnvelopeBody<T> {
   readonly error?: { readonly code: string; readonly message: string };
 }
 
-function buildTestService() {
-  const service = compose({ dbPath: ':memory:' });
+function buildTestService(projectRoot?: string) {
+  const service = compose(projectRoot ? { dbPath: ':memory:', projectRoot } : { dbPath: ':memory:' });
   return { service, app: buildApp(service) };
 }
+
+/** Real-filesystem project roots minted for a real-`docRead`/`docWrite` scenario — swept up after every test. */
+const tempProjectRoots: string[] = [];
+
+function makeTempProjectRoot(): string {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'graph-service-engine-graph-'));
+  tempProjectRoots.push(root);
+  return root;
+}
+
+afterEach(() => {
+  while (tempProjectRoots.length > 0) {
+    const root = tempProjectRoots.pop();
+    if (root) fs.rmSync(root, { recursive: true, force: true });
+  }
+});
 
 function postJson(app: ReturnType<typeof buildApp>, path: string, body: unknown) {
   return app.request(path, {
@@ -163,40 +182,126 @@ describe('GET /engine-graph/node', () => {
   });
 });
 
+interface NextActionEnvelopeBody {
+  readonly action: string | null;
+  readonly node: string | null;
+  readonly executor: string | null;
+  readonly instructions: string | null;
+  readonly context: Record<string, unknown> | null;
+  readonly completion_event: string | null;
+  readonly delta: { nodeChanges: unknown[] };
+  readonly frontier: DagNode[];
+}
+
 describe('POST /engine-graph/submit-event', () => {
-  it('with no event, advances a ready node via the full driver cycle and returns the applied delta + resulting frontier', async () => {
+  it('with no event, a deterministic drive auto-resolves nothing here (task-1 is spawn-sub-agent) and stops at it, surfacing the next-action envelope rather than faking the agent work', async () => {
     const { app } = buildTestService();
     await seedTaskAndApproval(app, 'proj-submit');
 
     const res = await postJson(app, '/engine-graph/submit-event', { project: 'proj-submit', node: 'task-1' });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as EnvelopeBody<{ delta: { nodeChanges: unknown[] }; frontier: DagNode[] }>;
+    const body = (await res.json()) as EnvelopeBody<NextActionEnvelopeBody>;
     expect(body.ok).toBe(true);
-    expect(body.data!.delta.nodeChanges.length).toBeGreaterThan(0);
-    // task-1 reaching done unblocks approval-1, which now shows up in the whole-tree frontier.
-    expect(body.data!.frontier.map((n) => n.id)).toEqual(['approval-1']);
+    const data = body.data!;
+    expect(data.action).toBe('rad-orc:task');
+    expect(data.node).toBe('task-1');
+    expect(data.executor).toBe('spawn-sub-agent');
+    expect(data.instructions).toEqual(expect.any(String));
+    expect(data.completion_event).toBe('rad-orc:task.completed');
+    expect(data.delta.nodeChanges.length).toBeGreaterThan(0);
+    // task-1 only reached in_progress (engaged, never faked done) — approval-1 stays gated.
+    expect(data.frontier).toEqual([]);
 
     const nodeRes = await app.request('/engine-graph/node?project=proj-submit&node=task-1');
     const nodeBody = (await nodeRes.json()) as EnvelopeBody<DagNode>;
-    expect(nodeBody.data?.status).toBe('done');
+    expect(nodeBody.data?.status).toBe('in_progress');
   });
 
-  it('with event+payload, the client dictates the outcome directly rather than engaging + dispatching through a resolver', async () => {
+  it('with event+payload, the client dictates the outcome directly, then the drive resumes and returns the next actor node — one call relays a result and gets the next move', async () => {
     const { app } = buildTestService();
     await seedTaskAndApproval(app, 'proj-submit-event');
 
-    const engageRes = await postJson(app, '/engine-graph/submit-event', {
+    const res = await postJson(app, '/engine-graph/submit-event', {
       project: 'proj-submit-event',
       node: 'task-1',
       event: 'rad-orc:task.completed',
       payload: { outcome: 'ok', data: { results: [{ name: 'rad-orc-source', committed: true, commitHash: 'abc123', pushed: true }] } },
     });
-    expect(engageRes.status).toBe(200);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as EnvelopeBody<NextActionEnvelopeBody>;
+    expect(body.ok).toBe(true);
+    const data = body.data!;
+    // task-1 reaching done unblocked approval-1 (request-human) — the drive stopped there.
+    expect(data.action).toBe('rad-orc:approval');
+    expect(data.node).toBe('approval-1');
+    expect(data.executor).toBe('request-human');
+    expect(data.completion_event).toBe('rad-orc:approval.decided');
 
-    const nodeRes = await app.request('/engine-graph/node?project=proj-submit-event&node=task-1');
+    const taskRes = await app.request('/engine-graph/node?project=proj-submit-event&node=task-1');
+    const taskBody = (await taskRes.json()) as EnvelopeBody<DagNode>;
+    expect(taskBody.data?.status).toBe('done');
+    expect(taskBody.data?.data.results).toEqual([{ name: 'rad-orc-source', committed: true, commitHash: 'abc123', pushed: true }]);
+
+    const approvalRes = await app.request('/engine-graph/node?project=proj-submit-event&node=approval-1');
+    const approvalBody = (await approvalRes.json()) as EnvelopeBody<DagNode>;
+    expect(approvalBody.data?.status).toBe('in_progress');
+  });
+
+  it('reports completion_event: null once relaying a result drives the graph to full quiescence', async () => {
+    const { app } = buildTestService();
+    await postJson(app, '/engine-graph/seed', {
+      project: 'proj-submit-quiescence',
+      seed: { steps: [{ primitive: 'add_node', id: 'task-1', type: 'rad-orc:task', parent: ROOT_NODE_ID, data: TASK_DATA }] },
+    });
+
+    const res = await postJson(app, '/engine-graph/submit-event', {
+      project: 'proj-submit-quiescence',
+      node: 'task-1',
+      event: 'rad-orc:task.completed',
+      payload: { outcome: 'ok', data: { results: [] } },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as EnvelopeBody<NextActionEnvelopeBody>;
+    expect(body.ok).toBe(true);
+    expect(body.data).toEqual({
+      action: null,
+      node: null,
+      executor: null,
+      instructions: null,
+      context: null,
+      completion_event: null,
+      delta: body.data!.delta,
+      frontier: [],
+    });
+
+    const nodeRes = await app.request('/engine-graph/node?project=proj-submit-quiescence&node=task-1');
     const nodeBody = (await nodeRes.json()) as EnvelopeBody<DagNode>;
     expect(nodeBody.data?.status).toBe('done');
-    expect(nodeBody.data?.data.results).toEqual([{ name: 'rad-orc-source', committed: true, commitHash: 'abc123', pushed: true }]);
+  });
+
+  it('rejects an illegal relayed outcome as a structured rejection, never a 500', async () => {
+    const { app } = buildTestService();
+    await postJson(app, '/engine-graph/seed', {
+      project: 'proj-submit-illegal',
+      seed: { steps: [{ primitive: 'add_node', id: 'approval-1', type: 'rad-orc:approval', parent: ROOT_NODE_ID, data: { level: 'plan' } }] },
+    });
+
+    // A plan-level 'denied' decision requires `masterPlanNodeId` on the envelope — omitting it is
+    // an illegal outcome the node type's own `handle` rejects.
+    const res = await postJson(app, '/engine-graph/submit-event', {
+      project: 'proj-submit-illegal',
+      node: 'approval-1',
+      event: 'rad-orc:approval.decided',
+      payload: { outcome: 'ok', data: { decision: 'denied', level: 'plan' } },
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as EnvelopeBody<never>;
+    expect(body.ok).toBe(false);
+    expect(body.error?.code).toBe('invalid_delta');
+
+    const nodeRes = await app.request('/engine-graph/node?project=proj-submit-illegal&node=approval-1');
+    const nodeBody = (await nodeRes.json()) as EnvelopeBody<DagNode>;
+    expect(nodeBody.data?.status).toBe('not_started');
   });
 
   it('returns a structured 404 for a node that does not exist, never a throw', async () => {
@@ -207,6 +312,58 @@ describe('POST /engine-graph/submit-event', () => {
     expect(res.status).toBe(404);
     const body = (await res.json()) as EnvelopeBody<never>;
     expect(body.error?.code).toBe('not_found');
+  });
+
+  it('drives from a seeded graph past the deterministic rad-orc:explosion node itself, stopping at the next spawn-sub-agent/request-human node — never faking the agent work', async () => {
+    const projectRoot = makeTempProjectRoot();
+    fs.mkdirSync(path.join(projectRoot, 'docs', 'master-plan'), { recursive: true });
+    fs.writeFileSync(
+      path.join(projectRoot, 'docs', 'master-plan', 'master-plan.md'),
+      [
+        '# Master Plan',
+        '',
+        '## Phase 1: Foundation',
+        'Doc: docs/phases/phase-1.md',
+        'Exit Criteria:',
+        '- Foundations laid',
+        '',
+        '### Task 1: Scaffold the module',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+    const { app } = buildTestService(projectRoot);
+
+    await postJson(app, '/engine-graph/seed', {
+      project: 'proj-submit-explosion',
+      seed: {
+        steps: [
+          { primitive: 'add_node', id: 'explosion', type: 'rad-orc:explosion', parent: ROOT_NODE_ID, data: { cadence: { perTask: [], perPhase: [], spine: [] } } },
+          {
+            primitive: 'add_node',
+            id: 'master-plan',
+            type: 'rad-orc:master_plan',
+            parent: ROOT_NODE_ID,
+            data: { docPath: 'docs/master-plan/master-plan.md' },
+            dependsOn: ['explosion'],
+          },
+          { primitive: 'add_node', id: 'plan-approval', type: 'rad-orc:approval', parent: ROOT_NODE_ID, data: { level: 'plan' }, dependsOn: ['explosion'] },
+        ],
+      },
+    });
+
+    const res = await postJson(app, '/engine-graph/submit-event', { project: 'proj-submit-explosion', node: 'explosion' });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as EnvelopeBody<NextActionEnvelopeBody>;
+    expect(body.ok).toBe(true);
+    // explosion resolved itself in-service (real doc-read/doc-write) — no spawn-sub-agent firing here.
+    expect(body.data!.node).toBe('master-plan');
+    expect(body.data!.action).toBe('rad-orc:master_plan');
+    expect(body.data!.executor).toBe('orchestrator-inline');
+
+    const explosionRes = await app.request('/engine-graph/node?project=proj-submit-explosion&node=explosion');
+    const explosionBody = (await explosionRes.json()) as EnvelopeBody<DagNode>;
+    expect(explosionBody.data?.status).toBe('done');
   });
 });
 
