@@ -16,6 +16,14 @@ export const PHASE_CHAIN_IDS = {
   pr: 'pr-1',
 } as const;
 
+/** Where the `review-1` node's resolver reads its verdict from — the default `reviews/{id}.md` it derives when its `data.reviewReportPath` is unset (the fixture leaves it unset). */
+export const REVIEW_REPORT_PATH = `reviews/${PHASE_CHAIN_IDS.review}.md`;
+
+/** A review report whose frontmatter carries the verdict the service reads — the `doc-read` real input that replaces the retired driver script's canned answer. */
+export function reviewReportDoc(verdict: string, severity: string): string {
+  return `---\nverdict: ${verdict}\nseverity: ${severity}\n---\n\n# Review Report\n\nOne running report, re-adjudicated in place.\n`;
+}
+
 export function phaseChainSeedSteps(): readonly SeedStep[] {
   return [
     {

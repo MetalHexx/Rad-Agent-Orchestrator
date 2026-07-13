@@ -13,6 +13,7 @@ import type {
   EdgeChange,
   Envelope as OutcomeEnvelope,
   EventToken,
+  Executor,
   Expansion,
   GraphSnapshot,
   MutationSpec,
@@ -40,10 +41,19 @@ import {
   readFrontier,
   validate,
 } from '@rad-orchestration/graph-engine';
+import {
+  APPROVAL_DECIDED_TOKEN,
+  CODE_REVIEW_REVIEWED_TOKEN,
+  MASTER_PLAN_AUTHORED_TOKEN,
+  PR_CREATED_TOKEN,
+  TASK_COMPLETED_TOKEN,
+} from '@rad-orchestration/graph-node-types';
 import type { GraphService } from '../compose.js';
-import { advance } from '../driver/drive.js';
+import type { QuiescenceResult } from '../driver/drive.js';
+import { runToQuiescence } from '../driver/drive.js';
 import { globalFrontier } from '../driver/frontier.js';
 import { applyOutcome } from '../driver/outcome.js';
+import { relayCodeReviewCompletion } from '../driver/resolvers.js';
 import { SHARED_MUTATION_KINDS, isSharedMutationKind, parseSharedMutation, toEngineMutationSpec } from './mutation-spec.js';
 import type { FailureEnvelope, SuccessEnvelope } from './respond.js';
 import { err, fromResult, ok } from './respond.js';
@@ -172,6 +182,58 @@ function previewFor(
     default:
       return preview(graph, mutationSpec);
   }
+}
+
+/**
+ * `submit-event`'s response shape: the stopped node's `ActResult`, reshaped into the envelope the
+ * CLI already relays to the orchestrator (mirrors `cli/src/lib/pipeline-engine`'s own
+ * `PipelineResult`: `action`/`context`/`completion_event`). Every field but `delta`/`frontier` is
+ * `null` at global quiescence or once a self-halted node stops driving on its own — there is no
+ * next action to report.
+ */
+interface NextActionEnvelope {
+  readonly action: NodeTypeName | null;
+  readonly node: NodeId | null;
+  readonly executor: Executor | null;
+  readonly instructions: string | null;
+  readonly context: Readonly<Record<string, unknown>> | null;
+  readonly completion_event: EventToken | null;
+  readonly delta: ChangeDelta;
+  readonly frontier: readonly DagNode[];
+}
+
+/**
+ * The `<type>.<outcome>` token a host relays back once it has carried out a stopped node's
+ * `ActResult` — one entry per built-in type ever reachable as an external-actor stop.
+ * `rad-orc:corrective` reuses `rad-orc:task`'s own token verbatim (its `handle` listens for the
+ * same `TASK_COMPLETED_TOKEN`, never a corrective-namespaced one — see `rad-orc/corrective.ts`).
+ * A custom node type not in this map reports `completion_event: null`; the orchestrator already
+ * knows its own vocabulary in that case.
+ */
+const NEXT_ACTION_COMPLETION_TOKENS: Readonly<Partial<Record<NodeTypeName, EventToken>>> = {
+  'rad-orc:task': TASK_COMPLETED_TOKEN,
+  'rad-orc:corrective': TASK_COMPLETED_TOKEN,
+  'rad-orc:code_review': CODE_REVIEW_REVIEWED_TOKEN,
+  'rad-orc:approval': APPROVAL_DECIDED_TOKEN,
+  'rad-orc:pr': PR_CREATED_TOKEN,
+  'rad-orc:master_plan': MASTER_PLAN_AUTHORED_TOKEN,
+};
+
+/** Shapes `driven`'s stop into the next-action envelope; `null` fields throughout once there is no next action (settled, or a self-halted node quiesced the driver on its own). */
+function buildNextActionEnvelope(driven: QuiescenceResult, delta: ChangeDelta, frontierNow: readonly DagNode[]): NextActionEnvelope {
+  if (!driven.settled && driven.reason === 'external-actor') {
+    return {
+      action: driven.type,
+      node: driven.nodeId,
+      executor: driven.actResult.executor,
+      instructions: driven.actResult.instructions,
+      context: driven.actResult.payload ? { ...driven.actResult.payload } : {},
+      completion_event: NEXT_ACTION_COMPLETION_TOKENS[driven.type] ?? null,
+      delta,
+      frontier: frontierNow,
+    };
+  }
+  return { action: null, node: null, executor: null, instructions: null, context: null, completion_event: null, delta, frontier: frontierNow };
 }
 
 // ── seed: replay add_node / add_dependency / expand to stamp a project's initial dag ──────────
@@ -366,17 +428,29 @@ export function buildEngineGraphRouter(service: GraphService): Hono {
         ...(isNonEmptyString(payload.route) ? { route: payload.route as EventToken } : {}),
       };
       try {
-        // The client dictates the outcome directly — still the full P01-T02 outcome cycle
-        // (handle -> apply_event -> routing -> expansion -> syncProjectedStatus), never a bare
-        // apply_event.
-        applyOutcome(ctx, service.registry, nodeId, { token: event as EventToken, envelope });
+        if (existing.type === 'rad-orc:code_review' && event === CODE_REVIEW_REVIEWED_TOKEN && envelope.outcome === 'ok') {
+          // A `code_review` verdict is never trusted from the caller — the relayed event is only a
+          // "the review finished" signal; the verdict itself is always re-derived from the report's
+          // own doc-read, the same way the in-service resolver would.
+          await relayCodeReviewCompletion(service.capabilities, ctx, service.registry, existing);
+        } else {
+          // The client dictates the outcome directly — still the full P01-T02 outcome cycle
+          // (handle -> apply_event -> routing -> expansion -> syncProjectedStatus), never a bare
+          // apply_event.
+          applyOutcome(ctx, service.registry, nodeId, { token: event as EventToken, envelope });
+        }
       } catch (error) {
         return c.json(err('invalid_delta', error instanceof Error ? error.message : String(error)), 400);
       }
-    } else {
-      // No event supplied: engage + fake-dispatch + resolve it via the driver.
-      const advanced = await advance(ctx, service.registry, service.resolvers, existing);
-      if (!advanced.ok) return c.json(fromResult(advanced), 400);
+    }
+
+    // With or without a relayed event: drive as far as deterministic/host-side nodes allow —
+    // auto-resolving every `noop` executor — then stop at the first node whose executor needs the
+    // orchestrator/human, never faking that work. One call relays a result (or, with no event,
+    // just kicks off driving from wherever the graph currently stands) and gets the next move.
+    const driven = await runToQuiescence(ctx, service.registry, ROOT_NODE_ID, service.resolvers);
+    if (!driven.settled && driven.reason === 'max-steps') {
+      return c.json(err('driver_stalled', `drive loop exceeded ${driven.steps} steps without reaching quiescence or an external actor`), 400);
     }
 
     const after: GraphSnapshot = { nodes: service.execStore.listNodes(scope), edges: service.execStore.listEdges(scope) };
@@ -386,7 +460,7 @@ export function buildEngineGraphRouter(service: GraphService): Hono {
       before,
       after,
     );
-    return c.json(ok({ delta, frontier: globalFrontier(ctx, ROOT_NODE_ID) }));
+    return c.json(ok(buildNextActionEnvelope(driven, delta, globalFrontier(ctx, ROOT_NODE_ID))));
   });
 
   app.post('/steer', async (c) => {

@@ -42,14 +42,15 @@ function findChainTip(nodes: readonly DagNode[], edges: readonly DagEdge[], revi
 /**
  * Carries out one `HandleResult.routing` request. Only the three primitives the shipped built-ins'
  * own `handle` ever requests are supported (`reset`, `add_corrective`, `toggle`) — any other is a
- * driver bug, not a silently-ignored no-op. `add_corrective`'s own `handle`-supplied `params.data`
- * deliberately carries only `reviewReportPath`/`correctiveIndex` (see `code-review.ts`); the
- * chain's original scope contract (`handoffDocPath`/`repos`/`complexity`/`shouldCommit`) is carried
+ * driver bug, not a silently-ignored no-op. `add_corrective`'s
+ * own `handle`-supplied `params.data` deliberately carries only `reviewReportPath`/`correctiveIndex`
+ * (see `code-review.ts`); the chain's original scope contract (`handoffDocPath`/`repos`/`complexity`/
+ * `shouldCommit`) is carried
  * forward here from the review's current chain tip — the same host-side enrichment a real
  * orchestrator performs before minting a corrective, never invented by the engine's own compound
  * primitive.
  */
-function runRouting(ctx: PrimitiveContext, routing: RoutingRequest): Result<unknown> {
+function runRouting(ctx: PrimitiveContext, registry: NodeTypeRegistry, routing: RoutingRequest): Result<unknown> {
   switch (routing.primitive) {
     case 'reset': {
       const params = routing.params as unknown as { node: NodeId; cascade?: boolean };
@@ -118,7 +119,7 @@ export function applyOutcome(ctx: PrimitiveContext, registry: NodeTypeRegistry, 
   if (!applied.ok) throw new Error(`driver: apply_event('${nodeId}') failed: ${applied.error.message}`);
 
   if (handled.routing) {
-    const routed = runRouting(ctx, handled.routing);
+    const routed = runRouting(ctx, registry, handled.routing);
     if (!routed.ok) throw new Error(`driver: routing '${handled.routing.primitive}' failed: ${routed.error.message}`);
   }
 

@@ -7,9 +7,10 @@
 // real daemon on the machine, `signals: []` so this test process's own signal handling is
 // untouched). Every functional scenario drives the result exclusively over HTTP (`drive.ts`);
 // nothing outside this module reaches into the daemon's internals once it's up.
+import fsSync from 'node:fs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
-import path from 'node:path';
+import nodePath from 'node:path';
 import { start } from '../../src/lifecycle/daemon.js';
 import type { StartResult } from '../../src/lifecycle/daemon.js';
 
@@ -18,6 +19,25 @@ export interface BootedDaemon {
   baseUrl(): string;
   /** The on-disk SQLite file this daemon (and any `restart()`) opens — stable across a restart. */
   readonly dbPath: string;
+  /**
+   * Stages `content` at `path`, resolved against the daemon's real `projectRoot` — the black-box
+   * way a scenario stages a review/audit report the service's own resolver reads its verdict off
+   * via the real `docRead` port, since nothing in the HTTP surface writes agent-authored docs. A
+   * genuine on-disk write, so it survives a `restart()` unchanged.
+   */
+  seedDoc(path: string, content: string): void;
+  /**
+   * Reads back `path` (resolved the same way `seedDoc` writes it) — the black-box way a scenario
+   * asserts content the service itself wrote via the real `docWrite` port (e.g. `explosion`'s
+   * emitted phase/task docs, or a re-explode's backup copy). `null` if nothing exists there yet.
+   */
+  readDoc(path: string): string | null;
+  /**
+   * Lists the immediate entries under `dirPath` (resolved the same way `seedDoc`/`readDoc` are) —
+   * `[]` if the directory doesn't exist. Lets a scenario discover a dynamically real-clock-stamped
+   * path (e.g. `explosion`'s own `backups/{stamp}/`) without predicting the stamp itself.
+   */
+  listDir(dirPath: string): readonly string[];
   /** Abruptly tears down the server + closes the DB handle — no graceful SIGINT/SIGTERM handshake — simulating a hard kill mid-run. */
   kill(): Promise<void>;
   /** Kills the current daemon (if still alive) and boots a fresh one over the *same* `dbPath` — a fresh `compose()`, a fresh ephemeral port — proving restart durability. */
@@ -26,16 +46,20 @@ export interface BootedDaemon {
   teardown(): Promise<void>;
 }
 
-/** Boots a fresh daemon into its own temp root: a fresh temp directory plus a SQLite file inside it, bound to an OS-assigned ephemeral port. */
+/** Boots a fresh daemon into its own temp root: a fresh temp directory holding the SQLite file, the
+ * discovery-file root, and a `project/` subdirectory the real `docRead`/`docWrite` ports confine to
+ * — bound to an OS-assigned ephemeral port. */
 export async function bootDaemon(): Promise<BootedDaemon> {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'graph-service-functional-'));
-  const dbPath = path.join(root, 'graph.sqlite');
+  const root = await fs.mkdtemp(nodePath.join(os.tmpdir(), 'graph-service-functional-'));
+  const dbPath = nodePath.join(root, 'graph.sqlite');
+  const projectRoot = nodePath.join(root, 'project');
+  await fs.mkdir(projectRoot, { recursive: true });
 
   let current: StartResult | undefined;
   let alive = false;
 
   async function boot(): Promise<void> {
-    current = await start({ port: 0, dbPath, root, signals: [] });
+    current = await start({ port: 0, dbPath, root, projectRoot, signals: [] });
     alive = true;
   }
 
@@ -55,6 +79,30 @@ export async function bootDaemon(): Promise<BootedDaemon> {
       return current.url;
     },
     dbPath,
+    seedDoc(path: string, content: string): void {
+      if (!current) throw new Error('boot: daemon is not running');
+      const target = nodePath.resolve(projectRoot, path);
+      fsSync.mkdirSync(nodePath.dirname(target), { recursive: true });
+      fsSync.writeFileSync(target, content, 'utf8');
+    },
+    readDoc(path: string): string | null {
+      if (!current) throw new Error('boot: daemon is not running');
+      const target = nodePath.resolve(projectRoot, path);
+      try {
+        return fsSync.readFileSync(target, 'utf8');
+      } catch {
+        return null;
+      }
+    },
+    listDir(dirPath: string): readonly string[] {
+      if (!current) throw new Error('boot: daemon is not running');
+      const target = nodePath.resolve(projectRoot, dirPath);
+      try {
+        return fsSync.readdirSync(target);
+      } catch {
+        return [];
+      }
+    },
     kill,
     async restart(): Promise<void> {
       await kill();

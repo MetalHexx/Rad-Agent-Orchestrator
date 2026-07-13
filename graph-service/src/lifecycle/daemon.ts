@@ -63,6 +63,8 @@ export interface StartOptions {
   readonly port: number;
   readonly dbPath: string;
   readonly root?: string;
+  /** Forwarded to `compose()` as `ComposeOptions.projectRoot` — the real `docRead`/`docWrite` confinement root. Defaults to `resolveRadorcRoot()` when omitted, same as `compose()` itself. */
+  readonly projectRoot?: string;
   readonly hostname?: string;
   readonly signals?: readonly NodeJS.Signals[];
   readonly _exit?: (code: number) => void;
@@ -84,7 +86,7 @@ export interface StartResult {
 export async function start(opts: StartOptions): Promise<StartResult> {
   const root = opts.root ?? resolveRadorcRoot();
   const hostname = opts.hostname ?? LOOPBACK_HOST;
-  const service = compose({ dbPath: opts.dbPath });
+  const service = compose({ dbPath: opts.dbPath, projectRoot: opts.projectRoot });
   const app = buildApp(service);
 
   const { server, port } = await bindWithFallback(app.fetch, hostname, opts.port);

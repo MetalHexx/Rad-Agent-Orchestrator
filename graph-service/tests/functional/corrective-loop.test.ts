@@ -1,22 +1,24 @@
 // graph-service/tests/functional/corrective-loop.test.ts
 //
-// Scenario 3: a `changes_requested` verdict — the same `rad-orc:code_review.reviewed` token, only
-// `envelope.data.verdict` flipped; there is no distinct token — births an additive
-// `rad-orc:corrective`, carrying the chain-tip scope contract forward; driving that corrective, then
-// a follow-up `approved` verdict, converges the review to `done`.
+// Scenario 3: a `changes_requested` verdict — read by the service off the running report's own
+// frontmatter, never a client-supplied override (`driver/resolvers.ts`'s `relayCodeReviewCompletion`
+// always re-derives it) — births an additive `rad-orc:corrective`, carrying the chain-tip scope
+// contract forward; driving that corrective, then a follow-up `approved` verdict (the report
+// re-staged accordingly), converges the review to `done`.
 //
 // `add_corrective`'s own precondition only re-arms a `done`/`in_progress` review (never a
-// `not_started` one), so the daemon's own faked capability ports are first let auto-resolve the
-// review's very first cycle to `approved` — a throwaway intermediate state, never asserted on its
-// own — purely to reach a review the client's own explicit `changes_requested` override may then
-// reopen, exactly as a stakeholder re-flagging an already-approved review would.
+// `not_started` one), so the review's very first cycle is first driven to `approved` off the
+// report — a throwaway intermediate state, never asserted on its own — purely to reach a review the
+// scenario may then reopen by re-staging the report as `changes_requested`, exactly as a stakeholder
+// re-flagging an already-approved review would.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { BootedDaemon } from '../harness/boot.js';
 import { bootDaemon } from '../harness/boot.js';
 import { driveToQuiescence, frontier, node, seed, submitEvent } from '../harness/drive.js';
 import type { SseCollector } from '../harness/sse.js';
 import { connectSse } from '../harness/sse.js';
-import { PHASE_CHAIN_IDS, phaseChainThroughReviewSeedSteps } from '../fixtures/phase-chain.js';
+import { PHASE_CHAIN_IDS, REVIEW_REPORT_PATH, phaseChainThroughReviewSeedSteps, reviewReportDoc } from '../fixtures/phase-chain.js';
+import { autoRelay } from '../fixtures/relay.js';
 
 const CODE_REVIEW_REVIEWED_TOKEN = 'rad-orc:code_review.reviewed';
 const TASK_COMPLETED_TOKEN = 'rad-orc:task.completed';
@@ -39,26 +41,33 @@ describe('functional: corrective loop', () => {
   it('mints an additive corrective with the chain-tip scope contract carried forward, then a follow-up approved verdict converges the review', async () => {
     const project = 'corrective-loop';
     await seed(daemon.baseUrl(), project, phaseChainThroughReviewSeedSteps());
+    // Both of this scenario's driven review cycles read their verdict off this same report path —
+    // the throwaway first cycle reads `approved`, then it's re-staged `changes_requested` below.
+    daemon.seedDoc(REVIEW_REPORT_PATH, reviewReportDoc('approved', 'none'));
 
-    await driveToQuiescence(daemon.baseUrl(), project);
+    await driveToQuiescence(daemon.baseUrl(), project, { resolve: autoRelay });
     expect((await node(daemon.baseUrl(), project, PHASE_CHAIN_IDS.review)).status).toBe('done');
 
     let sse: SseCollector | undefined;
     try {
-      // Connected after the throwaway auto-resolved cycle, so the stream carries exactly the
-      // corrective-mint sequence this scenario is about: the client's own `changes_requested`
-      // verdict, the corrective's mint + completion, and the follow-up `approved` verdict.
+      // Connected after the throwaway first cycle, so the stream carries exactly the
+      // corrective-mint sequence this scenario is about: the re-staged `changes_requested` verdict,
+      // the corrective's mint + completion, and the follow-up `approved` verdict.
       sse = await connectSse(`${daemon.baseUrl()}/engine-graph/stream?project=${project}`);
 
-      await submitEvent(daemon.baseUrl(), project, PHASE_CHAIN_IDS.review, {
+      // Re-flag the already-approved review — a stakeholder revising their own verdict — by
+      // re-staging the report itself; the relayed completion below carries no verdict of its own.
+      // The mint + reopen happen inside this one call, which itself keeps driving — straight onto
+      // the newly-eligible corrective — so its own response already names that next actor.
+      daemon.seedDoc(REVIEW_REPORT_PATH, reviewReportDoc('changes_requested', 'medium'));
+      const reopened = await submitEvent(daemon.baseUrl(), project, PHASE_CHAIN_IDS.review, {
         event: CODE_REVIEW_REVIEWED_TOKEN,
-        payload: {
-          outcome: 'ok',
-          data: { verdict: 'changes_requested', severity: 'medium', correctiveIndex: 1, reviewReportPath: 'reviews/review-1.md' },
-        },
+        payload: { outcome: 'ok', data: {} },
       });
 
       const correctiveId = `${PHASE_CHAIN_IDS.review}-corrective-1`;
+      expect(reopened.node).toBe(correctiveId);
+      expect(reopened.executor).toBe('spawn-sub-agent');
       const corrective = await node(daemon.baseUrl(), project, correctiveId);
       expect(corrective.type).toBe('rad-orc:corrective');
       expect(corrective.derivedFrom).toBe(PHASE_CHAIN_IDS.task);
@@ -75,7 +84,15 @@ describe('functional: corrective loop', () => {
       expect(reopenedReview.status).toBe('not_started');
       expect(reopenedReview.data.verdict).toBe('changes_requested');
 
-      const { steps } = await driveToQuiescence(daemon.baseUrl(), project);
+      // The follow-up cycle converges — re-stage the report `approved` before the corrective (and
+      // then the re-engaged review) are driven to completion, resuming from the actor the reopening
+      // call above already surfaced rather than re-bootstrapping (which would find nothing left to
+      // engage — the corrective is already stopped, mid-flight, from that same call).
+      daemon.seedDoc(REVIEW_REPORT_PATH, reviewReportDoc('approved', 'none'));
+      const { steps } = await driveToQuiescence(daemon.baseUrl(), project, {
+        resolve: autoRelay,
+        from: { id: reopened.node!, type: reopened.action!, executor: reopened.executor! },
+      });
       expect(steps).toBeGreaterThan(0);
 
       const finalCorrective = await node(daemon.baseUrl(), project, correctiveId);
@@ -94,10 +111,10 @@ describe('functional: corrective loop', () => {
       expect(mintDeltas).toHaveLength(1);
       expect(mintDeltas[0].data).toMatchObject({ params: { id: correctiveId, review: PHASE_CHAIN_IDS.review } });
 
-      // The ordered outcome sequence: the client's own `changes_requested` verdict, the
-      // corrective's own completion, then the follow-up `approved` verdict — the same
-      // `params.event`-carrying filter `happy-path.test.ts` uses, excluding the separate
-      // status-resync rows `syncProjectedStatus` also commits.
+      // The ordered outcome sequence: the re-staged `changes_requested` verdict, the corrective's
+      // own completion, then the follow-up `approved` verdict — the same `params.event`-carrying
+      // filter `happy-path.test.ts` uses, excluding the separate status-resync rows
+      // `syncProjectedStatus` also commits.
       const outcomeTokens = sse.deltas
         .filter(
           (delta) =>

@@ -23,9 +23,15 @@ export {
 export type { DriverOutcome } from './driver/outcome.js';
 export { applyOutcome } from './driver/outcome.js';
 export { globalFrontier, isGloballyQuiescent } from './driver/frontier.js';
-export type { AdvanceResult, NodeOutcomeResolver, QuiescenceNotSettled, QuiescenceResult, QuiescenceSettled } from './driver/drive.js';
+export type {
+  AdvanceResult,
+  NodeOutcomeResolver,
+  QuiescenceNotSettled,
+  QuiescenceResult,
+  QuiescenceSettled,
+  QuiescenceStoppedAtActor,
+} from './driver/drive.js';
 export { advance, runToQuiescence } from './driver/drive.js';
-export type { CommitResultLike, DriverScript } from './driver/resolvers.js';
 export { createBuiltInResolvers } from './driver/resolvers.js';
 
 export type { ServiceDiscovery } from './lifecycle/discovery.js';

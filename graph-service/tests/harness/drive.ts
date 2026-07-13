@@ -48,21 +48,41 @@ export interface DagSnapshot {
 }
 
 export interface SubmitEventResult {
+  readonly action: string | null;
+  readonly node: string | null;
+  readonly executor: string | null;
+  readonly instructions: string | null;
+  readonly context: Readonly<Record<string, unknown>> | null;
+  readonly completion_event: string | null;
   readonly delta: { readonly nodeChanges: readonly unknown[]; readonly edgeChanges: readonly unknown[] };
   readonly frontier: readonly DagNode[];
 }
 
-/** The client's own dictated outcome for `submit-event` — the same `{event, payload}` shape the route accepts, bypassing the daemon's default auto-resolve for the node this targets. */
+/** The client's own dictated outcome for `submit-event` — the same `{event, payload}` shape the route accepts, relaying a completion for the node this targets. */
 export interface ExplicitEvent {
   readonly event: string;
   readonly payload: { readonly outcome: 'ok' | 'error'; readonly data: Readonly<Record<string, unknown>> };
 }
 
+/** The external-actor node `runToQuiescence` most recently stopped at — everything a `resolve()` callback needs to decide how to relay its completion, without a second round trip to look the node up. */
+export interface StoppedActor {
+  readonly id: string;
+  readonly type: string;
+  readonly executor: string;
+}
+
 export interface DriveOptions {
-  /** Called once per selected frontier node right before advancing it; return an explicit `{event, payload}` override to dictate the outcome directly, or `undefined` to let the daemon auto-resolve via its own faked capability ports. */
-  readonly resolve?: (node: DagNode) => ExplicitEvent | undefined;
+  /** Called once per node the drive loop stops at; return an explicit `{event, payload}` to relay that node's completion, or `undefined` to leave it stopped (ends the loop). */
+  readonly resolve?: (actor: StoppedActor) => ExplicitEvent | undefined;
   /** Bounds the loop — the same "never spin forever" contract the server's own `runToQuiescence` enforces. */
   readonly maxSteps?: number;
+  /**
+   * Resumes driving from an already-stopped actor — one a prior explicit `submitEvent` call's own
+   * response already surfaced (relaying that node's own completion can itself drive the graph
+   * straight to the *next* external-actor node within that same call, so a fresh no-event bootstrap
+   * here would find nothing left to engage). Omit to bootstrap normally off `ROOT_NODE_ID`.
+   */
+  readonly from?: StoppedActor;
 }
 
 export interface DriveResult {
@@ -202,27 +222,50 @@ export async function steer(
 }
 
 /**
- * Polls the whole-tree frontier and advances one node at a time — via `submitEvent`, auto-resolved
- * unless `options.resolve` supplies an explicit override for that node — until it's empty, mirroring
- * the server's own `runToQuiescence` shape but over the wire. `maxSteps` bounds the loop so a stuck
- * scenario fails fast with the still-eligible ids rather than hanging.
+ * Drives one call at a time over `submit-event`'s own "relay a result, get the next move" contract:
+ * each round trip carries the drive as far as deterministic nodes allow and stops at the first
+ * external-actor node, naming it in the response envelope; this loop relays that exact node's
+ * completion (via `options.resolve`) on the following call, repeating until the envelope reports no
+ * further action. Never polls the frontier to pick a target — `submit-event` ignores which node a
+ * no-event call names beyond existence, so the very first call bootstraps off the always-present
+ * `ROOT_NODE_ID`, and every call after that targets whichever node the previous response stopped at.
+ * `maxSteps` bounds the loop so a stuck scenario (no `resolve()` override for the stopped node type)
+ * fails fast rather than hanging.
  */
 export async function driveToQuiescence(baseUrl: string, project: string, options: DriveOptions = {}): Promise<DriveResult> {
   const maxSteps = options.maxSteps ?? 50;
   let steps = 0;
-  for (;;) {
-    const eligible = await frontier(baseUrl, project);
-    if (eligible.length === 0) return { steps };
-    if (steps >= maxSteps) {
+  let cursor: string = options.from?.id ?? ROOT_NODE_ID;
+  let pending: ExplicitEvent | undefined;
+
+  if (options.from) {
+    pending = options.resolve?.(options.from);
+    if (!pending) {
       throw new Error(
-        `driveToQuiescence('${project}'): exceeded ${maxSteps} steps without reaching quiescence ` +
-          `(still eligible: ${eligible.map((candidate) => candidate.id).join(', ')})`,
+        `driveToQuiescence('${project}'): resuming at '${options.from.id}' (${options.from.type}/${options.from.executor}) with no resolve() override to relay its completion`,
+      );
+    }
+  }
+
+  for (;;) {
+    if (steps >= maxSteps) {
+      throw new Error(`driveToQuiescence('${project}'): exceeded ${maxSteps} steps without reaching quiescence`);
+    }
+
+    const result = await submitEvent(baseUrl, project, cursor, pending);
+    steps += 1;
+
+    if (result.action === null || result.node === null || result.executor === null) return { steps };
+
+    const actor: StoppedActor = { id: result.node, type: result.action, executor: result.executor };
+    const override = options.resolve?.(actor);
+    if (!override) {
+      throw new Error(
+        `driveToQuiescence('${project}'): stopped at '${actor.id}' (${actor.type}/${actor.executor}) with no resolve() override to relay its completion`,
       );
     }
 
-    const next = eligible[0];
-    const override = options.resolve?.(next);
-    await submitEvent(baseUrl, project, next.id, override);
-    steps += 1;
+    cursor = actor.id;
+    pending = override;
   }
 }

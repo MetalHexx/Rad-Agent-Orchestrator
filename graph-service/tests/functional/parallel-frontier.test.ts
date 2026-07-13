@@ -14,6 +14,11 @@ import type { SseCollector } from '../harness/sse.js';
 import { connectSse } from '../harness/sse.js';
 import { PARALLEL_TASK_IDS, parallelTasksSeedSteps } from '../fixtures/parallel-tasks.js';
 
+const TASK_COMPLETED_EVENT = {
+  event: 'rad-orc:task.completed',
+  payload: { outcome: 'ok' as const, data: { results: [{ name: 'rad-orc-source', committed: true, commitHash: 'abc123', pushed: true }] } },
+};
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
@@ -44,10 +49,16 @@ describe('functional: parallel frontier', () => {
       sse = await connectSse(`${daemon.baseUrl()}/engine-graph/stream?project=${project}`);
 
       // Drive both without sequentially awaiting one before starting the other — over the wire,
-      // neither request needs to wait on the other's completion.
+      // neither request needs to wait on the other's completion. `rad-orc:task`'s executor is
+      // `spawn-sub-agent`, never `noop`, so the drive loop only engages-and-stops each sibling on
+      // the first call; the second relays its completion explicitly, as a real orchestrator would.
       await Promise.all([
         submitEvent(daemon.baseUrl(), project, PARALLEL_TASK_IDS.a),
         submitEvent(daemon.baseUrl(), project, PARALLEL_TASK_IDS.b),
+      ]);
+      await Promise.all([
+        submitEvent(daemon.baseUrl(), project, PARALLEL_TASK_IDS.a, TASK_COMPLETED_EVENT),
+        submitEvent(daemon.baseUrl(), project, PARALLEL_TASK_IDS.b, TASK_COMPLETED_EVENT),
       ]);
 
       const snapshot = await dag(daemon.baseUrl(), project);

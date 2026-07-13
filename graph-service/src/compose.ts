@@ -18,9 +18,10 @@ import {
 import { BUILT_IN_NODE_TYPES } from '@rad-orchestration/graph-node-types';
 import { openDatabase, SqlitePortfolioStore, SqliteStateStore } from '@rad-orchestration/graph-store-sqlite';
 import type { CapabilityPorts } from './capabilities/ports.js';
-import { createFakedCapabilityPorts } from './capabilities/fakes.js';
+import { createRealCapabilityPorts } from './capabilities/real.js';
 import type { NodeOutcomeResolver } from './driver/drive.js';
 import { createBuiltInResolvers } from './driver/resolvers.js';
+import { resolveRadorcRoot } from './lifecycle/discovery.js';
 
 /**
  * The shared services object the whole app closes over — the composition root every route
@@ -35,8 +36,10 @@ export interface GraphService {
   readonly portfolio: SqlitePortfolioStore;
   /**
    * The six capability ports the driver dispatches an engaged node's `ActResult` against —
-   * `capabilities/fakes.ts`'s faked implementations today, so no real agent/git/PR side effects
-   * occur yet. A real implementation drops in here unchanged in a later phase (the 2.4 seam).
+   * `capabilities/real.ts`'s real filesystem-backed `docRead`/`docWrite`, confined to
+   * `ComposeOptions.projectRoot`; `gitFacts`/`spawnAgent`/`runCommand`/`requestHuman` still resolve
+   * via the fakes (they never fire from this drive loop — the driver stops at any node whose
+   * executor would need them, see `driver/drive.ts`'s `runToQuiescence`).
    */
   readonly capabilities: CapabilityPorts;
   /** The per-node-type outcome resolver set (`driver/resolvers.ts`), closed over `capabilities` — what `advance`/`runToQuiescence` dispatch a frontier node's `ActResult` through. */
@@ -50,6 +53,13 @@ export interface GraphService {
 
 export interface ComposeOptions {
   readonly dbPath: string;
+  /**
+   * The filesystem root the real `docRead`/`docWrite` ports confine every read/write path to
+   * (`createRealCapabilityPorts`'s `projectRoot`). Optional so an in-memory/test `compose()` call
+   * never has to supply one — defaults to `resolveRadorcRoot()` (`~/.radorc`), the same root every
+   * other lifecycle path in this package resolves at runtime.
+   */
+  readonly projectRoot?: string;
 }
 
 /** Reads this package's own `version` field — never hardcoded, so it can't drift from `package.json`. */
@@ -77,14 +87,13 @@ function readServiceVersion(): string {
  * (`subscribe`), which emit the persisted `change_log`/`portfolio_change_log` row instead (D13).
  */
 export function compose(opts: ComposeOptions): GraphService {
-  const { dbPath } = opts;
+  const { dbPath, projectRoot = resolveRadorcRoot() } = opts;
   const db = openDatabase(dbPath);
   const execStore = new SqliteStateStore(db);
   const registry = createNodeTypeRegistry(BUILT_IN_NODE_TYPES);
   const engine = createEngine(execStore, registry);
   const portfolio = new SqlitePortfolioStore(db);
-  // P01-T02: faked until the real capability ports land (2.4) — no real agent/git/PR side effects.
-  const capabilities = createFakedCapabilityPorts();
+  const capabilities = createRealCapabilityPorts(projectRoot);
   const resolvers = createBuiltInResolvers(capabilities);
 
   return {

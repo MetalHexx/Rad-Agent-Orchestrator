@@ -23,9 +23,10 @@ function directChildren(nodes: readonly DagNode[], parentId: NodeId): DagNode[] 
  * The full prior expansion `originId` stamped: every node `expand(originId, ...)` created
  * (`derivedFrom === originId`) plus their own containment descendants, so a nested subgraph the
  * expansion seeded is torn down whole rather than leaving an orphaned remainder. Empty when
- * `originId` never expanded anything.
+ * `originId` never expanded anything. Exported for reuse by any future caller needing this exact
+ * cone walk — currently consumed only by `reset`'s own cascade below.
  */
-function priorExpansionCone(nodes: readonly DagNode[], originId: NodeId): NodeId[] {
+export function priorExpansionCone(nodes: readonly DagNode[], originId: NodeId): NodeId[] {
   const cone: NodeId[] = [];
   const queue: NodeId[] = nodes.filter((node) => node.derivedFrom === originId).map((node) => node.id);
   const seen = new Set<NodeId>(queue);
