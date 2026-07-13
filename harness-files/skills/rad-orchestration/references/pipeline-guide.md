@@ -29,7 +29,7 @@ Every successful `radorch pipeline signal` call returns a JSON envelope of this 
 
 The orchestrator reads `data.prompt` as the sole instruction source for the action. The embedded `Signal:` line is authoritative for the event name and its flags — derive nothing else from this skill.
 
-`data.context` carries the action-specific payload (file paths, phase/task identifiers, configuration). When the prompt references a context field by name (e.g., `handoff_doc`, `worktree_path`), read that field from `data.context`.
+`data.context` carries the action-specific payload (file paths, phase/task identifiers, configuration). When the prompt references a context field by name (e.g., `handoff_doc`, `worktree_path`), read that field from `data.context`. Doc-path fields in the context (`handoff_doc`, `review_report_path`, `phase_plan_doc`, `requirements_doc`, `phase_plan_paths`) are emitted as absolute paths.
 
 ## Pipeline Event Loop
 
