@@ -14,8 +14,8 @@ import type { NodeTypeDefinition } from '@rad-orchestration/graph-engine';
 
 // ── rad-orc:* built-ins ──────────────────────────────────────────────────────────
 // The structural container, the pre-execution planning spine, and the execution/review node types —
-// the eight `rad-orc:*` node types (phase, master_plan, explosion, approval, task, code_review,
-// corrective, pr), registered under the same `NodeTypeRegistry` as any custom type.
+// the nine `rad-orc:*` node types (phase, master_plan, plan_audit, explosion, approval, task,
+// code_review, corrective, pr), registered under the same `NodeTypeRegistry` as any custom type.
 
 export { PHASE_NODE_TYPE, PHASE_DATA_SCHEMA } from './rad-orc/phase.js';
 
@@ -25,6 +25,13 @@ export {
   MASTER_PLAN_DATA_SCHEMA,
   MASTER_PLAN_AUTHORED_TOKEN,
 } from './rad-orc/master-plan.js';
+
+export type { PlanAuditAuditedData } from './rad-orc/plan-audit.js';
+export {
+  PLAN_AUDIT_NODE_TYPE,
+  PLAN_AUDIT_DATA_SCHEMA,
+  PLAN_AUDIT_AUDITED_TOKEN,
+} from './rad-orc/plan-audit.js';
 
 export type {
   ApprovalDecidedData,
@@ -97,6 +104,7 @@ export {
 
 import { PHASE_NODE_TYPE } from './rad-orc/phase.js';
 import { MASTER_PLAN_NODE_TYPE } from './rad-orc/master-plan.js';
+import { PLAN_AUDIT_NODE_TYPE } from './rad-orc/plan-audit.js';
 import { EXPLOSION_NODE_TYPE } from './rad-orc/explosion.js';
 import { APPROVAL_NODE_TYPE } from './rad-orc/approval.js';
 import { TASK_NODE_TYPE } from './rad-orc/task.js';
@@ -108,6 +116,7 @@ import { PR_NODE_TYPE } from './rad-orc/pr.js';
 export const BUILT_IN_NODE_TYPES: readonly NodeTypeDefinition[] = [
   PHASE_NODE_TYPE,
   MASTER_PLAN_NODE_TYPE,
+  PLAN_AUDIT_NODE_TYPE,
   EXPLOSION_NODE_TYPE,
   APPROVAL_NODE_TYPE,
   TASK_NODE_TYPE,

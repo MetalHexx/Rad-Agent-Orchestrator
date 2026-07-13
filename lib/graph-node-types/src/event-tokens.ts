@@ -16,6 +16,8 @@ import type { EventToken, NodeTypeName } from '@rad-orchestration/graph-engine';
  *   engine's own corrective primitive, never through a node's `handle` — there is no outcome to
  *   name.
  * - `master_plan_completed` becomes `rad-orc:master_plan.authored`.
+ * - The orchestrator-inline plan audit's one-shot completion becomes `rad-orc:plan_audit.audited`
+ *   — no verdict crosses the wire, so there is exactly one outcome.
  * - `explosion_completed`/`explosion_failed` become `rad-orc:explosion.parsed`/
  *   `rad-orc:explosion.parse_failed`.
  * - `pr_created` becomes `rad-orc:pr.created`.
@@ -29,6 +31,7 @@ export const EVENT_TOKENS = [
   'rad-orc:code_review.reviewed',
   'rad-orc:approval.decided',
   'rad-orc:master_plan.authored',
+  'rad-orc:plan_audit.audited',
   'rad-orc:explosion.parsed',
   'rad-orc:explosion.parse_failed',
   'rad-orc:pr.created',
@@ -46,6 +49,7 @@ export const BUILT_IN_ROUTED_OUTCOMES: Readonly<Record<NodeTypeName, readonly st
   'rad-orc:code_review': ['reviewed'],
   'rad-orc:approval': ['decided'],
   'rad-orc:master_plan': ['authored'],
+  'rad-orc:plan_audit': ['audited'],
   'rad-orc:explosion': ['parsed', 'parse_failed'],
   'rad-orc:pr': ['created'],
 };
