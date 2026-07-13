@@ -107,6 +107,7 @@ export type {
   ActContext,
   ActResult,
   AgentSpawnRequest,
+  AuditSpawnRequest,
   DataChange,
   DataFieldKind,
   DataFieldLevel,

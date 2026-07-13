@@ -83,11 +83,21 @@ export interface ReviewSpawnRequest {
   readonly commitHash?: string;
 }
 
+/** A plan-audit spawn — a general-purpose auditor over the two planning docs. Additive: the
+ *  engine still never names a node type; `plan_audit` is the sole current producer. D18/D19: additive
+ *  spawn shape, no built-in name hardcoded in the engine. */
+export interface AuditSpawnRequest {
+  readonly kind: 'auditor';
+  readonly requirementsDoc: string;
+  readonly masterPlanDoc: string;
+  readonly reviewReportPath: string;
+}
+
 /** `executor` names how the work is carried out; `payload` is required only for `'spawn-sub-agent'`. */
 export interface ActResult {
   readonly instructions: string;
   readonly executor: Executor;
-  readonly payload?: AgentSpawnRequest | ReviewSpawnRequest;
+  readonly payload?: AgentSpawnRequest | ReviewSpawnRequest | AuditSpawnRequest;
 }
 
 // ── Handle ───────────────────────────────────────────────────────────────────────
