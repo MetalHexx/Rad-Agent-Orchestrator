@@ -3,7 +3,6 @@ import { DATA_FIELD_KINDS, DATA_FIELD_LEVELS, ENVELOPE_OUTCOMES } from '../src/i
 import type {
   ActContext,
   ActResult,
-  AuditSpawnRequest,
   CodeBehindPort,
   DataSchema,
   DocWriteRequest,
@@ -114,21 +113,5 @@ describe('capability-port idempotency contract', () => {
     expect(runCommand.originatingNodeId).toBe('n1');
     expect(docWrite.idempotencyKey).toBe('n1:attempt-1');
     expect(spawnAgent.request.kind).toBe('coder');
-  });
-});
-
-describe('ActResult spawn-request union', () => {
-  it('accepts AuditSpawnRequest as a valid payload member', () => {
-    const auditRequest: AuditSpawnRequest = {
-      kind: 'auditor',
-      requirementsDoc: '/path/to/requirements.md',
-      masterPlanDoc: '/path/to/master-plan.md',
-      reviewReportPath: '/path/to/review-report.md',
-    };
-
-    // Type-level assertion: AuditSpawnRequest is assignable to ActResult.payload
-    const _payload: ActResult['payload'] = auditRequest;
-    expect(_payload).toBeDefined();
-    expect(_payload?.kind).toBe('auditor');
   });
 });
