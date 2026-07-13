@@ -130,7 +130,7 @@ async function readCodeReviewOutcome(ports: CapabilityPorts, node: DagNode, atte
 }
 
 /**
- * The production HTTP path for a relayed `rad-orc:code_review`/`plan_audit` completion:
+ * The production HTTP path for a relayed `rad-orc:code_review` completion:
  * `http/engine-graph.ts`'s `submit-event` route dispatches here instead of trusting the caller's
  * envelope directly, so the verdict is always re-derived from the report doc-read — the incoming
  * event is treated as nothing more than a bare "the review finished" signal.
