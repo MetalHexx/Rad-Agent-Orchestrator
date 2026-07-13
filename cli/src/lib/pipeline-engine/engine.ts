@@ -7,6 +7,7 @@ import { preRead } from './pre-reads.js';
 import { getMutation } from './mutations.js';
 import { walkDAG, resolveNodeStatePath, deriveCurrentNodePathFromMarkers } from './dag-walker.js';
 import { enrichActionContext } from './context-enrichment.js';
+import { resolveDocPaths } from './resolve-doc-paths.js';
 import { OUT_OF_BAND_EVENTS } from './constants.js';
 import { composeActionPrompt, composeOrphanRuntimeShape, NEXT_ACTION_PLACEHOLDER } from './composer.js';
 import { parseActionEventFile } from './action-event-loader.js';
@@ -135,8 +136,10 @@ export function attachPromptIfActionResolved(
   next: { action: string; context: Record<string, unknown> } | null,
   template: PipelineTemplate,
   firingEvent: string,
+  projectDir: string,
 ): PipelineResult {
   if (!next) return { action: null, context: {} };
+  next.context = resolveDocPaths(next.context, path.resolve(projectDir));
   const completion_event = resolveCompletionEvent(next.action, template);
   if (completion_event === undefined) {
     return { action: next.action, context: next.context };
@@ -343,6 +346,7 @@ export function processEvent(
           nextAction ? { action: nextAction.action, context: enrichedContext } : null,
           template,
           event,
+          projectDir,
         );
       } else {
         const walkerResult = walkDAG(state, template, config, wrappedReadDocument);
@@ -373,6 +377,7 @@ export function processEvent(
           walkerResult ? { action: walkerResult.action, context: enrichedContext } : null,
           template,
           event,
+          projectDir,
         );
       }
     }
@@ -457,6 +462,7 @@ export function processEvent(
         walkerResult ? { action: walkerResult.action, context: enrichedContext } : null,
         template,
         event,
+        projectDir,
       );
     }
 
@@ -579,7 +585,7 @@ export function processEvent(
       }
     }
 
-    return attachPromptIfActionResolved(nextAction ?? null, template, event);
+    return attachPromptIfActionResolved(nextAction ?? null, template, event, projectDir);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     return {
