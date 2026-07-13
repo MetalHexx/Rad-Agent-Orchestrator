@@ -1,7 +1,7 @@
 // graph-service/src/capabilities/real.ts
 //
-// The real `docRead`/`docWrite` ports — filesystem-backed, confined to a resolved project root
-// (`~/.radorc/projects/{project}/`, resolved by the caller and handed in as `projectRoot`).
+// The real `docRead`/`docWrite` ports — filesystem-backed, confined to a resolved filesystem root
+// passed in via `projectRoot` (defaults to `resolveRadorcRoot()` if not supplied by the caller).
 // `gitFacts`/`spawnAgent`/`runCommand`/`requestHuman` stay the fakes for now (P02-T02 wires the
 // real bundle into `compose()`; those three are the orchestrator's job, not service-executed).
 import fs from 'node:fs/promises';
