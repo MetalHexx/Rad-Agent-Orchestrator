@@ -19,6 +19,9 @@ import type { EventToken, NodeTypeName } from '@rad-orchestration/graph-engine';
  * - `explosion_completed`/`explosion_failed` become `rad-orc:explosion.parsed`/
  *   `rad-orc:explosion.parse_failed`.
  * - `pr_created` becomes `rad-orc:pr.created`.
+ * - The plan-audit's spawned-auditor completion becomes `rad-orc:plan_audit.audited` — a neutral
+ *   completion signal; the service's resolver doc-reads the report's `verdict` (`approved` /
+ *   `issues_found` are the routed outcomes `handle` branches on, never tokens of their own).
  * - Project-bootstrap and terminal actions with no per-node `handle` to route (`gate_mode_set`,
  *   `plan_approved`/`plan_rejected`, `final_approved`/`final_rejected`, `pr_requested`, `halt`,
  *   `start`, `display_complete`/`display_halted`) are out of scope for this map — they are
@@ -32,6 +35,7 @@ export const EVENT_TOKENS = [
   'rad-orc:explosion.parsed',
   'rad-orc:explosion.parse_failed',
   'rad-orc:pr.created',
+  'rad-orc:plan_audit.audited',
 ] as const satisfies readonly EventToken[];
 
 /**
@@ -48,6 +52,7 @@ export const BUILT_IN_ROUTED_OUTCOMES: Readonly<Record<NodeTypeName, readonly st
   'rad-orc:master_plan': ['authored'],
   'rad-orc:explosion': ['parsed', 'parse_failed'],
   'rad-orc:pr': ['created'],
+  'rad-orc:plan_audit': ['audited'],
 };
 
 /** Every token {@link BUILT_IN_ROUTED_OUTCOMES} implies but {@link EVENT_TOKENS} never declares, and vice versa. */
