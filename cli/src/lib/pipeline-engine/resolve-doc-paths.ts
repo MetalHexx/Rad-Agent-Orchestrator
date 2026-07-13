@@ -31,7 +31,7 @@ export function resolveDocPaths(
   const result: Record<string, unknown> = { ...context };
 
   for (const field of DOC_PATH_SCALAR_FIELDS) {
-    if (!(field in result)) continue;
+    if (!Object.prototype.hasOwnProperty.call(result, field)) continue;
     const value = result[field];
     if (typeof value === 'string') {
       result[field] = resolveScalar(value, projectDir);
@@ -42,7 +42,7 @@ export function resolveDocPaths(
   }
 
   for (const field of DOC_PATH_ARRAY_FIELDS) {
-    if (!(field in result)) continue;
+    if (!Object.prototype.hasOwnProperty.call(result, field)) continue;
     const value = result[field];
     if (Array.isArray(value)) {
       result[field] = value.map((el) => (typeof el === 'string' ? resolveScalar(el, projectDir) : el));

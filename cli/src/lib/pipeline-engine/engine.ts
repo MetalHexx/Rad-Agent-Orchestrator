@@ -139,7 +139,7 @@ export function attachPromptIfActionResolved(
   projectDir: string,
 ): PipelineResult {
   if (!next) return { action: null, context: {} };
-  next.context = resolveDocPaths(next.context, projectDir);
+  next.context = resolveDocPaths(next.context, path.resolve(projectDir));
   const completion_event = resolveCompletionEvent(next.action, template);
   if (completion_event === undefined) {
     return { action: next.action, context: next.context };

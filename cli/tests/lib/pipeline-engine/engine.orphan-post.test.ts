@@ -146,6 +146,20 @@ describe('attachPromptIfActionResolved — Step-N renumbering and envelope flag'
     );
     expect(result.has_custom_instructions).toBe(false);
   });
+
+  it('resolves a relative projectDir to absolute before joining doc-path fields, so the envelope still emits an absolute path', () => {
+    seedRoot();
+    const relativeProjectDir = path.join('.', 'not-a-real-project-dir');
+    const result = attachPromptIfActionResolved(
+      { action: 'foo', context: { handoff_doc: 'tasks/FOO.md' } },
+      dummyTemplate,
+      'bar_done',
+      relativeProjectDir,
+    );
+    const handoffDoc = result.context['handoff_doc'] as string;
+    expect(path.isAbsolute(handoffDoc)).toBe(true);
+    expect(handoffDoc).toBe(path.resolve(relativeProjectDir, 'tasks/FOO.md'));
+  });
 });
 
 describe('attachPromptIfActionResolved — non-orphan event double-include guard', () => {
