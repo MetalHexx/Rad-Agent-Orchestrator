@@ -1,9 +1,11 @@
 // graph-service/tests/functional/halt-resume.test.ts
 //
-// Scenario 4: a `rejected` verdict halts the review recoverably (`blocked`, frontier-excluded — not
-// a thrown error). The daemon is then killed mid-run (no graceful shutdown) and reopened on the
+// Scenario 4: a `rejected` verdict — read by the service off the running report's own frontmatter,
+// never a client-supplied override — halts the review recoverably (`blocked`, frontier-excluded —
+// not a thrown error). The daemon is then killed mid-run (no graceful shutdown) and reopened on the
 // same on-disk SQLite file: the persisted graph state is byte-identical across that boundary. A
-// `steer resume` re-arms the halted review, and driving it to quiescence converges it to `done`.
+// `steer resume` re-arms the halted review, the report is re-staged `approved`, and driving it to
+// quiescence converges it to `done`.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { BootedDaemon } from '../harness/boot.js';
 import { bootDaemon } from '../harness/boot.js';
@@ -11,6 +13,7 @@ import { dag, driveToQuiescence, frontier, node, seed, steer, submitEvent } from
 import type { SseCollector } from '../harness/sse.js';
 import { connectSse } from '../harness/sse.js';
 import { PHASE_CHAIN_IDS, REVIEW_REPORT_PATH, phaseChainThroughReviewSeedSteps, reviewReportDoc } from '../fixtures/phase-chain.js';
+import { autoRelay } from '../fixtures/relay.js';
 
 const CODE_REVIEW_REVIEWED_TOKEN = 'rad-orc:code_review.reviewed';
 
@@ -49,23 +52,26 @@ describe('functional: halt -> resume + restart durability', () => {
   it('halts recoverably, survives a hard kill + reopen on the same DB file with byte-identical state, then resumes to done', async () => {
     const project = 'halt-resume';
     await seed(daemon.baseUrl(), project, phaseChainThroughReviewSeedSteps());
-    // The service reads the review verdict off its report — stage an approved one for the auto-resolve.
+    // The service reads the review verdict off its report — stage an approved one for the throwaway
+    // first cycle.
     daemon.seedDoc(REVIEW_REPORT_PATH, reviewReportDoc('approved', 'none'));
 
-    // A throwaway intermediate cycle (same rationale as the corrective-loop scenario): the daemon's
-    // own faked capability ports auto-resolve the review's first cycle to `approved`, so the
-    // client's own explicit `rejected` override below has a `done`/`in_progress` review to reopen.
-    await driveToQuiescence(daemon.baseUrl(), project);
+    // A throwaway intermediate cycle (same rationale as the corrective-loop scenario): drives the
+    // review's first cycle to `approved`, so the report re-staged `rejected` below has a
+    // `done`/`in_progress` review to reopen.
+    await driveToQuiescence(daemon.baseUrl(), project, { resolve: autoRelay });
 
     // Connected after the throwaway auto-resolved cycle, so the stream carries exactly the
-    // explicit `rejected` halt this scenario is about.
+    // `rejected` halt this scenario is about.
     let preHaltSse: SseCollector | undefined;
     try {
       preHaltSse = await connectSse(`${daemon.baseUrl()}/engine-graph/stream?project=${project}`);
 
+      // Re-stage the report `rejected` — the relayed completion below carries no verdict of its own.
+      daemon.seedDoc(REVIEW_REPORT_PATH, reviewReportDoc('rejected', 'high'));
       await submitEvent(daemon.baseUrl(), project, PHASE_CHAIN_IDS.review, {
         event: CODE_REVIEW_REVIEWED_TOKEN,
-        payload: { outcome: 'ok', data: { verdict: 'rejected', severity: 'high' } },
+        payload: { outcome: 'ok', data: {} },
       });
 
       const halted = await node(daemon.baseUrl(), project, PHASE_CHAIN_IDS.review);
@@ -85,11 +91,12 @@ describe('functional: halt -> resume + restart durability', () => {
     const beforeKill = await dag(daemon.baseUrl(), project);
 
     await daemon.restart(); // a hard kill (no graceful SIGINT/SIGTERM handshake) + a fresh `compose()` reopening the same on-disk SQLite file
-    // The faked docRead is in-memory, lost with the killed process — restage the report the resumed review re-reads.
-    daemon.seedDoc(REVIEW_REPORT_PATH, reviewReportDoc('approved', 'none'));
-
+    // The real docRead's on-disk report survives the kill unchanged (confirmed by `afterRestart`
+    // below); re-stage it `approved` here as a deliberate content change — the operator's own fix
+    // landing between the halt and the resume — not a re-application of lost state.
     const afterRestart = await dag(daemon.baseUrl(), project);
     expect(afterRestart).toEqual(beforeKill);
+    daemon.seedDoc(REVIEW_REPORT_PATH, reviewReportDoc('approved', 'none'));
 
     await steer(daemon.baseUrl(), project, 'resume', { node: PHASE_CHAIN_IDS.review });
     expect((await node(daemon.baseUrl(), project, PHASE_CHAIN_IDS.review)).status).toBe('not_started');
@@ -100,7 +107,7 @@ describe('functional: halt -> resume + restart durability', () => {
     try {
       postResumeSse = await connectSse(`${daemon.baseUrl()}/engine-graph/stream?project=${project}`);
 
-      const { steps } = await driveToQuiescence(daemon.baseUrl(), project);
+      const { steps } = await driveToQuiescence(daemon.baseUrl(), project, { resolve: autoRelay });
       expect(steps).toBeGreaterThan(0);
 
       const finalReview = await node(daemon.baseUrl(), project, PHASE_CHAIN_IDS.review);

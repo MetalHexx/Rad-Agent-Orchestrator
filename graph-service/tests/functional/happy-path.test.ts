@@ -12,6 +12,7 @@ import { dag, driveToQuiescence, seed } from '../harness/drive.js';
 import type { SseCollector } from '../harness/sse.js';
 import { connectSse } from '../harness/sse.js';
 import { PHASE_CHAIN_IDS, REVIEW_REPORT_PATH, phaseChainSeedSteps, reviewReportDoc } from '../fixtures/phase-chain.js';
+import { autoRelay } from '../fixtures/relay.js';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -38,7 +39,7 @@ describe('functional: happy path', () => {
     try {
       sse = await connectSse(`${daemon.baseUrl()}/engine-graph/stream?project=${project}`);
 
-      const { steps } = await driveToQuiescence(daemon.baseUrl(), project);
+      const { steps } = await driveToQuiescence(daemon.baseUrl(), project, { resolve: autoRelay });
       expect(steps).toBeGreaterThan(0);
 
       const snapshot = await dag(daemon.baseUrl(), project);

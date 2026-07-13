@@ -35,6 +35,7 @@ import { APPROVAL_DECIDED_TOKEN, CODE_REVIEW_REVIEWED_TOKEN, PR_CREATED_TOKEN, T
 import type { CapabilityPorts } from '../capabilities/ports.js';
 import { runExplosion } from '../capabilities/explosion-runner.js';
 import type { NodeOutcomeResolver } from './drive.js';
+import type { DriverOutcome } from './outcome.js';
 import { applyOutcome } from './outcome.js';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -86,6 +87,66 @@ function readFrontmatter(content: string): Readonly<Record<string, string>> {
 }
 
 /**
+ * How many corrective attempts `reviewNodeId` has already birthed — derived from the graph itself
+ * (`${reviewNodeId}-corrective-*` sibling ids) rather than in-memory state, so it stays correct
+ * whichever path re-derives a review's outcome (the in-service resolver below, or a relayed
+ * completion dispatched straight off the HTTP surface) and survives a process restart.
+ */
+function countReviewAttempts(ctx: PrimitiveContext, reviewNodeId: NodeId): number {
+  const prefix = `${reviewNodeId}-corrective-`;
+  return ctx.store.listNodes(ctx.scope).filter((candidate) => candidate.id.startsWith(prefix)).length;
+}
+
+/**
+ * Reads `node`'s running review report and derives its `CODE_REVIEW_REVIEWED_TOKEN` outcome — the
+ * one place a verdict is ever read off a report. Shared by `resolveCodeReview` (the in-service
+ * dispatch a `noop`-executor drive would reach) and `relayCodeReviewCompletion` (the production
+ * path a relayed real-world completion drives through), so a caller-supplied verdict is never
+ * trusted for this node type — only the report itself.
+ */
+async function readCodeReviewOutcome(ports: CapabilityPorts, node: DagNode, attempt: number): Promise<DriverOutcome> {
+  const reviewReportPath =
+    typeof node.data.reviewReportPath === 'string' && node.data.reviewReportPath.length > 0
+      ? node.data.reviewReportPath
+      : `reviews/${node.id}.md`;
+
+  const read = await ports.docRead.read({ path: reviewReportPath });
+  if (read.outcome !== 'ok') {
+    throw new Error(`driver: rad-orc:code_review '${node.id}' could not read its review report at '${reviewReportPath}'`);
+  }
+  const frontmatter = readFrontmatter(read.data.content);
+  if (!isReviewVerdict(frontmatter.verdict)) {
+    throw new Error(`driver: rad-orc:code_review '${node.id}' report at '${reviewReportPath}' has no valid 'verdict' in its frontmatter`);
+  }
+  const verdict = frontmatter.verdict;
+  const severity = isSeverity(frontmatter.severity) ? frontmatter.severity : 'none';
+
+  const data: CodeReviewReviewedData =
+    verdict === 'changes_requested'
+      ? { verdict, severity, correctiveIndex: attempt + 1, reviewReportPath }
+      : { verdict, severity };
+
+  return { token: CODE_REVIEW_REVIEWED_TOKEN, envelope: { outcome: 'ok', data: data as unknown as Readonly<Record<string, unknown>> } };
+}
+
+/**
+ * The production HTTP path for a relayed `rad-orc:code_review`/`plan_audit` completion:
+ * `http/engine-graph.ts`'s `submit-event` route dispatches here instead of trusting the caller's
+ * envelope directly, so the verdict is always re-derived from the report doc-read — the incoming
+ * event is treated as nothing more than a bare "the review finished" signal.
+ */
+export async function relayCodeReviewCompletion(
+  ports: CapabilityPorts,
+  ctx: PrimitiveContext,
+  registry: NodeTypeRegistry,
+  node: DagNode,
+): Promise<void> {
+  const attempt = countReviewAttempts(ctx, node.id);
+  const outcome = await readCodeReviewOutcome(ports, node, attempt);
+  applyOutcome(ctx, registry, node.id, outcome);
+}
+
+/**
  * Builds the resolver set for every `rad-orc:*` node type reachable through the frontier, closing
  * over the real `ports` so each dispatch reaches the actual capability surface. Every resolver
  * derives its outcome from real inputs — the orchestrator's relayed signal and, for a review, a
@@ -94,8 +155,6 @@ function readFrontmatter(content: string): Readonly<Record<string, string>> {
  * `runToQuiescence` call.
  */
 export function createBuiltInResolvers(ports: CapabilityPorts): Readonly<Record<NodeTypeName, NodeOutcomeResolver>> {
-  const reviewAttempts = new Map<NodeId, number>();
-
   async function resolveExplosion(ctx: PrimitiveContext, registry: NodeTypeRegistry, node: DagNode): Promise<void> {
     const nodes = ctx.store.listNodes(ctx.scope);
     const masterPlan = nodes.find((n) => n.type === 'rad-orc:master_plan');
@@ -154,8 +213,7 @@ export function createBuiltInResolvers(ports: CapabilityPorts): Readonly<Record<
   }
 
   async function resolveCodeReview(ctx: PrimitiveContext, registry: NodeTypeRegistry, node: DagNode, actResult: ActResult): Promise<void> {
-    const attempt = reviewAttempts.get(node.id) ?? 0;
-    reviewAttempts.set(node.id, attempt + 1);
+    const attempt = countReviewAttempts(ctx, node.id);
 
     await ports.spawnAgent.spawn({
       originatingNodeId: node.id,
@@ -163,32 +221,8 @@ export function createBuiltInResolvers(ports: CapabilityPorts): Readonly<Record<
       request: actResult.payload as ReviewSpawnRequest,
     });
 
-    const reviewReportPath =
-      typeof node.data.reviewReportPath === 'string' && node.data.reviewReportPath.length > 0
-        ? node.data.reviewReportPath
-        : `reviews/${node.id}.md`;
-
-    // The verdict is read here, off the report itself — never relayed by the orchestrator.
-    const read = await ports.docRead.read({ path: reviewReportPath });
-    if (read.outcome !== 'ok') {
-      throw new Error(`driver: rad-orc:code_review '${node.id}' could not read its review report at '${reviewReportPath}'`);
-    }
-    const frontmatter = readFrontmatter(read.data.content);
-    if (!isReviewVerdict(frontmatter.verdict)) {
-      throw new Error(`driver: rad-orc:code_review '${node.id}' report at '${reviewReportPath}' has no valid 'verdict' in its frontmatter`);
-    }
-    const verdict = frontmatter.verdict;
-    const severity = isSeverity(frontmatter.severity) ? frontmatter.severity : 'none';
-
-    const data: CodeReviewReviewedData =
-      verdict === 'changes_requested'
-        ? { verdict, severity, correctiveIndex: attempt + 1, reviewReportPath }
-        : { verdict, severity };
-
-    applyOutcome(ctx, registry, node.id, {
-      token: CODE_REVIEW_REVIEWED_TOKEN,
-      envelope: { outcome: 'ok', data: data as unknown as Readonly<Record<string, unknown>> },
-    });
+    const outcome = await readCodeReviewOutcome(ports, node, attempt);
+    applyOutcome(ctx, registry, node.id, outcome);
   }
 
   async function resolvePr(ctx: PrimitiveContext, registry: NodeTypeRegistry, node: DagNode): Promise<void> {

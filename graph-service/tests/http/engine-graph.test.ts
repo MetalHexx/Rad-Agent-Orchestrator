@@ -365,6 +365,46 @@ describe('POST /engine-graph/submit-event', () => {
     const explosionBody = (await explosionRes.json()) as EnvelopeBody<DagNode>;
     expect(explosionBody.data?.status).toBe('done');
   });
+
+  it("a rad-orc:code_review completion ignores the caller's own verdict, re-deriving it off the report's real frontmatter", async () => {
+    const projectRoot = makeTempProjectRoot();
+    fs.mkdirSync(path.join(projectRoot, 'reviews'), { recursive: true });
+    fs.writeFileSync(path.join(projectRoot, 'reviews', 'review-1.md'), '---\nverdict: approved\nseverity: none\n---\n\n# Review Report\n', 'utf8');
+    const { app } = buildTestService(projectRoot);
+
+    await postJson(app, '/engine-graph/seed', {
+      project: 'proj-submit-review-verdict',
+      seed: {
+        steps: [
+          {
+            primitive: 'add_node',
+            id: 'review-1',
+            type: 'rad-orc:code_review',
+            parent: ROOT_NODE_ID,
+            data: { level: 'task', reviewReportPath: 'reviews/review-1.md', repos: [] },
+          },
+        ],
+      },
+    });
+
+    // The caller lies about the verdict — the report itself says `approved`.
+    const res = await postJson(app, '/engine-graph/submit-event', {
+      project: 'proj-submit-review-verdict',
+      node: 'review-1',
+      event: 'rad-orc:code_review.reviewed',
+      payload: { outcome: 'ok', data: { verdict: 'changes_requested', severity: 'high' } },
+    });
+    expect(res.status).toBe(200);
+
+    const reviewRes = await app.request('/engine-graph/node?project=proj-submit-review-verdict&node=review-1');
+    const reviewBody = (await reviewRes.json()) as EnvelopeBody<DagNode>;
+    // The service's own doc-read won — never the caller-supplied envelope.
+    expect(reviewBody.data?.data.verdict).toBe('approved');
+    expect(reviewBody.data?.status).toBe('done');
+
+    const correctiveRes = await app.request('/engine-graph/node?project=proj-submit-review-verdict&node=review-1-corrective-1');
+    expect(correctiveRes.status).toBe(404);
+  });
 });
 
 describe('POST /engine-graph/steer', () => {

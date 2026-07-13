@@ -7,10 +7,10 @@
 // real daemon on the machine, `signals: []` so this test process's own signal handling is
 // untouched). Every functional scenario drives the result exclusively over HTTP (`drive.ts`);
 // nothing outside this module reaches into the daemon's internals once it's up.
+import fsSync from 'node:fs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
-import path from 'node:path';
-import { FakeDocReadPort } from '../../src/capabilities/fakes.js';
+import nodePath from 'node:path';
 import { start } from '../../src/lifecycle/daemon.js';
 import type { StartResult } from '../../src/lifecycle/daemon.js';
 
@@ -20,10 +20,10 @@ export interface BootedDaemon {
   /** The on-disk SQLite file this daemon (and any `restart()`) opens — stable across a restart. */
   readonly dbPath: string;
   /**
-   * Seeds the running daemon's faked `docRead` port with `content` at `path` — the black-box way a
-   * scenario stages a review/audit report the service's own resolver reads its verdict off, since
-   * nothing in the HTTP surface writes agent-authored docs. The faked port is in-memory, so this is
-   * re-applied after a `restart()`.
+   * Stages `content` at `path`, resolved against the daemon's real `projectRoot` — the black-box
+   * way a scenario stages a review/audit report the service's own resolver reads its verdict off
+   * via the real `docRead` port, since nothing in the HTTP surface writes agent-authored docs. A
+   * genuine on-disk write, so it survives a `restart()` unchanged.
    */
   seedDoc(path: string, content: string): void;
   /** Abruptly tears down the server + closes the DB handle — no graceful SIGINT/SIGTERM handshake — simulating a hard kill mid-run. */
@@ -34,16 +34,20 @@ export interface BootedDaemon {
   teardown(): Promise<void>;
 }
 
-/** Boots a fresh daemon into its own temp root: a fresh temp directory plus a SQLite file inside it, bound to an OS-assigned ephemeral port. */
+/** Boots a fresh daemon into its own temp root: a fresh temp directory holding the SQLite file, the
+ * discovery-file root, and a `project/` subdirectory the real `docRead`/`docWrite` ports confine to
+ * — bound to an OS-assigned ephemeral port. */
 export async function bootDaemon(): Promise<BootedDaemon> {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'graph-service-functional-'));
-  const dbPath = path.join(root, 'graph.sqlite');
+  const root = await fs.mkdtemp(nodePath.join(os.tmpdir(), 'graph-service-functional-'));
+  const dbPath = nodePath.join(root, 'graph.sqlite');
+  const projectRoot = nodePath.join(root, 'project');
+  await fs.mkdir(projectRoot, { recursive: true });
 
   let current: StartResult | undefined;
   let alive = false;
 
   async function boot(): Promise<void> {
-    current = await start({ port: 0, dbPath, root, signals: [] });
+    current = await start({ port: 0, dbPath, root, projectRoot, signals: [] });
     alive = true;
   }
 
@@ -65,9 +69,9 @@ export async function bootDaemon(): Promise<BootedDaemon> {
     dbPath,
     seedDoc(path: string, content: string): void {
       if (!current) throw new Error('boot: daemon is not running');
-      const { docRead } = current.service.capabilities;
-      if (!(docRead instanceof FakeDocReadPort)) throw new Error('boot: seedDoc requires the faked docRead port');
-      docRead.seed(path, content);
+      const target = nodePath.resolve(projectRoot, path);
+      fsSync.mkdirSync(nodePath.dirname(target), { recursive: true });
+      fsSync.writeFileSync(target, content, 'utf8');
     },
     kill,
     async restart(): Promise<void> {

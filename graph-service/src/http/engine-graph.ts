@@ -53,6 +53,7 @@ import type { QuiescenceResult } from '../driver/drive.js';
 import { runToQuiescence } from '../driver/drive.js';
 import { globalFrontier } from '../driver/frontier.js';
 import { applyOutcome } from '../driver/outcome.js';
+import { relayCodeReviewCompletion } from '../driver/resolvers.js';
 import { SHARED_MUTATION_KINDS, isSharedMutationKind, parseSharedMutation, toEngineMutationSpec } from './mutation-spec.js';
 import type { FailureEnvelope, SuccessEnvelope } from './respond.js';
 import { err, fromResult, ok } from './respond.js';
@@ -427,10 +428,17 @@ export function buildEngineGraphRouter(service: GraphService): Hono {
         ...(isNonEmptyString(payload.route) ? { route: payload.route as EventToken } : {}),
       };
       try {
-        // The client dictates the outcome directly — still the full P01-T02 outcome cycle
-        // (handle -> apply_event -> routing -> expansion -> syncProjectedStatus), never a bare
-        // apply_event.
-        applyOutcome(ctx, service.registry, nodeId, { token: event as EventToken, envelope });
+        if (existing.type === 'rad-orc:code_review' && event === CODE_REVIEW_REVIEWED_TOKEN && envelope.outcome === 'ok') {
+          // A `code_review` verdict is never trusted from the caller — the relayed event is only a
+          // "the review finished" signal; the verdict itself is always re-derived from the report's
+          // own doc-read, the same way the in-service resolver would.
+          await relayCodeReviewCompletion(service.capabilities, ctx, service.registry, existing);
+        } else {
+          // The client dictates the outcome directly — still the full P01-T02 outcome cycle
+          // (handle -> apply_event -> routing -> expansion -> syncProjectedStatus), never a bare
+          // apply_event.
+          applyOutcome(ctx, service.registry, nodeId, { token: event as EventToken, envelope });
+        }
       } catch (error) {
         return c.json(err('invalid_delta', error instanceof Error ? error.message : String(error)), 400);
       }
