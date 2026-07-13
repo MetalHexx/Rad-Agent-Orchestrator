@@ -85,6 +85,8 @@ describe('PrimitiveName vocabulary', () => {
       'add_corrective',
       'reset',
       'engage',
+      'add_corrective_gate',
+      'replace_expansion',
     ]);
   });
 });

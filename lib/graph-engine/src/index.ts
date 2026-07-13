@@ -74,6 +74,9 @@ export { apply_event } from './primitives/apply-event.js';
 export type { AddCorrectiveOptions } from './primitives/corrective.js';
 export { add_corrective } from './primitives/corrective.js';
 export { reset } from './primitives/reset.js';
+export type { AddCorrectiveGateOptions } from './primitives/corrective-gate.js';
+export { add_corrective_gate } from './primitives/corrective-gate.js';
+export { replace_expansion } from './primitives/replace-expansion.js';
 
 export type { NodeTypeRegistry } from './node-type/registry.js';
 export { RESERVED_NODE_TYPE_PREFIX, createNodeTypeRegistry } from './node-type/registry.js';
