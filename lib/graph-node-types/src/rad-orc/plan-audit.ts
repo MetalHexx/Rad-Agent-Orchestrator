@@ -22,11 +22,12 @@ export const PLAN_AUDIT_AUDITED_TOKEN: EventToken = 'rad-orc:plan_audit.audited'
 
 /**
  * The envelope data `handle` expects on {@link PLAN_AUDIT_AUDITED_TOKEN}. `correctiveIndex`/
- * `reviewReportPath`/`planApprovalNodeId` ride alongside `verdict` for the same reason
- * `code-review.ts`'s `CodeReviewReviewedData` carries its own extra context: `handle` is pure over
- * the event alone, never this node's own persisted `data`, so whatever an `issues_found` routing
- * needs travels here — including `planApprovalNodeId`, the downstream `rad-orc:approval` (plan
- * level) node `add_corrective_gate` holds, mirroring `approval.ts`'s own `masterPlanNodeId` seam.
+ * `reviewReportPath`/`masterPlanDoc`/`planApprovalNodeId` ride alongside `verdict` for the same
+ * reason `code-review.ts`'s `CodeReviewReviewedData` carries its own extra context: `handle` is
+ * pure over the event alone, never this node's own persisted `data`, so whatever an `issues_found`
+ * routing needs travels here — including `planApprovalNodeId`, the downstream `rad-orc:approval`
+ * (plan level) node `add_corrective_gate` holds, mirroring `approval.ts`'s own `masterPlanNodeId`
+ * seam, and `masterPlanDoc`, the doc a minted `rad-orc:plan_corrective` needs to edit inline.
  */
 export interface AuditedData {
   readonly verdict: PlanAuditVerdict;
@@ -34,6 +35,8 @@ export interface AuditedData {
   readonly correctiveIndex?: number;
   /** This audit's own running report path, echoed back so a minted corrective can carry it forward. */
   readonly reviewReportPath?: string;
+  /** This audit's own master-plan doc path, echoed back so a minted `rad-orc:plan_corrective` can edit it. */
+  readonly masterPlanDoc?: string;
   /** Required when `verdict === 'issues_found'` — the plan-level `rad-orc:approval` node the corrective gates. */
   readonly planApprovalNodeId?: NodeId;
 }
@@ -185,7 +188,7 @@ function act(ctx: ActContext): ActResult {
 
 function handle(ev: NodeEvent): HandleResult {
   if (ev.token !== PLAN_AUDIT_AUDITED_TOKEN || ev.envelope.outcome !== 'ok') return {};
-  const { verdict, correctiveIndex, reviewReportPath, planApprovalNodeId } = ev.envelope.data as unknown as AuditedData;
+  const { verdict, correctiveIndex, reviewReportPath, masterPlanDoc, planApprovalNodeId } = ev.envelope.data as unknown as AuditedData;
 
   if (verdict === 'issues_found') {
     if (!planApprovalNodeId) {
@@ -196,10 +199,10 @@ function handle(ev: NodeEvent): HandleResult {
       primitive: 'add_corrective_gate',
       params: {
         id: `${ev.nodeId}-corrective-${index}`,
-        type: 'rad-orc:corrective',
+        type: 'rad-orc:plan_corrective',
         source: ev.nodeId,
         gate: planApprovalNodeId,
-        options: { data: { reviewReportPath: reviewReportPath ?? null, correctiveIndex: index } },
+        options: { data: { masterPlanDoc: masterPlanDoc ?? null, reviewReportPath: reviewReportPath ?? null } },
       },
     };
     return { dataChange: { verdict }, routing };
