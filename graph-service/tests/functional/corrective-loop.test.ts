@@ -16,7 +16,7 @@ import { bootDaemon } from '../harness/boot.js';
 import { driveToQuiescence, frontier, node, seed, submitEvent } from '../harness/drive.js';
 import type { SseCollector } from '../harness/sse.js';
 import { connectSse } from '../harness/sse.js';
-import { PHASE_CHAIN_IDS, phaseChainThroughReviewSeedSteps } from '../fixtures/phase-chain.js';
+import { PHASE_CHAIN_IDS, REVIEW_REPORT_PATH, phaseChainThroughReviewSeedSteps, reviewReportDoc } from '../fixtures/phase-chain.js';
 
 const CODE_REVIEW_REVIEWED_TOKEN = 'rad-orc:code_review.reviewed';
 const TASK_COMPLETED_TOKEN = 'rad-orc:task.completed';
@@ -39,6 +39,9 @@ describe('functional: corrective loop', () => {
   it('mints an additive corrective with the chain-tip scope contract carried forward, then a follow-up approved verdict converges the review', async () => {
     const project = 'corrective-loop';
     await seed(daemon.baseUrl(), project, phaseChainThroughReviewSeedSteps());
+    // Both of this scenario's auto-resolved review cycles read `approved` off the report; the
+    // `changes_requested` in between is the client's own explicit override, not a report read.
+    daemon.seedDoc(REVIEW_REPORT_PATH, reviewReportDoc('approved', 'none'));
 
     await driveToQuiescence(daemon.baseUrl(), project);
     expect((await node(daemon.baseUrl(), project, PHASE_CHAIN_IDS.review)).status).toBe('done');

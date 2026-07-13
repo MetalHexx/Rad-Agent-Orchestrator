@@ -11,7 +11,7 @@ import { bootDaemon } from '../harness/boot.js';
 import { dag, driveToQuiescence, seed } from '../harness/drive.js';
 import type { SseCollector } from '../harness/sse.js';
 import { connectSse } from '../harness/sse.js';
-import { PHASE_CHAIN_IDS, phaseChainSeedSteps } from '../fixtures/phase-chain.js';
+import { PHASE_CHAIN_IDS, REVIEW_REPORT_PATH, phaseChainSeedSteps, reviewReportDoc } from '../fixtures/phase-chain.js';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -31,6 +31,8 @@ describe('functional: happy path', () => {
   it('drives every node in the chain to done and the SSE stream carries the ordered engage+outcome deltas', async () => {
     const project = 'happy-path';
     await seed(daemon.baseUrl(), project, phaseChainSeedSteps());
+    // The service reads the review verdict off its report — stage an approved one for the auto-resolve.
+    daemon.seedDoc(REVIEW_REPORT_PATH, reviewReportDoc('approved', 'none'));
 
     let sse: SseCollector | undefined;
     try {

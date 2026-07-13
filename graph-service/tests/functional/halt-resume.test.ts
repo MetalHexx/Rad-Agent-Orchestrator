@@ -10,7 +10,7 @@ import { bootDaemon } from '../harness/boot.js';
 import { dag, driveToQuiescence, frontier, node, seed, steer, submitEvent } from '../harness/drive.js';
 import type { SseCollector } from '../harness/sse.js';
 import { connectSse } from '../harness/sse.js';
-import { PHASE_CHAIN_IDS, phaseChainThroughReviewSeedSteps } from '../fixtures/phase-chain.js';
+import { PHASE_CHAIN_IDS, REVIEW_REPORT_PATH, phaseChainThroughReviewSeedSteps, reviewReportDoc } from '../fixtures/phase-chain.js';
 
 const CODE_REVIEW_REVIEWED_TOKEN = 'rad-orc:code_review.reviewed';
 
@@ -49,6 +49,8 @@ describe('functional: halt -> resume + restart durability', () => {
   it('halts recoverably, survives a hard kill + reopen on the same DB file with byte-identical state, then resumes to done', async () => {
     const project = 'halt-resume';
     await seed(daemon.baseUrl(), project, phaseChainThroughReviewSeedSteps());
+    // The service reads the review verdict off its report — stage an approved one for the auto-resolve.
+    daemon.seedDoc(REVIEW_REPORT_PATH, reviewReportDoc('approved', 'none'));
 
     // A throwaway intermediate cycle (same rationale as the corrective-loop scenario): the daemon's
     // own faked capability ports auto-resolve the review's first cycle to `approved`, so the
@@ -83,6 +85,8 @@ describe('functional: halt -> resume + restart durability', () => {
     const beforeKill = await dag(daemon.baseUrl(), project);
 
     await daemon.restart(); // a hard kill (no graceful SIGINT/SIGTERM handshake) + a fresh `compose()` reopening the same on-disk SQLite file
+    // The faked docRead is in-memory, lost with the killed process — restage the report the resumed review re-reads.
+    daemon.seedDoc(REVIEW_REPORT_PATH, reviewReportDoc('approved', 'none'));
 
     const afterRestart = await dag(daemon.baseUrl(), project);
     expect(afterRestart).toEqual(beforeKill);

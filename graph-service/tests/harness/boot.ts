@@ -10,6 +10,7 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { FakeDocReadPort } from '../../src/capabilities/fakes.js';
 import { start } from '../../src/lifecycle/daemon.js';
 import type { StartResult } from '../../src/lifecycle/daemon.js';
 
@@ -18,6 +19,13 @@ export interface BootedDaemon {
   baseUrl(): string;
   /** The on-disk SQLite file this daemon (and any `restart()`) opens — stable across a restart. */
   readonly dbPath: string;
+  /**
+   * Seeds the running daemon's faked `docRead` port with `content` at `path` — the black-box way a
+   * scenario stages a review/audit report the service's own resolver reads its verdict off, since
+   * nothing in the HTTP surface writes agent-authored docs. The faked port is in-memory, so this is
+   * re-applied after a `restart()`.
+   */
+  seedDoc(path: string, content: string): void;
   /** Abruptly tears down the server + closes the DB handle — no graceful SIGINT/SIGTERM handshake — simulating a hard kill mid-run. */
   kill(): Promise<void>;
   /** Kills the current daemon (if still alive) and boots a fresh one over the *same* `dbPath` — a fresh `compose()`, a fresh ephemeral port — proving restart durability. */
@@ -55,6 +63,12 @@ export async function bootDaemon(): Promise<BootedDaemon> {
       return current.url;
     },
     dbPath,
+    seedDoc(path: string, content: string): void {
+      if (!current) throw new Error('boot: daemon is not running');
+      const { docRead } = current.service.capabilities;
+      if (!(docRead instanceof FakeDocReadPort)) throw new Error('boot: seedDoc requires the faked docRead port');
+      docRead.seed(path, content);
+    },
     kill,
     async restart(): Promise<void> {
       await kill();
