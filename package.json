@@ -21,10 +21,6 @@
   "type": "module",
   "description": "Repo-root build scripts for the multi-harness adapter build loop.",
   "scripts": {
-    "build": "node harness-dogfood/build.js",
-    "build:claude": "node harness-dogfood/build.js --harness=claude",
-    "build:copilot-vscode": "node harness-dogfood/build.js --harness=copilot-vscode",
-    "build:copilot-cli": "node harness-dogfood/build.js --harness=copilot-cli",
-    "build:all": "node harness-dogfood/build.js --all"
+    "build": "node harness-installers/standard/build-scripts/build.js"
   }
 }

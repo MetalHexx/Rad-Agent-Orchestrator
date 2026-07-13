@@ -227,13 +227,6 @@ jobs:
       - name: Adapter unit tests (each capability surface)
         run: node --test harness-adapters/engine/__tests__/*.test.mjs
 
-      - name: Install shared build-helpers dependencies (esbuild)
-        working-directory: harness-installers/shared/build-helpers
-        run: npm install
-
-      - name: Smoke build all harnesses against canonical source
-        run: node harness-dogfood/build.js --all
-
   installers:
     runs-on: ubuntu-latest
     steps:
