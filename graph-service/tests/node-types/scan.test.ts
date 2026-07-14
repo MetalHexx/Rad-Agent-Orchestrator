@@ -71,11 +71,12 @@ describe('discoverCustomNodeTypes', () => {
     const result = await discoverCustomNodeTypes(root);
 
     expect(result.errors).toEqual([]);
-    expect(result.customs).toHaveLength(1);
-    expect(result.customs[0]?.name).toBe('example:greet');
+    expect(result.customs).toHaveLength(2);
+    expect(result.customs.map((custom) => custom.name)).toEqual(['example:greet', 'example:scribe']);
 
     const registry = createNodeTypeRegistry(BUILT_IN_NODE_TYPES, result.customs);
     expect(registry.resolve('example:greet')).toBe(result.customs[0]);
+    expect(registry.resolve('example:scribe')).toBe(result.customs[1]);
   });
 
   it('returns an empty result when there is no custom subtree at all', async () => {
@@ -288,12 +289,13 @@ describe('discoverNodeTypes', () => {
     expect(result.errors).toEqual([]);
     expect(result.builtins).toHaveLength(1);
     expect(result.builtins[0]?.name).toBe('rad-orc:core-thing');
-    expect(result.customs).toHaveLength(1);
-    expect(result.customs[0]?.name).toBe('example:greet');
+    expect(result.customs).toHaveLength(2);
+    expect(result.customs.map((custom) => custom.name)).toEqual(['example:greet', 'example:scribe']);
 
     const registry = createNodeTypeRegistry(result.builtins, result.customs);
     expect(registry.resolve('rad-orc:core-thing')).toBe(result.builtins[0]);
     expect(registry.resolve('example:greet')).toBe(result.customs[0]);
+    expect(registry.resolve('example:scribe')).toBe(result.customs[1]);
   });
 
   it('loads a plain-JS package from builtin/, proving the loader is language-agnostic', async () => {
@@ -317,7 +319,7 @@ describe('discoverNodeTypes', () => {
     const result = await discoverNodeTypes(root);
 
     expect(result.builtins).toEqual([]);
-    expect(result.customs).toHaveLength(1);
+    expect(result.customs).toHaveLength(2);
     expect(result.errors).toHaveLength(1);
     expect(result.errors[0]?.package).toBe('broken');
     expect(result.errors[0]?.reason).toContain('boom');
