@@ -301,7 +301,7 @@ function parseSeedSteps(raw: unknown): Checked<readonly SeedStep[]> {
   return ok(steps);
 }
 
-function applySeedStep(ctx: PrimitiveContext, registry: NodeTypeRegistry, step: SeedStep): Result<ChangeDelta> {
+export function applySeedStep(ctx: PrimitiveContext, registry: NodeTypeRegistry, step: SeedStep): Result<ChangeDelta> {
   switch (step.primitive) {
     case 'add_node':
       return add_node(ctx, registry, step.id, step.type, step.parent, {

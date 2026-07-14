@@ -153,6 +153,25 @@ nodes:
     expect(result.error.kind).toBe('malformed');
   });
 
+  it('rejects a template using a non-JSON YAML tag as a parse error rather than yielding a runtime value', () => {
+    const source = `
+template:
+  id: exotic-tag
+  version: '1.0.0'
+  description: a node whose data uses a non-JSON tag
+nodes:
+  - id: task-1
+    type: rad-orc:task
+    data:
+      pattern: !!js/regexp /foo/
+`;
+    const result = compileTemplate(source, registry);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.kind).toBe('parse');
+  });
+
   it('emits no steps on any failure (all-or-nothing)', () => {
     const source = `
 template:

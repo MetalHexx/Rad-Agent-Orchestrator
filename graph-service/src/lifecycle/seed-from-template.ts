@@ -4,17 +4,11 @@
 // proven against ahead of It. 4's installer.
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import type {
-  ChangeDelta,
-  NodeTypeDefinition,
-  NodeTypeRegistry,
-  PrimitiveContext,
-  ProjectScope,
-  Result,
-} from '@rad-orchestration/graph-engine';
-import { add_dependency, add_node, createNodeTypeRegistry, expand } from '@rad-orchestration/graph-engine';
+import type { NodeTypeDefinition, PrimitiveContext, ProjectScope } from '@rad-orchestration/graph-engine';
+import { createNodeTypeRegistry } from '@rad-orchestration/graph-engine';
 import { BUILT_IN_NODE_TYPES } from '@rad-orchestration/graph-node-types';
 import { compose } from '../compose.js';
+import { applySeedStep } from '../http/engine-graph.js';
 import { discoverCustomNodeTypes } from '../node-types/scan.js';
 import type { SeedStep } from '../seed-step.js';
 import { compileTemplate } from '../templates/compile.js';
@@ -68,24 +62,6 @@ async function compileFromTemplate(opts: SeedFromTemplateOptions): Promise<Compi
   return { steps: compiled.steps, customNodeTypes: customs };
 }
 
-/** Replays one compiled `SeedStep` through the engine's exported primitives — the same dispatch
- *  the `/seed` route's route-private `applySeedStep` performs, kept local here since that helper
- *  isn't exported. */
-function applyStep(ctx: PrimitiveContext, registry: NodeTypeRegistry, step: SeedStep): Result<ChangeDelta> {
-  switch (step.primitive) {
-    case 'add_node':
-      return add_node(ctx, registry, step.id, step.type, step.parent, {
-        order: step.order,
-        data: step.data,
-        dependsOn: step.dependsOn,
-      });
-    case 'add_dependency':
-      return add_dependency(ctx, step.from, step.to);
-    case 'expand':
-      return expand(ctx, registry, step.node, step.expansion);
-  }
-}
-
 /**
  * The HTTP mode — the bin's real path: ensures a running daemon (`lifecycle/ensure.ts`'s own
  * `ensure()`), then `POST`s the compiled steps to `<url>/engine-graph/seed`.
@@ -133,7 +109,7 @@ export async function seedFromTemplateInProcess(opts: SeedFromTemplateInProcessO
     let nodesCreated = 0;
     let edgesCreated = 0;
     for (const step of steps) {
-      const applied = applyStep(ctx, service.registry, step);
+      const applied = applySeedStep(ctx, service.registry, step);
       if (!applied.ok) {
         throw new Error(`seed step failed (${applied.error.code}): ${applied.error.message}`);
       }

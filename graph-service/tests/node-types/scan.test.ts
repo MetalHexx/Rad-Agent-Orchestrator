@@ -127,6 +127,106 @@ describe('discoverCustomNodeTypes', () => {
     expect(result.errors[0]?.reason).toContain('outsider');
   });
 
+  it('collects a named load error when the entrypoint resolves outside the package directory', async () => {
+    await writePackage('escapee', manifestFor('escapee', 'escapee:thing', '../../../etc/passwd'), {});
+
+    const result = await discoverCustomNodeTypes(root);
+
+    expect(result.customs).toEqual([]);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]?.package).toBe('escapee');
+    expect(result.errors[0]?.entrypoint).toBe('../../../etc/passwd');
+    expect(result.errors[0]?.reason).toContain('outside the package directory');
+  });
+
+  it('collects a named load error when the entrypoint is an absolute path', async () => {
+    const outside = path.join(root, 'outside.js');
+    await fs.writeFile(outside, "export default {};\n", 'utf8');
+    await writePackage('absolutist', manifestFor('absolutist', 'absolutist:thing', outside), {});
+
+    const result = await discoverCustomNodeTypes(root);
+
+    expect(result.customs).toEqual([]);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]?.package).toBe('absolutist');
+    expect(result.errors[0]?.reason).toContain('outside the package directory');
+  });
+
+  it('collects a named load error when dataSchema is not an object', async () => {
+    await writePackage('bad-data-schema', manifestFor('bad-data-schema', 'bad-data-schema:thing', './thing.js'), {
+      'thing.js': definitionModule('bad-data-schema:thing').replace('dataSchema: {},', 'dataSchema: null,'),
+    });
+
+    const result = await discoverCustomNodeTypes(root);
+
+    expect(result.customs).toEqual([]);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]?.reason).toContain('dataSchema');
+  });
+
+  it('collects a named load error when a dataSchema field has an invalid kind', async () => {
+    await writePackage('bad-field-kind', manifestFor('bad-field-kind', 'bad-field-kind:thing', './thing.js'), {
+      'thing.js': definitionModule('bad-field-kind:thing').replace(
+        'dataSchema: {},',
+        "dataSchema: { foo: { kind: 'not-a-kind', level: 'optional' } },",
+      ),
+    });
+
+    const result = await discoverCustomNodeTypes(root);
+
+    expect(result.customs).toEqual([]);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]?.reason).toContain('dataSchema.foo');
+  });
+
+  it('collects a named load error when traits is not an array', async () => {
+    await writePackage('bad-traits', manifestFor('bad-traits', 'bad-traits:thing', './thing.js'), {
+      'thing.js': definitionModule('bad-traits:thing').replace('traits: [],', 'traits: {},'),
+    });
+
+    const result = await discoverCustomNodeTypes(root);
+
+    expect(result.customs).toEqual([]);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]?.reason).toContain('traits');
+  });
+
+  it('collects a named load error when capabilities is not an array', async () => {
+    await writePackage('bad-capabilities', manifestFor('bad-capabilities', 'bad-capabilities:thing', './thing.js'), {
+      'thing.js': definitionModule('bad-capabilities:thing').replace('capabilities: [],', 'capabilities: null,'),
+    });
+
+    const result = await discoverCustomNodeTypes(root);
+
+    expect(result.customs).toEqual([]);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]?.reason).toContain('capabilities');
+  });
+
+  it('collects a named load error when instructions is not a string', async () => {
+    await writePackage('bad-instructions', manifestFor('bad-instructions', 'bad-instructions:thing', './thing.js'), {
+      'thing.js': definitionModule('bad-instructions:thing').replace("instructions: 'fixture instructions',", 'instructions: 123,'),
+    });
+
+    const result = await discoverCustomNodeTypes(root);
+
+    expect(result.customs).toEqual([]);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]?.reason).toContain('instructions');
+  });
+
+  it('collects a named load error when presentation is missing a string label', async () => {
+    await writePackage('bad-presentation', manifestFor('bad-presentation', 'bad-presentation:thing', './thing.js'), {
+      'thing.js': definitionModule('bad-presentation:thing').replace("presentation: { label: 'Fixture' },", 'presentation: { description: "no label" },'),
+    });
+
+    const result = await discoverCustomNodeTypes(root);
+
+    expect(result.customs).toEqual([]);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]?.reason).toContain('presentation');
+  });
+
   it('never reads the builtin/ subtree', async () => {
     await fs.mkdir(path.join(root, 'builtin', 'whatever'), { recursive: true });
     await fs.writeFile(path.join(root, 'builtin', 'whatever', 'manifest.yml'), manifestFor('builtin-pkg', 'builtin-pkg:x', './x.js'), 'utf8');

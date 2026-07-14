@@ -1,6 +1,6 @@
 // graph-service/tests/functional/planning-subgraph.test.ts
 //
-// The plan subgraph — `rad-orc:master_plan` -> `rad-orc:explosion` -> `rad-orc:approval`
+// The plan subgraph — `rad-orc:master_plan` -> `rad-orc:plan_audit` -> `rad-orc:explosion` -> `rad-orc:approval`
 // (`level: 'plan'`) -> the decorated phase loop `explosion` seeds at runtime — driven end to end
 // over HTTP against the durable store, real SSE, and real doc/explosion capabilities; only the
 // orchestrator's own relayed decisions (`tests/fixtures/plan-relay.ts`) play the agent/operator
@@ -60,7 +60,7 @@ describe('functional: planning subgraph', () => {
     await daemon.teardown();
   });
 
-  it('drives master_plan -> explosion -> plan_approval -> the seeded phase loop to done, with docs emitted on disk', async () => {
+  it('drives master_plan -> plan_audit -> explosion -> plan_approval -> the seeded phase loop to done, with docs emitted on disk', async () => {
     const project = 'planning-happy-path';
     await seed(daemon.baseUrl(), project, planSubgraphSeedSteps());
 

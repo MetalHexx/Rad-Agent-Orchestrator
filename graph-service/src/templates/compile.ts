@@ -30,7 +30,9 @@ function fail(kind: TemplateLoadError['kind'], message: string, nodeId?: string)
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
 }
 
 function isNonEmptyString(value: unknown): value is string {
@@ -99,7 +101,7 @@ function findCycleNodeId(declarations: readonly TemplateNodeDeclaration[]): stri
 export function compileTemplate(source: string, registry: NodeTypeRegistry): TemplateCompileResult {
   let parsed: unknown;
   try {
-    parsed = yaml.load(source);
+    parsed = yaml.load(source, { schema: yaml.JSON_SCHEMA });
   } catch (error) {
     return fail('parse', error instanceof Error ? error.message : String(error));
   }

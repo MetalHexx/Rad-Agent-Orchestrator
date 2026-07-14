@@ -10,7 +10,7 @@ import { pathToFileURL } from 'node:url';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import yaml from 'js-yaml';
-import type { NodeTypeDefinition } from '@rad-orchestration/graph-engine';
+import { DATA_FIELD_KINDS, DATA_FIELD_LEVELS, type NodeTypeDefinition } from '@rad-orchestration/graph-engine';
 
 export interface NodeTypeLoadError {
   readonly package: string;
@@ -98,7 +98,7 @@ async function loadPackage(
 
 /** Parses and structurally validates a manifest's `namespace`/`nodeTypes` — `templates:` is reserved and ignored. */
 function parseManifest(text: string): Manifest {
-  const parsed = yaml.load(text);
+  const parsed = yaml.load(text, { schema: yaml.JSON_SCHEMA });
   if (typeof parsed !== 'object' || parsed === null) {
     throw new Error('manifest.yml did not parse to an object');
   }
@@ -135,6 +135,16 @@ async function loadNodeType(
 ): Promise<void> {
   // Windows gotcha: `import()` rejects a bare absolute Windows path — it must be a file URL.
   const absEntrypoint = path.resolve(pkgDir, entry.entrypoint);
+
+  const relative = path.relative(pkgDir, absEntrypoint);
+  if (relative.length === 0 || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+    errors.push({
+      package: pkgDirName,
+      entrypoint: entry.entrypoint,
+      reason: `entrypoint '${entry.entrypoint}' resolves outside the package directory`,
+    });
+    return;
+  }
 
   let candidate: unknown;
   try {
@@ -195,7 +205,35 @@ function validateShape(candidate: unknown): string | undefined {
       return `missing required field "${field}"`;
     }
   }
+  if (!Array.isArray(record.traits)) {
+    return `"traits" is not an array (got ${JSON.stringify(record.traits)})`;
+  }
+  if (!Array.isArray(record.capabilities)) {
+    return `"capabilities" is not an array (got ${JSON.stringify(record.capabilities)})`;
+  }
+  if (typeof record.instructions !== 'string') {
+    return `"instructions" is not a string (got ${JSON.stringify(record.instructions)})`;
+  }
+  if (!isPlainObject(record.presentation) || typeof record.presentation.label !== 'string') {
+    return `"presentation" is not a well-formed Presentation object (requires a string "label")`;
+  }
+  if (!isPlainObject(record.dataSchema)) {
+    return `"dataSchema" is not an object`;
+  }
+  for (const [fieldName, fieldSpec] of Object.entries(record.dataSchema)) {
+    if (
+      !isPlainObject(fieldSpec) ||
+      !DATA_FIELD_KINDS.includes(fieldSpec.kind as (typeof DATA_FIELD_KINDS)[number]) ||
+      !DATA_FIELD_LEVELS.includes(fieldSpec.level as (typeof DATA_FIELD_LEVELS)[number])
+    ) {
+      return `"dataSchema.${fieldName}" is not a well-formed field spec (requires a valid "kind" and "level")`;
+    }
+  }
   return undefined;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function describeError(error: unknown): string {
