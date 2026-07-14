@@ -28,6 +28,120 @@ function parsedBody(seen: SeenRequest[]): Record<string, unknown> {
   return JSON.parse(seen[0]!.init!.body as string) as Record<string, unknown>;
 }
 
+describe('ProjectHandle.submitEvent', () => {
+  const envelope = {
+    action: 'task:coding',
+    node: 'n2',
+    executor: 'spawn-sub-agent',
+    instructions: 'do it',
+    context: {},
+    completion_event: 'task:coding.done',
+    delta: { primitive: 'submit_event', params: {}, nodeChanges: [], edgeChanges: [] },
+    frontier: [],
+  };
+
+  it('posts { project, node, event, payload } and unwraps the NextActionEnvelope', async () => {
+    const { config, seen } = configCapturing({ ok: true, data: envelope });
+    const handle = new ProjectHandle('p1', config);
+    const result = await handle.submitEvent({ node: 'n1', event: 'task:coding.done', payload: { outcome: 'ok' } });
+
+    expect(seen[0]!.url).toBe('http://127.0.0.1:1/engine-graph/submit-event');
+    expect(parsedBody(seen)).toEqual({
+      project: 'p1',
+      node: 'n1',
+      event: 'task:coding.done',
+      payload: { outcome: 'ok' },
+    });
+    expect(result).toEqual(envelope);
+  });
+
+  it('allows a drive-only submission with both event and payload omitted', async () => {
+    const { config, seen } = configCapturing({ ok: true, data: envelope });
+    const handle = new ProjectHandle('p1', config);
+    await handle.submitEvent({ node: 'n1' });
+
+    expect(parsedBody(seen)).toEqual({ project: 'p1', node: 'n1' });
+  });
+
+  it('throws invalid_request (without making a request) when only one of event/payload is supplied', async () => {
+    const { config, seen } = configCapturing({ ok: true, data: envelope });
+    const handle = new ProjectHandle('p1', config);
+
+    let caught: unknown;
+    try {
+      await handle.submitEvent({ node: 'n1', event: 'task:coding.done' });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(GraphClientError);
+    expect((caught as GraphClientError).code).toBe('invalid_request');
+    expect(seen).toHaveLength(0);
+  });
+});
+
+describe('ProjectHandle.dag', () => {
+  it('gets /engine-graph/dag scoped to the project and unwraps the DagSnapshot', async () => {
+    const snapshot = { nodes: [], edges: [], frontier: [], status: 'in_progress' };
+    const { config, seen } = configCapturing({ ok: true, data: snapshot });
+    const handle = new ProjectHandle('p1', config);
+    const result = await handle.dag();
+
+    expect(seen[0]!.url).toBe('http://127.0.0.1:1/engine-graph/dag?project=p1');
+    expect(result).toEqual(snapshot);
+  });
+});
+
+describe('ProjectHandle.frontier', () => {
+  const view = {
+    id: 'n1',
+    type: 'task:coding',
+    status: 'not_started',
+    parent: 'root',
+    order: 0,
+    derivedFrom: null,
+    data: {},
+    presentation: { label: 'n1' },
+  };
+
+  it('gets /engine-graph/frontier with an explicit context and unwraps the NodeView[]', async () => {
+    const { config, seen } = configCapturing({ ok: true, data: [view] });
+    const handle = new ProjectHandle('p1', config);
+    const result = await handle.frontier('n0');
+
+    expect(seen[0]!.url).toBe('http://127.0.0.1:1/engine-graph/frontier?project=p1&context=n0');
+    expect(result).toEqual([view]);
+  });
+
+  it('defaults context to the project root when omitted', async () => {
+    const { config, seen } = configCapturing({ ok: true, data: [] });
+    const handle = new ProjectHandle('p1', config);
+    await handle.frontier();
+
+    expect(seen[0]!.url).toBe('http://127.0.0.1:1/engine-graph/frontier?project=p1&context=root');
+  });
+});
+
+describe('ProjectHandle.node', () => {
+  it('gets /engine-graph/node scoped to project + node id and unwraps the NodeView', async () => {
+    const view = {
+      id: 'n1',
+      type: 'task:coding',
+      status: 'not_started',
+      parent: 'root',
+      order: 0,
+      derivedFrom: null,
+      data: {},
+      presentation: { label: 'n1' },
+    };
+    const { config, seen } = configCapturing({ ok: true, data: view });
+    const handle = new ProjectHandle('p1', config);
+    const result = await handle.node('n1');
+
+    expect(seen[0]!.url).toBe('http://127.0.0.1:1/engine-graph/node?project=p1&node=n1');
+    expect(result).toEqual(view);
+  });
+});
+
 describe('ProjectHandle steer methods', () => {
   const delta = { primitive: 'add_dependency', params: {}, nodeChanges: [], edgeChanges: [] };
 

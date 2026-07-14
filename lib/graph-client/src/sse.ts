@@ -6,6 +6,7 @@
 // does not replay by `seq` — a reconnect only forwards changes committed after it reopens, so
 // this module carries no resume/replay logic.
 import { GraphClientError } from './errors.js';
+import { isAbortError, tryParseFailureEnvelope } from './transport.js';
 import type { GraphClientConfig } from './client.js';
 import type { NodeChange, EdgeChange, StreamDelta } from './types.js';
 
@@ -67,28 +68,10 @@ function buildStreamUrl(baseUrl: string, projectId: string): string {
   return url.toString();
 }
 
-function isAbortError(err: unknown): boolean {
-  return err instanceof Error && err.name === 'AbortError';
-}
-
 function toGraphClientError(err: unknown, url: string): GraphClientError {
   if (err instanceof GraphClientError) return err;
   const message = err instanceof Error ? err.message : String(err);
   return new GraphClientError('network_error', `Stream at ${url} failed: ${message}`, null);
-}
-
-/** Reads a failed-to-open response's body as the service's `{ ok: false, error }` envelope, if
- * it parses as one — otherwise `null`, so the caller falls back to a generic `bad_response`. */
-async function readErrorEnvelope(response: Response): Promise<{ code: string; message: string } | null> {
-  try {
-    const body = (await response.json()) as { ok?: unknown; error?: { code?: unknown; message?: unknown } };
-    if (body.ok === false && typeof body.error?.code === 'string' && typeof body.error?.message === 'string') {
-      return { code: body.error.code, message: body.error.message };
-    }
-  } catch {
-    // Not JSON (or no body) — the caller reports a generic bad_response instead.
-  }
-  return null;
 }
 
 /**
@@ -126,7 +109,7 @@ export function subscribe(
     }
 
     if (!response.ok || !response.body) {
-      const envelopeError = await readErrorEnvelope(response);
+      const envelopeError = await tryParseFailureEnvelope(response);
       throw new GraphClientError(
         envelopeError?.code ?? 'bad_response',
         envelopeError?.message ?? `Failed to open stream at ${url} (HTTP ${response.status})`,

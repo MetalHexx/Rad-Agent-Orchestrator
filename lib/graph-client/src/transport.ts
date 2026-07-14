@@ -44,6 +44,31 @@ function buildUrl(baseUrl: string, path: string, query?: Readonly<Record<string,
   return url.toString();
 }
 
+/** True for the `AbortError` a timed-out or manually aborted `fetch` throws. Shared so every
+ * network-facing module (`transport.ts`, `sse.ts`) detects a cancelled request the same way. */
+export function isAbortError(err: unknown): boolean {
+  return err instanceof Error && err.name === 'AbortError';
+}
+
+/**
+ * Reads a non-2xx (or otherwise failed-to-parse) response's body as the service's
+ * `{ ok: false, error }` envelope, if it parses as one — otherwise `null`. The only other place
+ * in the package that reads `ok`, kept alongside `isEnvelopeShaped` so both envelope reads share
+ * one field-checking rule.
+ */
+export async function tryParseFailureEnvelope(response: Response): Promise<{ code: string; message: string } | null> {
+  let parsed: unknown;
+  try {
+    parsed = await response.json();
+  } catch {
+    return null;
+  }
+  if (!isEnvelopeShaped(parsed) || parsed.ok) {
+    return null;
+  }
+  return parsed.error;
+}
+
 /**
  * Issues one HTTP request, reads the service's `{ ok, data | error }` envelope, and returns
  * `data` — or throws a `GraphClientError`. The only place in the package that reads `ok`, so
@@ -66,7 +91,7 @@ export async function request<T>(cfg: TransportConfig, spec: RequestSpec): Promi
       signal: controller.signal,
     });
   } catch (err) {
-    if (err instanceof Error && err.name === 'AbortError') {
+    if (isAbortError(err)) {
       throw new GraphClientError('timeout', `Request to ${url} timed out after ${timeoutMs}ms`, null);
     }
     const message = err instanceof Error ? err.message : String(err);
