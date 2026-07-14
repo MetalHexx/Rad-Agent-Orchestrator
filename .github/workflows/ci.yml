@@ -175,6 +175,9 @@ jobs:
       - name: Build lib/graph-store-sqlite (graph-service dependency)
         run: npm run build -w @rad-orchestration/graph-store-sqlite
 
+      - name: Build lib/graph-client (graph-service test dependency)
+        run: npm run build -w @rad-orchestration/graph-client
+
       - name: Build graph-service
         run: npm run build -w @rad-orchestration/graph-service
 

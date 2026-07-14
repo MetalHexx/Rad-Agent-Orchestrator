@@ -6,6 +6,7 @@
     "lib/work-graph",
     "lib/telemetry",
     "lib/graph-engine",
+    "lib/graph-client",
     "lib/graph-node-types",
     "lib/graph-store-sqlite",
     "graph-service",
