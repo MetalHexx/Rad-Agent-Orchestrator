@@ -1,16 +1,17 @@
 // graph-service/src/node-types/scan.ts
 //
-// Host-side scanner for `~/.radorc/node-types/custom` — reads each package's `manifest.yml`,
-// dynamic-imports its declared entrypoints, and validates the default export as a well-formed
-// `NodeTypeDefinition` cross-checked against the manifest. Every import/parse/validation failure
-// becomes a named `NodeTypeLoadError`, collected rather than thrown, so one bad package never
-// crashes discovery of the rest. `createNodeTypeRegistry` (P02-T03) is the sole enforcer of the
-// reserved `rad-orc:` prefix and global name-uniqueness — this loader defers both.
+// Host-side scanner for `~/.radorc/node-types/{builtin,custom}` — reads each package's
+// `manifest.yml`, dynamic-imports its declared entrypoints, and validates the default export as a
+// well-formed `NodeTypeDefinition` cross-checked against the manifest. Every import/parse/validation
+// failure becomes a named `NodeTypeLoadError`, collected rather than thrown, so one bad package
+// never crashes discovery of the rest. `createNodeTypeRegistry` (P02-T03) is the sole enforcer of
+// the reserved `rad-orc:` prefix and global name-uniqueness — this loader only tags each definition
+// with the subtree it came from and defers both rules to the registry.
 import { pathToFileURL } from 'node:url';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import yaml from 'js-yaml';
-import { DATA_FIELD_KINDS, DATA_FIELD_LEVELS, type NodeTypeDefinition } from '@rad-orchestration/graph-engine';
+import { DATA_FIELD_KINDS, DATA_FIELD_LEVELS, type NodeTypeDefinition, type NodeTypeOrigin } from '@rad-orchestration/graph-engine';
 
 export interface NodeTypeLoadError {
   readonly package: string;
@@ -18,7 +19,19 @@ export interface NodeTypeLoadError {
   readonly reason: string;
 }
 
+/** A loaded definition tagged with the subtree (`builtin/` vs. `custom/`) it was scanned from. */
+export interface DiscoveredNodeType {
+  readonly definition: NodeTypeDefinition;
+  readonly origin: NodeTypeOrigin;
+}
+
 export interface DiscoveryResult {
+  readonly builtins: readonly NodeTypeDefinition[];
+  readonly customs: readonly NodeTypeDefinition[];
+  readonly errors: readonly NodeTypeLoadError[];
+}
+
+export interface CustomDiscoveryResult {
   readonly customs: readonly NodeTypeDefinition[];
   readonly errors: readonly NodeTypeLoadError[];
 }
@@ -37,40 +50,68 @@ const REQUIRED_DEFINITION_HOOKS = ['act', 'handle', 'projectStatus'] as const;
 const REQUIRED_DEFINITION_FIELDS = ['dataSchema', 'traits', 'capabilities', 'presentation', 'instructions'] as const;
 
 /**
- * Scans `<nodeTypesRoot>/custom/<pkg>/manifest.yml` only — `<nodeTypesRoot>/builtin` is a
- * recognized-but-not-loaded slot this iteration. Never throws: a directory with no `custom`
- * subtree yields an empty result, and every per-package/per-entry failure becomes a
+ * Scans both `<nodeTypesRoot>/builtin` and `<nodeTypesRoot>/custom` through the same per-package
+ * loader, tagging each result with its origin so `createNodeTypeRegistry(builtins, customs)` can
+ * enforce the reserved `rad-orc:` prefix by where a definition actually came from. A missing
+ * subtree yields an empty bucket, not an error; every per-package/per-entry failure becomes a
  * `NodeTypeLoadError` rather than an unhandled rejection.
  */
-export async function discoverCustomNodeTypes(nodeTypesRoot: string): Promise<DiscoveryResult> {
-  const customs: NodeTypeDefinition[] = [];
+export async function discoverNodeTypes(nodeTypesRoot: string): Promise<DiscoveryResult> {
   const errors: NodeTypeLoadError[] = [];
-  const customRoot = path.join(nodeTypesRoot, 'custom');
+  const builtins = await scanSubtree(nodeTypesRoot, 'builtin', errors);
+  const customs = await scanSubtree(nodeTypesRoot, 'custom', errors);
+  return {
+    builtins: builtins.map((discovered) => discovered.definition),
+    customs: customs.map((discovered) => discovered.definition),
+    errors,
+  };
+}
+
+/**
+ * Scans `<nodeTypesRoot>/custom/<pkg>/manifest.yml` only — `<nodeTypesRoot>/builtin` is never
+ * read by this function. Never throws: a directory with no `custom` subtree yields an empty
+ * result, and every per-package/per-entry failure becomes a `NodeTypeLoadError` rather than an
+ * unhandled rejection.
+ */
+export async function discoverCustomNodeTypes(nodeTypesRoot: string): Promise<CustomDiscoveryResult> {
+  const errors: NodeTypeLoadError[] = [];
+  const customs = await scanSubtree(nodeTypesRoot, 'custom', errors);
+  return { customs: customs.map((discovered) => discovered.definition), errors };
+}
+
+async function scanSubtree(
+  nodeTypesRoot: string,
+  origin: NodeTypeOrigin,
+  errors: NodeTypeLoadError[],
+): Promise<DiscoveredNodeType[]> {
+  const discovered: DiscoveredNodeType[] = [];
+  const subtreeRoot = path.join(nodeTypesRoot, origin);
 
   let packageDirs: readonly string[];
   try {
-    const entries = await fs.promises.readdir(customRoot, { withFileTypes: true });
+    const entries = await fs.promises.readdir(subtreeRoot, { withFileTypes: true });
     packageDirs = entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
   } catch (error) {
-    if (isErrnoException(error) && error.code === 'ENOENT') return { customs, errors };
-    errors.push({ package: customRoot, reason: `failed to read custom node-types directory: ${describeError(error)}` });
-    return { customs, errors };
+    if (isErrnoException(error) && error.code === 'ENOENT') return discovered;
+    errors.push({ package: subtreeRoot, reason: `failed to read ${origin} node-types directory: ${describeError(error)}` });
+    return discovered;
   }
 
   for (const pkgDirName of packageDirs) {
-    await loadPackage(customRoot, pkgDirName, customs, errors);
+    await loadPackage(subtreeRoot, pkgDirName, origin, discovered, errors);
   }
 
-  return { customs, errors };
+  return discovered;
 }
 
 async function loadPackage(
-  customRoot: string,
+  subtreeRoot: string,
   pkgDirName: string,
-  customs: NodeTypeDefinition[],
+  origin: NodeTypeOrigin,
+  discovered: DiscoveredNodeType[],
   errors: NodeTypeLoadError[],
 ): Promise<void> {
-  const pkgDir = path.join(customRoot, pkgDirName);
+  const pkgDir = path.join(subtreeRoot, pkgDirName);
   const manifestPath = path.join(pkgDir, 'manifest.yml');
 
   let manifestText: string;
@@ -92,7 +133,7 @@ async function loadPackage(
   }
 
   for (const entry of manifest.nodeTypes) {
-    await loadNodeType(pkgDir, pkgDirName, manifest, entry, customs, errors);
+    await loadNodeType(pkgDir, pkgDirName, origin, manifest, entry, discovered, errors);
   }
 }
 
@@ -128,9 +169,10 @@ function parseManifest(text: string): Manifest {
 async function loadNodeType(
   pkgDir: string,
   pkgDirName: string,
+  origin: NodeTypeOrigin,
   manifest: Manifest,
   entry: ManifestNodeTypeEntry,
-  customs: NodeTypeDefinition[],
+  discovered: DiscoveredNodeType[],
   errors: NodeTypeLoadError[],
 ): Promise<void> {
   // Windows gotcha: `import()` rejects a bare absolute Windows path — it must be a file URL.
@@ -183,7 +225,7 @@ async function loadNodeType(
     return;
   }
 
-  customs.push(definition);
+  discovered.push({ definition, origin });
 }
 
 /** Structural check only — the reserved-prefix and uniqueness rules are `createNodeTypeRegistry`'s job. */

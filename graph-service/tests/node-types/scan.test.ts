@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createNodeTypeRegistry } from '@rad-orchestration/graph-engine';
 import { BUILT_IN_NODE_TYPES } from '@rad-orchestration/graph-node-types';
-import { discoverCustomNodeTypes } from '../../src/node-types/scan.js';
+import { discoverCustomNodeTypes, discoverNodeTypes } from '../../src/node-types/scan.js';
 
 const EXAMPLE_PACKAGE_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../examples/example');
 
@@ -25,13 +25,22 @@ async function copyExamplePackage(): Promise<void> {
   await fs.cp(EXAMPLE_PACKAGE_DIR, dest, { recursive: true });
 }
 
-async function writePackage(pkgName: string, manifestYaml: string, files: Readonly<Record<string, string>>): Promise<void> {
-  const dir = path.join(root, 'custom', pkgName);
+async function writeSubtreePackage(
+  subtree: 'builtin' | 'custom',
+  pkgName: string,
+  manifestYaml: string,
+  files: Readonly<Record<string, string>>,
+): Promise<void> {
+  const dir = path.join(root, subtree, pkgName);
   await fs.mkdir(dir, { recursive: true });
   await fs.writeFile(path.join(dir, 'manifest.yml'), manifestYaml, 'utf8');
   for (const [name, content] of Object.entries(files)) {
     await fs.writeFile(path.join(dir, name), content, 'utf8');
   }
+}
+
+async function writePackage(pkgName: string, manifestYaml: string, files: Readonly<Record<string, string>>): Promise<void> {
+  await writeSubtreePackage('custom', pkgName, manifestYaml, files);
 }
 
 function manifestFor(namespace: string, name: string, entrypoint: string): string {
@@ -259,5 +268,72 @@ describe('createNodeTypeRegistry defers the reserved-prefix and uniqueness rules
     expect(result.customs).toHaveLength(2);
 
     expect(() => createNodeTypeRegistry(BUILT_IN_NODE_TYPES, result.customs)).toThrow(/dup:thing/);
+  });
+});
+
+describe('discoverNodeTypes', () => {
+  it('returns empty buckets when neither subtree exists', async () => {
+    const result = await discoverNodeTypes(root);
+    expect(result).toEqual({ builtins: [], customs: [], errors: [] });
+  });
+
+  it('loads a rad-orc:-namespaced builtin/ package into builtins and a custom/ package into customs', async () => {
+    await writeSubtreePackage('builtin', 'core', manifestFor('rad-orc', 'rad-orc:core-thing', './thing.js'), {
+      'thing.js': definitionModule('rad-orc:core-thing'),
+    });
+    await copyExamplePackage();
+
+    const result = await discoverNodeTypes(root);
+
+    expect(result.errors).toEqual([]);
+    expect(result.builtins).toHaveLength(1);
+    expect(result.builtins[0]?.name).toBe('rad-orc:core-thing');
+    expect(result.customs).toHaveLength(1);
+    expect(result.customs[0]?.name).toBe('example:greet');
+
+    const registry = createNodeTypeRegistry(result.builtins, result.customs);
+    expect(registry.resolve('rad-orc:core-thing')).toBe(result.builtins[0]);
+    expect(registry.resolve('example:greet')).toBe(result.customs[0]);
+  });
+
+  it('loads a plain-JS package from builtin/, proving the loader is language-agnostic', async () => {
+    await writeSubtreePackage('builtin', 'raw-js', manifestFor('rad-orc', 'rad-orc:raw', './raw.js'), {
+      'raw.js': definitionModule('rad-orc:raw'),
+    });
+
+    const result = await discoverNodeTypes(root);
+
+    expect(result.errors).toEqual([]);
+    expect(result.builtins).toHaveLength(1);
+    expect(result.builtins[0]?.name).toBe('rad-orc:raw');
+  });
+
+  it('collects a named load error for a broken builtin/ package without affecting the custom/ bucket', async () => {
+    await writeSubtreePackage('builtin', 'broken', manifestFor('rad-orc', 'rad-orc:broken', './thing.js'), {
+      'thing.js': "throw new Error('boom');\n",
+    });
+    await copyExamplePackage();
+
+    const result = await discoverNodeTypes(root);
+
+    expect(result.builtins).toEqual([]);
+    expect(result.customs).toHaveLength(1);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]?.package).toBe('broken');
+    expect(result.errors[0]?.reason).toContain('boom');
+  });
+
+  it('lets a custom/ package claim a rad-orc: name structurally, then rejects it when passed as customs to the registry', async () => {
+    await writeSubtreePackage('custom', 'impersonator', manifestFor('rad-orc', 'rad-orc:impersonator', './thing.js'), {
+      'thing.js': definitionModule('rad-orc:impersonator'),
+    });
+
+    const result = await discoverNodeTypes(root);
+
+    expect(result.errors).toEqual([]);
+    expect(result.customs).toHaveLength(1);
+    expect(result.customs[0]?.name).toBe('rad-orc:impersonator');
+
+    expect(() => createNodeTypeRegistry(result.builtins, result.customs)).toThrow(/rad-orc:impersonator/);
   });
 });
