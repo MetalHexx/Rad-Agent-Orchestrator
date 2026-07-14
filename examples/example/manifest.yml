@@ -3,5 +3,5 @@ version: "1.0.0"
 description: "Reference custom node-type package — a single zero-capability greeting node."
 nodeTypes:
   - name: example:greet
-    entrypoint: ./greet.js
+    entrypoint: ./dist/greet.js
 # templates: reserved for a future iteration (D20) — not loaded in 2.5.
