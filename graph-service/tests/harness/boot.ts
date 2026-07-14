@@ -14,6 +14,15 @@ import nodePath from 'node:path';
 import { start } from '../../src/lifecycle/daemon.js';
 import type { StartResult } from '../../src/lifecycle/daemon.js';
 
+export interface BootDaemonOptions {
+  /**
+   * Called once, after the temp `root` is created but before the first `start()` runs its
+   * node-type scan — the hook a seed-from-disk scenario uses to pre-stage a custom node-type
+   * package under `<root>/node-types/` so the daemon's own scan discovers it.
+   */
+  readonly stageNodeTypes?: (root: string) => Promise<void> | void;
+}
+
 export interface BootedDaemon {
   /** The daemon's current base URL. Re-read this after `restart()` — a fresh bind may land on a different ephemeral port. */
   baseUrl(): string;
@@ -48,12 +57,17 @@ export interface BootedDaemon {
 
 /** Boots a fresh daemon into its own temp root: a fresh temp directory holding the SQLite file, the
  * discovery-file root, and a `project/` subdirectory the real `docRead`/`docWrite` ports confine to
- * — bound to an OS-assigned ephemeral port. */
-export async function bootDaemon(): Promise<BootedDaemon> {
+ * — bound to an OS-assigned ephemeral port. `options.stageNodeTypes`, if supplied, runs once against
+ * that temp root before the first `start()` call, ahead of its node-type scan. */
+export async function bootDaemon(options: BootDaemonOptions = {}): Promise<BootedDaemon> {
   const root = await fs.mkdtemp(nodePath.join(os.tmpdir(), 'graph-service-functional-'));
   const dbPath = nodePath.join(root, 'graph.sqlite');
   const projectRoot = nodePath.join(root, 'project');
   await fs.mkdir(projectRoot, { recursive: true });
+
+  if (options.stageNodeTypes) {
+    await options.stageNodeTypes(root);
+  }
 
   let current: StartResult | undefined;
   let alive = false;
