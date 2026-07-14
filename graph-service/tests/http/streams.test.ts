@@ -4,6 +4,7 @@
 // cleanup on disconnect; multi-client fan-out is a hosting concern, not retested here.
 import type { ChangeDelta } from '@rad-orchestration/graph-engine';
 import { ROOT_NODE_ID } from '@rad-orchestration/graph-engine';
+import { BUILT_IN_NODE_TYPES } from '@rad-orchestration/graph-node-types';
 import { describe, expect, it } from 'vitest';
 import { compose } from '../../src/compose.js';
 import { buildApp } from '../../src/http/app.js';
@@ -32,7 +33,7 @@ function addNodeDelta(id: string): ChangeDelta {
 }
 
 function buildTestService() {
-  const service = compose({ dbPath: ':memory:' });
+  const service = compose({ dbPath: ':memory:', builtInNodeTypes: BUILT_IN_NODE_TYPES });
   return { service, app: buildApp(service) };
 }
 

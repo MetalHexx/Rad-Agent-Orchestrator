@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { BUILT_IN_NODE_TYPES } from '@rad-orchestration/graph-node-types';
 import { compose } from '../../src/compose.js';
 import { buildApp } from '../../src/http/app.js';
 
 function buildTestApp() {
-  return buildApp(compose({ dbPath: ':memory:' }));
+  return buildApp(compose({ dbPath: ':memory:', builtInNodeTypes: BUILT_IN_NODE_TYPES }));
 }
 
 describe('GET /health', () => {

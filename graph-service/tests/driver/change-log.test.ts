@@ -7,6 +7,7 @@
 // transition on the real (SQLite-backed) store `compose()` wires.
 import type { EventToken, NodeEvent, NodeTypeDefinition, PrimitiveContext, ProjectScope } from '@rad-orchestration/graph-engine';
 import { ROOT_NODE_ID } from '@rad-orchestration/graph-engine';
+import { BUILT_IN_NODE_TYPES } from '@rad-orchestration/graph-node-types';
 import { describe, expect, it } from 'vitest';
 import { compose } from '../../src/compose.js';
 import { advance } from '../../src/driver/drive.js';
@@ -33,7 +34,7 @@ const AUTO_STEP_NODE_TYPE: NodeTypeDefinition = {
 
 describe('advance against compose()’s SQLite-backed service', () => {
   it('moves a seeded custom noop node not_started -> in_progress -> done, one change_log row per transition', async () => {
-    const service = compose({ dbPath: ':memory:', customNodeTypes: [AUTO_STEP_NODE_TYPE] });
+    const service = compose({ dbPath: ':memory:', builtInNodeTypes: BUILT_IN_NODE_TYPES, customNodeTypes: [AUTO_STEP_NODE_TYPE] });
     const projectScope: ProjectScope = { projectId: 'proj-change-log' };
 
     const seeded = service.engine.add_node(projectScope, 'step-1', 'x:auto-step', ROOT_NODE_ID, {});

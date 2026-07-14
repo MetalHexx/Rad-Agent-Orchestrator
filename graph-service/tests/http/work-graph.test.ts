@@ -4,6 +4,7 @@
 // own invariants (acyclicity, exactly-one-owner) are `graph-store-sqlite`'s own suites, not
 // re-tested here.
 import { describe, expect, it } from 'vitest';
+import { BUILT_IN_NODE_TYPES } from '@rad-orchestration/graph-node-types';
 import { compose } from '../../src/compose.js';
 import { buildApp } from '../../src/http/app.js';
 
@@ -14,7 +15,7 @@ interface EnvelopeBody<T> {
 }
 
 function buildTestApp() {
-  return buildApp(compose({ dbPath: ':memory:' }));
+  return buildApp(compose({ dbPath: ':memory:', builtInNodeTypes: BUILT_IN_NODE_TYPES }));
 }
 
 function postJson(app: ReturnType<typeof buildApp>, path: string, body: unknown) {

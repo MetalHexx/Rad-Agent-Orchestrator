@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readDiscoveryFile, writeDiscoveryFile } from '../../src/lifecycle/discovery.js';
 import { start, stop } from '../../src/lifecycle/daemon.js';
+import { populateBuiltinNodeTypes } from '../../src/node-types/populate-builtin.js';
 
 const EXAMPLE_PACKAGE_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../examples/example');
 
@@ -27,6 +28,7 @@ async function stageCustomPackage(nodeTypesRoot: string, pkgDirName: string, sou
 
 describe('start', () => {
   it('binds loopback-only on an ephemeral port and writes a matching discovery file', async () => {
+    await populateBuiltinNodeTypes(root);
     const result = await start({ port: 0, dbPath: ':memory:', root, signals: [] });
     try {
       expect(result.port).toBeGreaterThan(0);
@@ -53,6 +55,8 @@ describe('start', () => {
   it('falls back to the next free port on a bind collision and records the actual port', async () => {
     const rootA = path.join(root, 'a');
     const rootB = path.join(root, 'b');
+    await populateBuiltinNodeTypes(rootA);
+    await populateBuiltinNodeTypes(rootB);
     const first = await start({ port: 0, dbPath: ':memory:', root: rootA, signals: [] });
     try {
       const second = await start({ port: first.port, dbPath: ':memory:', root: rootB, signals: [] });
@@ -70,6 +74,7 @@ describe('start', () => {
   });
 
   it('scans <root>/node-types, resolving a discovered custom type through the composed registry', async () => {
+    await populateBuiltinNodeTypes(root);
     await stageCustomPackage(path.join(root, 'node-types'), 'example', EXAMPLE_PACKAGE_DIR);
 
     const result = await start({ port: 0, dbPath: ':memory:', root, signals: [] });
@@ -95,20 +100,19 @@ describe('start', () => {
     await expect(start({ port: 0, dbPath: ':memory:', root, signals: [] })).rejects.toThrow(/broken/);
   });
 
-  it('tolerates an absent node-types directory (empty customs, no error)', async () => {
-    const result = await start({ port: 0, dbPath: ':memory:', root, signals: [] });
-    try {
-      expect(result.service.registry.resolve('example:greet')).toBeUndefined();
-    } finally {
-      await new Promise<void>((resolve) => result.server.close(() => resolve()));
-      result.service.db.close();
-    }
+  it('refuses to boot type-less when the node-types tree yields no built-ins', async () => {
+    // An absent (or built-in-less) node-types tree is a hard startup error now, not a silent
+    // type-less boot: the daemon has nothing to compile templates or drive nodes against.
+    await expect(start({ port: 0, dbPath: ':memory:', root, signals: [] })).rejects.toThrow(
+      /no built-in node types discovered/,
+    );
   });
 });
 
 describe('graceful shutdown', () => {
   it('on SIGTERM: drains the server, closes the db, removes the discovery file, then exits', async () => {
     const exitSpy = vi.fn();
+    await populateBuiltinNodeTypes(root);
     const result = await start({ port: 0, dbPath: ':memory:', root, _exit: exitSpy });
 
     process.emit('SIGTERM');

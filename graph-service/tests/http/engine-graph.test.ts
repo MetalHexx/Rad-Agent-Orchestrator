@@ -7,6 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import type { DagEdge, DagNode, NodeTypeDefinition } from '@rad-orchestration/graph-engine';
 import { ROOT_NODE_ID } from '@rad-orchestration/graph-engine';
+import { BUILT_IN_NODE_TYPES } from '@rad-orchestration/graph-node-types';
 import { afterEach, describe, expect, it } from 'vitest';
 import { compose } from '../../src/compose.js';
 import { buildApp } from '../../src/http/app.js';
@@ -29,7 +30,11 @@ interface NodeViewBody {
 }
 
 function buildTestService(projectRoot?: string) {
-  const service = compose(projectRoot ? { dbPath: ':memory:', projectRoot } : { dbPath: ':memory:' });
+  const service = compose(
+    projectRoot
+      ? { dbPath: ':memory:', builtInNodeTypes: BUILT_IN_NODE_TYPES, projectRoot }
+      : { dbPath: ':memory:', builtInNodeTypes: BUILT_IN_NODE_TYPES },
+  );
   return { service, app: buildApp(service) };
 }
 
@@ -447,7 +452,7 @@ function customWidgetType(): NodeTypeDefinition {
 
 describe('node-agnostic custom types', () => {
   it("sources a custom node's completion_event from its own declared token and relays its own presentation — zero service-side type knowledge", async () => {
-    const service = compose({ dbPath: ':memory:', customNodeTypes: [customWidgetType()] });
+    const service = compose({ dbPath: ':memory:', builtInNodeTypes: BUILT_IN_NODE_TYPES, customNodeTypes: [customWidgetType()] });
     const app = buildApp(service);
 
     await postJson(app, '/engine-graph/seed', {

@@ -6,10 +6,9 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { NodeTypeDefinition, PrimitiveContext, ProjectScope } from '@rad-orchestration/graph-engine';
 import { createNodeTypeRegistry } from '@rad-orchestration/graph-engine';
-import { BUILT_IN_NODE_TYPES } from '@rad-orchestration/graph-node-types';
 import { compose } from '../compose.js';
 import { applySeedStep } from '../http/engine-graph.js';
-import { discoverCustomNodeTypes } from '../node-types/scan.js';
+import { discoverNodeTypes } from '../node-types/scan.js';
 import { populateBuiltinNodeTypes } from '../node-types/populate-builtin.js';
 import type { SeedStep } from '../seed-step.js';
 import { compileTemplate } from '../templates/compile.js';
@@ -36,18 +35,17 @@ export interface SeedFromTemplateResult {
 
 interface CompiledTemplate {
   readonly steps: readonly SeedStep[];
+  readonly builtInNodeTypes: readonly NodeTypeDefinition[];
   readonly customNodeTypes: readonly NodeTypeDefinition[];
 }
 
 /**
- * Resolves the node-types root, discovers customs, builds the registry the template compiles
- * against, and compiles. All-or-nothing: a discovery or compile failure throws — no partial seed.
- *
- * Also (re-)populates `<root>/node-types/builtin/rad-orc/` from the `graph-node-types` package's
- * own built `manifest.yml` + `dist/` — the dev-seed path's own on-disk proof that the `builtin/`
- * bucket has real artifacts for `discoverNodeTypes` to find, even though this function still
- * builds the in-process registry from `BUILT_IN_NODE_TYPES` directly (the disk copy isn't consumed
- * here; wiring the daemon itself to load built-ins from disk is a later iteration).
+ * (Re-)populates `<root>/node-types/builtin/rad-orc/` from the `graph-node-types` package's own
+ * built `manifest.yml` + `dist/`, then discovers both node-type buckets off disk, builds the
+ * registry the template compiles against from that same discovery, and compiles. All-or-nothing: a
+ * discovery or compile failure throws — no partial seed. The built-ins the registry (and the later
+ * in-process `compose()`) sees are exactly the ones `discoverNodeTypes` resolved from the freshly
+ * staged `builtin/` bucket — this path no longer reads them from `BUILT_IN_NODE_TYPES` directly.
  */
 async function compileFromTemplate(opts: SeedFromTemplateOptions): Promise<CompiledTemplate> {
   const root = opts.root ?? resolveRadorcRoot();
@@ -55,20 +53,20 @@ async function compileFromTemplate(opts: SeedFromTemplateOptions): Promise<Compi
 
   await populateBuiltinNodeTypes(root);
 
-  const { customs, errors } = await discoverCustomNodeTypes(nodeTypesRoot);
+  const { builtins, customs, errors } = await discoverNodeTypes(nodeTypesRoot);
   if (errors.length > 0) {
     const detail = errors.map((error) => `${error.package}${error.entrypoint ? `:${error.entrypoint}` : ''} — ${error.reason}`).join('; ');
-    throw new Error(`refusing to seed with ${errors.length} custom node-type load error(s): ${detail}`);
+    throw new Error(`refusing to seed with ${errors.length} node-type load error(s): ${detail}`);
   }
 
-  const registry = createNodeTypeRegistry(BUILT_IN_NODE_TYPES, customs);
+  const registry = createNodeTypeRegistry(builtins, customs);
   const source = await fs.readFile(opts.templatePath, 'utf8');
   const compiled = compileTemplate(source, registry);
   if (!compiled.ok) {
     throw new Error(`template '${opts.templatePath}' failed to compile (${compiled.error.kind}): ${compiled.error.message}`);
   }
 
-  return { steps: compiled.steps, customNodeTypes: customs };
+  return { steps: compiled.steps, builtInNodeTypes: builtins, customNodeTypes: customs };
 }
 
 /**
@@ -107,8 +105,8 @@ export async function seedFromTemplate(opts: SeedFromTemplateOptions): Promise<S
  * same load-bearing ordering the `/seed` route itself relies on.
  */
 export async function seedFromTemplateInProcess(opts: SeedFromTemplateInProcessOptions): Promise<SeedFromTemplateResult> {
-  const { steps, customNodeTypes } = await compileFromTemplate(opts);
-  const service = compose({ dbPath: opts.dbPath, customNodeTypes });
+  const { steps, builtInNodeTypes, customNodeTypes } = await compileFromTemplate(opts);
+  const service = compose({ dbPath: opts.dbPath, builtInNodeTypes, customNodeTypes });
   try {
     const scope: ProjectScope = { projectId: opts.project };
     const ctx: PrimitiveContext = { store: service.execStore, scope };

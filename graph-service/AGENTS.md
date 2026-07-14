@@ -26,10 +26,11 @@ going forward:
   interface — lifecycle/discovery (config-driven ports, PID files, …) is a later phase, but the
   loopback-only bind is a standing invariant from this package's first line, not something a later
   task revisits.
-- **Registry-agnostic.** `compose()` feeds the registry `BUILT_IN_NODE_TYPES` from
-  `@rad-orchestration/graph-node-types` and never hardcodes an individual type name — a later
-  phase's discovered custom types slot into the same `createNodeTypeRegistry` call with no change
-  to this package.
+- **Registry-agnostic.** `compose()` feeds the registry the caller-resolved built-in and custom
+  node types (`ComposeOptions.builtInNodeTypes` + `customNodeTypes`, both discovered off disk by
+  `node-types/scan.ts`'s `discoverNodeTypes`) and never hardcodes an individual type name nor
+  imports built-ins from a package — the daemon's `start()` resolves the whole discovery and passes
+  both buckets in, so this package depends only on `graph-engine` + `graph-store-sqlite`.
 - **Decision-traceability.** A non-obvious choice carries an inline comment naming the governing
   design decision in `STEERABLE-DAG-DESIGN`, e.g. `// D9: ...` — matching that design doc's own
   `D<N>` decision numbering.

@@ -13,6 +13,7 @@ import os from 'node:os';
 import nodePath from 'node:path';
 import { start } from '../../src/lifecycle/daemon.js';
 import type { StartResult } from '../../src/lifecycle/daemon.js';
+import { populateBuiltinNodeTypes } from '../../src/node-types/populate-builtin.js';
 
 export interface BootDaemonOptions {
   /**
@@ -64,6 +65,11 @@ export async function bootDaemon(options: BootDaemonOptions = {}): Promise<Boote
   const dbPath = nodePath.join(root, 'graph.sqlite');
   const projectRoot = nodePath.join(root, 'project');
   await fs.mkdir(projectRoot, { recursive: true });
+
+  // The daemon's `start()` now refuses to boot type-less, so every functional daemon needs the
+  // `builtin/` bucket staged on disk before its first scan — the same dev-seed staging the real
+  // seed path runs (`populateBuiltinNodeTypes`).
+  await populateBuiltinNodeTypes(root);
 
   if (options.stageNodeTypes) {
     await options.stageNodeTypes(root);

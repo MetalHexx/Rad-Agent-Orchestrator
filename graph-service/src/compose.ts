@@ -15,7 +15,6 @@ import {
   type NodeTypeDefinition,
   type NodeTypeRegistry,
 } from '@rad-orchestration/graph-engine';
-import { BUILT_IN_NODE_TYPES } from '@rad-orchestration/graph-node-types';
 import { openDatabase, SqlitePortfolioStore, SqliteStateStore } from '@rad-orchestration/graph-store-sqlite';
 import type { CapabilityPorts } from './capabilities/ports.js';
 import { createRealCapabilityPorts } from './capabilities/real.js';
@@ -58,10 +57,18 @@ export interface ComposeOptions {
    */
   readonly projectRoot?: string;
   /**
-   * Discovered custom node types (`node-types/scan.ts`'s `discoverCustomNodeTypes`) to layer over
-   * `BUILT_IN_NODE_TYPES`. `compose()` stays synchronous and pure — it never scans the filesystem
-   * itself; the caller (`start()`) resolves and passes the list. A reserved-prefix or duplicate
-   * custom throws here, at registry construction.
+   * The built-in node types the registry is seeded with — the `builtins` bucket
+   * `node-types/scan.ts`'s `discoverNodeTypes` resolved off disk. `compose()` stays synchronous and
+   * pure: it never scans the filesystem itself; the caller (`start()`/the dev-seed) resolves
+   * discovery and passes both buckets in. This package no longer sources built-ins from
+   * `@rad-orchestration/graph-node-types` — a type-less registry is the caller's error to catch
+   * before it ever reaches here.
+   */
+  readonly builtInNodeTypes: readonly NodeTypeDefinition[];
+  /**
+   * Discovered custom node types (`node-types/scan.ts`'s `discoverNodeTypes` `customs` bucket) to
+   * layer over the built-ins. A reserved-prefix or duplicate custom throws here, at registry
+   * construction.
    */
   readonly customNodeTypes?: readonly NodeTypeDefinition[];
 }
@@ -81,9 +88,9 @@ function readServiceVersion(): string {
  * the registry over that one handle — `portfolio` is constructed over the same handle so the
  * whole object shares a single SQLite connection.
  *
- * D3/D21 (registry-agnostic): the registry is fed `BUILT_IN_NODE_TYPES` plus whatever
- * `opts.customNodeTypes` the caller resolved — no individual type name is hardcoded here, so
- * `start()`'s discovered custom types slot in with no change to this function.
+ * D3/D21 (registry-agnostic): the registry is fed the caller-resolved `opts.builtInNodeTypes` plus
+ * `opts.customNodeTypes` — no individual type name is hardcoded here, and no built-in is imported
+ * from a package, so both buckets discovery found on disk slot in with no change to this function.
  *
  * Deliberately does **not** wire `withChangeStream`: its in-process `ChangeDelta` carries no
  * `project_id` and no `seq` (`seq` is assigned only at persistence), so it can't scope a stream or
@@ -94,7 +101,7 @@ export function compose(opts: ComposeOptions): GraphService {
   const { dbPath, projectRoot = resolveRadorcRoot() } = opts;
   const db = openDatabase(dbPath);
   const execStore = new SqliteStateStore(db);
-  const registry = createNodeTypeRegistry(BUILT_IN_NODE_TYPES, opts.customNodeTypes ?? []);
+  const registry = createNodeTypeRegistry(opts.builtInNodeTypes, opts.customNodeTypes ?? []);
   const engine = createEngine(execStore, registry);
   const portfolio = new SqlitePortfolioStore(db);
   const capabilities = createRealCapabilityPorts(projectRoot);

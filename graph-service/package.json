@@ -37,7 +37,6 @@
   "dependencies": {
     "@hono/node-server": "^2.0.8",
     "@rad-orchestration/graph-engine": "1.0.0-alpha.9",
-    "@rad-orchestration/graph-node-types": "1.0.0-alpha.9",
     "@rad-orchestration/graph-store-sqlite": "1.0.0-alpha.9",
     "hono": "^4.12.28",
     "js-yaml": "^4.1.0"
