@@ -7,6 +7,8 @@ export type { GraphClientConfig } from './client.js';
 export { ProjectHandle } from './handle.js';
 export type { SubmitEventInput } from './handle.js';
 
+export type { Subscription } from './sse.js';
+
 export { GraphClientError, GRAPH_CLIENT_ERROR_CODES } from './errors.js';
 export type { GraphClientErrorCode } from './errors.js';
 
@@ -37,4 +39,5 @@ export type {
   DryRunResult,
   SeedStep,
   SeedResult,
+  StreamDelta,
 } from './types.js';

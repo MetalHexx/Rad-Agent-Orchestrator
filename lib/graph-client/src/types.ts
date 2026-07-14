@@ -72,6 +72,23 @@ export interface DagSnapshot {
   status: NodeStatus;
 }
 
+/**
+ * Client-owned mirror of `lib/graph-store-sqlite`'s persisted change-log row — the payload
+ * `GET /engine-graph/stream` emits per `change` frame. Normalized to camelCase; the wire frame
+ * itself is snake_cased (`project_id` / `node_changes` / `edge_changes`), translated in `sse.ts`.
+ * `seq` is the row's monotonic id — a resume cursor the *service* doesn't yet honor (It. 8).
+ */
+export interface StreamDelta {
+  seq: number;
+  projectId: string;
+  ts: string;
+  actor: string | null;
+  primitive: string;
+  params: Readonly<Record<string, unknown>>;
+  nodeChanges: readonly NodeChange[];
+  edgeChanges: readonly EdgeChange[];
+}
+
 // ── Steering / mutation vocabulary (mirrored from graph-service/src/http/mutation-spec.ts) ──
 // `removeNode`'s D16 strategy: the SDK never derives edge mutations itself, it just threads this
 // straight through as `params.strategy` for the service to translate and own the invariants on.

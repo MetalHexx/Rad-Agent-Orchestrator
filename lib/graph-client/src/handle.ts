@@ -1,5 +1,7 @@
 import { request } from './transport.js';
 import { GraphClientError } from './errors.js';
+import { subscribe as subscribeToStream } from './sse.js';
+import type { Subscription } from './sse.js';
 import type { GraphClientConfig } from './client.js';
 import type {
   AddCorrectiveOptions,
@@ -16,6 +18,7 @@ import type {
   SeedResult,
   SeedStep,
   SharedMutationRequest,
+  StreamDelta,
 } from './types.js';
 
 // The engine's ROOT_NODE_ID: the project root node's *id* (not its *type*, `'system:root'`).
@@ -160,5 +163,12 @@ export class ProjectHandle {
       path: '/engine-graph/seed',
       body: { project: this.projectId, seed: { steps } },
     });
+  }
+
+  /** GET /engine-graph/stream?project=<projectId> — opens a live subscription for this
+   * project's changes; `onDelta` fires per committed change, `close()` on the returned
+   * `Subscription` stops the stream and cancels any pending reconnect. */
+  subscribe(onDelta: (delta: StreamDelta) => void, opts?: { onError?: (err: GraphClientError) => void }): Subscription {
+    return subscribeToStream(this.config, this.projectId, onDelta, opts);
   }
 }
