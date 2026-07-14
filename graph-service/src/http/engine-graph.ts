@@ -22,6 +22,7 @@ import type {
   NodeStatus,
   NodeTypeName,
   NodeTypeRegistry,
+  Presentation,
   PreviewCone,
   PrimitiveContext,
   PrimitiveName,
@@ -41,13 +42,6 @@ import {
   readFrontier,
   validate,
 } from '@rad-orchestration/graph-engine';
-import {
-  APPROVAL_DECIDED_TOKEN,
-  CODE_REVIEW_REVIEWED_TOKEN,
-  MASTER_PLAN_AUTHORED_TOKEN,
-  PR_CREATED_TOKEN,
-  TASK_COMPLETED_TOKEN,
-} from '@rad-orchestration/graph-node-types';
 import type { GraphService } from '../compose.js';
 import type { QuiescenceResult } from '../driver/drive.js';
 import { resolveViaNodeType, runToQuiescence } from '../driver/drive.js';
@@ -185,11 +179,42 @@ function previewFor(
 }
 
 /**
+ * The one uniform, node-agnostic representation of a node every read route surfaces (`/dag`,
+ * `/node`, `/frontier`, and the next-action `frontier`). It is the generic `DagNode` relayed
+ * verbatim — every one of its slots (`id`/`type`/`status`/`parent`/`order`/`derivedFrom`/`data`…)
+ * is generic, none is per-type — plus the one slot the service must attach: `presentation`, taken
+ * from the node type's own definition and never authored here, so a custom type renders with its
+ * own label/description at zero service knowledge. `data` stays opaque: the service never reads a
+ * field off it to shape the response.
+ *
+ * (The generic structural slots — `parent`/`order`/`derivedFrom` — are retained rather than
+ * dropped: `parent` is the only containment signal on the HTTP surface, since edges are
+ * `depends_on` only, so a client reconstructs the tree/frontier from it; see the Execution Notes on
+ * this task for why they stay despite the handoff's shorter field listing.)
+ */
+interface NodeView extends DagNode {
+  readonly presentation: Presentation;
+}
+
+/**
+ * Projects a persisted `DagNode` onto the uniform {@link NodeView} — the node relayed verbatim plus
+ * its type's own `presentation`, which the service relays and never authors. The one registry-less
+ * node is the system-owned root anchor (`system:root`, minted outside the node-type registry — see
+ * `createRootNode`): it has no definition to relay from, so its `presentation` falls back to a
+ * minimal label of its own type name rather than a fabricated per-type presentation.
+ */
+function toNodeView(registry: NodeTypeRegistry, node: DagNode): NodeView {
+  const definition = registry.resolve(node.type);
+  return { ...node, presentation: definition?.presentation ?? { label: node.type } };
+}
+
+/**
  * `submit-event`'s response shape: the stopped node's `ActResult`, reshaped into the envelope the
  * CLI already relays to the orchestrator (mirrors `cli/src/lib/pipeline-engine`'s own
  * `PipelineResult`: `action`/`context`/`completion_event`). Every field but `delta`/`frontier` is
  * `null` at global quiescence or once a self-halted node stops driving on its own — there is no
- * next action to report.
+ * next action to report. Every field is generic: `action` is a type name, `completion_event` the
+ * type's own declared token, `frontier` a list of uniform node views — no per-type field.
  */
 interface NextActionEnvelope {
   readonly action: NodeTypeName | null;
@@ -199,28 +224,22 @@ interface NextActionEnvelope {
   readonly context: Readonly<Record<string, unknown>> | null;
   readonly completion_event: EventToken | null;
   readonly delta: ChangeDelta;
-  readonly frontier: readonly DagNode[];
+  readonly frontier: readonly NodeView[];
 }
 
 /**
- * The `<type>.<outcome>` token a host relays back once it has carried out a stopped node's
- * `ActResult` — one entry per built-in type ever reachable as an external-actor stop.
- * `rad-orc:corrective` reuses `rad-orc:task`'s own token verbatim (its `handle` listens for the
- * same `TASK_COMPLETED_TOKEN`, never a corrective-namespaced one — see `rad-orc/corrective.ts`).
- * A custom node type not in this map reports `completion_event: null`; the orchestrator already
- * knows its own vocabulary in that case.
+ * Shapes `driven`'s stop into the next-action envelope; `null` fields throughout once there is no
+ * next action (settled, or a self-halted node quiesced the driver on its own). The stopped node's
+ * `completion_event` is sourced from its own type definition's declared `completionToken` (`null`
+ * for a type that declares none) — the service holds no node-type→token map of its own.
  */
-const NEXT_ACTION_COMPLETION_TOKENS: Readonly<Partial<Record<NodeTypeName, EventToken>>> = {
-  'rad-orc:task': TASK_COMPLETED_TOKEN,
-  'rad-orc:corrective': TASK_COMPLETED_TOKEN,
-  'rad-orc:code_review': CODE_REVIEW_REVIEWED_TOKEN,
-  'rad-orc:approval': APPROVAL_DECIDED_TOKEN,
-  'rad-orc:pr': PR_CREATED_TOKEN,
-  'rad-orc:master_plan': MASTER_PLAN_AUTHORED_TOKEN,
-};
-
-/** Shapes `driven`'s stop into the next-action envelope; `null` fields throughout once there is no next action (settled, or a self-halted node quiesced the driver on its own). */
-function buildNextActionEnvelope(driven: QuiescenceResult, delta: ChangeDelta, frontierNow: readonly DagNode[]): NextActionEnvelope {
+function buildNextActionEnvelope(
+  registry: NodeTypeRegistry,
+  driven: QuiescenceResult,
+  delta: ChangeDelta,
+  frontierNow: readonly DagNode[],
+): NextActionEnvelope {
+  const frontierView = frontierNow.map((node) => toNodeView(registry, node));
   if (!driven.settled && driven.reason === 'external-actor') {
     return {
       action: driven.type,
@@ -228,12 +247,12 @@ function buildNextActionEnvelope(driven: QuiescenceResult, delta: ChangeDelta, f
       executor: driven.actResult.executor,
       instructions: driven.actResult.instructions,
       context: driven.actResult.payload ? { ...driven.actResult.payload } : {},
-      completion_event: NEXT_ACTION_COMPLETION_TOKENS[driven.type] ?? null,
+      completion_event: registry.resolve(driven.type)?.completionToken ?? null,
       delta,
-      frontier: frontierNow,
+      frontier: frontierView,
     };
   }
-  return { action: null, node: null, executor: null, instructions: null, context: null, completion_event: null, delta, frontier: frontierNow };
+  return { action: null, node: null, executor: null, instructions: null, context: null, completion_event: null, delta, frontier: frontierView };
 }
 
 // ── seed: replay add_node / add_dependency / expand to stamp a project's initial dag ──────────
@@ -339,9 +358,9 @@ export function buildEngineGraphRouter(service: GraphService): Hono {
     const edges = service.execStore.listEdges(scope);
     return c.json(
       ok({
-        nodes,
+        nodes: nodes.map((node) => toNodeView(service.registry, node)),
         edges,
-        frontier: frontier(nodes, edges, ROOT_NODE_ID),
+        frontier: frontier(nodes, edges, ROOT_NODE_ID).map((node) => toNodeView(service.registry, node)),
         status: resolveProjectStatus(nodes),
       }),
     );
@@ -357,7 +376,7 @@ export function buildEngineGraphRouter(service: GraphService): Hono {
     const ctx: PrimitiveContext = { store: service.execStore, scope };
     // D15: `context` is the caller's working-context scope for this one request only — carried in
     // per request, never stored server-side.
-    return c.json(ok(readFrontier(ctx, contextResult.data)));
+    return c.json(ok(readFrontier(ctx, contextResult.data).map((node) => toNodeView(service.registry, node))));
   });
 
   app.get('/node', (c) => {
@@ -369,7 +388,7 @@ export function buildEngineGraphRouter(service: GraphService): Hono {
     const scope: ProjectScope = { projectId: projectResult.data };
     const node = service.execStore.getNode(scope, nodeResult.data);
     if (!node) return c.json(err('not_found', `node '${nodeResult.data}' does not exist`), 404);
-    return c.json(ok(node));
+    return c.json(ok(toNodeView(service.registry, node)));
   });
 
   app.post('/submit-event', async (c) => {
@@ -409,11 +428,13 @@ export function buildEngineGraphRouter(service: GraphService): Hono {
         ...(isNonEmptyString(payload.route) ? { route: payload.route as EventToken } : {}),
       };
       try {
-        if (existing.type === 'rad-orc:code_review' && event === CODE_REVIEW_REVIEWED_TOKEN && envelope.outcome === 'ok') {
-          // A `code_review` verdict is never trusted from the caller — the relayed event is only a
-          // "the review finished" signal; the verdict itself is always re-derived from the report's
-          // own doc-read, via this node type's own `resolve` hook (the same generic bridge the
-          // drive loop's noop auto-resolution uses).
+        const definition = service.registry.resolve(existing.type);
+        if (definition?.resolve) {
+          // The node owns its outcome derivation — the relayed event is only an "it finished"
+          // trigger, so re-derive from the node's own state (e.g. a report's own doc-read) rather
+          // than trust the caller's asserted outcome. Reached for ANY node type that declares
+          // `resolve`, by contract — never by type name; this is code_review's verdict path,
+          // generalized, via the same bridge the drive loop's noop auto-resolution uses.
           await resolveViaNodeType(ctx, service.registry, service.capabilities, existing);
         } else {
           // The client dictates the outcome directly — still the full P01-T02 outcome cycle
@@ -442,7 +463,7 @@ export function buildEngineGraphRouter(service: GraphService): Hono {
       before,
       after,
     );
-    return c.json(ok(buildNextActionEnvelope(driven, delta, globalFrontier(ctx, ROOT_NODE_ID))));
+    return c.json(ok(buildNextActionEnvelope(service.registry, driven, delta, globalFrontier(ctx, ROOT_NODE_ID))));
   });
 
   app.post('/steer', async (c) => {
