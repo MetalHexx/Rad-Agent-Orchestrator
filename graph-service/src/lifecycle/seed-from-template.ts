@@ -10,6 +10,7 @@ import { BUILT_IN_NODE_TYPES } from '@rad-orchestration/graph-node-types';
 import { compose } from '../compose.js';
 import { applySeedStep } from '../http/engine-graph.js';
 import { discoverCustomNodeTypes } from '../node-types/scan.js';
+import { populateBuiltinNodeTypes } from '../node-types/populate-builtin.js';
 import type { SeedStep } from '../seed-step.js';
 import { compileTemplate } from '../templates/compile.js';
 import { ensure } from './ensure.js';
@@ -41,10 +42,18 @@ interface CompiledTemplate {
 /**
  * Resolves the node-types root, discovers customs, builds the registry the template compiles
  * against, and compiles. All-or-nothing: a discovery or compile failure throws — no partial seed.
+ *
+ * Also (re-)populates `<root>/node-types/builtin/rad-orc/` from the `graph-node-types` package's
+ * own built `manifest.yml` + `dist/` — the dev-seed path's own on-disk proof that the `builtin/`
+ * bucket has real artifacts for `discoverNodeTypes` to find, even though this function still
+ * builds the in-process registry from `BUILT_IN_NODE_TYPES` directly (the disk copy isn't consumed
+ * here; wiring the daemon itself to load built-ins from disk is a later iteration).
  */
 async function compileFromTemplate(opts: SeedFromTemplateOptions): Promise<CompiledTemplate> {
   const root = opts.root ?? resolveRadorcRoot();
   const nodeTypesRoot = path.join(root, 'node-types');
+
+  await populateBuiltinNodeTypes(root);
 
   const { customs, errors } = await discoverCustomNodeTypes(nodeTypesRoot);
   if (errors.length > 0) {

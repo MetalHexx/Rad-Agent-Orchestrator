@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { seedFromTemplateInProcess } from '../../src/lifecycle/seed-from-template.js';
+import { discoverNodeTypes } from '../../src/node-types/scan.js';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const MAXIMAL_TEMPLATE_PATH = path.join(REPO_ROOT, 'runtime-config', 'node-graph-templates', 'rad-orc-coding.yml');
@@ -32,6 +33,14 @@ describe('seedFromTemplateInProcess', () => {
     // master_plan, plan_audit, explosion, plan_approval — each of the latter three `depends_on`
     // the one before it, so three `depends_on` edges land alongside the four nodes.
     expect(result).toEqual({ project: 'proj-1', nodesCreated: 4, edgesCreated: 3 });
+  });
+
+  it('also populates <root>/node-types/builtin/rad-orc/, so discoverNodeTypes finds all nine built-ins', async () => {
+    await seedFromTemplateInProcess({ templatePath: MAXIMAL_TEMPLATE_PATH, project: 'proj-builtin', root, dbPath });
+
+    const result = await discoverNodeTypes(path.join(root, 'node-types'));
+    expect(result.errors).toEqual([]);
+    expect(result.builtins).toHaveLength(9);
   });
 
   it('propagates a template compile error instead of seeding anything', async () => {
