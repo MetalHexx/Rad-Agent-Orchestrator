@@ -10,7 +10,7 @@ export type { SubmitEventInput } from './handle.js';
 export { GraphClientError, GRAPH_CLIENT_ERROR_CODES } from './errors.js';
 export type { GraphClientErrorCode } from './errors.js';
 
-export { NODE_STATUSES, EXECUTORS } from './types.js';
+export { NODE_STATUSES, EXECUTORS, SHARED_MUTATION_KINDS } from './types.js';
 export type {
   NodeStatus,
   Executor,
@@ -28,4 +28,13 @@ export type {
   ChangeDelta,
   DagSnapshot,
   NextActionEnvelope,
+  DependentRemovalStrategy,
+  ChildRemovalStrategy,
+  RemoveNodeStrategy,
+  Expansion,
+  AddCorrectiveOptions,
+  SharedMutationRequest,
+  DryRunResult,
+  SeedStep,
+  SeedResult,
 } from './types.js';

@@ -2,11 +2,20 @@ import { request } from './transport.js';
 import { GraphClientError } from './errors.js';
 import type { GraphClientConfig } from './client.js';
 import type {
+  AddCorrectiveOptions,
+  ChangeDelta,
   DagSnapshot,
+  DryRunResult,
   EventToken,
+  Expansion,
   NextActionEnvelope,
   NodeId,
+  NodeTypeName,
   NodeView,
+  RemoveNodeStrategy,
+  SeedResult,
+  SeedStep,
+  SharedMutationRequest,
 } from './types.js';
 
 // The engine's ROOT_NODE_ID: the project root node's *id* (not its *type*, `'system:root'`).
@@ -75,6 +84,81 @@ export class ProjectHandle {
       method: 'GET',
       path: '/engine-graph/node',
       query: { project: this.projectId, node: id },
+    });
+  }
+
+  /** Steer: adds a `depends_on` edge from `from` to `to`. */
+  async addDependency(from: NodeId, to: NodeId): Promise<ChangeDelta> {
+    return this.steer('add_dependency', { from, to });
+  }
+
+  /** Steer: removes `nodeId` (D16) — `strategy.dependents` is required, `strategy.children`
+   * optional; passed through untouched, the service owns the invariants. */
+  async removeNode(nodeId: NodeId, strategy: RemoveNodeStrategy): Promise<ChangeDelta> {
+    return this.steer('remove_node', { nodeId, strategy });
+  }
+
+  /** Steer: re-parents `nodeId` under `newParent`. */
+  async moveNode(nodeId: NodeId, newParent: NodeId): Promise<ChangeDelta> {
+    return this.steer('move_node', { nodeId, newParent });
+  }
+
+  /** Steer: expands `node` per `expansion` — the server injects its own type registry. */
+  async expand(node: NodeId, expansion: Expansion): Promise<ChangeDelta> {
+    return this.steer('expand', { node, expansion });
+  }
+
+  /** Steer: adds a corrective node `id` of `type` under review node `review`. */
+  async addCorrective(
+    review: NodeId,
+    id: NodeId,
+    type: NodeTypeName,
+    options?: AddCorrectiveOptions,
+  ): Promise<ChangeDelta> {
+    return this.steer('add_corrective', { review, id, type, options });
+  }
+
+  /** Steer: resets `node`, cascading to its descendants when `cascade` is true. */
+  async reset(node: NodeId, cascade: boolean): Promise<ChangeDelta> {
+    return this.steer('reset', { node, cascade });
+  }
+
+  /** POST /engine-graph/steer — the six typed methods above all funnel through here; `kind` is
+   * carried by `primitive`, `params` is the shared-mutation shape minus `kind`. */
+  private async steer(
+    primitive: SharedMutationRequest['kind'],
+    params: Readonly<Record<string, unknown>>,
+  ): Promise<ChangeDelta> {
+    return request<ChangeDelta>(this.config, {
+      method: 'POST',
+      path: '/engine-graph/steer',
+      body: { project: this.projectId, primitive, params },
+    });
+  }
+
+  /**
+   * POST /engine-graph/dry-run — a read that validates and previews `mutation`'s cascade cone
+   * without changing anything. Nests the mutation as `mutation` (kind inline) — the opposite
+   * shape from `steer`'s `{ primitive, params }`. A valid-but-rejected mutation resolves with
+   * `{ valid: false, reason, preview: null }` rather than throwing; only a bad `kind` throws
+   * (`invalid_request`).
+   */
+  async dryRun(mutation: SharedMutationRequest): Promise<DryRunResult> {
+    return request<DryRunResult>(this.config, {
+      method: 'POST',
+      path: '/engine-graph/dry-run',
+      body: { project: this.projectId, mutation },
+    });
+  }
+
+  /** POST /engine-graph/seed — replays `steps` to bring a project's DAG into being from a
+   * compiled template. Node-type-agnostic: relays the steps and result, interprets no node
+   * internals. */
+  async seed(steps: SeedStep[]): Promise<SeedResult> {
+    return request<SeedResult>(this.config, {
+      method: 'POST',
+      path: '/engine-graph/seed',
+      body: { project: this.projectId, seed: { steps } },
     });
   }
 }

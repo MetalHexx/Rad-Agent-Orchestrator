@@ -72,6 +72,79 @@ export interface DagSnapshot {
   status: NodeStatus;
 }
 
+// ── Steering / mutation vocabulary (mirrored from graph-service/src/http/mutation-spec.ts) ──
+// `removeNode`'s D16 strategy: the SDK never derives edge mutations itself, it just threads this
+// straight through as `params.strategy` for the service to translate and own the invariants on.
+export type DependentRemovalStrategy = 'heal' | 'cascade' | 'detach';
+export type ChildRemovalStrategy = 'cascade' | 'promote';
+
+export interface RemoveNodeStrategy {
+  dependents: DependentRemovalStrategy;
+  children?: ChildRemovalStrategy;
+}
+
+// Engine shapes the client relays opaquely: `expansion.specs`/`options` are never interpreted
+// here, and `expand`'s registry is server-injected — the client never supplies one.
+export interface Expansion {
+  readonly specs: unknown[];
+}
+
+export type AddCorrectiveOptions = Readonly<Record<string, unknown>>;
+
+/**
+ * The one request shape `steer` and `dryRun` both build from — the six primitive kinds the
+ * engine's mutation vocabulary covers. `steer` nests this as `params` (kind carried by
+ * `primitive`); `dryRun` nests it as `mutation` (kind inline) — same vocabulary, two envelope
+ * shapes.
+ */
+export type SharedMutationRequest =
+  | { kind: 'add_dependency'; from: NodeId; to: NodeId }
+  | { kind: 'remove_node'; nodeId: NodeId; strategy: RemoveNodeStrategy }
+  | { kind: 'move_node'; nodeId: NodeId; newParent: NodeId }
+  | { kind: 'expand'; node: NodeId; expansion: Expansion }
+  | { kind: 'add_corrective'; review: NodeId; id: NodeId; type: NodeTypeName; options?: AddCorrectiveOptions }
+  | { kind: 'reset'; node: NodeId; cascade: boolean };
+
+/** The six kinds `SharedMutationRequest` covers. */
+export const SHARED_MUTATION_KINDS = [
+  'add_dependency',
+  'remove_node',
+  'move_node',
+  'expand',
+  'add_corrective',
+  'reset',
+] as const;
+
+/**
+ * `dryRun`'s read-only preview envelope. Both branches arrive `ok: true` on the wire — an invalid
+ * mutation is a successful read reporting `valid: false`, not a thrown error. `preview` (the
+ * cascade cone — `PreviewCone` | `AddCorrectivePreview` | `ResetPreview` on the service side) is
+ * relayed opaquely; only a bad `kind` throws (`invalid_request`).
+ */
+export type DryRunResult =
+  | { valid: true; preview: unknown }
+  | { valid: false; reason: string; preview: null };
+
+/** A `seed` template step — node-type-agnostic; the client relays steps and results without
+ * interpreting node internals. */
+export type SeedStep =
+  | {
+      primitive: 'add_node';
+      id: NodeId;
+      type: NodeTypeName;
+      parent: NodeId;
+      order?: number;
+      data?: Readonly<Record<string, unknown>>;
+      dependsOn?: NodeId[];
+    }
+  | { primitive: 'add_dependency'; from: NodeId; to: NodeId }
+  | { primitive: 'expand'; node: NodeId; expansion: Expansion };
+
+export interface SeedResult {
+  nodesCreated: number;
+  edgesCreated: number;
+}
+
 // service-LOCAL & unexported there — the client owns this shape.
 export interface NextActionEnvelope {
   readonly action: NodeTypeName | null;
