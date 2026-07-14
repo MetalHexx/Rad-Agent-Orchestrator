@@ -1,7 +1,7 @@
-// The full integration proof (P05-T02): seed a project DAG by replaying a template-shaped batch
-// through the public primitives alone, trim it, then run it to quiescence over the P05-T01 driver
-// contract. Titles cite the behavior + governing seam each test proves, per the telemetry tests'
-// own style (hand-rolled fakes, explicit vitest imports, `globals: false`).
+// The full integration proof: seed a project DAG by replaying a template-shaped batch through the
+// public primitives alone, trim it, then run it to quiescence over the engine's driver contract.
+// Titles cite the behavior + governing seam each test proves, per the telemetry tests' own style
+// (hand-rolled fakes, explicit vitest imports, `globals: false`).
 import type { PrimitiveContext, ProjectScope, ReviewSpawnRequest } from '@rad-orchestration/graph-engine';
 import {
   InMemoryStateStore,

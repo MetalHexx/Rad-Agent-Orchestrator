@@ -2,8 +2,9 @@
 //
 // The real `docRead`/`docWrite` ports — filesystem-backed, confined to a resolved filesystem root
 // passed in via `projectRoot` (defaults to `resolveRadorcRoot()` if not supplied by the caller).
-// `gitFacts`/`spawnAgent`/`runCommand`/`requestHuman` stay the fakes for now (P02-T02 wires the
-// real bundle into `compose()`; those three are the orchestrator's job, not service-executed).
+// `gitFacts`/`spawnAgent`/`runCommand`/`requestHuman` stay the fakes: those four ports name work
+// that is the orchestrator's job, never service-executed, so this bundle never needs a real
+// implementation for them.
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import type {
@@ -63,9 +64,10 @@ export class RealDocWritePort implements DocWritePort {
 }
 
 /**
- * Builds a `CapabilityPorts` bundle with real filesystem-backed `docRead`/`docWrite`, confined to
- * `projectRoot`; the remaining four ports still resolve via the fakes (they are not part of this
- * task and are not yet wired into `compose()`).
+ * Builds the `CapabilityPorts` bundle `compose()` wires in: real filesystem-backed
+ * `docRead`/`docWrite`, confined to `projectRoot`; the remaining four ports resolve via the fakes,
+ * since `gitFacts`/`spawnAgent`/`runCommand`/`requestHuman` are the orchestrator's job, never
+ * service-executed.
  */
 export function createRealCapabilityPorts(projectRoot: string): CapabilityPorts {
   const fakes = createFakedCapabilityPorts();

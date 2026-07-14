@@ -4,10 +4,11 @@
 // node (`example:scribe`, discovered purely off a temp `~/.radorc/node-types/custom/` tree) is
 // driven end to end over real HTTP + real capabilities — the daemon's own `start()` scan, the same
 // generic `/engine-graph/*` surface every built-in drives through, zero reach into the node's own
-// internals. It surfaces a **non-null** `completion_event` when the drive stops at it (the R4
-// custom guarantee: a pre-2.6 custom stop would have surfaced `null`), relaying that event drives
-// the host to call the node's own `resolve` — whose `doc-write` side effect lands on disk and whose
-// derived outcome moves it to `done` — and it appears in the response envelope fully formed. A
+// internals. It surfaces a **non-null** `completion_event` when the drive stops at it (the
+// custom-node completion-token guarantee: a pre-2.6 custom stop would have surfaced `null`),
+// relaying that event drives the host to call the node's own `resolve` — whose `doc-write` side
+// effect lands on disk and whose derived outcome moves it to `done` — and it appears in the
+// response envelope fully formed. A
 // companion regression proves the maximal built-in chain still drives to its first external-actor
 // stop (and on through `explosion`'s own disk-loaded `resolve`) with every built-in loaded from
 // disk, never imported.

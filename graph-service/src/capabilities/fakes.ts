@@ -1,9 +1,9 @@
 // graph-service/src/capabilities/fakes.ts
 //
-// Hand-rolled fakes for the engine's six capability ports — the P01-T02 seam a real
-// implementation (process spawn, git, filesystem, an actual human prompt) drops into unchanged in
-// 2.4. Every fake returns a canned `Envelope` and echoes the caller's own `idempotencyKey`; none
-// ever touches real git/process/network. Ported from `lib/graph-node-types/tests/harness/
+// Hand-rolled fakes for the engine's six capability ports — the `CapabilityPorts` seam a real
+// implementation (process spawn, git, filesystem, an actual human prompt) drops into unchanged.
+// Every fake returns a canned `Envelope` and echoes the caller's own `idempotencyKey`; none ever
+// touches real git/process/network. Ported from `lib/graph-node-types/tests/harness/
 // test-driver.ts`'s proven `createFakedCapabilityPorts` — same classes, same names, adapted only
 // to this package's barrel-only import convention.
 import type {

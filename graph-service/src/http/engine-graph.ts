@@ -437,7 +437,7 @@ export function buildEngineGraphRouter(service: GraphService): Hono {
           // generalized, via the same bridge the drive loop's noop auto-resolution uses.
           await resolveViaNodeType(ctx, service.registry, service.capabilities, existing);
         } else {
-          // The client dictates the outcome directly — still the full P01-T02 outcome cycle
+          // The client dictates the outcome directly — still the full outcome cycle
           // (handle -> apply_event -> routing -> expansion -> syncProjectedStatus), never a bare
           // apply_event.
           applyOutcome(ctx, service.registry, nodeId, { token: event as EventToken, envelope });

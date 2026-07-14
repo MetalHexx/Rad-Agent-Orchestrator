@@ -70,7 +70,8 @@ export const PRIMITIVE_RESET: PrimitiveName = 'reset';
 
 // ── Event / action token ─────────────────────────────────────────────────────────
 // A `<node-type>.<outcome>` token, where outcome is a past-tense verb by convention. The
-// exhaustive built-in token list is produced in P04-T02, not here.
+// exhaustive built-in token list is `graph-node-types`' `event-tokens.ts` (`EVENT_TOKENS`), not
+// here — this engine package only declares the token's shape.
 export type EventToken = `${NodeTypeName}.${string}`;
 
 // ── Exhaustiveness helper ────────────────────────────────────────────────────────

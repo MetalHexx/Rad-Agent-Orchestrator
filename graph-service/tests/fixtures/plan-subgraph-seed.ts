@@ -6,8 +6,8 @@
 // never expanded by this fixture itself: that batch is `explosion`'s `handle` reacting to a real
 // parse, not a static seed). Node types are named by `namespace:name` string literals only — this
 // fixture never imports a `NodeTypeDefinition`, so swapping the registry's contents changes what
-// materializes with no edit here (registry-resolution, not a hardcoded type import). Reused by the
-// functional suite (P04-T02) and any future template loader alike.
+// materializes with no edit here (registry-resolution, not a hardcoded type import). Reused by
+// `functional/planning-subgraph.test.ts` and any future template loader alike.
 import { ROOT_NODE_ID } from '@rad-orchestration/graph-engine';
 import type { DecorationCadence } from '@rad-orchestration/graph-node-types';
 import type { SeedStep } from '../harness/drive.js';

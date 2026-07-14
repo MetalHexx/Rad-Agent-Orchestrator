@@ -1,6 +1,7 @@
-// Recovery, multi-repo PR, and plan adoption — three more angles the P05-T02 integration proof
-// covers: a `rejected` verdict halts recoverably rather than erroring, a multi-repo `rad-orc:pr`
-// reports the frozen per-repo shape, and `expand` appends new work onto an already-settled graph.
+// Recovery, multi-repo PR, and plan adoption — three more angles the full integration proof
+// (`seed-and-run.test.ts`) covers: a `rejected` verdict halts recoverably rather than erroring, a
+// multi-repo `rad-orc:pr` reports the frozen per-repo shape, and `expand` appends new work onto an
+// already-settled graph.
 import type { PrimitiveContext, ProjectScope } from '@rad-orchestration/graph-engine';
 import {
   InMemoryStateStore,

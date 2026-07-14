@@ -1,8 +1,8 @@
 // graph-service/src/http/steer.ts — the steer-envelope validator + primitive dispatch: the
 // 11-member allowlist a client may invoke over `/engine-graph/steer`, each with its own `params`
 // shape. Deliberately narrower than the engine's own 13-member `PRIMITIVE_NAMES`: `apply_event` and
-// `engage` are driver-contract primitives (P01-T02's `applyOutcome`/`advance`), never dispatched
-// from a client-supplied envelope here.
+// `engage` are driver-contract primitives (`applyOutcome`/`advance`), never dispatched from a
+// client-supplied envelope here.
 import type {
   AddNodeOptions,
   ChangeDelta,

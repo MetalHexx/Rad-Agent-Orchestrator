@@ -42,9 +42,9 @@ export interface GraphService {
   readonly capabilities: CapabilityPorts;
   readonly version: { readonly service: string; readonly engine: string };
   readonly dbPath: string;
-  // SSE sources: `execStore.subscribe`/`portfolio.subscribe` (P02-T03) — each store's own
-  // row-emission hook, reached directly through the fields above rather than a separate wrapper,
-  // the same way every other route reaches state through this one composition object.
+  // SSE sources: `execStore.subscribe`/`portfolio.subscribe` — each store's own row-emission hook,
+  // reached directly through the fields above rather than a separate wrapper, the same way every
+  // other route reaches state through this one composition object.
 }
 
 export interface ComposeOptions {

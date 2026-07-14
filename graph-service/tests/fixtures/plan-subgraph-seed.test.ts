@@ -2,8 +2,9 @@
 //
 // A light structural check on `planSubgraphSeedSteps` alone — the seeded spine's shape (order,
 // dependency chain, seeded data) and that the frontier starts at `master_plan`. Driving the spine
-// to completion (running the real explosion/approval cycle) is P04-T02's own functional scenario;
-// this only proves the fixture stamps what it claims to.
+// to completion (running the real explosion/approval cycle) is
+// `functional/planning-subgraph.test.ts`'s own functional scenario; this only proves the fixture
+// stamps what it claims to.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { BootedDaemon } from '../harness/boot.js';
 import { bootDaemon } from '../harness/boot.js';

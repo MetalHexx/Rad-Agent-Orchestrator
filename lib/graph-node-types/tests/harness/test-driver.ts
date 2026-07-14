@@ -1,4 +1,4 @@
-// The P05-T02 integration-proof test harness: a driver implementing the P05-T01 driver contract —
+// The integration-proof test harness: a driver implementing the engine's driver contract —
 // loop { read the (whole-tree) frontier -> engage each -> dispatch the executor against faked
 // capability ports -> apply_event the outcome } until quiescence — plus the six hand-rolled faked
 // capability ports every built-in's `act` reaches for. Every step below composes only the engine's
@@ -299,7 +299,7 @@ export type NodeOutcomeResolver = (
 ) => Promise<void> | void;
 
 /**
- * The P05-T01 driver contract, run to quiescence: read the whole-tree frontier, `engage` one
+ * The engine's driver contract, run to quiescence: read the whole-tree frontier, `engage` one
  * eligible node, hand its `ActResult` to the resolver registered for its `type`, repeat. One node
  * at a time (never a batched round) — a DAG has no ordering requirement on dispatch order, and
  * re-reading the frontier before every single `engage` sidesteps ever acting on a stale candidate.

@@ -4,8 +4,8 @@
 // `manifest.yml`, dynamic-imports its declared entrypoints, and validates the default export as a
 // well-formed `NodeTypeDefinition` cross-checked against the manifest. Every import/parse/validation
 // failure becomes a named `NodeTypeLoadError`, collected rather than thrown, so one bad package
-// never crashes discovery of the rest. `createNodeTypeRegistry` (P02-T03) is the sole enforcer of
-// the reserved `rad-orc:` prefix and global name-uniqueness — this loader only tags each definition
+// never crashes discovery of the rest. `createNodeTypeRegistry` is the sole enforcer of the
+// reserved `rad-orc:` prefix and global name-uniqueness — this loader only tags each definition
 // with the subtree it came from and defers both rules to the registry.
 import { pathToFileURL } from 'node:url';
 import * as fs from 'node:fs';

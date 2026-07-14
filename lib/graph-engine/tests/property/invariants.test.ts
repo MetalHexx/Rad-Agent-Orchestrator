@@ -1,4 +1,4 @@
-// Property suite (P05-T02, extended): across long, randomized mutation sequences — add/remove/move/
+// Extended property suite: across long, randomized mutation sequences — add/remove/move/
 // reorder/expand/reset/toggle/resume, interleaved with direct status advances and direct
 // `budgetAnchor` stamps (the same raw-`store.apply` seeding idiom every other test file's own
 // `seed()` helper already uses) — `depends_on` stays acyclic, `parent` stays a tree, no
