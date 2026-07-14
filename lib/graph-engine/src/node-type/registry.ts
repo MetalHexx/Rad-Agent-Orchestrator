@@ -5,6 +5,15 @@ import type { NodeTypeDefinition } from './definition.js';
 export const RESERVED_NODE_TYPE_PREFIX = 'rad-orc:';
 
 /**
+ * Where a node type definition came from. A `builtin`-origin definition may claim
+ * {@link RESERVED_NODE_TYPE_PREFIX}; a `custom`-origin one throws at registration. Today origin is
+ * assigned by argument position (`builtins` vs. `customs`); disk-discovery can carry this same tag
+ * explicitly once definitions load from outside the process.
+ */
+export const NODE_TYPE_ORIGINS = ['builtin', 'custom'] as const;
+export type NodeTypeOrigin = (typeof NODE_TYPE_ORIGINS)[number];
+
+/**
  * Resolves a `type` name to its `NodeTypeDefinition` — the one seam the mutation primitives
  * (`add_node`, `expand`) call through to turn a bare `NodeTypeName` into behavior, and the only
  * place a `type` name is ever looked up. The engine never scans a filesystem or falls back to a
@@ -39,8 +48,8 @@ export function createNodeTypeRegistry(
 ): NodeTypeRegistry {
   const definitions = new Map<NodeTypeName, NodeTypeDefinition>();
 
-  function register(definition: NodeTypeDefinition, reservedPrefixAllowed: boolean): void {
-    if (!reservedPrefixAllowed && definition.name.startsWith(RESERVED_NODE_TYPE_PREFIX)) {
+  function register(definition: NodeTypeDefinition, origin: NodeTypeOrigin): void {
+    if (origin !== 'builtin' && definition.name.startsWith(RESERVED_NODE_TYPE_PREFIX)) {
       throw new Error(`node type '${definition.name}' claims the reserved '${RESERVED_NODE_TYPE_PREFIX}' prefix`);
     }
     if (definitions.has(definition.name)) {
@@ -49,8 +58,8 @@ export function createNodeTypeRegistry(
     definitions.set(definition.name, definition);
   }
 
-  for (const definition of builtins) register(definition, true);
-  for (const definition of customs) register(definition, false);
+  for (const definition of builtins) register(definition, 'builtin');
+  for (const definition of customs) register(definition, 'custom');
 
   return {
     resolve: (name) => definitions.get(name),

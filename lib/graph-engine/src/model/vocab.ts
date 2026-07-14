@@ -76,6 +76,10 @@ export const PRIMITIVE_NAMES = [
 ] as const;
 export type PrimitiveName = (typeof PRIMITIVE_NAMES)[number];
 
+/** The one primitive a node type routes to by name directly (approval's plan-denial, explosion's
+ *  parse-failure reset) — a named singleton so a node references the kernel constant, not '"reset"'. */
+export const PRIMITIVE_RESET: PrimitiveName = 'reset';
+
 // ── Event / action token ─────────────────────────────────────────────────────────
 // A `<node-type>.<outcome>` token, where outcome is a past-tense verb by convention. The
 // exhaustive built-in token list is produced in P04-T02, not here.

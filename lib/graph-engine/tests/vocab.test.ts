@@ -7,6 +7,7 @@ import {
   SEVERITIES,
   CAPABILITY_NAMES,
   PRIMITIVE_NAMES,
+  PRIMITIVE_RESET,
   assertNever,
 } from '../src/model/vocab.js';
 import type { Trait } from '../src/model/vocab.js';
@@ -86,6 +87,12 @@ describe('PrimitiveName vocabulary', () => {
       'reset',
       'engage',
     ]);
+  });
+});
+
+describe('PRIMITIVE_RESET singleton', () => {
+  it('equals the reset primitive name', () => {
+    expect(PRIMITIVE_RESET).toBe('reset');
   });
 });
 
