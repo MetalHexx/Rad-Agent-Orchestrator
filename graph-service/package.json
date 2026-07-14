@@ -17,7 +17,8 @@
     "radorch-graph-service": "./dist/bin/serve.js",
     "radorch-graph-service-ensure": "./dist/bin/ensure.js",
     "radorch-graph-service-status": "./dist/bin/status.js",
-    "radorch-graph-service-stop": "./dist/bin/stop.js"
+    "radorch-graph-service-stop": "./dist/bin/stop.js",
+    "radorch-graph-service-seed": "./dist/bin/seed.js"
   },
   "engines": {
     "node": ">=20"
@@ -30,7 +31,8 @@
     "lint": "eslint .",
     "ensure": "node dist/bin/ensure.js",
     "status": "node dist/bin/status.js",
-    "stop": "node dist/bin/stop.js"
+    "stop": "node dist/bin/stop.js",
+    "seed": "node dist/bin/seed.js"
   },
   "dependencies": {
     "@hono/node-server": "^2.0.8",
