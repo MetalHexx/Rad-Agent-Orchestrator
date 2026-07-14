@@ -25,9 +25,18 @@ here going forward:
 
 ## Seam rules
 
-- **Consumed only through `src/index.ts`.** Never import another module's internals (e.g. a future
-  `src/**/*.ts` file) from outside this package by path — only the barrel's named exports are the
-  public surface. Tests inside this library may import internals by their direct module path.
+- **Consumed only through `src/index.ts` — with one named exception.** Never import another
+  module's internals (e.g. a future `src/**/*.ts` file) from outside this package by path — only
+  the barrel's named exports are the public surface. Tests inside this library may import
+  internals by their direct module path. The one intentional carve-out is the disk-artifact shape
+  this package ships alongside the barrel: `manifest.yml` plus the thin `src/entrypoints/*.ts`
+  default-export shims, built to `dist/entrypoints/*.js`. `graph-service`'s on-disk node-type
+  loader (`graph-service/src/node-types/scan.ts`) dynamic-`import()`s each entrypoint by its
+  built file path rather than through the barrel, because the loader's contract (a
+  `manifest.yml`-named entrypoint resolving to a default-exported `NodeTypeDefinition`) is the
+  same shape every `custom/`-origin package must also satisfy — the loader cannot special-case
+  built-ins by routing them through `src/index.ts` instead. This is the only sanctioned path-based
+  external consumer; anything else reaching past the barrel by path remains forbidden.
 - **Depends on `@rad-orchestration/graph-engine` by scoped name only**, pinned to the same
   monorepo-lockstep version. Never reach past the engine's own barrel into its internals.
 - **Lint is a required gate, not optional.** `npm run lint` (ESLint flat config in
