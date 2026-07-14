@@ -330,7 +330,26 @@ describe('integration: graph-client against a booted graph-service', () => {
   describe('error model', () => {
     // The engine-legality codes (`cycle`, `root_guarded`) are exercised above, in "steer: every
     // primitive kind" — this block covers the remaining reachable codes: a missing node, a
-    // client-side-rejected malformed drive, and a genuine transport failure.
+    // client-side-rejected malformed drive, an unregistered expansion type, a containment/
+    // depends_on axis conflict, a malformed expansion batch, and a genuine transport failure.
+    //
+    // `driver_stalled` and `internal_error` have no test here: `driver_stalled` needs a drive loop
+    // that runs past its 300-step ceiling without reaching quiescence or an external actor, and
+    // `internal_error` is a defensive catch-all for an unexpected exception — neither is
+    // deliberately constructible through the client's public surface without contriving an
+    // artificial fixture, so both are exempted rather than faked.
+    //
+    // `not_in_frontier` also has no test: the only function that ever produces it is the engine's
+    // `engage` (`lib/graph-engine/src/driver/contract.ts:56-73`), and its one caller reachable from
+    // HTTP, `runToQuiescence` (`graph-service/src/driver/drive.ts:130-156`), always calls it against
+    // `globalFrontier(...)`'s own freshly-read candidate (line 145-146) — engaging a node the very
+    // same synchronous pass just certified as frontier-eligible — and throws a plain `Error` rather
+    // than returning a `Result` if that ever fails (line 147), instead of surfacing a
+    // `GraphClientError`. `submitEvent`'s other path (relaying a caller-supplied `event`) commits
+    // through `apply_event`/`applyOutcome` directly, neither of which checks frontier membership at
+    // all. No client-invocable primitive (`steer.ts`'s `STEER_PRIMITIVES`) calls `engage` either.
+    // There is accordingly no reachable path from the client's public surface to a `not_in_frontier`
+    // rejection in the current implementation.
     it('node() on a missing id throws not_found', async () => {
       const project = client.project('error-model-not-found');
 
@@ -355,6 +374,67 @@ describe('integration: graph-client against a booted graph-service', () => {
       }
       expect(caught).toBeInstanceOf(GraphClientError);
       expect((caught as GraphClientError).code).toBe('invalid_request');
+    });
+
+    it('expand with an unregistered spec type throws unknown_node_type', async () => {
+      const project = client.project('error-model-unknown-node-type');
+      await project.seed([
+        { primitive: 'add_node', id: 'phase-1', type: 'rad-orc:phase', parent: ROOT_NODE_ID, data: phaseData() },
+      ]);
+
+      let caught: unknown;
+      try {
+        await project.expand('phase-1', {
+          specs: [{ key: 'bogus', type: 'rad-orc:not-a-real-type', parent: 'phase-1', dependsOn: [], data: {} }],
+        });
+      } catch (err) {
+        caught = err;
+      }
+      expect(caught).toBeInstanceOf(GraphClientError);
+      expect((caught as GraphClientError).code).toBe('unknown_node_type');
+    });
+
+    it('expand referencing a nonexistent dependsOn id throws invalid_delta', async () => {
+      const project = client.project('error-model-invalid-delta');
+      await project.seed([
+        { primitive: 'add_node', id: 'phase-1', type: 'rad-orc:phase', parent: ROOT_NODE_ID, data: phaseData() },
+      ]);
+
+      let caught: unknown;
+      try {
+        await project.expand('phase-1', {
+          specs: [
+            {
+              key: 'expanded-task',
+              type: 'rad-orc:task',
+              parent: 'phase-1',
+              dependsOn: ['does-not-exist'],
+              data: taskData('/tasks/expanded-task.md'),
+            },
+          ],
+        });
+      } catch (err) {
+        caught = err;
+      }
+      expect(caught).toBeInstanceOf(GraphClientError);
+      expect((caught as GraphClientError).code).toBe('invalid_delta');
+    });
+
+    it('addDependency between a container and its own child throws cross_axis_cycle', async () => {
+      const project = client.project('error-model-cross-axis-cycle');
+      await project.seed([
+        { primitive: 'add_node', id: 'phase-1', type: 'rad-orc:phase', parent: ROOT_NODE_ID, data: phaseData() },
+        { primitive: 'add_node', id: 'child-of-phase', type: 'rad-orc:task', parent: 'phase-1', data: taskData('/tasks/child-of-phase.md') },
+      ]);
+
+      let caught: unknown;
+      try {
+        await project.addDependency('phase-1', 'child-of-phase');
+      } catch (err) {
+        caught = err;
+      }
+      expect(caught).toBeInstanceOf(GraphClientError);
+      expect((caught as GraphClientError).code).toBe('cross_axis_cycle');
     });
 
     it('a request against a killed daemon throws a transport-failure code', async () => {
