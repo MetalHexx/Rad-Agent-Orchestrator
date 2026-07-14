@@ -1,0 +1,9 @@
+template:
+  id: example-greet
+  version: "1.0.0"
+  description: "Companion template — seeds a single example:greet custom node."
+nodes:
+  - id: greet
+    type: example:greet
+    order: 0
+    depends_on: []

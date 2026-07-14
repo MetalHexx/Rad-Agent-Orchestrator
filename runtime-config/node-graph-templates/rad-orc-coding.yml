@@ -1,0 +1,28 @@
+template:
+  id: rad-orc-coding
+  version: "1.0.0"
+  description: "Maximal rad-orc coding template — full review coverage (per-task + per-phase review, final code_review → pr → approval spine)."
+nodes:
+  - id: master_plan
+    type: rad-orc:master_plan
+    order: 0
+    depends_on: []
+    data: { requirementsDocPath: docs/requirements.md }
+  - id: plan_audit
+    type: rad-orc:plan_audit
+    order: 1
+    depends_on: [master_plan]
+  - id: explosion
+    type: rad-orc:explosion
+    order: 2
+    depends_on: [plan_audit]
+    data:
+      cadence:
+        perTask: [rad-orc:code_review]
+        perPhase: [rad-orc:code_review]
+        spine: [rad-orc:code_review, rad-orc:pr, rad-orc:approval]
+  - id: plan_approval
+    type: rad-orc:approval
+    order: 3
+    depends_on: [explosion]
+    data: { level: plan }

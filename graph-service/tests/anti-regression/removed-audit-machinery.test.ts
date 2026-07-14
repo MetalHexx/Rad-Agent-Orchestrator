@@ -3,10 +3,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const FORBIDDEN = ['plan_audit', 'plan_corrective', 'add_corrective_gate', 'replace_expansion'];
+const FORBIDDEN = ['plan_corrective', 'add_corrective_gate', 'replace_expansion'];
 
 describe('anti-regression: removed audit machinery tokens', () => {
-  it('scans all src trees and asserts none contain the four forbidden tokens', () => {
+  it('scans all src trees and asserts none contain the three forbidden tokens', () => {
     // Resolve the repo root relative to this test file
     // graph-service/tests/anti-regression/removed-audit-machinery.test.ts -> repo root
     const testFile = fileURLToPath(import.meta.url);

@@ -54,6 +54,7 @@ import { runToQuiescence } from '../driver/drive.js';
 import { globalFrontier } from '../driver/frontier.js';
 import { applyOutcome } from '../driver/outcome.js';
 import { relayCodeReviewCompletion } from '../driver/resolvers.js';
+import type { SeedStep } from '../seed-step.js';
 import { SHARED_MUTATION_KINDS, isSharedMutationKind, parseSharedMutation, toEngineMutationSpec } from './mutation-spec.js';
 import type { FailureEnvelope, SuccessEnvelope } from './respond.js';
 import { err, fromResult, ok } from './respond.js';
@@ -237,27 +238,8 @@ function buildNextActionEnvelope(driven: QuiescenceResult, delta: ChangeDelta, f
 }
 
 // ── seed: replay add_node / add_dependency / expand to stamp a project's initial dag ──────────
-
-interface SeedAddNodeStep {
-  readonly primitive: 'add_node';
-  readonly id: NodeId;
-  readonly type: NodeTypeName;
-  readonly parent: NodeId;
-  readonly order?: number;
-  readonly data?: Readonly<Record<string, unknown>>;
-  readonly dependsOn?: readonly NodeId[];
-}
-interface SeedAddDependencyStep {
-  readonly primitive: 'add_dependency';
-  readonly from: NodeId;
-  readonly to: NodeId;
-}
-interface SeedExpandStep {
-  readonly primitive: 'expand';
-  readonly node: NodeId;
-  readonly expansion: Expansion;
-}
-type SeedStep = SeedAddNodeStep | SeedAddDependencyStep | SeedExpandStep;
+// `SeedStep` itself lives in `../seed-step.js` — shared verbatim with the template compiler
+// (`templates/compile.ts`), which compiles a YAML template down to the exact same step union.
 
 function parseSeedStep(raw: unknown, index: number): Checked<SeedStep> {
   if (!isPlainObject(raw)) return err('invalid_request', `seed step ${index} must be an object`);
@@ -319,7 +301,7 @@ function parseSeedSteps(raw: unknown): Checked<readonly SeedStep[]> {
   return ok(steps);
 }
 
-function applySeedStep(ctx: PrimitiveContext, registry: NodeTypeRegistry, step: SeedStep): Result<ChangeDelta> {
+export function applySeedStep(ctx: PrimitiveContext, registry: NodeTypeRegistry, step: SeedStep): Result<ChangeDelta> {
   switch (step.primitive) {
     case 'add_node':
       return add_node(ctx, registry, step.id, step.type, step.parent, {

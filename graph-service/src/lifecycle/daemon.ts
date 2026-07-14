@@ -3,11 +3,13 @@
 // port fallback), writes `service.json`, and installs the graceful-shutdown handler; `stop()` is
 // the caller-side half — it reads `service.json` and signals the pid it names. `start()` runs
 // inside the (possibly detached) daemon process itself; `ensure.ts` owns spawning that process.
+import * as path from 'node:path';
 import { serve } from '@hono/node-server';
 import type { ServerType } from '@hono/node-server';
 import { compose } from '../compose.js';
 import type { GraphService } from '../compose.js';
 import { buildApp } from '../http/app.js';
+import { discoverCustomNodeTypes } from '../node-types/scan.js';
 import {
   readDiscoveryFile,
   removeDiscoveryFile,
@@ -78,15 +80,24 @@ export interface StartResult {
 }
 
 /**
- * Starts the daemon: binds loopback-only (falling back off a port collision), writes the
- * discovery file, and installs the `SIGINT`/`SIGTERM` graceful-shutdown handler — drain the HTTP
- * server, close the DB handle, remove `service.json`, then exit, so a restart always finds a
- * clean slate.
+ * Starts the daemon: scans `<root>/node-types` for custom node types (an absent directory yields
+ * no customs, not an error), refuses to boot with a half-populated registry if any package failed
+ * to load, then binds loopback-only (falling back off a port collision), writes the discovery
+ * file, and installs the `SIGINT`/`SIGTERM` graceful-shutdown handler — drain the HTTP server,
+ * close the DB handle, remove `service.json`, then exit, so a restart always finds a clean slate.
  */
 export async function start(opts: StartOptions): Promise<StartResult> {
   const root = opts.root ?? resolveRadorcRoot();
   const hostname = opts.hostname ?? LOOPBACK_HOST;
-  const service = compose({ dbPath: opts.dbPath, projectRoot: opts.projectRoot });
+
+  const nodeTypesRoot = path.join(root, 'node-types');
+  const { customs, errors } = await discoverCustomNodeTypes(nodeTypesRoot);
+  if (errors.length > 0) {
+    const detail = errors.map((error) => `${error.package}${error.entrypoint ? `:${error.entrypoint}` : ''} — ${error.reason}`).join('; ');
+    throw new Error(`refusing to start with ${errors.length} custom node-type load error(s): ${detail}`);
+  }
+
+  const service = compose({ dbPath: opts.dbPath, projectRoot: opts.projectRoot, customNodeTypes: customs });
   const app = buildApp(service);
 
   const { server, port } = await bindWithFallback(app.fetch, hostname, opts.port);
