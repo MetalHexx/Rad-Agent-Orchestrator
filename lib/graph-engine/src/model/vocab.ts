@@ -27,18 +27,6 @@ export type Trait = (typeof TRAITS)[number];
 export const EXECUTORS = ['spawn-sub-agent', 'orchestrator-inline', 'request-human', 'noop'] as const;
 export type Executor = (typeof EXECUTORS)[number];
 
-// ── Review verdict ───────────────────────────────────────────────────────────────
-// Frozen: reproduces `harness-files/skills/rad-code-review/SKILL.md`'s verdict vocabulary
-// character-for-character. This is a wire contract the review skill already emits — the engine
-// consumes it as-is rather than redesigning it.
-export const REVIEW_VERDICTS = ['approved', 'changes_requested', 'rejected'] as const;
-export type ReviewVerdict = (typeof REVIEW_VERDICTS)[number];
-
-// ── Severity ─────────────────────────────────────────────────────────────────────
-// Frozen: reproduces the same skill's severity vocabulary character-for-character.
-export const SEVERITIES = ['none', 'low', 'medium', 'high'] as const;
-export type Severity = (typeof SEVERITIES)[number];
-
 // ── Capability name ──────────────────────────────────────────────────────────────
 // The well-known, engine-recognized capabilities, kept open via the `(string & {})` escape
 // hatch (mirrors `lib/work-graph`'s `EdgeType`) so a custom node type can name a capability the

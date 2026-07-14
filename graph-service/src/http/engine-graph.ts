@@ -50,10 +50,9 @@ import {
 } from '@rad-orchestration/graph-node-types';
 import type { GraphService } from '../compose.js';
 import type { QuiescenceResult } from '../driver/drive.js';
-import { runToQuiescence } from '../driver/drive.js';
+import { resolveViaNodeType, runToQuiescence } from '../driver/drive.js';
 import { globalFrontier } from '../driver/frontier.js';
 import { applyOutcome } from '../driver/outcome.js';
-import { relayCodeReviewCompletion } from '../driver/resolvers.js';
 import type { SeedStep } from '../seed-step.js';
 import { SHARED_MUTATION_KINDS, isSharedMutationKind, parseSharedMutation, toEngineMutationSpec } from './mutation-spec.js';
 import type { FailureEnvelope, SuccessEnvelope } from './respond.js';
@@ -413,8 +412,9 @@ export function buildEngineGraphRouter(service: GraphService): Hono {
         if (existing.type === 'rad-orc:code_review' && event === CODE_REVIEW_REVIEWED_TOKEN && envelope.outcome === 'ok') {
           // A `code_review` verdict is never trusted from the caller — the relayed event is only a
           // "the review finished" signal; the verdict itself is always re-derived from the report's
-          // own doc-read, the same way the in-service resolver would.
-          await relayCodeReviewCompletion(service.capabilities, ctx, service.registry, existing);
+          // own doc-read, via this node type's own `resolve` hook (the same generic bridge the
+          // drive loop's noop auto-resolution uses).
+          await resolveViaNodeType(ctx, service.registry, service.capabilities, existing);
         } else {
           // The client dictates the outcome directly — still the full P01-T02 outcome cycle
           // (handle -> apply_event -> routing -> expansion -> syncProjectedStatus), never a bare
@@ -430,7 +430,7 @@ export function buildEngineGraphRouter(service: GraphService): Hono {
     // auto-resolving every `noop` executor — then stop at the first node whose executor needs the
     // orchestrator/human, never faking that work. One call relays a result (or, with no event,
     // just kicks off driving from wherever the graph currently stands) and gets the next move.
-    const driven = await runToQuiescence(ctx, service.registry, ROOT_NODE_ID, service.resolvers);
+    const driven = await runToQuiescence(ctx, service.registry, ROOT_NODE_ID, service.capabilities);
     if (!driven.settled && driven.reason === 'max-steps') {
       return c.json(err('driver_stalled', `drive loop exceeded ${driven.steps} steps without reaching quiescence or an external actor`), 400);
     }

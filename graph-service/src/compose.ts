@@ -13,15 +13,12 @@ import {
   ENGINE_SCHEMA_VERSION,
   type Engine,
   type NodeTypeDefinition,
-  type NodeTypeName,
   type NodeTypeRegistry,
 } from '@rad-orchestration/graph-engine';
 import { BUILT_IN_NODE_TYPES } from '@rad-orchestration/graph-node-types';
 import { openDatabase, SqlitePortfolioStore, SqliteStateStore } from '@rad-orchestration/graph-store-sqlite';
 import type { CapabilityPorts } from './capabilities/ports.js';
 import { createRealCapabilityPorts } from './capabilities/real.js';
-import type { NodeOutcomeResolver } from './driver/drive.js';
-import { createBuiltInResolvers } from './driver/resolvers.js';
 import { resolveRadorcRoot } from './lifecycle/discovery.js';
 
 /**
@@ -36,15 +33,14 @@ export interface GraphService {
   readonly registry: NodeTypeRegistry;
   readonly portfolio: SqlitePortfolioStore;
   /**
-   * The six capability ports the driver dispatches an engaged node's `ActResult` against —
-   * `capabilities/real.ts`'s real filesystem-backed `docRead`/`docWrite`, confined to
-   * `ComposeOptions.projectRoot`; `gitFacts`/`spawnAgent`/`runCommand`/`requestHuman` still resolve
-   * via the fakes (they never fire from this drive loop — the driver stops at any node whose
-   * executor would need them, see `driver/drive.ts`'s `runToQuiescence`).
+   * The six capability ports the driver hands a `noop`-executor node's own `resolve` hook (the
+   * `ResolveContext.ports` bridge) — `capabilities/real.ts`'s real filesystem-backed
+   * `docRead`/`docWrite`, confined to `ComposeOptions.projectRoot`; `gitFacts`/`spawnAgent`/
+   * `runCommand`/`requestHuman` still resolve via the fakes (they never fire from this drive loop —
+   * the driver stops at any node whose executor would need them, see `driver/drive.ts`'s
+   * `runToQuiescence`).
    */
   readonly capabilities: CapabilityPorts;
-  /** The per-node-type outcome resolver set (`driver/resolvers.ts`), closed over `capabilities` — what `advance`/`runToQuiescence` dispatch a frontier node's `ActResult` through. */
-  readonly resolvers: Readonly<Record<NodeTypeName, NodeOutcomeResolver>>;
   readonly version: { readonly service: string; readonly engine: string };
   readonly dbPath: string;
   // SSE sources: `execStore.subscribe`/`portfolio.subscribe` (P02-T03) — each store's own
@@ -102,7 +98,6 @@ export function compose(opts: ComposeOptions): GraphService {
   const engine = createEngine(execStore, registry);
   const portfolio = new SqlitePortfolioStore(db);
   const capabilities = createRealCapabilityPorts(projectRoot);
-  const resolvers = createBuiltInResolvers(capabilities);
 
   return {
     db,
@@ -111,7 +106,6 @@ export function compose(opts: ComposeOptions): GraphService {
     registry,
     portfolio,
     capabilities,
-    resolvers,
     version: { service: readServiceVersion(), engine: ENGINE_SCHEMA_VERSION },
     dbPath,
   };

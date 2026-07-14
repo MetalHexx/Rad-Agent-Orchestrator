@@ -5,8 +5,8 @@
 // converge, over the real HTTP surface, never a faked in-service auto-resolve (there is none: the
 // drive loop stops at every `spawn-sub-agent`/`orchestrator-inline` node). `rad-orc:code_review`'s
 // own verdict is never carried here — the service always re-derives it from the report doc-read
-// (`driver/resolvers.ts`'s `relayCodeReviewCompletion`), so this signal's `data` is deliberately
-// empty; control a scenario's verdict by staging the report itself (`daemon.seedDoc`).
+// (`rad-orc:code_review`'s own `resolve` hook), so this signal's `data` is deliberately empty;
+// control a scenario's verdict by staging the report itself (`daemon.seedDoc`).
 import type { ExplicitEvent, StoppedActor } from '../harness/drive.js';
 import { FIXTURE_REPO } from './repos.js';
 

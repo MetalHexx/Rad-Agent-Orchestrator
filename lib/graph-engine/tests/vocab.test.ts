@@ -3,8 +3,6 @@ import {
   NODE_STATUSES,
   TRAITS,
   EXECUTORS,
-  REVIEW_VERDICTS,
-  SEVERITIES,
   CAPABILITY_NAMES,
   PRIMITIVE_NAMES,
   PRIMITIVE_RESET,
@@ -39,26 +37,6 @@ describe('Executor vocabulary', () => {
 
   it('excludes a non-member value', () => {
     expect((EXECUTORS as readonly string[]).includes('bogus')).toBe(false);
-  });
-});
-
-describe('ReviewVerdict vocabulary', () => {
-  it('exactly equals the frozen rad-code-review skill values', () => {
-    expect(REVIEW_VERDICTS).toEqual(['approved', 'changes_requested', 'rejected']);
-  });
-
-  it('excludes a non-member value', () => {
-    expect((REVIEW_VERDICTS as readonly string[]).includes('bogus')).toBe(false);
-  });
-});
-
-describe('Severity vocabulary', () => {
-  it('exactly equals the frozen rad-code-review skill values', () => {
-    expect(SEVERITIES).toEqual(['none', 'low', 'medium', 'high']);
-  });
-
-  it('excludes a non-member value', () => {
-    expect((SEVERITIES as readonly string[]).includes('bogus')).toBe(false);
   });
 });
 

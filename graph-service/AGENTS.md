@@ -12,10 +12,10 @@ going forward:
 
 - **The composition object is the seam.** `compose()` (`src/compose.ts`) builds the one
   `GraphService` — the DB handle, `execStore`, `engine`, `registry`, `portfolio`, `capabilities`,
-  `resolvers`, `version`, and `dbPath` — that every HTTP handler closes over. A handler reaches
-  state through this object, never through a module-level singleton, a second `openDatabase` call,
-  or a fresh registry of its own. This package is the single production host and the sole owner of
-  the SQLite handle (D9).
+  `version`, and `dbPath` — that every HTTP handler closes over. A handler reaches state through
+  this object, never through a module-level singleton, a second `openDatabase` call, or a fresh
+  registry of its own. This package is the single production host and the sole owner of the SQLite
+  handle (D9).
 - **Barrel-only imports from the three libs.** `@rad-orchestration/graph-engine`,
   `@rad-orchestration/graph-node-types`, and `@rad-orchestration/graph-store-sqlite` are consumed
   exclusively by their scoped package name, through each package's own `src/index.ts` barrel —
@@ -66,10 +66,10 @@ running daemon with one cheap call:
 - **Consumed only through `src/index.ts`.** The barrel exports `compose`, `GraphService`,
   `buildApp`, the envelope helpers/types, the capability port bundle (`CapabilityPorts`) and its
   faked implementations (`capabilities/fakes.ts`), and the driver (`capabilities+driver`:
-  `advance`/`runToQuiescence`, `applyOutcome`, `globalFrontier`/`isGloballyQuiescent`,
-  `createBuiltInResolvers`); nothing outside this package imports `compose.ts`, `http/*.ts`,
-  `capabilities/*.ts`, or `driver/*.ts` by path. Tests inside this package may import internals by
-  their direct module path.
+  `advance`/`runToQuiescence`/`resolveViaNodeType`, `applyOutcome`,
+  `globalFrontier`/`isGloballyQuiescent`); nothing outside this package imports `compose.ts`,
+  `http/*.ts`, `capabilities/*.ts`, or `driver/*.ts` by path. Tests inside this package may import
+  internals by their direct module path.
 - **The uniform response envelope.** Every route replies `{ ok: true, data }` on success or
   `{ ok: false, error: { code, message } }` on failure — never a thrown, unhandled 500. `src/http/
   respond.ts`'s `ok`/`err`/`fromResult` are the only place this shape is constructed; a route
