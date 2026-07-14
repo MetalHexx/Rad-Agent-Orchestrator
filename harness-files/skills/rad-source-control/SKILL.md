@@ -16,13 +16,3 @@ This skill is a router. Each source-control operation has one reader and one ref
 | Open the project PR | main session | [`references/working-with-prs.md`](references/working-with-prs.md) |
 | Create a worktree | main session | [`references/working-with-worktrees.md`](references/working-with-worktrees.md) |
 | Clean up a worktree | main session | [`references/working-with-worktrees.md`](references/working-with-worktrees.md) |
-
-## Envelope convention
-
-Worktree operations call the `radorch` CLI, which emits a single JSON envelope on stdout:
-
-```
-{ "ok": <bool>, "data": { ... }, "error": { ... } }
-```
-
-Read result fields from inside `data`. Commit runs on raw `git` and PR runs on `gh` — those references describe their own outputs.
