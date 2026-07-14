@@ -388,7 +388,7 @@ async function backupExisting(ctx: ResolveContext, targetPath: string, backupSta
   const backupPath = `backups/${backupStamp}/${targetPath}`;
   await ctx.ports.docWrite.write({
     originatingNodeId: ctx.nodeId,
-    idempotencyKey: `${ctx.nodeId}:backup:${targetPath}`,
+    idempotencyKey: `${ctx.nodeId}:backup:${backupStamp}:${targetPath}`,
     path: backupPath,
     content: existing.data.content,
   });

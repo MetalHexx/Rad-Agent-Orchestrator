@@ -16,11 +16,14 @@ going forward:
   this object, never through a module-level singleton, a second `openDatabase` call, or a fresh
   registry of its own. This package is the single production host and the sole owner of the SQLite
   handle (D9).
-- **Barrel-only imports from the three libs.** `@rad-orchestration/graph-engine`,
-  `@rad-orchestration/graph-node-types`, and `@rad-orchestration/graph-store-sqlite` are consumed
+- **Barrel-only imports from the two libs this package depends on.**
+  `@rad-orchestration/graph-engine` and `@rad-orchestration/graph-store-sqlite` are consumed
   exclusively by their scoped package name, through each package's own `src/index.ts` barrel —
   never a deep path (e.g. `@rad-orchestration/graph-store-sqlite/dist/db.js`) into any of their
-  internals.
+  internals. This package does not depend on `@rad-orchestration/graph-node-types` (built-ins are
+  discovered off disk, not imported) — `src/node-types/populate-builtin.ts`'s `require.resolve`
+  against that package's `"."` export is the one sanctioned, dev-seed-only exception, guarded by
+  `tests/anti-regression/graph-node-types-dependency.test.ts`.
 - **Loopback-only.** The daemon (`src/bin/serve.ts`) binds `@hono/node-server`'s `serve()` to
   `127.0.0.1` only. Nothing in this package listens on `0.0.0.0` or any other externally-reachable
   interface — lifecycle/discovery (config-driven ports, PID files, …) is a later phase, but the
@@ -92,9 +95,11 @@ points `radorch-graph-service` at.
 **Workspace consumption.** The root `package.json` declares this package as a workspace entry
 (`graph-service`). After a root `npm install`, npm symlinks
 `node_modules/@rad-orchestration/graph-service` here, and this package resolves
-`@rad-orchestration/graph-engine`, `@rad-orchestration/graph-node-types`, and
-`@rad-orchestration/graph-store-sqlite` through their own workspace symlinks. Build
-`graph-engine` → `graph-node-types` → `graph-store-sqlite` before this package typechecks.
+`@rad-orchestration/graph-engine` and `@rad-orchestration/graph-store-sqlite` through their own
+workspace symlinks. Build `graph-engine` → `graph-store-sqlite` before this package typechecks.
+`graph-node-types` is still needed, built, at *test*-run time — the dev-seed path
+(`populate-builtin.ts`) stages its `manifest.yml` + `dist/` onto disk, so its `dist/` must exist
+before running this package's suite too.
 
 ## Running tests
 

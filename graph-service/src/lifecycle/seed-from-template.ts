@@ -58,6 +58,12 @@ async function compileFromTemplate(opts: SeedFromTemplateOptions): Promise<Compi
     const detail = errors.map((error) => `${error.package}${error.entrypoint ? `:${error.entrypoint}` : ''} — ${error.reason}`).join('; ');
     throw new Error(`refusing to seed with ${errors.length} node-type load error(s): ${detail}`);
   }
+  if (builtins.length === 0) {
+    throw new Error(
+      `no built-in node types discovered at ${path.join(nodeTypesRoot, 'builtin')} — populate it (e.g. from a monorepo checkout, ` +
+        `\`@rad-orchestration/graph-node-types\`'s built \`manifest.yml\` + \`dist/\`) before seeding`,
+    );
+  }
 
   const registry = createNodeTypeRegistry(builtins, customs);
   const source = await fs.readFile(opts.templatePath, 'utf8');
