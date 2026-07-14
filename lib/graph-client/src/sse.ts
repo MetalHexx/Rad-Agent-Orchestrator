@@ -131,7 +131,14 @@ export function subscribe(
           buffer = buffer.slice(separatorIndex + 2);
           const frame = parseSseFrame(rawFrame);
           if (frame && frame.event === 'change') {
-            onDelta(toStreamDelta(JSON.parse(frame.data) as WireChangeLogRow));
+            let row: WireChangeLogRow;
+            try {
+              row = JSON.parse(frame.data) as WireChangeLogRow;
+            } catch (err) {
+              const message = err instanceof Error ? err.message : String(err);
+              throw new GraphClientError('bad_response', `Stream at ${url} sent a malformed change frame: ${message}`, null);
+            }
+            onDelta(toStreamDelta(row));
           }
           separatorIndex = buffer.indexOf('\n\n');
         }

@@ -124,6 +124,24 @@ describe('subscribe()', () => {
     sub.close();
   });
 
+  it('reports a malformed change frame as bad_response, not network_error', async () => {
+    const malformedFrame = 'event: change\nid: 1\ndata: {not-json\n\n';
+    const stub = vi.fn(async () => new Response(closingStream([malformedFrame]), { status: 200 }));
+    const received: StreamDelta[] = [];
+    const onError = vi.fn();
+    const sub = subscribe(config(stub as unknown as typeof fetch), 'p1', (delta) => received.push(delta), { onError });
+
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(received).toHaveLength(0);
+    expect(onError).toHaveBeenCalledTimes(1);
+    const reportedError = onError.mock.calls[0]?.[0] as GraphClientError;
+    expect(reportedError).toBeInstanceOf(GraphClientError);
+    expect(reportedError.code).toBe('bad_response');
+
+    sub.close();
+  });
+
   it('close() stops the stream and prevents further callbacks and reconnects', async () => {
     let seenSignal: AbortSignal | undefined;
     const stub = vi.fn((_url: string, init?: RequestInit) => {

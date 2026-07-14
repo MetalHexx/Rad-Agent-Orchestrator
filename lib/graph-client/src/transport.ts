@@ -23,7 +23,7 @@ function isEnvelopeShaped(value: unknown): value is RawEnvelope {
   }
   const candidate = value as { ok?: unknown; error?: unknown };
   if (candidate.ok === true) {
-    return true;
+    return 'data' in candidate;
   }
   if (candidate.ok === false) {
     const error = candidate.error as { code?: unknown; message?: unknown } | undefined;

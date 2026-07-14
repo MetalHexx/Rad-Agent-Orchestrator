@@ -97,6 +97,18 @@ describe('request()', () => {
     expect((caught as GraphClientError).code).toBe('bad_response');
   });
 
+  it('throws bad_response when { ok: true } is missing the data field', async () => {
+    const stub = async () => jsonResponse(200, { ok: true });
+    let caught: unknown;
+    try {
+      await request({ baseUrl: 'http://127.0.0.1:1', fetch: stub as typeof fetch }, { method: 'GET', path: '/x' });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(GraphClientError);
+    expect((caught as GraphClientError).code).toBe('bad_response');
+  });
+
   it('sends the body JSON-encoded with a content-type header on a POST', async () => {
     let seenInit: RequestInit | undefined;
     const stub = (async (_url: string, init?: RequestInit) => {
