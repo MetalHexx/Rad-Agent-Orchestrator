@@ -26,6 +26,11 @@ package-lock.json
 # Workspace library build output — produced by the build pipeline, never committed.
 lib/*/dist/
 
+# Reference example package build output — same convention as lib/*/dist/: built via its own
+# `tsc` script, never hand-committed. graph-service's tests build it before running (see
+# graph-service/AGENTS.md).
+examples/*/dist/
+
 # esbuild bundle output — produced by `npm run bundle` in cli/
 dist-bundle/
 

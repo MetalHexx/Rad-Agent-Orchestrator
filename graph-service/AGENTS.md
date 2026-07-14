@@ -104,3 +104,9 @@ npm test
 
 Runs the vitest suite in `tests/` against `openDatabase(':memory:')` and Hono's in-process
 `app.request()` — no socket, no real process spawn.
+
+Several suites (`tests/node-types/scan.test.ts`, `tests/lifecycle/daemon.test.ts`,
+`tests/templates/shipped-templates.test.ts`, `tests/functional/acid-test.test.ts`) stage or import
+the reference `../../../examples/example` package directly off disk, so its `dist/` must be built
+first (`npm run build -w example`) — it follows the same gitignored-`dist/`-plus-`tsc`-script
+convention as `lib/*/dist/`, never a hand-committed artifact.
