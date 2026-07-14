@@ -113,3 +113,19 @@ export interface RequestHumanPort {
 export type CodeBehindPort<TInput = unknown, TData = Readonly<Record<string, unknown>>> = (
   input: TInput,
 ) => Envelope<TData>;
+
+// ── capability port bundle ─────────────────────────────────────────────────────────
+/**
+ * The engine-owned bundle of the six capability ports, gathered into one object so a host binds
+ * them once and `resolve` receives them typed — the whole port surface a node can reach, and no
+ * more. Carries no store, scope, or graph snapshot, so a node handed this bundle can compute and
+ * call out but never mutate the graph.
+ */
+export interface CapabilityPortSet {
+  readonly docRead: DocReadPort;
+  readonly docWrite: DocWritePort;
+  readonly gitFacts: GitFactsPort;
+  readonly spawnAgent: SpawnAgentPort;
+  readonly runCommand: RunCommandPort;
+  readonly requestHuman: RequestHumanPort;
+}

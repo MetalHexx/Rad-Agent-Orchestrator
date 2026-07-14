@@ -118,6 +118,8 @@ export type {
   NodeEvent,
   NodeTypeDefinition,
   Presentation,
+  ResolveContext,
+  ResolveOutcome,
   ReviewSpawnRequest,
   RoutingRequest,
 } from './node-type/definition.js';
@@ -129,6 +131,7 @@ export type { ChangeListener, Unsubscribe, ChangeStream } from './driver/change-
 export { withChangeStream } from './driver/change-stream.js';
 
 export type {
+  CapabilityPortSet,
   CodeBehindPort,
   DocReadPort,
   DocReadRequest,
