@@ -1,0 +1,9 @@
+template:
+  id: example-scribe
+  version: "1.0.0"
+  description: "Companion template — seeds a single example:scribe capability-bearing custom node."
+nodes:
+  - id: scribe
+    type: example:scribe
+    order: 0
+    depends_on: []

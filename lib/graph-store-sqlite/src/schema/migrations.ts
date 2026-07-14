@@ -108,7 +108,7 @@ CREATE TABLE project_external_refs (
 
 -- docs.dag_node_id is a plain column (no REFERENCES): dag_nodes' PK is the composite
 -- (project_id, id), so a single-column FK can't target it, and insert-time integrity is validated
--- in the store (P03-T01) instead. The CHECK enforces exactly one owner arc; project_id/
+-- in the store's write path instead. The CHECK enforces exactly one owner arc; project_id/
 -- project_group_id are the owning arcs (RESTRICT — never silently orphan an owned doc), while
 -- scope_project_id is only a lookup hint for the detach trigger below (SET NULL is safe; CASCADE
 -- would silently destroy the project's own doc rows).

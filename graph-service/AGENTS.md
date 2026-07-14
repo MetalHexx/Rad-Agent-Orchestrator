@@ -12,24 +12,28 @@ going forward:
 
 - **The composition object is the seam.** `compose()` (`src/compose.ts`) builds the one
   `GraphService` — the DB handle, `execStore`, `engine`, `registry`, `portfolio`, `capabilities`,
-  `resolvers`, `version`, and `dbPath` — that every HTTP handler closes over. A handler reaches
-  state through this object, never through a module-level singleton, a second `openDatabase` call,
-  or a fresh registry of its own. This package is the single production host and the sole owner of
-  the SQLite handle (D9).
-- **Barrel-only imports from the three libs.** `@rad-orchestration/graph-engine`,
-  `@rad-orchestration/graph-node-types`, and `@rad-orchestration/graph-store-sqlite` are consumed
+  `version`, and `dbPath` — that every HTTP handler closes over. A handler reaches state through
+  this object, never through a module-level singleton, a second `openDatabase` call, or a fresh
+  registry of its own. This package is the single production host and the sole owner of the SQLite
+  handle (D9).
+- **Barrel-only imports from the two libs this package depends on.**
+  `@rad-orchestration/graph-engine` and `@rad-orchestration/graph-store-sqlite` are consumed
   exclusively by their scoped package name, through each package's own `src/index.ts` barrel —
   never a deep path (e.g. `@rad-orchestration/graph-store-sqlite/dist/db.js`) into any of their
-  internals.
+  internals. This package does not depend on `@rad-orchestration/graph-node-types` (built-ins are
+  discovered off disk, not imported) — `src/node-types/populate-builtin.ts`'s `require.resolve`
+  against that package's `"."` export is the one sanctioned, dev-seed-only exception, guarded by
+  `tests/anti-regression/graph-node-types-dependency.test.ts`.
 - **Loopback-only.** The daemon (`src/bin/serve.ts`) binds `@hono/node-server`'s `serve()` to
   `127.0.0.1` only. Nothing in this package listens on `0.0.0.0` or any other externally-reachable
   interface — lifecycle/discovery (config-driven ports, PID files, …) is a later phase, but the
   loopback-only bind is a standing invariant from this package's first line, not something a later
   task revisits.
-- **Registry-agnostic.** `compose()` feeds the registry `BUILT_IN_NODE_TYPES` from
-  `@rad-orchestration/graph-node-types` and never hardcodes an individual type name — a later
-  phase's discovered custom types slot into the same `createNodeTypeRegistry` call with no change
-  to this package.
+- **Registry-agnostic.** `compose()` feeds the registry the caller-resolved built-in and custom
+  node types (`ComposeOptions.builtInNodeTypes` + `customNodeTypes`, both discovered off disk by
+  `node-types/scan.ts`'s `discoverNodeTypes`) and never hardcodes an individual type name nor
+  imports built-ins from a package — the daemon's `start()` resolves the whole discovery and passes
+  both buckets in, so this package depends only on `graph-engine` + `graph-store-sqlite`.
 - **Decision-traceability.** A non-obvious choice carries an inline comment naming the governing
   design decision in `STEERABLE-DAG-DESIGN`, e.g. `// D9: ...` — matching that design doc's own
   `D<N>` decision numbering.
@@ -66,10 +70,10 @@ running daemon with one cheap call:
 - **Consumed only through `src/index.ts`.** The barrel exports `compose`, `GraphService`,
   `buildApp`, the envelope helpers/types, the capability port bundle (`CapabilityPorts`) and its
   faked implementations (`capabilities/fakes.ts`), and the driver (`capabilities+driver`:
-  `advance`/`runToQuiescence`, `applyOutcome`, `globalFrontier`/`isGloballyQuiescent`,
-  `createBuiltInResolvers`); nothing outside this package imports `compose.ts`, `http/*.ts`,
-  `capabilities/*.ts`, or `driver/*.ts` by path. Tests inside this package may import internals by
-  their direct module path.
+  `advance`/`runToQuiescence`/`resolveViaNodeType`, `applyOutcome`,
+  `globalFrontier`/`isGloballyQuiescent`); nothing outside this package imports `compose.ts`,
+  `http/*.ts`, `capabilities/*.ts`, or `driver/*.ts` by path. Tests inside this package may import
+  internals by their direct module path.
 - **The uniform response envelope.** Every route replies `{ ok: true, data }` on success or
   `{ ok: false, error: { code, message } }` on failure — never a thrown, unhandled 500. `src/http/
   respond.ts`'s `ok`/`err`/`fromResult` are the only place this shape is constructed; a route
@@ -91,9 +95,11 @@ points `radorch-graph-service` at.
 **Workspace consumption.** The root `package.json` declares this package as a workspace entry
 (`graph-service`). After a root `npm install`, npm symlinks
 `node_modules/@rad-orchestration/graph-service` here, and this package resolves
-`@rad-orchestration/graph-engine`, `@rad-orchestration/graph-node-types`, and
-`@rad-orchestration/graph-store-sqlite` through their own workspace symlinks. Build
-`graph-engine` → `graph-node-types` → `graph-store-sqlite` before this package typechecks.
+`@rad-orchestration/graph-engine` and `@rad-orchestration/graph-store-sqlite` through their own
+workspace symlinks. Build `graph-engine` → `graph-store-sqlite` before this package typechecks.
+`graph-node-types` is still needed, built, at *test*-run time — the dev-seed path
+(`populate-builtin.ts`) stages its `manifest.yml` + `dist/` onto disk, so its `dist/` must exist
+before running this package's suite too.
 
 ## Running tests
 
@@ -103,3 +109,9 @@ npm test
 
 Runs the vitest suite in `tests/` against `openDatabase(':memory:')` and Hono's in-process
 `app.request()` — no socket, no real process spawn.
+
+Several suites (`tests/node-types/scan.test.ts`, `tests/lifecycle/daemon.test.ts`,
+`tests/templates/shipped-templates.test.ts`, `tests/functional/acid-test.test.ts`) stage or import
+the reference `../../../examples/example` package directly off disk, so its `dist/` must be built
+first (`npm run build -w example`) — it follows the same gitignored-`dist/`-plus-`tsc`-script
+convention as `lib/*/dist/`, never a hand-committed artifact.

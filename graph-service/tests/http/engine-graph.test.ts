@@ -5,8 +5,9 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import type { DagEdge, DagNode } from '@rad-orchestration/graph-engine';
+import type { DagEdge, DagNode, NodeTypeDefinition } from '@rad-orchestration/graph-engine';
 import { ROOT_NODE_ID } from '@rad-orchestration/graph-engine';
+import { BUILT_IN_NODE_TYPES } from '@rad-orchestration/graph-node-types';
 import { afterEach, describe, expect, it } from 'vitest';
 import { compose } from '../../src/compose.js';
 import { buildApp } from '../../src/http/app.js';
@@ -17,8 +18,23 @@ interface EnvelopeBody<T> {
   readonly error?: { readonly code: string; readonly message: string };
 }
 
+/** The uniform, node-agnostic read shape every route now returns — the generic node relayed
+ * verbatim plus the `presentation` the service attaches from the type definition. No per-type slot. */
+interface NodeViewBody {
+  readonly id: string;
+  readonly type: string;
+  readonly status: string;
+  readonly parent: string | null;
+  readonly data: Record<string, unknown>;
+  readonly presentation: { readonly label: string; readonly description?: string };
+}
+
 function buildTestService(projectRoot?: string) {
-  const service = compose(projectRoot ? { dbPath: ':memory:', projectRoot } : { dbPath: ':memory:' });
+  const service = compose(
+    projectRoot
+      ? { dbPath: ':memory:', builtInNodeTypes: BUILT_IN_NODE_TYPES, projectRoot }
+      : { dbPath: ':memory:', builtInNodeTypes: BUILT_IN_NODE_TYPES },
+  );
   return { service, app: buildApp(service) };
 }
 
@@ -114,9 +130,9 @@ describe('GET /engine-graph/dag', () => {
     const res = await app.request('/engine-graph/dag?project=proj-dag');
     expect(res.status).toBe(200);
     const body = (await res.json()) as EnvelopeBody<{
-      nodes: DagNode[];
+      nodes: NodeViewBody[];
       edges: DagEdge[];
-      frontier: DagNode[];
+      frontier: NodeViewBody[];
       status: string;
     }>;
     expect(body.ok).toBe(true);
@@ -127,6 +143,12 @@ describe('GET /engine-graph/dag', () => {
     // approval-1 gates on task-1, which hasn't run yet — only task-1 is frontier-eligible.
     expect(data.frontier.map((n) => n.id)).toEqual(['task-1']);
     expect(data.status).toBe('in_progress');
+
+    // Uniform node-agnostic shape: `presentation` is relayed from the type definition (never
+    // authored by the service), alongside the generic structural slots the read still carries.
+    const task = data.nodes.find((n) => n.id === 'task-1')!;
+    expect(task.presentation.label).toEqual(expect.any(String));
+    expect(task.parent).toBe(ROOT_NODE_ID);
   });
 
   it('rejects a missing project with a structured 400 envelope', async () => {
@@ -166,9 +188,12 @@ describe('GET /engine-graph/node', () => {
 
     const res = await app.request('/engine-graph/node?project=proj-node&node=task-1');
     expect(res.status).toBe(200);
-    const body = (await res.json()) as EnvelopeBody<DagNode>;
+    const body = (await res.json()) as EnvelopeBody<NodeViewBody>;
     expect(body.data?.id).toBe('task-1');
     expect(body.data?.type).toBe('rad-orc:task');
+    // Same uniform shape as every other route: the type's own presentation is relayed.
+    expect(body.data?.presentation.label).toEqual(expect.any(String));
+    expect(body.data?.parent).toBe(ROOT_NODE_ID);
   });
 
   it('returns a structured 404 for a node that does not exist', async () => {
@@ -407,6 +432,53 @@ describe('POST /engine-graph/submit-event', () => {
   });
 });
 
+/** A bespoke custom node type the service knows nothing of: it stops at an external actor and
+ * declares its own completion token, so the envelope must source that token from the definition
+ * (never a service-held map) and the read view must relay the type's own presentation. */
+function customWidgetType(): NodeTypeDefinition {
+  return {
+    name: 'example:widget',
+    dataSchema: {},
+    traits: [],
+    capabilities: ['request-human'],
+    presentation: { label: 'Widget', description: 'A bespoke widget node' },
+    instructions: '# widget',
+    act: () => ({ instructions: 'build the widget by hand', executor: 'request-human' }),
+    handle: () => ({}),
+    projectStatus: () => 'not_started',
+    completionToken: 'example:widget.built',
+  };
+}
+
+describe('node-agnostic custom types', () => {
+  it("sources a custom node's completion_event from its own declared token and relays its own presentation — zero service-side type knowledge", async () => {
+    const service = compose({ dbPath: ':memory:', builtInNodeTypes: BUILT_IN_NODE_TYPES, customNodeTypes: [customWidgetType()] });
+    const app = buildApp(service);
+
+    await postJson(app, '/engine-graph/seed', {
+      project: 'proj-custom',
+      seed: { steps: [{ primitive: 'add_node', id: 'widget-1', type: 'example:widget', parent: ROOT_NODE_ID, data: { size: 'large' } }] },
+    });
+
+    const res = await postJson(app, '/engine-graph/submit-event', { project: 'proj-custom', node: 'widget-1' });
+    expect(res.status).toBe(200);
+    const data = ((await res.json()) as EnvelopeBody<NextActionEnvelopeBody>).data!;
+    // The completion token travels on the definition — the service holds no node-type -> token map.
+    expect(data.action).toBe('example:widget');
+    expect(data.node).toBe('widget-1');
+    expect(data.executor).toBe('request-human');
+    expect(data.completion_event).toBe('example:widget.built');
+
+    // The read view relays the type's own presentation and its opaque data verbatim — no absent
+    // generic slot the service could have filled, no per-type knowledge required.
+    const nodeRes = await app.request('/engine-graph/node?project=proj-custom&node=widget-1');
+    const nodeBody = (await nodeRes.json()) as EnvelopeBody<NodeViewBody>;
+    expect(nodeBody.data?.presentation).toEqual({ label: 'Widget', description: 'A bespoke widget node' });
+    expect(nodeBody.data?.data).toEqual({ size: 'large' });
+    expect(nodeBody.data?.parent).toBe(ROOT_NODE_ID);
+  });
+});
+
 describe('POST /engine-graph/steer', () => {
   it('add_dependency reshapes the graph', async () => {
     const { app } = buildTestService();
@@ -592,7 +664,7 @@ describe('steer/dry-run share one pinned mutation request shape', () => {
     expect(steerBody.ok).toBe(true);
 
     const nodeRes = await app.request('/engine-graph/node?project=proj-shared-move&node=a');
-    const nodeBody = (await nodeRes.json()) as EnvelopeBody<DagNode>;
+    const nodeBody = (await nodeRes.json()) as EnvelopeBody<NodeViewBody>;
     expect(nodeBody.data?.parent).toBe('b');
   });
 

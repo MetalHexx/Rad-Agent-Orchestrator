@@ -9,6 +9,7 @@
     "lib/graph-node-types",
     "lib/graph-store-sqlite",
     "graph-service",
+    "examples/example",
     "cli",
     "ui",
     "harness-adapters/engine",

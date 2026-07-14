@@ -1,7 +1,9 @@
 namespace: example
 version: "1.0.0"
-description: "Reference custom node-type package — a single zero-capability greeting node."
+description: "Reference custom node-type package — a zero-capability greeting node and a capability-bearing scribe node."
 nodeTypes:
   - name: example:greet
-    entrypoint: ./greet.js
+    entrypoint: ./dist/greet.js
+  - name: example:scribe
+    entrypoint: ./dist/scribe.js
 # templates: reserved for a future iteration (D20) — not loaded in 2.5.

@@ -109,4 +109,5 @@ export const PR_NODE_TYPE: NodeTypeDefinition = {
   act,
   handle,
   projectStatus,
+  completionToken: PR_CREATED_TOKEN,
 };

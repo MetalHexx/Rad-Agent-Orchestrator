@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { ROOT_NODE_ID, createNodeTypeRegistry } from '@rad-orchestration/graph-engine';
 import { BUILT_IN_NODE_TYPES } from '@rad-orchestration/graph-node-types';
-import greetNodeType from '../../../examples/example/greet.js';
+import greetNodeType from '../../../examples/example/dist/greet.js';
 import { compileTemplate } from '../../src/templates/compile.js';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');

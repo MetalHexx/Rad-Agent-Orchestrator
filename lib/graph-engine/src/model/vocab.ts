@@ -27,18 +27,6 @@ export type Trait = (typeof TRAITS)[number];
 export const EXECUTORS = ['spawn-sub-agent', 'orchestrator-inline', 'request-human', 'noop'] as const;
 export type Executor = (typeof EXECUTORS)[number];
 
-// ── Review verdict ───────────────────────────────────────────────────────────────
-// Frozen: reproduces `harness-files/skills/rad-code-review/SKILL.md`'s verdict vocabulary
-// character-for-character. This is a wire contract the review skill already emits — the engine
-// consumes it as-is rather than redesigning it.
-export const REVIEW_VERDICTS = ['approved', 'changes_requested', 'rejected'] as const;
-export type ReviewVerdict = (typeof REVIEW_VERDICTS)[number];
-
-// ── Severity ─────────────────────────────────────────────────────────────────────
-// Frozen: reproduces the same skill's severity vocabulary character-for-character.
-export const SEVERITIES = ['none', 'low', 'medium', 'high'] as const;
-export type Severity = (typeof SEVERITIES)[number];
-
 // ── Capability name ──────────────────────────────────────────────────────────────
 // The well-known, engine-recognized capabilities, kept open via the `(string & {})` escape
 // hatch (mirrors `lib/work-graph`'s `EdgeType`) so a custom node type can name a capability the
@@ -76,9 +64,14 @@ export const PRIMITIVE_NAMES = [
 ] as const;
 export type PrimitiveName = (typeof PRIMITIVE_NAMES)[number];
 
+/** The one primitive a node type routes to by name directly (approval's plan-denial, explosion's
+ *  parse-failure reset) — a named singleton so a node references the kernel constant, not '"reset"'. */
+export const PRIMITIVE_RESET: PrimitiveName = 'reset';
+
 // ── Event / action token ─────────────────────────────────────────────────────────
 // A `<node-type>.<outcome>` token, where outcome is a past-tense verb by convention. The
-// exhaustive built-in token list is produced in P04-T02, not here.
+// exhaustive built-in token list is `graph-node-types`' `event-tokens.ts` (`EVENT_TOKENS`), not
+// here — this engine package only declares the token's shape.
 export type EventToken = `${NodeTypeName}.${string}`;
 
 // ── Exhaustiveness helper ────────────────────────────────────────────────────────

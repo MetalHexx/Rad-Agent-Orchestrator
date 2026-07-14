@@ -3,28 +3,26 @@
 // Engine glue: applying a resolved outcome exactly the way a real host would. `engage` only ever
 // returns the `ActResult` to dispatch; committing whatever comes back from that dispatch — the
 // data patch, a routing request, an expansion, and the node's own re-projected status — is the
-// host's job. This is that job, factored once so every resolver (`driver/resolvers.ts`) and any
-// custom node type's own resolver shares it rather than re-deriving it. Ported from
+// host's job. This is that job, factored once so every node type's own `resolve` hook
+// (`driver/drive.ts`'s `resolveViaNodeType`) and a relayed real-world completion (`http/
+// engine-graph.ts`) share it rather than re-deriving it. Ported from
 // `lib/graph-node-types/tests/harness/test-driver.ts` — same functions, same names.
 import type {
   DagEdge,
   DagNode,
-  Envelope,
-  EventToken,
   NodeEvent,
   NodeId,
   NodeTypeName,
   NodeTypeRegistry,
   PrimitiveContext,
+  ResolveOutcome,
   Result,
   RoutingRequest,
 } from '@rad-orchestration/graph-engine';
 import { add_corrective, apply_event, expand, reset, toggle } from '@rad-orchestration/graph-engine';
 
-export interface DriverOutcome {
-  readonly token: EventToken;
-  readonly envelope: Envelope;
-}
+/** The service's own name for the engine's `ResolveOutcome` — the shape every resolved node's outcome commits through `applyOutcome`. */
+export type DriverOutcome = ResolveOutcome;
 
 /** `review`'s current chain tip — the predecessor no sibling predecessor names as its own `derivedFrom` — mirroring the engine's own internal `add_corrective` tip walk, kept host-side since routing carries no store access of its own. */
 function findChainTip(nodes: readonly DagNode[], edges: readonly DagEdge[], review: NodeId): DagNode | undefined {

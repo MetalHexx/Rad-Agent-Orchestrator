@@ -1,6 +1,8 @@
-import type { NodeId } from '../model/node.js';
+import type { DagNode, NodeId } from '../model/node.js';
+import type { DagEdge } from '../model/edge.js';
 import type { CapabilityName, EventToken, Executor, NodeStatus, NodeTypeName, PrimitiveName, Trait } from '../model/vocab.js';
 import type { Expansion } from '../primitives/expand.js';
+import type { CapabilityPortSet } from './capabilities.js';
 
 // ── Data schema ──────────────────────────────────────────────────────────────────
 // The declared shape of a node type's own `data`: every field a template may seed and every
@@ -117,6 +119,31 @@ export interface HandleResult {
   readonly expansion?: Expansion;
 }
 
+// ── Resolve ────────────────────────────────────────────────────────────────────────
+/**
+ * The uniform host-side outcome a node's own `resolve` hands back — the engine now owns this
+ * shape (the service's `DriverOutcome` becomes an alias). `token` lets a node pick among its own
+ * outcomes (e.g. explosion's parsed vs parse_failed); the payload variation rides in `envelope`.
+ */
+export interface ResolveOutcome {
+  readonly token: EventToken;
+  readonly envelope: Envelope;
+}
+
+/**
+ * What `resolve` is handed: the node's own identity + data, a READ-ONLY view of its scope so it
+ * can locate siblings (a typed sibling, a corrective chain) without the host naming its type, and
+ * the capability ports it declared. Carries no store, no scope, no mutable snapshot — structurally
+ * incapable of mutating the graph, exactly like `CodeBehindPort`.
+ */
+export interface ResolveContext {
+  readonly nodeId: NodeId;
+  readonly data: Readonly<Record<string, unknown>>;
+  readonly nodes: readonly DagNode[];
+  readonly edges: readonly DagEdge[];
+  readonly ports: CapabilityPortSet;
+}
+
 // ── Node type definition ───────────────────────────────────────────────────────────
 /**
  * The extension seam every built-in and custom node type implements: static declarations
@@ -139,4 +166,15 @@ export interface NodeTypeDefinition {
   handle(ev: NodeEvent): HandleResult;
   /** Projects this node type's own `data` onto the core-legible status spine. */
   projectStatus(data: Readonly<Record<string, unknown>>): NodeStatus;
+  /**
+   * The node's own host-side outcome derivation, invoked polymorphically by the host for any node
+   * that declares it (a `noop`-executor node the driver auto-resolves, or an actor node whose
+   * outcome the host must re-derive rather than trust from a relayed envelope).
+   */
+  resolve?(ctx: ResolveContext): Promise<ResolveOutcome>;
+  /**
+   * The single `<type>.<outcome>` token the host surfaces for this type at an external-actor stop,
+   * so a client knows what to signal back — replaces the service's hardcoded node-type→token map.
+   */
+  readonly completionToken?: EventToken;
 }

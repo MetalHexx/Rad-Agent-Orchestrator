@@ -21,8 +21,6 @@ export type {
   NodeStatus,
   Trait,
   Executor,
-  ReviewVerdict,
-  Severity,
   CapabilityName,
   PrimitiveName,
   EventToken,
@@ -31,10 +29,9 @@ export {
   NODE_STATUSES,
   TRAITS,
   EXECUTORS,
-  REVIEW_VERDICTS,
-  SEVERITIES,
   CAPABILITY_NAMES,
   PRIMITIVE_NAMES,
+  PRIMITIVE_RESET,
   assertNever,
 } from './model/vocab.js';
 export { ROOT_NODE_ID, ROOT_TRAITS, createRootNode } from './model/root.js';
@@ -75,8 +72,8 @@ export type { AddCorrectiveOptions } from './primitives/corrective.js';
 export { add_corrective } from './primitives/corrective.js';
 export { reset } from './primitives/reset.js';
 
-export type { NodeTypeRegistry } from './node-type/registry.js';
-export { RESERVED_NODE_TYPE_PREFIX, createNodeTypeRegistry } from './node-type/registry.js';
+export type { NodeTypeRegistry, NodeTypeOrigin } from './node-type/registry.js';
+export { RESERVED_NODE_TYPE_PREFIX, NODE_TYPE_ORIGINS, createNodeTypeRegistry } from './node-type/registry.js';
 
 /** The two mutation primitives {@link createEngine} binds against an injected registry + store. */
 export interface Engine {
@@ -118,6 +115,8 @@ export type {
   NodeEvent,
   NodeTypeDefinition,
   Presentation,
+  ResolveContext,
+  ResolveOutcome,
   ReviewSpawnRequest,
   RoutingRequest,
 } from './node-type/definition.js';
@@ -129,6 +128,7 @@ export type { ChangeListener, Unsubscribe, ChangeStream } from './driver/change-
 export { withChangeStream } from './driver/change-stream.js';
 
 export type {
+  CapabilityPortSet,
   CodeBehindPort,
   DocReadPort,
   DocReadRequest,

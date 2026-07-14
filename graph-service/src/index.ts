@@ -25,14 +25,12 @@ export { applyOutcome } from './driver/outcome.js';
 export { globalFrontier, isGloballyQuiescent } from './driver/frontier.js';
 export type {
   AdvanceResult,
-  NodeOutcomeResolver,
   QuiescenceNotSettled,
   QuiescenceResult,
   QuiescenceSettled,
   QuiescenceStoppedAtActor,
 } from './driver/drive.js';
-export { advance, runToQuiescence } from './driver/drive.js';
-export { createBuiltInResolvers } from './driver/resolvers.js';
+export { advance, resolveViaNodeType, runToQuiescence } from './driver/drive.js';
 
 export type { ServiceDiscovery } from './lifecycle/discovery.js';
 export {

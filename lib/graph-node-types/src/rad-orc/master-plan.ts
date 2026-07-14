@@ -78,4 +78,5 @@ export const MASTER_PLAN_NODE_TYPE: NodeTypeDefinition = {
   act,
   handle,
   projectStatus,
+  completionToken: MASTER_PLAN_AUTHORED_TOKEN,
 };

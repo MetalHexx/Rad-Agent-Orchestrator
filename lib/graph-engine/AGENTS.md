@@ -11,9 +11,11 @@ spine it ships the pure `derive/` layer — the readiness/frontier derivation (`
 `findOrderContradictions`), and the side-effect-free `validate`/`preview` dry-run seam — plus the
 mutation/steering primitives that read and write through that spine (`crud`, `lifecycle`,
 `expand`, `apply-event`, `corrective`, `reset`), the node-type contract and injected registry that
-resolve a node's `type` to its behavior (`node-type/definition.ts`, `node-type/registry.ts`), and
-the driver/change-stream seam a host runs the engine's event loop through (`driver/contract.ts`,
-`driver/change-stream.ts`). Two refinements layer onto that surface: a corrective-budget-reset
+resolve a node's `type` to its behavior (`node-type/definition.ts`, `node-type/registry.ts`) — a
+static declaration plus the `act`/`handle`/`projectStatus` hooks, an optional `resolve` a host
+calls to re-derive a node's own outcome instead of trusting a relayed one, and an optional
+`completionToken` a type surfaces at an external-actor stop — and the driver/change-stream seam a
+host runs the engine's event loop through (`driver/contract.ts`, `driver/change-stream.ts`). Two refinements layer onto that surface: a corrective-budget-reset
 anchor (`DagNode.budgetAnchor`, stamped only by `resume` on a corrective-budget-halt recovery and
 read only by `resolveChainTip`'s depth walk) and dry-run coverage extended from the CRUD
 primitives to `expand`/`add_corrective`/`reset`, so every mutation primitive is preview-able ahead

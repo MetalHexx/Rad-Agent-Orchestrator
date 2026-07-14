@@ -8,10 +8,10 @@ import type {
   NodeStatus,
   NodeTypeDefinition,
   Presentation,
+  ResolveContext,
+  ResolveOutcome,
   ReviewSpawnRequest,
-  ReviewVerdict,
   RoutingRequest,
-  Severity,
 } from '@rad-orchestration/graph-engine';
 
 /**
@@ -125,6 +125,14 @@ export type CodeReviewSpawnPayload = TaskCodeReviewSpawnPayload | PhaseCodeRevie
 
 /** Fires once the orchestrator has doc-read the running review report and extracted its `verdict`. */
 export const CODE_REVIEW_REVIEWED_TOKEN: EventToken = 'rad-orc:code_review.reviewed';
+
+/** The vocabulary a review report's frontmatter `verdict` field must land in — owned here, this node type's own `resolve` being the sole place a verdict is ever derived. */
+export const REVIEW_VERDICTS = ['approved', 'changes_requested', 'rejected'] as const;
+export type ReviewVerdict = (typeof REVIEW_VERDICTS)[number];
+
+/** The vocabulary a review report's frontmatter `severity` field must land in — owned alongside {@link REVIEW_VERDICTS}. */
+export const SEVERITIES = ['none', 'low', 'medium', 'high'] as const;
+export type Severity = (typeof SEVERITIES)[number];
 
 /**
  * The envelope data `handle` expects on {@link CODE_REVIEW_REVIEWED_TOKEN}. `correctiveIndex`/
@@ -301,6 +309,78 @@ function projectStatus(data: Readonly<Record<string, unknown>>): NodeStatus {
   return 'not_started';
 }
 
+// ── Resolve: re-deriving the verdict from the running report ────────────────────
+// The host-side half of this node's own code-behind: a relayed `reviewed` event is only a bare
+// "the review finished" trigger — the verdict itself is never trusted from a caller, only ever
+// read off the report this node owns. Mirrors what `relayCodeReviewCompletion` enforced in the
+// service before this relocation.
+
+function isReviewVerdict(value: unknown): value is ReviewVerdict {
+  return typeof value === 'string' && (REVIEW_VERDICTS as readonly string[]).includes(value);
+}
+
+function isSeverity(value: unknown): value is Severity {
+  return typeof value === 'string' && (SEVERITIES as readonly string[]).includes(value);
+}
+
+/**
+ * Reads a leading `--- … ---` YAML frontmatter block into a flat `key → value` map — the only
+ * shape a review/audit report's verdict lives in, so a full YAML parser is deliberately not pulled
+ * in. A quoted scalar is unwrapped; anything past the closing fence (the report body) is ignored.
+ */
+function readFrontmatter(content: string): Readonly<Record<string, string>> {
+  const match = /^﻿?---\r?\n([\s\S]*?)\r?\n---/.exec(content);
+  if (!match) return {};
+  const fields: Record<string, string> = {};
+  for (const line of match[1].split(/\r?\n/)) {
+    const field = /^([A-Za-z0-9_-]+):\s*(.*)$/.exec(line);
+    if (field) fields[field[1]] = field[2].trim().replace(/^['"]|['"]$/g, '');
+  }
+  return fields;
+}
+
+/**
+ * How many corrective attempts this review node has already birthed — derived from the graph
+ * itself (`${ctx.nodeId}-corrective-*` sibling ids among `ctx.nodes`) rather than in-memory state,
+ * so it stays correct however this node's outcome gets re-derived and survives a process restart.
+ */
+function countReviewAttempts(ctx: ResolveContext): number {
+  const prefix = `${ctx.nodeId}-corrective-`;
+  return ctx.nodes.filter((candidate) => candidate.id.startsWith(prefix)).length;
+}
+
+/**
+ * This node's own host-side outcome derivation: reads the running review report this node owns,
+ * derives its `verdict`/`severity` from the report's own frontmatter alone, and — on
+ * `changes_requested` — computes the next corrective attempt's 1-based index from this scope's own
+ * `-corrective-*` siblings.
+ */
+async function resolve(ctx: ResolveContext): Promise<ResolveOutcome> {
+  const reviewReportPath =
+    typeof ctx.data.reviewReportPath === 'string' && ctx.data.reviewReportPath.length > 0
+      ? ctx.data.reviewReportPath
+      : `reviews/${ctx.nodeId}.md`;
+
+  const read = await ctx.ports.docRead.read({ path: reviewReportPath });
+  if (read.outcome !== 'ok') {
+    throw new Error(`rad-orc:code_review '${ctx.nodeId}' could not read its review report at '${reviewReportPath}'`);
+  }
+  const frontmatter = readFrontmatter(read.data.content);
+  if (!isReviewVerdict(frontmatter.verdict)) {
+    throw new Error(`rad-orc:code_review '${ctx.nodeId}' report at '${reviewReportPath}' has no valid 'verdict' in its frontmatter`);
+  }
+  const verdict = frontmatter.verdict;
+  const severity = isSeverity(frontmatter.severity) ? frontmatter.severity : 'none';
+  const attempt = countReviewAttempts(ctx);
+
+  const data: CodeReviewReviewedData =
+    verdict === 'changes_requested'
+      ? { verdict, severity, correctiveIndex: attempt + 1, reviewReportPath }
+      : { verdict, severity };
+
+  return { token: CODE_REVIEW_REVIEWED_TOKEN, envelope: { outcome: 'ok', data: data as unknown as Readonly<Record<string, unknown>> } };
+}
+
 export const CODE_REVIEW_NODE_TYPE: NodeTypeDefinition = {
   name: 'rad-orc:code_review',
   dataSchema: CODE_REVIEW_DATA_SCHEMA,
@@ -311,4 +391,6 @@ export const CODE_REVIEW_NODE_TYPE: NodeTypeDefinition = {
   act,
   handle,
   projectStatus,
+  resolve,
+  completionToken: CODE_REVIEW_REVIEWED_TOKEN,
 };

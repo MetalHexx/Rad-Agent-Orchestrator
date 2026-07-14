@@ -11,6 +11,7 @@ import type {
   Presentation,
   RoutingRequest,
 } from '@rad-orchestration/graph-engine';
+import { PRIMITIVE_RESET } from '@rad-orchestration/graph-engine';
 
 /** The two gate positions one `rad-orc:approval` instance can occupy — never a third. */
 export const APPROVAL_LEVELS = ['plan', 'final'] as const;
@@ -85,7 +86,7 @@ function handle(ev: NodeEvent): HandleResult {
     if (!masterPlanNodeId) {
       throw new Error("rad-orc:approval: a plan-level 'denied' decision requires masterPlanNodeId on the envelope");
     }
-    const routing: RoutingRequest = { primitive: 'reset', params: { node: masterPlanNodeId, cascade: true } };
+    const routing: RoutingRequest = { primitive: PRIMITIVE_RESET, params: { node: masterPlanNodeId, cascade: true } };
     return { dataChange: { decision }, routing };
   }
 
@@ -111,4 +112,5 @@ export const APPROVAL_NODE_TYPE: NodeTypeDefinition = {
   act,
   handle,
   projectStatus,
+  completionToken: APPROVAL_DECIDED_TOKEN,
 };

@@ -1,0 +1,22 @@
+namespace: rad-orc
+version: "1.0.0"
+description: "First-party rad-orc built-in node types."
+nodeTypes:
+  - name: rad-orc:phase
+    entrypoint: ./dist/entrypoints/phase.js
+  - name: rad-orc:master_plan
+    entrypoint: ./dist/entrypoints/master-plan.js
+  - name: rad-orc:plan_audit
+    entrypoint: ./dist/entrypoints/plan-audit.js
+  - name: rad-orc:explosion
+    entrypoint: ./dist/entrypoints/explosion.js
+  - name: rad-orc:approval
+    entrypoint: ./dist/entrypoints/approval.js
+  - name: rad-orc:task
+    entrypoint: ./dist/entrypoints/task.js
+  - name: rad-orc:code_review
+    entrypoint: ./dist/entrypoints/code-review.js
+  - name: rad-orc:corrective
+    entrypoint: ./dist/entrypoints/corrective.js
+  - name: rad-orc:pr
+    entrypoint: ./dist/entrypoints/pr.js

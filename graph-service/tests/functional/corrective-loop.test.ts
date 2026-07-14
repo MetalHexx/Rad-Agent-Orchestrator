@@ -1,8 +1,9 @@
 // graph-service/tests/functional/corrective-loop.test.ts
 //
 // Scenario 3: a `changes_requested` verdict — read by the service off the running report's own
-// frontmatter, never a client-supplied override (`driver/resolvers.ts`'s `relayCodeReviewCompletion`
-// always re-derives it) — births an additive `rad-orc:corrective`, carrying the chain-tip scope
+// frontmatter, never a client-supplied override (`rad-orc:code_review`'s own `resolve` hook, run via
+// `driver/drive.ts`'s `resolveViaNodeType`, always re-derives it) — births an additive
+// `rad-orc:corrective`, carrying the chain-tip scope
 // contract forward; driving that corrective, then a follow-up `approved` verdict (the report
 // re-staged accordingly), converges the review to `done`.
 //

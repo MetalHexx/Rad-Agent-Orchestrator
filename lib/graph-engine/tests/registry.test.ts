@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { createEngine, createNodeTypeRegistry, InMemoryStateStore, ROOT_NODE_ID } from '../src/index.js';
+import {
+  createEngine,
+  createNodeTypeRegistry,
+  InMemoryStateStore,
+  NODE_TYPE_ORIGINS,
+  ROOT_NODE_ID,
+} from '../src/index.js';
 import type { NodeTypeDefinition, ProjectScope } from '../src/index.js';
 
 function scope(projectId: string): ProjectScope {
@@ -20,6 +26,12 @@ function stubType(name: NodeTypeDefinition['name']): NodeTypeDefinition {
     projectStatus: () => 'not_started',
   };
 }
+
+describe('NodeTypeOrigin vocabulary', () => {
+  it('has exactly builtin and custom', () => {
+    expect(NODE_TYPE_ORIGINS).toEqual(['builtin', 'custom']);
+  });
+});
 
 describe('createNodeTypeRegistry — construction rules', () => {
   it('resolves a registered built-in by name', () => {

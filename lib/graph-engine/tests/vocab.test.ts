@@ -3,10 +3,9 @@ import {
   NODE_STATUSES,
   TRAITS,
   EXECUTORS,
-  REVIEW_VERDICTS,
-  SEVERITIES,
   CAPABILITY_NAMES,
   PRIMITIVE_NAMES,
+  PRIMITIVE_RESET,
   assertNever,
 } from '../src/model/vocab.js';
 import type { Trait } from '../src/model/vocab.js';
@@ -41,26 +40,6 @@ describe('Executor vocabulary', () => {
   });
 });
 
-describe('ReviewVerdict vocabulary', () => {
-  it('exactly equals the frozen rad-code-review skill values', () => {
-    expect(REVIEW_VERDICTS).toEqual(['approved', 'changes_requested', 'rejected']);
-  });
-
-  it('excludes a non-member value', () => {
-    expect((REVIEW_VERDICTS as readonly string[]).includes('bogus')).toBe(false);
-  });
-});
-
-describe('Severity vocabulary', () => {
-  it('exactly equals the frozen rad-code-review skill values', () => {
-    expect(SEVERITIES).toEqual(['none', 'low', 'medium', 'high']);
-  });
-
-  it('excludes a non-member value', () => {
-    expect((SEVERITIES as readonly string[]).includes('bogus')).toBe(false);
-  });
-});
-
 describe('CapabilityName vocabulary', () => {
   it('has exactly the well-known capability set', () => {
     expect(CAPABILITY_NAMES).toEqual([
@@ -86,6 +65,12 @@ describe('PrimitiveName vocabulary', () => {
       'reset',
       'engage',
     ]);
+  });
+});
+
+describe('PRIMITIVE_RESET singleton', () => {
+  it('equals the reset primitive name', () => {
+    expect(PRIMITIVE_RESET).toBe('reset');
   });
 });
 

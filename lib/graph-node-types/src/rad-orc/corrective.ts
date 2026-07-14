@@ -138,4 +138,5 @@ export const CORRECTIVE_NODE_TYPE: NodeTypeDefinition = {
   act,
   handle,
   projectStatus,
+  completionToken: TASK_COMPLETED_TOKEN,
 };

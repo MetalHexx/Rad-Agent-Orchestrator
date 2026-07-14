@@ -13,15 +13,11 @@ import {
   ENGINE_SCHEMA_VERSION,
   type Engine,
   type NodeTypeDefinition,
-  type NodeTypeName,
   type NodeTypeRegistry,
 } from '@rad-orchestration/graph-engine';
-import { BUILT_IN_NODE_TYPES } from '@rad-orchestration/graph-node-types';
 import { openDatabase, SqlitePortfolioStore, SqliteStateStore } from '@rad-orchestration/graph-store-sqlite';
 import type { CapabilityPorts } from './capabilities/ports.js';
 import { createRealCapabilityPorts } from './capabilities/real.js';
-import type { NodeOutcomeResolver } from './driver/drive.js';
-import { createBuiltInResolvers } from './driver/resolvers.js';
 import { resolveRadorcRoot } from './lifecycle/discovery.js';
 
 /**
@@ -36,20 +32,19 @@ export interface GraphService {
   readonly registry: NodeTypeRegistry;
   readonly portfolio: SqlitePortfolioStore;
   /**
-   * The six capability ports the driver dispatches an engaged node's `ActResult` against —
-   * `capabilities/real.ts`'s real filesystem-backed `docRead`/`docWrite`, confined to
-   * `ComposeOptions.projectRoot`; `gitFacts`/`spawnAgent`/`runCommand`/`requestHuman` still resolve
-   * via the fakes (they never fire from this drive loop — the driver stops at any node whose
-   * executor would need them, see `driver/drive.ts`'s `runToQuiescence`).
+   * The six capability ports the driver hands a `noop`-executor node's own `resolve` hook (the
+   * `ResolveContext.ports` bridge) — `capabilities/real.ts`'s real filesystem-backed
+   * `docRead`/`docWrite`, confined to `ComposeOptions.projectRoot`; `gitFacts`/`spawnAgent`/
+   * `runCommand`/`requestHuman` still resolve via the fakes (they never fire from this drive loop —
+   * the driver stops at any node whose executor would need them, see `driver/drive.ts`'s
+   * `runToQuiescence`).
    */
   readonly capabilities: CapabilityPorts;
-  /** The per-node-type outcome resolver set (`driver/resolvers.ts`), closed over `capabilities` — what `advance`/`runToQuiescence` dispatch a frontier node's `ActResult` through. */
-  readonly resolvers: Readonly<Record<NodeTypeName, NodeOutcomeResolver>>;
   readonly version: { readonly service: string; readonly engine: string };
   readonly dbPath: string;
-  // SSE sources: `execStore.subscribe`/`portfolio.subscribe` (P02-T03) — each store's own
-  // row-emission hook, reached directly through the fields above rather than a separate wrapper,
-  // the same way every other route reaches state through this one composition object.
+  // SSE sources: `execStore.subscribe`/`portfolio.subscribe` — each store's own row-emission hook,
+  // reached directly through the fields above rather than a separate wrapper, the same way every
+  // other route reaches state through this one composition object.
 }
 
 export interface ComposeOptions {
@@ -62,10 +57,18 @@ export interface ComposeOptions {
    */
   readonly projectRoot?: string;
   /**
-   * Discovered custom node types (`node-types/scan.ts`'s `discoverCustomNodeTypes`) to layer over
-   * `BUILT_IN_NODE_TYPES`. `compose()` stays synchronous and pure — it never scans the filesystem
-   * itself; the caller (`start()`) resolves and passes the list. A reserved-prefix or duplicate
-   * custom throws here, at registry construction.
+   * The built-in node types the registry is seeded with — the `builtins` bucket
+   * `node-types/scan.ts`'s `discoverNodeTypes` resolved off disk. `compose()` stays synchronous and
+   * pure: it never scans the filesystem itself; the caller (`start()`/the dev-seed) resolves
+   * discovery and passes both buckets in. This package no longer sources built-ins from
+   * `@rad-orchestration/graph-node-types` — a type-less registry is the caller's error to catch
+   * before it ever reaches here.
+   */
+  readonly builtInNodeTypes: readonly NodeTypeDefinition[];
+  /**
+   * Discovered custom node types (`node-types/scan.ts`'s `discoverNodeTypes` `customs` bucket) to
+   * layer over the built-ins. A reserved-prefix or duplicate custom throws here, at registry
+   * construction.
    */
   readonly customNodeTypes?: readonly NodeTypeDefinition[];
 }
@@ -85,9 +88,9 @@ function readServiceVersion(): string {
  * the registry over that one handle — `portfolio` is constructed over the same handle so the
  * whole object shares a single SQLite connection.
  *
- * D3/D21 (registry-agnostic): the registry is fed `BUILT_IN_NODE_TYPES` plus whatever
- * `opts.customNodeTypes` the caller resolved — no individual type name is hardcoded here, so
- * `start()`'s discovered custom types slot in with no change to this function.
+ * D3/D21 (registry-agnostic): the registry is fed the caller-resolved `opts.builtInNodeTypes` plus
+ * `opts.customNodeTypes` — no individual type name is hardcoded here, and no built-in is imported
+ * from a package, so both buckets discovery found on disk slot in with no change to this function.
  *
  * Deliberately does **not** wire `withChangeStream`: its in-process `ChangeDelta` carries no
  * `project_id` and no `seq` (`seq` is assigned only at persistence), so it can't scope a stream or
@@ -98,11 +101,10 @@ export function compose(opts: ComposeOptions): GraphService {
   const { dbPath, projectRoot = resolveRadorcRoot() } = opts;
   const db = openDatabase(dbPath);
   const execStore = new SqliteStateStore(db);
-  const registry = createNodeTypeRegistry(BUILT_IN_NODE_TYPES, opts.customNodeTypes ?? []);
+  const registry = createNodeTypeRegistry(opts.builtInNodeTypes, opts.customNodeTypes ?? []);
   const engine = createEngine(execStore, registry);
   const portfolio = new SqlitePortfolioStore(db);
   const capabilities = createRealCapabilityPorts(projectRoot);
-  const resolvers = createBuiltInResolvers(capabilities);
 
   return {
     db,
@@ -111,7 +113,6 @@ export function compose(opts: ComposeOptions): GraphService {
     registry,
     portfolio,
     capabilities,
-    resolvers,
     version: { service: readServiceVersion(), engine: ENGINE_SCHEMA_VERSION },
     dbPath,
   };

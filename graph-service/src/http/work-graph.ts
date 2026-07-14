@@ -1,7 +1,7 @@
-// graph-service/src/http/work-graph.ts — the portfolio API: plain reads plus R3's scoped write
-// set (create/update projects, link/unlink edges, group membership, attach docs, link tickets) —
-// each a thin mapping onto one `PortfolioStore` method. A Hono sub-router mounted at `/work-graph`
-// by `http/app.ts`. Deletes and doc-updates (`deleteProject`/`removeWorktree`/`deleteGroup`/
+// graph-service/src/http/work-graph.ts — the portfolio API: plain reads plus the portfolio graph's
+// scoped write set (create/update projects, link/unlink edges, group membership, attach docs, link
+// tickets) — each a thin mapping onto one `PortfolioStore` method. A Hono sub-router mounted at
+// `/work-graph` by `http/app.ts`. Deletes and doc-updates (`deleteProject`/`removeWorktree`/`deleteGroup`/
 // `updateDoc`/`detachDoc`/`unlinkProjectFromRef`) are intentionally out of scope and not routed
 // here — this domain is CRUD (store-driven, D22), so a rejected mutation is the store's own
 // structured `Result`, never re-validated here.

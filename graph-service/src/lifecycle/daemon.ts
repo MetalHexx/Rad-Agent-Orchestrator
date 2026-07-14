@@ -9,7 +9,7 @@ import type { ServerType } from '@hono/node-server';
 import { compose } from '../compose.js';
 import type { GraphService } from '../compose.js';
 import { buildApp } from '../http/app.js';
-import { discoverCustomNodeTypes } from '../node-types/scan.js';
+import { discoverNodeTypes } from '../node-types/scan.js';
 import {
   readDiscoveryFile,
   removeDiscoveryFile,
@@ -80,24 +80,29 @@ export interface StartResult {
 }
 
 /**
- * Starts the daemon: scans `<root>/node-types` for custom node types (an absent directory yields
- * no customs, not an error), refuses to boot with a half-populated registry if any package failed
- * to load, then binds loopback-only (falling back off a port collision), writes the discovery
- * file, and installs the `SIGINT`/`SIGTERM` graceful-shutdown handler — drain the HTTP server,
- * close the DB handle, remove `service.json`, then exit, so a restart always finds a clean slate.
+ * Starts the daemon: scans `<root>/node-types` for its built-in and custom node types, refuses to
+ * boot with a half-populated registry if any package failed to load, and refuses to boot type-less
+ * if the `builtin/` bucket is empty (a clear named startup error rather than a silent, useless
+ * service). It then composes over both discovered buckets, binds loopback-only (falling back off a
+ * port collision), writes the discovery file, and installs the `SIGINT`/`SIGTERM` graceful-shutdown
+ * handler — drain the HTTP server, close the DB handle, remove `service.json`, then exit, so a
+ * restart always finds a clean slate.
  */
 export async function start(opts: StartOptions): Promise<StartResult> {
   const root = opts.root ?? resolveRadorcRoot();
   const hostname = opts.hostname ?? LOOPBACK_HOST;
 
   const nodeTypesRoot = path.join(root, 'node-types');
-  const { customs, errors } = await discoverCustomNodeTypes(nodeTypesRoot);
+  const { builtins, customs, errors } = await discoverNodeTypes(nodeTypesRoot);
   if (errors.length > 0) {
     const detail = errors.map((error) => `${error.package}${error.entrypoint ? `:${error.entrypoint}` : ''} — ${error.reason}`).join('; ');
-    throw new Error(`refusing to start with ${errors.length} custom node-type load error(s): ${detail}`);
+    throw new Error(`refusing to start with ${errors.length} node-type load error(s): ${detail}`);
+  }
+  if (builtins.length === 0) {
+    throw new Error(`graph-service: no built-in node types discovered at ${nodeTypesRoot} — the service cannot start type-less`);
   }
 
-  const service = compose({ dbPath: opts.dbPath, projectRoot: opts.projectRoot, customNodeTypes: customs });
+  const service = compose({ dbPath: opts.dbPath, projectRoot: opts.projectRoot, builtInNodeTypes: builtins, customNodeTypes: customs });
   const app = buildApp(service);
 
   const { server, port } = await bindWithFallback(app.fetch, hostname, opts.port);

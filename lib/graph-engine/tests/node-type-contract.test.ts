@@ -3,7 +3,10 @@ import { DATA_FIELD_KINDS, DATA_FIELD_LEVELS, ENVELOPE_OUTCOMES } from '../src/i
 import type {
   ActContext,
   ActResult,
+  CapabilityPortSet,
   CodeBehindPort,
+  DagEdge,
+  DagNode,
   DataSchema,
   DocWriteRequest,
   Envelope,
@@ -12,6 +15,8 @@ import type {
   NodeEvent,
   NodeStatus,
   NodeTypeDefinition,
+  ResolveContext,
+  ResolveOutcome,
   RunCommandRequest,
   SpawnAgentRequest,
 } from '../src/index.js';
@@ -78,6 +83,52 @@ describe('NodeTypeDefinition contract shape', () => {
     const fake = makeFakeNodeType();
     expect(fake.projectStatus({})).toBe('not_started');
     expect(fake.projectStatus({ attempt: 1 })).toBe('in_progress');
+  });
+});
+
+describe('resolve hook contract', () => {
+  it('a node type declaring resolve/completionToken satisfies NodeTypeDefinition', () => {
+    const withResolve: NodeTypeDefinition = {
+      ...makeFakeNodeType(),
+      completionToken: 'test:fake.completed',
+      async resolve(ctx: ResolveContext): Promise<ResolveOutcome> {
+        return { token: 'test:fake.completed', envelope: { outcome: 'ok', data: { seen: ctx.nodes.length } } };
+      },
+    };
+
+    expect(withResolve.completionToken).toBe('test:fake.completed');
+    expect(typeof withResolve.resolve).toBe('function');
+  });
+
+  it('both members are optional — a node type omitting them still satisfies the contract', () => {
+    const withoutResolve: NodeTypeDefinition = makeFakeNodeType();
+    expect(withoutResolve.resolve).toBeUndefined();
+    expect(withoutResolve.completionToken).toBeUndefined();
+  });
+
+  it('ResolveContext exposes nodeId/data/nodes/edges/ports and hands back a token+envelope outcome', async () => {
+    const nodes: readonly DagNode[] = [
+      { id: 'n1', type: 'test:fake', status: 'not_started', parent: 'root', order: 0, derivedFrom: null, data: {} },
+      { id: 'sib', type: 'test:sibling', status: 'not_started', parent: 'root', order: 1, derivedFrom: null, data: {} },
+    ];
+    const edges: readonly DagEdge[] = [{ from: 'n1', to: 'sib', kind: 'depends_on' }];
+
+    const resolver: NonNullable<NodeTypeDefinition['resolve']> = async (ctx) => {
+      const sibling = ctx.nodes.find((node) => node.id !== ctx.nodeId);
+      return {
+        token: 'test:fake.completed',
+        envelope: { outcome: 'ok', data: { sibling: sibling?.type ?? null, edgeCount: ctx.edges.length } },
+      };
+    };
+
+    const ports = {} as CapabilityPortSet;
+    const ctx: ResolveContext = { nodeId: 'n1', data: { attempt: 1 }, nodes, edges, ports };
+    const outcome = await resolver(ctx);
+
+    expect(outcome.token).toBe('test:fake.completed');
+    expect(outcome.envelope.data).toEqual({ sibling: 'test:sibling', edgeCount: 1 });
+    // ResolveContext carries no store/scope handle — its keys are exactly the read-only neighborhood surface.
+    expect(Object.keys(ctx).sort()).toEqual(['data', 'edges', 'nodeId', 'nodes', 'ports']);
   });
 });
 
