@@ -1,6 +1,7 @@
 import type {
   ActContext,
   ActResult,
+  DagNode,
   DataSchema,
   Envelope,
   EventToken,
@@ -13,6 +14,8 @@ import type {
   NodeTypeDefinition,
   NodeTypeName,
   Presentation,
+  ResolveContext,
+  ResolveOutcome,
   RoutingRequest,
 } from '@rad-orchestration/graph-engine';
 import { ROOT_NODE_ID } from '@rad-orchestration/graph-engine';
@@ -294,6 +297,115 @@ export function buildExecutionExpansion(parsed: ParsedMasterPlan, cadence: Decor
   return { specs };
 }
 
+// ── Resolve: re-slicing the source doc + the doc-read/doc-write I/O ─────────────
+// The host-side half of this node's own code-behind: given the raw master-plan markdown
+// `parseMasterPlan` just accepted, re-slice it into one doc per parsed phase/task and write them
+// (backing up any prior output first) via the `doc-read`/`doc-write` ports `resolve` declares.
+
+interface EmittedDoc {
+  readonly path: string;
+  readonly content: string;
+}
+
+function findHeadingLines(lines: readonly string[], pattern: RegExp, from: number, to: number): number[] {
+  const indices: number[] = [];
+  for (let i = from; i < to; i += 1) {
+    if (pattern.test(lines[i].trim())) indices.push(i);
+  }
+  return indices;
+}
+
+function sliceLines(lines: readonly string[], start: number, end: number): string {
+  return lines.slice(start, end).join('\n').trimEnd();
+}
+
+function extractNumber(pattern: RegExp, id: string, kind: 'phase' | 'task'): number {
+  const match = pattern.exec(id);
+  if (!match) throw new Error(`rad-orc:explosion resolve: unexpected ${kind} id shape "${id}"`);
+  return Number(match[1]);
+}
+
+/** SCREAMING-KEBAB-CASE, mirroring the v6 `plan explode` doc-writer's own filename slugging. */
+function slugify(title: string): string {
+  const cleaned = title
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return cleaned || 'UNTITLED';
+}
+
+/** `ParsedTask` carries no `docPath` — synthesized here, mirroring the v6 doc-writer's `tasks/P{NN}-T{MM}-{SLUG}.md` naming, keyed off the task's own declared phase/task numbers (not array position). */
+function taskDocPath(phase: ParsedPhase, task: ParsedTask): string {
+  const phaseNumber = extractNumber(/^phase-(\d+)$/, phase.id, 'phase');
+  const taskNumber = extractNumber(/^phase-\d+-task-(\d+)$/, task.id, 'task');
+  const nn = String(phaseNumber).padStart(2, '0');
+  const mm = String(taskNumber).padStart(2, '0');
+  return `tasks/P${nn}-T${mm}-${slugify(task.title)}.md`;
+}
+
+/**
+ * Re-slices `sourceContent` — the raw master-plan markdown `parseMasterPlan` just accepted — into
+ * one emitted doc per parsed phase (written to `ParsedPhase.docPath`) and one per parsed task
+ * (written to a synthesized {@link taskDocPath}), each body the verbatim text between that
+ * entity's own heading and the next sibling/parent heading. Walks the same heading anchors
+ * `parseMasterPlan` walked, in the same order, so positional pairing with `parsed.phases`/
+ * `phase.tasks` is safe.
+ */
+function emitDocs(sourceContent: string, parsed: ParsedMasterPlan): readonly EmittedDoc[] {
+  const lines = sourceContent.split(/\r?\n/);
+  const phaseHeadingLines = findHeadingLines(lines, PHASE_HEADING, 0, lines.length);
+  const docs: EmittedDoc[] = [];
+
+  parsed.phases.forEach((phase, phaseIndex) => {
+    const start = phaseHeadingLines[phaseIndex];
+    if (start === undefined) throw new Error(`rad-orc:explosion resolve: could not locate the heading for phase "${phase.id}" while re-slicing`);
+    const end = phaseHeadingLines[phaseIndex + 1] ?? lines.length;
+    docs.push({ path: phase.docPath, content: sliceLines(lines, start, end) });
+
+    const taskHeadingLines = findHeadingLines(lines, TASK_HEADING, start, end);
+    phase.tasks.forEach((task, taskIndex) => {
+      const taskStart = taskHeadingLines[taskIndex];
+      if (taskStart === undefined) throw new Error(`rad-orc:explosion resolve: could not locate the heading for task "${task.id}" while re-slicing`);
+      const taskEnd = taskHeadingLines[taskIndex + 1] ?? end;
+      docs.push({ path: taskDocPath(phase, task), content: sliceLines(lines, taskStart, taskEnd) });
+    });
+  });
+
+  return docs;
+}
+
+/**
+ * Backup-safe overwrite: only `docRead`/`docWrite` are available (no directory listing or move
+ * port), so "back up the prior output" is done per emitted-doc-path rather than a whole-directory
+ * move — if `targetPath` already holds content, that content is copied to
+ * `backups/{backupStamp}/{targetPath}` before the fresh content lands, so a re-explode never
+ * destructively overwrites a prior run's doc.
+ */
+async function backupExisting(ctx: ResolveContext, targetPath: string, backupStamp: string): Promise<void> {
+  const existing = await ctx.ports.docRead.read({ path: targetPath });
+  if (existing.outcome !== 'ok') return;
+  const backupPath = `backups/${backupStamp}/${targetPath}`;
+  await ctx.ports.docWrite.write({
+    originatingNodeId: ctx.nodeId,
+    idempotencyKey: `${ctx.nodeId}:backup:${targetPath}`,
+    path: backupPath,
+    content: existing.data.content,
+  });
+}
+
+function findMasterPlanSibling(nodes: readonly DagNode[]): DagNode {
+  const node = nodes.find((n) => n.type === 'rad-orc:master_plan');
+  if (!node) throw new Error('rad-orc:explosion resolve: no sibling rad-orc:master_plan node found in scope');
+  return node;
+}
+
+function findPlanApprovalSibling(nodes: readonly DagNode[]): DagNode {
+  const node = nodes.find((n) => n.type === 'rad-orc:approval' && n.data.level === 'plan');
+  if (!node) throw new Error('rad-orc:explosion resolve: no plan-level sibling rad-orc:approval node found in scope');
+  return node;
+}
+
 // ── The node type ──────────────────────────────────────────────────────────────
 
 export const DEFAULT_PARSE_RETRY_LIMIT = 3;
@@ -371,15 +483,23 @@ Never re-fires once the seeded subgraph starts executing.
 export interface ExplosionNodeTypeOptions {
   /** The parse-retry cap before a further failure stops re-requesting a fresh master plan. Host config; default {@link DEFAULT_PARSE_RETRY_LIMIT}. */
   readonly parseRetryLimit?: number;
+  /**
+   * The clock `resolve` stamps its backup path with (`backups/{now()}/...`). `resolve` runs
+   * host-side, so calling `Date` directly is legal — this is a test seam only, mirroring
+   * `parseRetryLimit`, so the backup-path test stays deterministic without a clock on
+   * `ResolveContext` itself. Defaults to `() => new Date().toISOString()`.
+   */
+  readonly now?: () => string;
 }
 
 /**
  * Builds the `rad-orc:explosion` {@link NodeTypeDefinition}, closing over `options.parseRetryLimit`
  * (host config, default {@link DEFAULT_PARSE_RETRY_LIMIT}) so the cap is a construction-time
- * parameter rather than a hardcoded constant.
+ * parameter rather than a hardcoded constant, and over `options.now` (the backup-stamp clock seam).
  */
 export function createExplosionNodeType(options: ExplosionNodeTypeOptions = {}): NodeTypeDefinition {
   const parseRetryLimit = options.parseRetryLimit ?? DEFAULT_PARSE_RETRY_LIMIT;
+  const now = options.now ?? (() => new Date().toISOString());
 
   function act(_ctx: ActContext): ActResult {
     return {
@@ -424,16 +544,74 @@ export function createExplosionNodeType(options: ExplosionNodeTypeOptions = {}):
     return data.expanded === true ? 'done' : 'not_started';
   }
 
+  /**
+   * This node's own host-side outcome derivation, reproducing the relocated `runExplosion` end to
+   * end: read the authored master-plan doc, parse it, and — on a successful parse — back up then
+   * (re)write every emitted phase/task doc, before handing back the `parsed`/`parse_failed`
+   * outcome `handle` routes on. Reads only `ctx.nodes`/`ctx.data` and calls ports — it never
+   * mutates the graph itself.
+   */
+  async function resolve(ctx: ResolveContext): Promise<ResolveOutcome> {
+    const masterPlan = findMasterPlanSibling(ctx.nodes);
+    const planApproval = findPlanApprovalSibling(ctx.nodes);
+    const docPath = typeof masterPlan.data.docPath === 'string' ? masterPlan.data.docPath : '';
+    const cadence = ctx.data.cadence as DecorationCadence;
+    const parseRetryCount = typeof ctx.data.parseRetryCount === 'number' ? ctx.data.parseRetryCount : 0;
+
+    const read = await ctx.ports.docRead.read({ path: docPath });
+    const parsed = parseMasterPlan(read.data.content);
+
+    if (parsed.outcome === 'error') {
+      return {
+        token: EXPLOSION_PARSE_FAILED_TOKEN,
+        envelope: {
+          outcome: 'error',
+          data: {
+            parseError: parsed.data,
+            masterPlanNodeId: masterPlan.id,
+            parseRetryCount,
+          } satisfies ExplosionParseFailureData,
+        },
+      };
+    }
+
+    const docs = emitDocs(read.data.content, parsed.data);
+    const backupStamp = now().replace(/[:.]/g, '-');
+
+    for (const doc of docs) {
+      await backupExisting(ctx, doc.path, backupStamp);
+      await ctx.ports.docWrite.write({
+        originatingNodeId: ctx.nodeId,
+        idempotencyKey: `${ctx.nodeId}:write:${doc.path}`,
+        path: doc.path,
+        content: doc.content,
+      });
+    }
+
+    return {
+      token: EXPLOSION_PARSED_TOKEN,
+      envelope: {
+        outcome: 'ok',
+        data: {
+          parsed: parsed.data,
+          cadence,
+          planApprovalNodeId: planApproval.id,
+        } satisfies ExplosionParseSuccessData,
+      },
+    };
+  }
+
   return {
     name: 'rad-orc:explosion',
     dataSchema: EXPLOSION_DATA_SCHEMA,
     traits: ['expands'],
-    capabilities: [MASTER_PLAN_PARSER_CAPABILITY],
+    capabilities: [MASTER_PLAN_PARSER_CAPABILITY, 'doc-read', 'doc-write'],
     presentation: PRESENTATION,
     instructions: INSTRUCTIONS,
     act,
     handle,
     projectStatus,
+    resolve,
   };
 }
 

@@ -1,5 +1,5 @@
 import { ROOT_NODE_ID } from '@rad-orchestration/graph-engine';
-import type { NodeSpec } from '@rad-orchestration/graph-engine';
+import type { DagNode, NodeSpec, ResolveContext } from '@rad-orchestration/graph-engine';
 import { describe, expect, it } from 'vitest';
 import {
   EXPLOSION_NODE_TYPE,
@@ -10,6 +10,7 @@ import {
   parseMasterPlan,
 } from '../../src/rad-orc/explosion.js';
 import { DECORATION_CADENCE_FIXTURE } from '../fixtures/decoration-cadence.js';
+import { createFakedCapabilityPorts } from '../harness/test-driver.js';
 
 const TEMPLATE_SHAPED_MASTER_PLAN = `# Master Plan
 
@@ -210,5 +211,165 @@ describe('rad-orc:explosion node type', () => {
     expect(
       EXPLOSION_NODE_TYPE.handle({ token: 'rad-orc:explosion.other', nodeId: 'explosion', envelope: { outcome: 'ok', data: {} } }),
     ).toEqual({});
+  });
+
+  it('declares doc-read/doc-write alongside its own code-behind capability', () => {
+    expect(EXPLOSION_NODE_TYPE.capabilities).toEqual(expect.arrayContaining(['rad-orc:master-plan-parser', 'doc-read', 'doc-write']));
+  });
+});
+
+describe('resolve — the relocated explosion runner', () => {
+  const MASTER_PLAN_PATH = 'docs/master-plan/mp.md';
+
+  const WELL_FORMED = `# Master Plan
+
+## Phase 1: Foundation
+Doc: docs/phases/phase-1.md
+Exit Criteria:
+- Foundations laid
+
+### Task 1: Scaffold the module
+
+## Phase 2: Delivery
+Doc: docs/phases/phase-2.md
+Exit Criteria:
+- Delivery shipped
+
+### Task 1: Ship it
+### Task 2: Write the docs
+`;
+
+  // Missing the required `Doc:` line under Phase 1 — parseMasterPlan rejects this at end-of-phase.
+  const MALFORMED = `## Phase 1: Foundation
+Exit Criteria:
+- Foundations laid
+
+### Task 1: Scaffold
+`;
+
+  function masterPlanSibling(overrides: Partial<DagNode> = {}): DagNode {
+    return {
+      id: 'master-plan-1',
+      type: 'rad-orc:master_plan',
+      status: 'done',
+      parent: ROOT_NODE_ID,
+      order: 0,
+      derivedFrom: null,
+      data: { docPath: MASTER_PLAN_PATH },
+      ...overrides,
+    };
+  }
+
+  function planApprovalSibling(overrides: Partial<DagNode> = {}): DagNode {
+    return {
+      id: 'plan-approval-1',
+      type: 'rad-orc:approval',
+      status: 'not_started',
+      parent: ROOT_NODE_ID,
+      order: 1,
+      derivedFrom: null,
+      data: { level: 'plan' },
+      ...overrides,
+    };
+  }
+
+  function buildContext(
+    ports: ReturnType<typeof createFakedCapabilityPorts>,
+    overrides: { readonly data?: Readonly<Record<string, unknown>>; readonly nodes?: readonly DagNode[] } = {},
+  ): ResolveContext {
+    return {
+      nodeId: 'explosion-1',
+      data: { cadence: DECORATION_CADENCE_FIXTURE, parseRetryCount: 0, ...overrides.data },
+      nodes: overrides.nodes ?? [masterPlanSibling(), planApprovalSibling()],
+      edges: [],
+      ports,
+    };
+  }
+
+  it('happy parse: writes the expected phase/task docs and yields a parsed outcome', async () => {
+    const ports = createFakedCapabilityPorts();
+    ports.docRead.seed(MASTER_PLAN_PATH, WELL_FORMED);
+
+    const result = await EXPLOSION_NODE_TYPE.resolve!(buildContext(ports));
+
+    expect(result.token).toBe(EXPLOSION_PARSED_TOKEN);
+    expect(result.envelope.outcome).toBe('ok');
+    const data = result.envelope.data as { parsed: { phases: readonly unknown[] }; planApprovalNodeId: string };
+    expect(data.parsed.phases).toHaveLength(2);
+    expect(data.planApprovalNodeId).toBe('plan-approval-1');
+
+    const writtenPaths = ports.docWrite.writes.map((w) => w.path).sort();
+    expect(writtenPaths).toEqual([
+      'docs/phases/phase-1.md',
+      'docs/phases/phase-2.md',
+      'tasks/P01-T01-SCAFFOLD-THE-MODULE.md',
+      'tasks/P02-T01-SHIP-IT.md',
+      'tasks/P02-T02-WRITE-THE-DOCS.md',
+    ]);
+
+    const phase1Doc = ports.docWrite.writes.find((w) => w.path === 'docs/phases/phase-1.md');
+    expect(phase1Doc?.content).toContain('## Phase 1: Foundation');
+    expect(phase1Doc?.content).toContain('Doc: docs/phases/phase-1.md');
+    expect(phase1Doc?.content).not.toContain('Phase 2');
+
+    const task1Doc = ports.docWrite.writes.find((w) => w.path === 'tasks/P01-T01-SCAFFOLD-THE-MODULE.md');
+    expect(task1Doc?.content).toBe('### Task 1: Scaffold the module');
+  });
+
+  it('malformed plan: yields a structured parse_failed outcome and writes no docs', async () => {
+    const ports = createFakedCapabilityPorts();
+    ports.docRead.seed(MASTER_PLAN_PATH, MALFORMED);
+
+    const result = await EXPLOSION_NODE_TYPE.resolve!(buildContext(ports));
+
+    expect(result.token).toBe(EXPLOSION_PARSE_FAILED_TOKEN);
+    expect(result.envelope.outcome).toBe('error');
+    const data = result.envelope.data as {
+      parseError: { line: number; expected: string; found: string; message: string };
+      masterPlanNodeId: string;
+      parseRetryCount: number;
+    };
+    expect(data.parseError.message).toContain('never declared a `Doc:` line');
+    expect(data.masterPlanNodeId).toBe('master-plan-1');
+    expect(data.parseRetryCount).toBe(0);
+    expect(ports.docWrite.writes).toHaveLength(0);
+  });
+
+  it('carries the parseRetryCount forward from ctx.data on a parse failure', async () => {
+    const ports = createFakedCapabilityPorts();
+    ports.docRead.seed(MASTER_PLAN_PATH, MALFORMED);
+
+    const result = await EXPLOSION_NODE_TYPE.resolve!(buildContext(ports, { data: { parseRetryCount: 2 } }));
+
+    const data = result.envelope.data as { parseRetryCount: number };
+    expect(data.parseRetryCount).toBe(2);
+  });
+
+  it('re-explode over a corrected plan backs the prior output up before regenerating, via the injected clock seam', async () => {
+    const explosion = createExplosionNodeType({ now: () => '2026-07-13T02:00:00.000Z' });
+    const ports = createFakedCapabilityPorts();
+    ports.docRead.seed(MASTER_PLAN_PATH, WELL_FORMED);
+
+    // Simulate a prior run's output already sitting at the same target paths.
+    ports.docRead.seed('docs/phases/phase-1.md', 'STALE PHASE 1');
+    ports.docRead.seed('tasks/P01-T01-SCAFFOLD-THE-MODULE.md', 'STALE TASK 1');
+
+    const result = await explosion.resolve!(buildContext(ports));
+
+    expect(result.token).toBe(EXPLOSION_PARSED_TOKEN);
+
+    const backupWrites = ports.docWrite.writes.filter((w) => w.path.startsWith('backups/'));
+    expect(backupWrites.map((w) => w.path).sort()).toEqual([
+      'backups/2026-07-13T02-00-00-000Z/docs/phases/phase-1.md',
+      'backups/2026-07-13T02-00-00-000Z/tasks/P01-T01-SCAFFOLD-THE-MODULE.md',
+    ]);
+    expect(backupWrites.find((w) => w.path.includes('phase-1'))?.content).toBe('STALE PHASE 1');
+    expect(backupWrites.find((w) => w.path.includes('P01-T01'))?.content).toBe('STALE TASK 1');
+
+    const freshPhase1 = ports.docWrite.writes.find((w) => w.path === 'docs/phases/phase-1.md');
+    expect(freshPhase1?.content).toContain('## Phase 1: Foundation');
+
+    // A target with no prior content on disk gets no backup entry.
+    expect(backupWrites.some((w) => w.path.includes('phase-2'))).toBe(false);
   });
 });
