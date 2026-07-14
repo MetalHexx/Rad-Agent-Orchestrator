@@ -61,6 +61,8 @@ export type {
   FinalReviewRepo,
   PhaseCodeReviewSpawnPayload,
   PhaseReviewRepo,
+  ReviewVerdict,
+  Severity,
   TaskCodeReviewSpawnPayload,
   TaskReviewRepo,
 } from './rad-orc/code-review.js';
@@ -69,6 +71,8 @@ export {
   CODE_REVIEW_DATA_SCHEMA,
   CODE_REVIEW_LEVELS,
   CODE_REVIEW_REVIEWED_TOKEN,
+  REVIEW_VERDICTS,
+  SEVERITIES,
 } from './rad-orc/code-review.js';
 
 export { CORRECTIVE_NODE_TYPE, CORRECTIVE_DATA_SCHEMA } from './rad-orc/corrective.js';

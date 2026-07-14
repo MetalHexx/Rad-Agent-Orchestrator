@@ -1,3 +1,5 @@
+import { ROOT_NODE_ID } from '@rad-orchestration/graph-engine';
+import type { DagNode, ResolveContext } from '@rad-orchestration/graph-engine';
 import { describe, expect, it } from 'vitest';
 import {
   CODE_REVIEW_NODE_TYPE,
@@ -11,6 +13,7 @@ import {
   PHASE_REPO_SHA_FIXTURE,
   TASK_REPO_SHA_FIXTURE,
 } from '../fixtures/frozen-contracts.js';
+import { createFakedCapabilityPorts } from '../harness/test-driver.js';
 
 const REPO_BASE = { name: 'rad-orc-source', path: '/repos/rad-orc-source', branch: 'radorch/STEERABLE-DAG-1' };
 
@@ -167,5 +170,91 @@ describe('rad-orc:code_review', () => {
     expect(CODE_REVIEW_NODE_TYPE.projectStatus({ verdict: 'approved' })).toBe('done');
     expect(CODE_REVIEW_NODE_TYPE.projectStatus({ verdict: 'rejected' })).toBe('blocked');
     expect(CODE_REVIEW_NODE_TYPE.projectStatus({ verdict: 'changes_requested' })).toBe('not_started');
+  });
+
+  it('declares its completion token, the sole external-actor stop signal for this node type', () => {
+    expect(CODE_REVIEW_NODE_TYPE.completionToken).toBe(CODE_REVIEW_REVIEWED_TOKEN);
+  });
+
+  describe('resolve — re-derives the verdict from the running report, never trusting a caller', () => {
+    const CUSTOM_REPORT_PATH = 'reviews/custom-report.md';
+
+    function siblingCorrective(id: string): DagNode {
+      return { id, type: 'rad-orc:corrective', status: 'done', parent: ROOT_NODE_ID, order: 0, derivedFrom: null, data: {} };
+    }
+
+    function buildContext(
+      ports: ReturnType<typeof createFakedCapabilityPorts>,
+      overrides: { readonly data?: Readonly<Record<string, unknown>>; readonly nodes?: readonly DagNode[] } = {},
+    ): ResolveContext {
+      return {
+        nodeId: 'review-1',
+        data: { level: 'task', ...overrides.data },
+        nodes: overrides.nodes ?? [],
+        edges: [],
+        ports,
+      };
+    }
+
+    it('approved: yields the matching outcome, carrying no correctiveIndex/reviewReportPath', async () => {
+      const ports = createFakedCapabilityPorts();
+      ports.docRead.seed(CUSTOM_REPORT_PATH, '---\nverdict: approved\nseverity: none\n---\nBody.\n');
+
+      const result = await CODE_REVIEW_NODE_TYPE.resolve!(buildContext(ports, { data: { reviewReportPath: CUSTOM_REPORT_PATH } }));
+
+      expect(result.token).toBe(CODE_REVIEW_REVIEWED_TOKEN);
+      expect(result.envelope).toEqual({ outcome: 'ok', data: { verdict: 'approved', severity: 'none' } });
+    });
+
+    it('changes_requested: computes correctiveIndex from ctx.nodes\' own -corrective-* siblings', async () => {
+      const ports = createFakedCapabilityPorts();
+      ports.docRead.seed(CUSTOM_REPORT_PATH, '---\nverdict: changes_requested\nseverity: high\n---\nBody.\n');
+
+      const result = await CODE_REVIEW_NODE_TYPE.resolve!(
+        buildContext(ports, {
+          data: { reviewReportPath: CUSTOM_REPORT_PATH },
+          nodes: [siblingCorrective('review-1-corrective-1'), siblingCorrective('review-1-corrective-2'), siblingCorrective('review-2-corrective-1')],
+        }),
+      );
+
+      expect(result.envelope).toEqual({
+        outcome: 'ok',
+        data: { verdict: 'changes_requested', severity: 'high', correctiveIndex: 3, reviewReportPath: CUSTOM_REPORT_PATH },
+      });
+    });
+
+    it('defaults severity to none when the frontmatter omits it', async () => {
+      const ports = createFakedCapabilityPorts();
+      ports.docRead.seed(CUSTOM_REPORT_PATH, '---\nverdict: approved\n---\nBody.\n');
+
+      const result = await CODE_REVIEW_NODE_TYPE.resolve!(buildContext(ports, { data: { reviewReportPath: CUSTOM_REPORT_PATH } }));
+
+      expect(result.envelope).toEqual({ outcome: 'ok', data: { verdict: 'approved', severity: 'none' } });
+    });
+
+    it('falls back to reviews/{nodeId}.md when no reviewReportPath is declared', async () => {
+      const ports = createFakedCapabilityPorts();
+      ports.docRead.seed('reviews/review-1.md', '---\nverdict: rejected\nseverity: low\n---\nBody.\n');
+
+      const result = await CODE_REVIEW_NODE_TYPE.resolve!(buildContext(ports));
+
+      expect(result.envelope).toEqual({ outcome: 'ok', data: { verdict: 'rejected', severity: 'low' } });
+    });
+
+    it('throws a clear error when the report cannot be read', async () => {
+      const ports = createFakedCapabilityPorts();
+      await expect(CODE_REVIEW_NODE_TYPE.resolve!(buildContext(ports, { data: { reviewReportPath: CUSTOM_REPORT_PATH } }))).rejects.toThrow(
+        /could not read its review report/,
+      );
+    });
+
+    it('throws a clear error when the frontmatter carries no valid verdict', async () => {
+      const ports = createFakedCapabilityPorts();
+      ports.docRead.seed(CUSTOM_REPORT_PATH, '---\nverdict: not-a-real-verdict\n---\nBody.\n');
+
+      await expect(CODE_REVIEW_NODE_TYPE.resolve!(buildContext(ports, { data: { reviewReportPath: CUSTOM_REPORT_PATH } }))).rejects.toThrow(
+        /no valid 'verdict'/,
+      );
+    });
   });
 });

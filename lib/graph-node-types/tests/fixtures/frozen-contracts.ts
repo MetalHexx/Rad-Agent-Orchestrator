@@ -4,7 +4,7 @@
 // the commit/PR contracts (`harness-files/skills/rad-source-control/references`). Every fixture
 // encodes field *names and shapes* pulled verbatim from those skill docs — never their prose — so
 // a later built-in (or its tests) can assert against these shapes instead of re-reading the skills.
-import type { ReviewVerdict, Severity } from '@rad-orchestration/graph-engine';
+import type { ReviewVerdict, Severity } from '../../src/rad-orc/code-review.js';
 
 // ── Review report frontmatter ───────────────────────────────────────────────────
 // rad-code-review/SKILL.md (base fields + verdict/severity vocab), task-review.md (task-adds),

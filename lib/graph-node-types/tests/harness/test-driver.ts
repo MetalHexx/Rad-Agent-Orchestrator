@@ -28,7 +28,6 @@ import type {
   PrimitiveContext,
   Result,
   ReviewSpawnRequest,
-  ReviewVerdict,
   RequestHumanPort,
   RequestHumanRequest,
   RequestHumanResult,
@@ -36,7 +35,6 @@ import type {
   RunCommandPort,
   RunCommandRequest,
   RunCommandResult,
-  Severity,
   SpawnAgentPort,
   SpawnAgentRequest,
   SpawnAgentResult,
@@ -48,6 +46,8 @@ import type {
   DecorationCadence,
   PrRepoRef,
   PrRepoResult,
+  ReviewVerdict,
+  Severity,
 } from '../../src/index.js';
 import { APPROVAL_DECIDED_TOKEN } from '../../src/rad-orc/approval.js';
 import { CODE_REVIEW_REVIEWED_TOKEN } from '../../src/rad-orc/code-review.js';
