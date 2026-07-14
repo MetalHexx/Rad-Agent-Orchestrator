@@ -18,7 +18,7 @@ import type {
   ResolveOutcome,
   RoutingRequest,
 } from '@rad-orchestration/graph-engine';
-import { ROOT_NODE_ID } from '@rad-orchestration/graph-engine';
+import { PRIMITIVE_RESET, ROOT_NODE_ID } from '@rad-orchestration/graph-engine';
 
 // ── Decoration cadence ───────────────────────────────────────────────────────────
 /**
@@ -533,7 +533,7 @@ export function createExplosionNodeType(options: ExplosionNodeTypeOptions = {}):
           routing: { primitive: 'toggle', params: { node: ev.nodeId } },
         };
       }
-      const routing: RoutingRequest = { primitive: 'reset', params: { node: masterPlanNodeId, cascade: true } };
+      const routing: RoutingRequest = { primitive: PRIMITIVE_RESET, params: { node: masterPlanNodeId, cascade: true } };
       return { dataChange: { parseRetryCount: nextCount, lastParseError: parseError }, routing };
     }
 
