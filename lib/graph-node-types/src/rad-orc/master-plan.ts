@@ -2,6 +2,7 @@ import type {
   ActContext,
   ActResult,
   CompletionPayloadSchema,
+  ContextPayload,
   DataSchema,
   EventToken,
   HandleResult,
@@ -57,15 +58,16 @@ function act(ctx: ActContext): ActResult {
   const explosion = ctx.nodes.find((n) => n.type === 'rad-orc:explosion');
   const lastParseError = explosion?.data.lastParseError;
 
-  const result: ActResult = {
-    executor: 'orchestrator-inline',
-  };
-
   if (lastParseError) {
-    (result as unknown as Record<string, unknown>).payload = { last_parse_error: lastParseError };
+    return {
+      executor: 'orchestrator-inline',
+      payload: { last_parse_error: lastParseError } as ContextPayload,
+    };
   }
 
-  return result;
+  return {
+    executor: 'orchestrator-inline',
+  };
 }
 
 function handle(ev: NodeEvent): HandleResult {

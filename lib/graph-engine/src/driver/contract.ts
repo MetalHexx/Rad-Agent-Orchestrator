@@ -11,8 +11,9 @@ import type { ActContext, ActResult, DataResolver, SpawnPayload } from '../node-
 /**
  * The dispatch channel `ActResult.payload` carries when `executor` is `'spawn-sub-agent'` — the
  * contract a host reads to know what to spawn, and to which agent. `orchestrator-inline`
- * (`master_plan`/`explosion`/`pr`) node types carry no payload at all: their `instructions` are
- * executed in-process by the host instead of dispatched to a sub-agent.
+ * (`master_plan`/`explosion`/`pr`) node types typically carry no payload; when they do, it is
+ * side-channel context data (not a spawn request) passed as `Readonly<Record<string, unknown>>`.
+ * Their `instructions` are executed in-process by the host instead of dispatched to a sub-agent.
  */
 export type DispatchRequest = SpawnPayload;
 

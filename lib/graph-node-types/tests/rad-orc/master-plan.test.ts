@@ -29,7 +29,7 @@ describe('rad-orc:master_plan', () => {
 
   it('act omits last_parse_error on the payload when no explosion sibling carries one', () => {
     const result = MASTER_PLAN_NODE_TYPE.act({ nodeId: 'master_plan', data: {}, nodes: [], edges: [] });
-    expect((result as unknown as Record<string, unknown>).payload).toBeUndefined();
+    expect(result.payload).toBeUndefined();
   });
 
   it('act includes last_parse_error on the payload when explosion sibling carries lastParseError', () => {
@@ -45,14 +45,14 @@ describe('rad-orc:master_plan', () => {
     };
     const result = MASTER_PLAN_NODE_TYPE.act({ nodeId: 'master_plan', data: {}, nodes: [explosionNode], edges: [] });
     expect(result.executor).toBe('orchestrator-inline');
-    const payload = (result as unknown as Record<string, unknown>).payload as unknown as Record<string, unknown>;
+    const payload = result.payload as Record<string, unknown>;
     expect(payload.last_parse_error).toEqual(lastParseError);
   });
 
   it('act tolerates absence of explosion sibling node (first authoring)', () => {
     const result = MASTER_PLAN_NODE_TYPE.act({ nodeId: 'master_plan', data: {}, nodes: [], edges: [] });
     expect(result.executor).toBe('orchestrator-inline');
-    expect((result as unknown as Record<string, unknown>).payload).toBeUndefined();
+    expect(result.payload).toBeUndefined();
   });
 
   it('handle sets docPath once the plan doc is authored', () => {

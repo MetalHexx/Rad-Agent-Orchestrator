@@ -109,10 +109,17 @@ export interface SpawnPayload {
   readonly [field: string]: unknown;
 }
 
+/**
+ * A side-channel context payload for orchestrator-inline and other non-spawning executors — the
+ * open-shaped record of context data an executor returns alongside its `executor` discriminant.
+ * For `'spawn-sub-agent'` executors, this must be a `SpawnPayload`; for others, any record.
+ */
+export type ContextPayload = Readonly<Record<string, unknown>>;
+
 /** `executor` names how the work is carried out; `payload` is required only for `'spawn-sub-agent'`. */
 export interface ActResult {
   readonly executor: Executor;
-  readonly payload?: SpawnPayload;
+  readonly payload?: SpawnPayload | ContextPayload;
 }
 
 // ── Handle ───────────────────────────────────────────────────────────────────────

@@ -106,6 +106,7 @@ export type {
   AgentName,
   CompletionPayloadField,
   CompletionPayloadSchema,
+  ContextPayload,
   DataChange,
   DataFieldKind,
   DataFieldLevel,
