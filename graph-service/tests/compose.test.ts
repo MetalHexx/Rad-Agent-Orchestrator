@@ -65,4 +65,28 @@ describe('compose', () => {
 
     expect(() => compose({ dbPath: ':memory:', builtInNodeTypes: BUILT_IN_NODE_TYPES, customNodeTypes: [first, second] })).toThrow(/dup:thing/);
   });
+
+  it('surfaces both root and projectRoot from their own explicit overrides, kept distinguishable', () => {
+    const service = compose({
+      dbPath: ':memory:',
+      builtInNodeTypes: BUILT_IN_NODE_TYPES,
+      root: '/tmp/radorc-root',
+      projectRoot: '/tmp/radorc-root/project',
+    });
+
+    // The live risk this task guards against: a harness passing two different directories must
+    // never collapse onto one — `root` (the resolver's own root) and `projectRoot` (the real
+    // docRead/docWrite confinement root) are genuinely distinct fields.
+    expect(service.root).toBe('/tmp/radorc-root');
+    expect(service.projectRoot).toBe('/tmp/radorc-root/project');
+    expect(service.root).not.toBe(service.projectRoot);
+  });
+
+  it('defaults both root and projectRoot to resolveRadorcRoot() when neither override is supplied', () => {
+    const service = compose({ dbPath: ':memory:', builtInNodeTypes: BUILT_IN_NODE_TYPES });
+
+    expect(service.root).toEqual(expect.any(String));
+    expect(service.root.length).toBeGreaterThan(0);
+    expect(service.projectRoot).toBe(service.root);
+  });
 });

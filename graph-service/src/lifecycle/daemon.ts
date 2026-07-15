@@ -102,7 +102,7 @@ export async function start(opts: StartOptions): Promise<StartResult> {
     throw new Error(`graph-service: no built-in node types discovered at ${nodeTypesRoot} — the service cannot start type-less`);
   }
 
-  const service = compose({ dbPath: opts.dbPath, projectRoot: opts.projectRoot, builtInNodeTypes: builtins, customNodeTypes: customs });
+  const service = compose({ dbPath: opts.dbPath, root, projectRoot: opts.projectRoot, builtInNodeTypes: builtins, customNodeTypes: customs });
   const app = buildApp(service);
 
   const { server, port } = await bindWithFallback(app.fetch, hostname, opts.port);

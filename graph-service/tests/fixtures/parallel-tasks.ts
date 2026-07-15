@@ -10,7 +10,7 @@ export const PARALLEL_TASK_IDS = { a: 'task-a', b: 'task-b' } as const;
 
 export function parallelTasksSeedSteps(): readonly SeedStep[] {
   return [
-    { primitive: 'add_node', id: PARALLEL_TASK_IDS.a, type: 'rad-orc:task', parent: ROOT_NODE_ID, data: taskData('/tasks/task-a.md') },
-    { primitive: 'add_node', id: PARALLEL_TASK_IDS.b, type: 'rad-orc:task', parent: ROOT_NODE_ID, data: taskData('/tasks/task-b.md') },
+    { primitive: 'add_node', id: PARALLEL_TASK_IDS.a, type: 'rad-orc:task', parent: ROOT_NODE_ID, data: taskData('tasks/task-a.md') },
+    { primitive: 'add_node', id: PARALLEL_TASK_IDS.b, type: 'rad-orc:task', parent: ROOT_NODE_ID, data: taskData('tasks/task-b.md') },
   ];
 }

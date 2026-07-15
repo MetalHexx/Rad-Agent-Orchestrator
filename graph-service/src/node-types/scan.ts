@@ -47,7 +47,10 @@ interface Manifest {
 }
 
 const REQUIRED_DEFINITION_HOOKS = ['act', 'handle', 'projectStatus'] as const;
-const REQUIRED_DEFINITION_FIELDS = ['dataSchema', 'traits', 'capabilities', 'presentation', 'instructions'] as const;
+// `instructions` is deliberately absent here: `NodeTypeDefinition.instructions` is optional (a type
+// that never stops at an external actor, e.g. `rad-orc:explosion`, declares none) — checked below
+// only when present, never required outright.
+const REQUIRED_DEFINITION_FIELDS = ['dataSchema', 'traits', 'capabilities', 'presentation'] as const;
 
 /**
  * Scans both `<nodeTypesRoot>/builtin` and `<nodeTypesRoot>/custom` through the same per-package
@@ -253,7 +256,7 @@ function validateShape(candidate: unknown): string | undefined {
   if (!Array.isArray(record.capabilities)) {
     return `"capabilities" is not an array (got ${JSON.stringify(record.capabilities)})`;
   }
-  if (typeof record.instructions !== 'string') {
+  if (record.instructions !== undefined && typeof record.instructions !== 'string') {
     return `"instructions" is not a string (got ${JSON.stringify(record.instructions)})`;
   }
   if (!isPlainObject(record.presentation) || typeof record.presentation.label !== 'string') {

@@ -15,7 +15,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { BootedDaemon } from '../harness/boot.js';
 import { bootDaemon } from '../harness/boot.js';
-import { driveToQuiescence, frontier, node, seed, submitEvent } from '../harness/drive.js';
+import { addWorktree, driveToQuiescence, frontier, node, seed, submitEvent } from '../harness/drive.js';
 import type { SseCollector } from '../harness/sse.js';
 import { connectSse } from '../harness/sse.js';
 import { PHASE_CHAIN_IDS, REVIEW_REPORT_PATH, phaseChainThroughReviewSeedSteps, reviewReportDoc } from '../fixtures/phase-chain.js';
@@ -42,6 +42,7 @@ describe('functional: corrective loop', () => {
   it('mints an additive corrective with the chain-tip scope contract carried forward, then a follow-up approved verdict converges the review', async () => {
     const project = 'corrective-loop';
     await seed(daemon.baseUrl(), project, phaseChainThroughReviewSeedSteps());
+    await addWorktree(daemon.baseUrl(), project, 'rad-orc-source');
     // Both of this scenario's driven review cycles read their verdict off this same report path —
     // the throwaway first cycle reads `approved`, then it's re-staged `changes_requested` below.
     daemon.seedDoc(REVIEW_REPORT_PATH, reviewReportDoc('approved', 'none'));
@@ -76,7 +77,7 @@ describe('functional: corrective loop', () => {
       // The chain-tip scope contract (handoff doc, repos, complexity, commit directive) carried
       // forward from `task-1`, the review's own chain tip — never re-invented by the corrective.
       expect(corrective.data).toMatchObject({
-        handoffDocPath: '/tasks/task-1.md',
+        handoffDocPath: 'tasks/task-1.md',
         complexity: 'standard',
         shouldCommit: true,
       });

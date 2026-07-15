@@ -21,6 +21,7 @@ import type {
   ActResult,
   CapabilityPortSet,
   DagNode,
+  DataResolver,
   NodeId,
   NodeTypeName,
   NodeTypeRegistry,
@@ -68,17 +69,19 @@ export async function resolveViaNodeType(
  * One frontier step: `engage`s `node` — the synchronous `not_started -> in_progress` write plus
  * its `act` dispatch — then resolves it via {@link resolveViaNodeType}, which awaits whatever
  * capability port(s) `node`'s own `resolve` needs before committing the outcome via `applyOutcome`.
- * `engage` rejecting (e.g. `node` fell out of the frontier between selection and this call)
- * surfaces as a structured `Result` failure here, never a thrown exception, so a caller decides how
- * to react instead of wrapping this in a try/catch.
+ * `engage` rejecting (e.g. `node` fell out of the frontier between selection and this call, or
+ * `resolveData` — when supplied — refused to resolve one of `node`'s own declared fields) surfaces
+ * as a structured `Result` failure here, never a thrown exception, so a caller decides how to react
+ * instead of wrapping this in a try/catch.
  */
 export async function advance(
   ctx: PrimitiveContext,
   registry: NodeTypeRegistry,
   ports: CapabilityPortSet,
   node: DagNode,
+  resolveData?: DataResolver,
 ): Promise<Result<AdvanceResult>> {
-  const engaged = engage(ctx, registry, node.id);
+  const engaged = engage(ctx, registry, node.id, resolveData);
   if (!engaged.ok) return engaged;
 
   await resolveViaNodeType(ctx, registry, ports, node);
@@ -110,7 +113,22 @@ export interface QuiescenceNotSettled {
   readonly remaining: readonly NodeId[];
 }
 
-export type QuiescenceResult = QuiescenceSettled | QuiescenceStoppedAtActor | QuiescenceNotSettled;
+/**
+ * `engage` rejected a node the frontier just certified as eligible — a resolution refusal
+ * (`resolveData`, when supplied, threw naming a field it couldn't fill) is the expected case; a
+ * frontier race is not, but either way the host must relay this as an operator-actionable outcome,
+ * never a thrown 500. `code`/`message` carry `engage`'s own rejection verbatim.
+ */
+export interface QuiescenceEngageFailed {
+  readonly settled: false;
+  readonly reason: 'engage-failed';
+  readonly steps: number;
+  readonly nodeId: NodeId;
+  readonly code: string;
+  readonly message: string;
+}
+
+export type QuiescenceResult = QuiescenceSettled | QuiescenceStoppedAtActor | QuiescenceNotSettled | QuiescenceEngageFailed;
 
 /**
  * Runs the drive loop until it must stop: read the whole-tree frontier (`globalFrontier`), `engage`
@@ -121,9 +139,10 @@ export type QuiescenceResult = QuiescenceSettled | QuiescenceStoppedAtActor | Qu
  * (`spawn-sub-agent` / `orchestrator-inline` / `request-human`) stops the loop immediately, before
  * that node is ever dispatched to `resolve` — that node stays `in_progress`, and its `ActResult` is
  * surfaced as the next action for a host to carry out. `maxSteps` bounds the loop with a structured
- * non-settle result rather than spinning forever. An `engage` rejection on a node the frontier just
- * certified as eligible is a driver bug, surfaced as a thrown error rather than folded into a
- * result. A `noop` node whose type declares no `resolve` hook is likewise a driver bug (thrown by
+ * non-settle result rather than spinning forever. `resolveData`, when supplied, is threaded straight
+ * into `engage` — an `engage` rejection (a resolution refusal, or a frontier race) is folded into a
+ * {@link QuiescenceEngageFailed} result rather than thrown, so a host always replies through its own
+ * uniform envelope. A `noop` node whose type declares no `resolve` hook is a driver bug (thrown by
  * {@link resolveViaNodeType}) — `rad-orc:phase` never reaches this branch since it's a `contains`
  * container that never reaches the frontier as a leaf.
  */
@@ -133,6 +152,7 @@ export async function runToQuiescence(
   root: NodeId,
   ports: CapabilityPortSet,
   maxSteps = 300,
+  resolveData?: DataResolver,
 ): Promise<QuiescenceResult> {
   let steps = 0;
   for (;;) {
@@ -143,8 +163,10 @@ export async function runToQuiescence(
     }
 
     const next = frontierNow[0];
-    const engaged = engage(ctx, registry, next.id);
-    if (!engaged.ok) throw new Error(`driver: engage('${next.id}') failed: ${engaged.error.message}`);
+    const engaged = engage(ctx, registry, next.id, resolveData);
+    if (!engaged.ok) {
+      return { settled: false, reason: 'engage-failed', steps, nodeId: next.id, code: engaged.error.code, message: engaged.error.message };
+    }
     steps += 1;
 
     if (engaged.data.executor !== 'noop') {

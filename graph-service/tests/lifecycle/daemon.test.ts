@@ -107,6 +107,22 @@ describe('start', () => {
       /no built-in node types discovered/,
     );
   });
+
+  it('threads root and projectRoot onto the composed service as two distinct directories, exactly as passed', async () => {
+    // Mirrors the functional-test harness's own convention (`tests/harness/boot.ts`): `root` and
+    // `projectRoot` are deliberately different directories — the live risk this must never collapse.
+    await populateBuiltinNodeTypes(root);
+    const projectRoot = path.join(root, 'project');
+    const result = await start({ port: 0, dbPath: ':memory:', root, projectRoot, signals: [] });
+    try {
+      expect(result.service.root).toBe(root);
+      expect(result.service.projectRoot).toBe(projectRoot);
+      expect(result.service.root).not.toBe(result.service.projectRoot);
+    } finally {
+      await new Promise<void>((resolve) => result.server.close(() => resolve()));
+      result.service.db.close();
+    }
+  });
 });
 
 describe('graceful shutdown', () => {

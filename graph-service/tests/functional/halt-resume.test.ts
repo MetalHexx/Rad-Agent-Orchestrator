@@ -9,7 +9,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { BootedDaemon } from '../harness/boot.js';
 import { bootDaemon } from '../harness/boot.js';
-import { dag, driveToQuiescence, frontier, node, seed, steer, submitEvent } from '../harness/drive.js';
+import { addWorktree, dag, driveToQuiescence, frontier, node, seed, steer, submitEvent } from '../harness/drive.js';
 import type { SseCollector } from '../harness/sse.js';
 import { connectSse } from '../harness/sse.js';
 import { PHASE_CHAIN_IDS, REVIEW_REPORT_PATH, phaseChainThroughReviewSeedSteps, reviewReportDoc } from '../fixtures/phase-chain.js';
@@ -52,6 +52,7 @@ describe('functional: halt -> resume + restart durability', () => {
   it('halts recoverably, survives a hard kill + reopen on the same DB file with byte-identical state, then resumes to done', async () => {
     const project = 'halt-resume';
     await seed(daemon.baseUrl(), project, phaseChainThroughReviewSeedSteps());
+    await addWorktree(daemon.baseUrl(), project, 'rad-orc-source');
     // The service reads the review verdict off its report — stage an approved one for the throwaway
     // first cycle.
     daemon.seedDoc(REVIEW_REPORT_PATH, reviewReportDoc('approved', 'none'));

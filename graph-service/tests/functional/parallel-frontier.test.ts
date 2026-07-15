@@ -9,7 +9,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { BootedDaemon } from '../harness/boot.js';
 import { bootDaemon } from '../harness/boot.js';
-import { dag, frontier, seed, submitEvent } from '../harness/drive.js';
+import { addWorktree, dag, frontier, seed, submitEvent } from '../harness/drive.js';
 import type { SseCollector } from '../harness/sse.js';
 import { connectSse } from '../harness/sse.js';
 import { PARALLEL_TASK_IDS, parallelTasksSeedSteps } from '../fixtures/parallel-tasks.js';
@@ -37,6 +37,7 @@ describe('functional: parallel frontier', () => {
   it('both siblings are simultaneously frontier-eligible before either completes, then both independently reach done', async () => {
     const project = 'parallel-frontier';
     await seed(daemon.baseUrl(), project, parallelTasksSeedSteps());
+    await addWorktree(daemon.baseUrl(), project, 'rad-orc-source');
 
     const eligible = await frontier(daemon.baseUrl(), project);
     expect(eligible.map((candidate) => candidate.id).sort()).toEqual([PARALLEL_TASK_IDS.a, PARALLEL_TASK_IDS.b].sort());
