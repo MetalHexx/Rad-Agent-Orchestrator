@@ -142,7 +142,7 @@ describe('rad-orc:corrective', () => {
     expect(corrective?.type).toBe('rad-orc:corrective');
     expect(corrective?.derivedFrom).toBe('task-a');
     expect(corrective?.parent).toBe('phase-1');
-    expect(corrective?.data).toEqual(SEEDED_DATA);
+    expect(corrective?.data).toEqual({ ...SEEDED_DATA, maxRetries: 5 });
     expect(ctx.store.getNode(ctx.scope, 'review')?.status).toBe('not_started');
   });
 });

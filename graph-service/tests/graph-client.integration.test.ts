@@ -164,6 +164,10 @@ describe('integration: graph-client against a booted graph-service', () => {
       expect(engaged.instructions?.length ?? 0).toBeGreaterThan(0);
       expect(engaged.completion_event).toBe('rad-orc:task.completed');
       expect(engaged.context).toMatchObject({ agent: 'coder' });
+      expect(engaged.completion_payload_schema).toEqual([
+        { name: 'repos', flag: false },
+        { name: 'branch', flag: true },
+      ]);
       expect(
         engaged.delta.nodeChanges.some((change) => change.after?.id === 'task-x' && change.after?.status === 'in_progress'),
       ).toBe(true);
