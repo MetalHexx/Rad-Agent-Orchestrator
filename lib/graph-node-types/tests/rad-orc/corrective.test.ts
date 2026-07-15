@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { AgentSpawnRequest } from '@rad-orchestration/graph-engine';
+import type { SpawnPayload } from '@rad-orchestration/graph-engine';
 import {
   InMemoryStateStore,
   ROOT_NODE_ID,
@@ -7,7 +7,7 @@ import {
 } from '@rad-orchestration/graph-engine';
 import type { DagNode, PrimitiveContext, ProjectScope } from '@rad-orchestration/graph-engine';
 import { TASK_COMPLETED_TOKEN } from '../../src/rad-orc/task.js';
-import { CORRECTIVE_NODE_TYPE } from '../../src/rad-orc/corrective.js';
+import { CORRECTIVE_DATA_SCHEMA, CORRECTIVE_NODE_TYPE } from '../../src/rad-orc/corrective.js';
 
 const SEEDED_DATA = {
   handoffDocPath: '/project/tasks/EXAMPLE-TASK-P04-T04.md',
@@ -25,19 +25,64 @@ describe('rad-orc:corrective', () => {
     expect(CORRECTIVE_NODE_TYPE.capabilities).toEqual(['doc-read', 'git-facts', 'spawn-agent']);
   });
 
-  it('act.payload carries the same scope contract plus the running review report and its own corrective index', () => {
-    const result = CORRECTIVE_NODE_TYPE.act({ nodeId: 'task-1-corrective-1', data: SEEDED_DATA });
+  it('carries exactly one instruction pointing at the rad-execute-coding-task skill, and act returns no instructions key', () => {
+    expect(CORRECTIVE_NODE_TYPE.instructions).toContain('rad-execute-coding-task');
+    const result = CORRECTIVE_NODE_TYPE.act({ nodeId: 'task-1-corrective-1', data: SEEDED_DATA, nodes: [], edges: [] });
+    expect(result).not.toHaveProperty('instructions');
+  });
+
+  it('act.payload carries the same scope contract plus review_report_path and corrective_index, with no `kind` field', () => {
+    const result = CORRECTIVE_NODE_TYPE.act({ nodeId: 'task-1-corrective-1', data: SEEDED_DATA, nodes: [], edges: [] });
     expect(result.executor).toBe('spawn-sub-agent');
-    const payload = result.payload as AgentSpawnRequest;
+    const payload = result.payload as SpawnPayload;
     expect(payload).toEqual({
-      kind: 'coder',
-      handoffDoc: SEEDED_DATA.handoffDocPath,
-      complexity: 'standard',
+      agent: 'coder',
+      handoff_doc: SEEDED_DATA.handoffDocPath,
       repos: SEEDED_DATA.repos,
-      shouldCommit: true,
-      reviewReportPath: SEEDED_DATA.reviewReportPath,
-      correctiveIndex: 1,
+      should_commit: true,
+      review_report_path: SEEDED_DATA.reviewReportPath,
+      corrective_index: 1,
     });
+    expect(payload).not.toHaveProperty('kind');
+  });
+
+  it('escalates to coder-senior at the budget edge, reading maxRetries off its own data', () => {
+    const result = CORRECTIVE_NODE_TYPE.act({
+      nodeId: 'task-1-corrective-4',
+      data: { ...SEEDED_DATA, complexity: 'simple' as const, correctiveIndex: 4, maxRetries: 5 },
+      nodes: [],
+      edges: [],
+    });
+    expect((result.payload as SpawnPayload).agent).toBe('coder-senior');
+  });
+
+  it('stays at base tier with plenty of budget remaining', () => {
+    const result = CORRECTIVE_NODE_TYPE.act({
+      nodeId: 'task-1-corrective-1',
+      data: { ...SEEDED_DATA, complexity: 'simple' as const, correctiveIndex: 1, maxRetries: 5 },
+      nodes: [],
+      edges: [],
+    });
+    expect((result.payload as SpawnPayload).agent).toBe('coder-junior');
+  });
+
+  it('declares resolve hints on repos, handoffDocPath, and reviewReportPath, and declares maxRetries as computed', () => {
+    expect(CORRECTIVE_DATA_SCHEMA.repos.resolve).toBe('worktree-repo-set');
+    expect(CORRECTIVE_DATA_SCHEMA.handoffDocPath.resolve).toBe('project-doc-path');
+    expect(CORRECTIVE_DATA_SCHEMA.reviewReportPath.resolve).toBe('project-doc-path');
+    expect(CORRECTIVE_DATA_SCHEMA.reviewReportPath.level).toBe('required');
+    expect(CORRECTIVE_DATA_SCHEMA.maxRetries).toEqual({
+      kind: 'number',
+      level: 'computed',
+      description: CORRECTIVE_DATA_SCHEMA.maxRetries.description,
+    });
+  });
+
+  it('declares the task.completed payload schema', () => {
+    expect(CORRECTIVE_NODE_TYPE.completionPayloadSchema).toEqual([
+      { name: 'repos', flag: false },
+      { name: 'branch', flag: true },
+    ]);
   });
 
   it("handle records the coder's per-repo commit results on the same rad-orc:task.completed contract a task uses", () => {
