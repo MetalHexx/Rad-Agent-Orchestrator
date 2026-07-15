@@ -11,7 +11,7 @@ import { pathToFileURL } from 'node:url';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import yaml from 'js-yaml';
-import { DATA_FIELD_KINDS, DATA_FIELD_LEVELS, type NodeTypeDefinition, type NodeTypeOrigin } from '@rad-orchestration/graph-engine';
+import { DATA_FIELD_KINDS, DATA_FIELD_LEVELS, DATA_FIELD_RESOLUTIONS, type NodeTypeDefinition, type NodeTypeOrigin } from '@rad-orchestration/graph-engine';
 
 export interface NodeTypeLoadError {
   readonly package: string;
@@ -272,6 +272,20 @@ function validateShape(candidate: unknown): string | undefined {
       !DATA_FIELD_LEVELS.includes(fieldSpec.level as (typeof DATA_FIELD_LEVELS)[number])
     ) {
       return `"dataSchema.${fieldName}" is not a well-formed field spec (requires a valid "kind" and "level")`;
+    }
+    if (fieldSpec.resolve !== undefined && !DATA_FIELD_RESOLUTIONS.includes(fieldSpec.resolve as (typeof DATA_FIELD_RESOLUTIONS)[number])) {
+      return `"dataSchema.${fieldName}" has an unknown "resolve" hint (got ${JSON.stringify(fieldSpec.resolve)})`;
+    }
+  }
+  if (record.completionPayloadSchema !== undefined) {
+    if (!Array.isArray(record.completionPayloadSchema)) {
+      return `"completionPayloadSchema" is not an array (got ${JSON.stringify(record.completionPayloadSchema)})`;
+    }
+    for (let i = 0; i < record.completionPayloadSchema.length; i++) {
+      const entry = record.completionPayloadSchema[i];
+      if (!isPlainObject(entry) || typeof entry.name !== 'string' || typeof entry.flag !== 'boolean') {
+        return `"completionPayloadSchema[${i}]" is not a well-formed entry (requires a string "name" and boolean "flag")`;
+      }
     }
   }
   return undefined;

@@ -225,6 +225,79 @@ describe('discoverCustomNodeTypes', () => {
     expect(result.errors[0]?.reason).toContain('instructions');
   });
 
+  it('accepts a definition with no instructions field', async () => {
+    await writePackage('no-instructions', manifestFor('no-instructions', 'no-instructions:thing', './thing.js'), {
+      'thing.js': definitionModule('no-instructions:thing').replace("  instructions: 'fixture instructions',\n", ''),
+    });
+
+    const result = await discoverCustomNodeTypes(root);
+
+    expect(result.customs).toHaveLength(1);
+    expect(result.customs[0]?.name).toBe('no-instructions:thing');
+    expect(result.errors).toEqual([]);
+  });
+
+  it('collects a named load error when a dataSchema field has an unknown resolve hint', async () => {
+    await writePackage('bad-resolve', manifestFor('bad-resolve', 'bad-resolve:thing', './thing.js'), {
+      'thing.js': definitionModule('bad-resolve:thing').replace(
+        'dataSchema: {},',
+        "dataSchema: { foo: { kind: 'string', level: 'optional', resolve: 'unknown-hint' } },",
+      ),
+    });
+
+    const result = await discoverCustomNodeTypes(root);
+
+    expect(result.customs).toEqual([]);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]?.reason).toContain('dataSchema.foo');
+    expect(result.errors[0]?.reason).toContain('resolve');
+  });
+
+  it('collects a named load error when completionPayloadSchema is not an array', async () => {
+    await writePackage('bad-payload-schema', manifestFor('bad-payload-schema', 'bad-payload-schema:thing', './thing.js'), {
+      'thing.js': definitionModule('bad-payload-schema:thing').replace(
+        "  projectStatus() { return 'not_started'; },",
+        "  projectStatus() { return 'not_started'; },\n  completionPayloadSchema: { invalid: 'object' },",
+      ),
+    });
+
+    const result = await discoverCustomNodeTypes(root);
+
+    expect(result.customs).toEqual([]);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]?.reason).toContain('completionPayloadSchema');
+  });
+
+  it('collects a named load error when completionPayloadSchema entry is missing name', async () => {
+    await writePackage('bad-payload-entry', manifestFor('bad-payload-entry', 'bad-payload-entry:thing', './thing.js'), {
+      'thing.js': definitionModule('bad-payload-entry:thing').replace(
+        "  projectStatus() { return 'not_started'; },",
+        "  projectStatus() { return 'not_started'; },\n  completionPayloadSchema: [{ flag: true }],",
+      ),
+    });
+
+    const result = await discoverCustomNodeTypes(root);
+
+    expect(result.customs).toEqual([]);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]?.reason).toContain('completionPayloadSchema[0]');
+  });
+
+  it('collects a named load error when completionPayloadSchema entry flag is not a boolean', async () => {
+    await writePackage('bad-payload-flag', manifestFor('bad-payload-flag', 'bad-payload-flag:thing', './thing.js'), {
+      'thing.js': definitionModule('bad-payload-flag:thing').replace(
+        "  projectStatus() { return 'not_started'; },",
+        "  projectStatus() { return 'not_started'; },\n  completionPayloadSchema: [{ name: 'field', flag: 'not-boolean' }],",
+      ),
+    });
+
+    const result = await discoverCustomNodeTypes(root);
+
+    expect(result.customs).toEqual([]);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]?.reason).toContain('completionPayloadSchema[0]');
+  });
+
   it('collects a named load error when presentation is missing a string label', async () => {
     await writePackage('bad-presentation', manifestFor('bad-presentation', 'bad-presentation:thing', './thing.js'), {
       'thing.js': definitionModule('bad-presentation:thing').replace("presentation: { label: 'Fixture' },", 'presentation: { description: "no label" },'),
