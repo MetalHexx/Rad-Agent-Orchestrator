@@ -35,13 +35,7 @@ const PRESENTATION: Presentation = {
     "Structural container for a phase's tasks and reviews; status is the engine's own containment roll-up.",
 };
 
-const INSTRUCTIONS = `# rad-orc:phase
-
-A structural container seeded by \`rad-orc:explosion\` for one phase of the master plan. Carries
-no operator or agent action of its own — the engine never dispatches work to it directly, and its
-status is always the roll-up of its own children (\`done\` once every child is \`done\`, \`failed\`
-if any child is \`failed\`, \`in_progress\` otherwise).
-`;
+const INSTRUCTIONS = `Structural container for a phase of the master plan; its status derives from its children.`;
 
 function act(_ctx: ActContext): ActResult {
   return {

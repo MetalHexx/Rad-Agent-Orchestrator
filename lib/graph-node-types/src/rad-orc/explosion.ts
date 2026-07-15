@@ -468,18 +468,6 @@ const PRESENTATION: Presentation = {
     'Parses the authored master plan into phases/tasks and seeds the decorated execution subgraph, gated behind the plan-level approval.',
 };
 
-const INSTRUCTIONS = `# rad-orc:explosion
-
-The canonical \`expands\`-trait node and the engine's sole code-behind: a deterministic transform
-(\`parseMasterPlan\`) turns the authored \`rad-orc:master_plan\` doc into parsed values, then this
-node's own \`handle\` decorates those values with its declared \`cadence\` data to emit one
-\`expand\` batch — a \`rad-orc:phase\` per parsed phase, a \`rad-orc:task\` per parsed task, plus
-the review nodes the cadence names — gated behind the plan-level \`rad-orc:approval\`. Runs once,
-after \`rad-orc:master_plan\` completes and before that approval; a parse failure or a plan-level
-denial cascade-resets \`rad-orc:master_plan\` and this node re-runs fresh, under a parse-retry cap.
-Never re-fires once the seeded subgraph starts executing.
-`;
-
 export interface ExplosionNodeTypeOptions {
   /** The parse-retry cap before a further failure stops re-requesting a fresh master plan. Host config; default {@link DEFAULT_PARSE_RETRY_LIMIT}. */
   readonly parseRetryLimit?: number;
@@ -603,7 +591,6 @@ export function createExplosionNodeType(options: ExplosionNodeTypeOptions = {}):
     traits: ['expands'],
     capabilities: [MASTER_PLAN_PARSER_CAPABILITY, 'doc-read', 'doc-write'],
     presentation: PRESENTATION,
-    instructions: INSTRUCTIONS,
     act,
     handle,
     projectStatus,

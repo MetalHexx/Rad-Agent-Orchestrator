@@ -48,6 +48,11 @@ export const APPROVAL_DATA_SCHEMA: DataSchema = {
     level: 'computed',
     description: "The operator's granted/denied verdict, once resolved.",
   },
+  repos: {
+    kind: 'array',
+    level: 'optional',
+    description: "The repos (with pr_url) the operator is approving, if present.",
+  },
 };
 
 const PRESENTATION: Presentation = {
@@ -55,18 +60,7 @@ const PRESENTATION: Presentation = {
   description: "Human gate at the plan or final position; routes on its own granted/denied vocabulary.",
 };
 
-const INSTRUCTIONS = `# rad-orc:approval
-
-One node type occupying either of two gate positions, disambiguated by its own \`level\` field —
-\`plan\` (gates the seeded execution subgraph) or \`final\` (gates project completion). Routes on
-its own two-outcome vocabulary, never the engine's \`ok\`/\`error\` envelope spine:
-
-- \`granted\` — advance; no routing request, the DAG proceeds past this node on its own.
-- \`denied\` at \`plan\` level — cascade-resets \`rad-orc:master_plan\` (re-authoring the plan and
-  tearing down whatever \`rad-orc:explosion\` already seeded from the rejected one).
-- \`denied\` at \`final\` level — a recoverable halt: this node stops advancing and awaits an
-  out-of-band operator action, since no primitive in the engine's vocabulary names "halt".
-`;
+const INSTRUCTIONS = `Request the operator's decision at this node's level (\`plan\` or \`final\`) and report \`granted\` or \`denied\`.`;
 
 function act(_ctx: ActContext): ActResult {
   return {
@@ -111,4 +105,5 @@ export const APPROVAL_NODE_TYPE: NodeTypeDefinition = {
   handle,
   projectStatus,
   completionToken: APPROVAL_DECIDED_TOKEN,
+  completionPayloadSchema: [{ name: 'decision', flag: true }],
 };
