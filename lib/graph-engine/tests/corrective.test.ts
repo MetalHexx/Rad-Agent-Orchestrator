@@ -66,7 +66,12 @@ describe('add_corrective — first cycle', () => {
 
     const corrective = ctx.store.getNode(ctx.scope, 'corrective-1');
     expect(corrective).toEqual(
-      node('corrective-1', { type: 'rad-orc:corrective', parent: 'phase-1', derivedFrom: 'task-a' }),
+      node('corrective-1', {
+        type: 'rad-orc:corrective',
+        parent: 'phase-1',
+        derivedFrom: 'task-a',
+        data: { maxRetries: 5 },
+      }),
     );
     expect(ctx.store.listEdges(ctx.scope)).toEqual(
       expect.arrayContaining([{ from: 'corrective-1', to: 'review', kind: 'depends_on' }]),
@@ -225,6 +230,66 @@ describe('add_corrective — retry budget', () => {
     expect(halted.ok).toBe(true);
     if (!halted.ok) return;
     expect(halted.data.params).toMatchObject({ maxRetries: 0, halted: true });
+    expect(ctx.store.getNode(ctx.scope, 'corrective-1')).toBeNull();
+  });
+});
+
+describe('add_corrective — stamped retry budget', () => {
+  it('stamps data.maxRetries from options.maxRetries', () => {
+    const ctx = ctxFor('proj-a');
+    seed(
+      ctx,
+      [node('phase-1'), node('task-a', { parent: 'phase-1', status: 'done' }), node('review', { status: 'done' })],
+      [{ op: 'created', before: null, after: { from: 'task-a', to: 'review', kind: 'depends_on' } }],
+    );
+
+    add_corrective(ctx, 'corrective-1', 'rad-orc:corrective', 'review', { maxRetries: 3 });
+
+    expect(ctx.store.getNode(ctx.scope, 'corrective-1')?.data).toEqual({ maxRetries: 3 });
+  });
+
+  it('stamps the default budget when options.maxRetries is omitted', () => {
+    const ctx = ctxFor('proj-a');
+    seed(
+      ctx,
+      [node('phase-1'), node('task-a', { parent: 'phase-1', status: 'done' }), node('review', { status: 'done' })],
+      [{ op: 'created', before: null, after: { from: 'task-a', to: 'review', kind: 'depends_on' } }],
+    );
+
+    add_corrective(ctx, 'corrective-1', 'rad-orc:corrective', 'review');
+
+    expect(ctx.store.getNode(ctx.scope, 'corrective-1')?.data).toEqual({ maxRetries: 5 });
+  });
+
+  it('preserves caller-supplied options.data alongside the stamped budget', () => {
+    const ctx = ctxFor('proj-a');
+    seed(
+      ctx,
+      [node('phase-1'), node('task-a', { parent: 'phase-1', status: 'done' }), node('review', { status: 'done' })],
+      [{ op: 'created', before: null, after: { from: 'task-a', to: 'review', kind: 'depends_on' } }],
+    );
+
+    add_corrective(ctx, 'corrective-1', 'rad-orc:corrective', 'review', {
+      maxRetries: 2,
+      data: { correctiveIndex: 1 },
+    });
+
+    expect(ctx.store.getNode(ctx.scope, 'corrective-1')?.data).toEqual({ correctiveIndex: 1, maxRetries: 2 });
+  });
+
+  it('does not mint anything on a halt, so no data is stamped', () => {
+    const ctx = ctxFor('proj-a');
+    seed(
+      ctx,
+      [node('phase-1'), node('task-a', { parent: 'phase-1', status: 'done' }), node('review', { status: 'done' })],
+      [{ op: 'created', before: null, after: { from: 'task-a', to: 'review', kind: 'depends_on' } }],
+    );
+
+    const halted = add_corrective(ctx, 'corrective-1', 'rad-orc:corrective', 'review', { maxRetries: 0 });
+
+    expect(halted.ok).toBe(true);
+    if (!halted.ok) return;
+    expect(halted.data.nodeChanges.every((change) => change.op !== 'created')).toBe(true);
     expect(ctx.store.getNode(ctx.scope, 'corrective-1')).toBeNull();
   });
 });
