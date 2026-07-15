@@ -8,6 +8,9 @@ export { buildApp } from './http/app.js';
 export type { Envelope, FailureEnvelope, SuccessEnvelope } from './http/respond.js';
 export { err, fromResult, ok } from './http/respond.js';
 
+export type { FieldResolverDeps } from './resolve/resolve-fields.js';
+export { createFieldResolver } from './resolve/resolve-fields.js';
+
 export type { CapabilityPorts } from './capabilities/ports.js';
 export type { FakedCapabilityPorts } from './capabilities/fakes.js';
 export {
