@@ -69,17 +69,8 @@ Once the auditor's findings are applied as inline corrections, signal this step 
 D12: no verdict is returned to the service; the corrections landing in the docs are the outcome.
 `;
 
-function act(ctx: ActContext): ActResult {
-  const requirementsDocPath = typeof ctx.data.requirementsDocPath === 'string' ? ctx.data.requirementsDocPath : undefined;
-  const masterPlanDocPath = typeof ctx.data.masterPlanDocPath === 'string' ? ctx.data.masterPlanDocPath : undefined;
-  const requirementsTarget = requirementsDocPath ?? "the project's requirements doc";
-  const masterPlanTarget = masterPlanDocPath ?? "the project's master-plan doc";
+function act(_ctx: ActContext): ActResult {
   return {
-    instructions:
-      `Spawn a general-purpose auditor over ${requirementsTarget} and ${masterPlanTarget} via the ` +
-      'doc-read capability, run the four-lens audit (Accurate, Consistent, Coherent, Complete), ' +
-      'apply its findings as inline corrections to those docs via the doc-write capability, then ' +
-      'signal this step complete — no verdict is reported back to the service.',
     executor: 'orchestrator-inline',
   };
 }

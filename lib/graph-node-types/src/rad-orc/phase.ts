@@ -45,7 +45,6 @@ if any child is \`failed\`, \`in_progress\` otherwise).
 
 function act(_ctx: ActContext): ActResult {
   return {
-    instructions: 'Structural container — carries no operator action of its own.',
     executor: 'noop',
   };
 }

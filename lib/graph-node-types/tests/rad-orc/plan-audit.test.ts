@@ -12,19 +12,11 @@ describe('rad-orc:plan_audit', () => {
     expect(PLAN_AUDIT_NODE_TYPE.capabilities).toEqual(['doc-read', 'doc-write']);
   });
 
-  it('act returns inline instructions with no payload and executor orchestrator-inline', () => {
-    const result = PLAN_AUDIT_NODE_TYPE.act({ nodeId: 'plan_audit', data: {} });
+  it('act returns inline executor with no instructions key or payload', () => {
+    const result = PLAN_AUDIT_NODE_TYPE.act({ nodeId: 'plan_audit', data: {}, nodes: [], edges: [] });
     expect(result.executor).toBe('orchestrator-inline');
     expect(result.payload).toBeUndefined();
-  });
-
-  it('act honors seeded requirementsDocPath/masterPlanDocPath overrides', () => {
-    const result = PLAN_AUDIT_NODE_TYPE.act({
-      nodeId: 'plan_audit',
-      data: { requirementsDocPath: 'custom/REQS.md', masterPlanDocPath: 'custom/PLAN.md' },
-    });
-    expect(result.instructions).toContain('custom/REQS.md');
-    expect(result.instructions).toContain('custom/PLAN.md');
+    expect(result).not.toHaveProperty('instructions');
   });
 
   it('bakes all four audit lenses into the instructions', () => {

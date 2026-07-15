@@ -68,10 +68,8 @@ its own two-outcome vocabulary, never the engine's \`ok\`/\`error\` envelope spi
   out-of-band operator action, since no primitive in the engine's vocabulary names "halt".
 `;
 
-function act(ctx: ActContext): ActResult {
-  const level: ApprovalLevel = ctx.data.level === 'final' ? 'final' : 'plan';
+function act(_ctx: ActContext): ActResult {
   return {
-    instructions: `Request the operator's ${level}-level approval decision (granted/denied) via the request-human capability.`,
     executor: 'request-human',
   };
 }

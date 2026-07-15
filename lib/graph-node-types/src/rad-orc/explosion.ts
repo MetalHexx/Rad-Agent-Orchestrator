@@ -503,10 +503,6 @@ export function createExplosionNodeType(options: ExplosionNodeTypeOptions = {}):
 
   function act(_ctx: ActContext): ActResult {
     return {
-      instructions:
-        "Parse the authored `rad-orc:master_plan` doc via this node's own code-behind parser " +
-        '(`parseMasterPlan`), then feed the result back as `rad-orc:explosion.parsed` (success) or ' +
-        '`rad-orc:explosion.parse_failed` (failure) — a deterministic transform, no operator or agent action.',
       executor: 'noop',
     };
   }
