@@ -1,6 +1,8 @@
 import type {
   ActContext,
   ActResult,
+  AgentName,
+  CompletionPayloadSchema,
   DataSchema,
   EventToken,
   HandleResult,
@@ -10,9 +12,10 @@ import type {
   Presentation,
   ResolveContext,
   ResolveOutcome,
-  ReviewSpawnRequest,
   RoutingRequest,
+  SpawnPayload,
 } from '@rad-orchestration/graph-engine';
+import { resolveReviewerAgent } from './agent-tier.js';
 
 /**
  * One node type occupying all three review positions, disambiguated by its own `level` field —
@@ -27,15 +30,24 @@ function readLevel(data: Readonly<Record<string, unknown>>): CodeReviewLevel {
   return 'task';
 }
 
+/** Task-scope only — phase and final ignore it, but the ladder owns that rule, not this call site. */
+function readComplexity(value: unknown): 'simple' | 'standard' | 'complex' | undefined {
+  return value === 'simple' || value === 'standard' || value === 'complex' ? value : undefined;
+}
+
 // ── Per-repo base + level-specific SHA extensions ────────────────────────────────
 // The seam to get right: these field names are frozen and must match the T02 fixture
 // (`tests/fixtures/frozen-contracts.ts`'s `TaskRepoShas`/`PhaseRepoShas`/`FinalRepoShas`)
 // character-for-character — never collapsed onto one shared field name across levels.
 
+// The index signature mirrors `SpawnPayload.repos`'s own open shape (see the engine's
+// `SpawnPayload` doc comment) — the level-specific SHA fields ride alongside the base ref, never
+// collapsed onto one shared name, but the entry type stays open so it satisfies that contract.
 interface ReviewRepoRef {
   readonly name: string;
   readonly path: string;
   readonly branch: string;
+  readonly [field: string]: unknown;
 }
 
 export interface TaskReviewRepo extends ReviewRepoRef {
@@ -90,12 +102,10 @@ function finalRepos(data: Readonly<Record<string, unknown>>): readonly FinalRevi
 }
 
 // ── The reviewer spawn payload ────────────────────────────────────────────────────
-// Extends the engine's own `ReviewSpawnRequest` with the level-specific doc ref + per-repo SHAs
-// the rad-code-review skill's scope table freezes; `handoffDoc` mirrors whichever level-specific
-// doc applies so the engine's generic required field is always satisfied.
+// Extends the engine's own `SpawnPayload` with the level-specific doc ref + per-repo SHAs the
+// rad-code-review skill's scope table freezes. Discriminated by `agent`/`level` alone — no `kind`.
 
-interface CodeReviewSpawnBase extends ReviewSpawnRequest {
-  readonly kind: 'reviewer';
+interface CodeReviewSpawnBase extends SpawnPayload {
   readonly level: CodeReviewLevel;
   readonly review_report_path: string;
 }
@@ -158,31 +168,42 @@ export const CODE_REVIEW_DATA_SCHEMA: DataSchema = {
   reviewReportPath: {
     kind: 'string',
     level: 'required',
+    resolve: 'project-doc-path',
     description: 'The one running report this node owns across every corrective cycle at its scope.',
   },
   repos: {
     kind: 'array',
     level: 'required',
+    resolve: 'worktree-repo-set',
     description: 'The repo set under review — SHAs are attached per level once known, `null` until then.',
+  },
+  complexity: {
+    kind: 'string',
+    level: 'optional',
+    description: "Task-level only — this task's declared complexity, sizing the reviewer tier; phase and final always resolve to 'reviewer' regardless.",
   },
   handoffDocPath: {
     kind: 'string',
     level: 'optional',
+    resolve: 'project-doc-path',
     description: 'Task-level only — the coder handoff doc this review reads.',
   },
   phasePlanDocPath: {
     kind: 'string',
     level: 'optional',
+    resolve: 'project-doc-path',
     description: 'Phase-level only — the phase plan doc this review reads.',
   },
   requirementsDocPath: {
     kind: 'string',
     level: 'optional',
+    resolve: 'project-doc-path',
     description: 'Final-level only — the requirements doc this review reads.',
   },
   phasePlanPaths: {
     kind: 'array',
     level: 'optional',
+    resolve: 'project-doc-path',
     description: 'Final-level only — every phase plan doc path across the whole project.',
   },
   verdict: {
@@ -202,61 +223,47 @@ const PRESENTATION: Presentation = {
   description: 'One node type at task/phase/final, disambiguated by its own level; routes uniformly on verdict.',
 };
 
-const INSTRUCTIONS = `# rad-orc:code_review
+const INSTRUCTIONS = [
+  'Review this scope by following the `rad-code-review` skill.',
+  '',
+  "The node's own `level` names which scope is under review — task, phase, or final. Each repo",
+  "entry's SHA fields bound the diff for that scope, and this level's own doc(s) — the task",
+  'handoff, the phase plan, or the requirements doc plus every phase plan path — carry the scope',
+  'contract to review against.',
+  '',
+  'Write your verdict into the running report at `review_report_path` — the same report to reopen',
+  'on a re-adjudication rather than opening a fresh one each cycle.',
+].join('\n');
 
-One node type occupying all three review positions — \`task\`, \`phase\`, \`final\` — disambiguated
-by its own \`level\` field, never three separate types. Spawns the level's own reviewer sub-agent
-carrying that level's per-repo SHAs (\`head_sha\` at task scope; \`phase_first_sha\`+
-\`phase_head_sha\` at phase scope; \`project_base_sha\`+\`project_head_sha\` at final scope) and doc
-ref (\`handoff_doc\` / \`phase_plan_doc\` / \`requirements_doc\`+\`phase_plan_paths\`), then reads the
-reviewer's \`verdict\` back via the doc-read capability. Routes uniformly at every level, on the
-verdict value alone, never a finding's own content:
-
-- \`approved\` — \`done\`, no routing request.
-- \`changes_requested\` — \`add_corrective\`: the compound primitive births the next corrective
-  attempt and re-points this same review back onto it.
-- \`rejected\` — a recoverable halt: no primitive in the engine's vocabulary names "halt", so this
-  node simply stops advancing.
-
-Owns one running report per scope (\`reviewReportPath\`), re-adjudicated in place across every
-corrective cycle rather than opening a fresh report each time.
-`;
-
-function taskPayload(ctx: ActContext, reviewReportPath: string): TaskCodeReviewSpawnPayload {
-  const handoffDoc = typeof ctx.data.handoffDocPath === 'string' ? ctx.data.handoffDocPath : '';
+function taskPayload(ctx: ActContext, reviewReportPath: string, agent: AgentName): TaskCodeReviewSpawnPayload {
   return {
-    kind: 'reviewer',
+    agent,
     level: 'task',
     review_report_path: reviewReportPath,
-    handoffDoc,
-    handoff_doc: handoffDoc,
+    handoff_doc: typeof ctx.data.handoffDocPath === 'string' ? ctx.data.handoffDocPath : '',
     repos: taskRepos(ctx.data),
   };
 }
 
-function phasePayload(ctx: ActContext, reviewReportPath: string): PhaseCodeReviewSpawnPayload {
-  const phasePlanDoc = typeof ctx.data.phasePlanDocPath === 'string' ? ctx.data.phasePlanDocPath : '';
+function phasePayload(ctx: ActContext, reviewReportPath: string, agent: AgentName): PhaseCodeReviewSpawnPayload {
   return {
-    kind: 'reviewer',
+    agent,
     level: 'phase',
     review_report_path: reviewReportPath,
-    handoffDoc: phasePlanDoc,
-    phase_plan_doc: phasePlanDoc,
+    phase_plan_doc: typeof ctx.data.phasePlanDocPath === 'string' ? ctx.data.phasePlanDocPath : '',
     repos: phaseRepos(ctx.data),
   };
 }
 
-function finalPayload(ctx: ActContext, reviewReportPath: string): FinalCodeReviewSpawnPayload {
-  const requirementsDoc = typeof ctx.data.requirementsDocPath === 'string' ? ctx.data.requirementsDocPath : '';
+function finalPayload(ctx: ActContext, reviewReportPath: string, agent: AgentName): FinalCodeReviewSpawnPayload {
   const phasePlanPaths = Array.isArray(ctx.data.phasePlanPaths)
     ? ctx.data.phasePlanPaths.filter((entry): entry is string => typeof entry === 'string')
     : [];
   return {
-    kind: 'reviewer',
+    agent,
     level: 'final',
     review_report_path: reviewReportPath,
-    handoffDoc: requirementsDoc,
-    requirements_doc: requirementsDoc,
+    requirements_doc: typeof ctx.data.requirementsDocPath === 'string' ? ctx.data.requirementsDocPath : '',
     phase_plan_paths: phasePlanPaths,
     repos: finalRepos(ctx.data),
   };
@@ -265,18 +272,17 @@ function finalPayload(ctx: ActContext, reviewReportPath: string): FinalCodeRevie
 function act(ctx: ActContext): ActResult {
   const level = readLevel(ctx.data);
   const reviewReportPath = typeof ctx.data.reviewReportPath === 'string' ? ctx.data.reviewReportPath : '';
+  // Passed through regardless of level — resolveReviewerAgent's own ladder owns ignoring it at phase/final.
+  const agent = resolveReviewerAgent({ level, complexity: readComplexity(ctx.data.complexity) });
 
   const payload: CodeReviewSpawnPayload =
-    level === 'task' ? taskPayload(ctx, reviewReportPath) : level === 'phase' ? phasePayload(ctx, reviewReportPath) : finalPayload(ctx, reviewReportPath);
+    level === 'task'
+      ? taskPayload(ctx, reviewReportPath, agent)
+      : level === 'phase'
+        ? phasePayload(ctx, reviewReportPath, agent)
+        : finalPayload(ctx, reviewReportPath, agent);
 
-  return {
-    instructions:
-      `Spawn the ${level}-level reviewer via the spawn-agent capability with this level's own SHA/doc ` +
-      "context, then once it reports, read the running review report's `verdict` via the doc-read " +
-      'capability and feed it back as `rad-orc:code_review.reviewed`.',
-    executor: 'spawn-sub-agent',
-    payload,
-  };
+  return { executor: 'spawn-sub-agent', payload };
 }
 
 function handle(ev: NodeEvent): HandleResult {
@@ -381,6 +387,11 @@ async function resolve(ctx: ResolveContext): Promise<ResolveOutcome> {
   return { token: CODE_REVIEW_REVIEWED_TOKEN, envelope: { outcome: 'ok', data: data as unknown as Readonly<Record<string, unknown>> } };
 }
 
+const COMPLETION_PAYLOAD_SCHEMA: CompletionPayloadSchema = [
+  { name: 'verdict', flag: true },
+  { name: 'severity', flag: true },
+];
+
 export const CODE_REVIEW_NODE_TYPE: NodeTypeDefinition = {
   name: 'rad-orc:code_review',
   dataSchema: CODE_REVIEW_DATA_SCHEMA,
@@ -393,4 +404,5 @@ export const CODE_REVIEW_NODE_TYPE: NodeTypeDefinition = {
   projectStatus,
   resolve,
   completionToken: CODE_REVIEW_REVIEWED_TOKEN,
+  completionPayloadSchema: COMPLETION_PAYLOAD_SCHEMA,
 };

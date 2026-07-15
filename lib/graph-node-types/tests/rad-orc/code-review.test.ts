@@ -2,6 +2,7 @@ import { ROOT_NODE_ID } from '@rad-orchestration/graph-engine';
 import type { DagNode, ResolveContext } from '@rad-orchestration/graph-engine';
 import { describe, expect, it } from 'vitest';
 import {
+  CODE_REVIEW_DATA_SCHEMA,
   CODE_REVIEW_NODE_TYPE,
   CODE_REVIEW_REVIEWED_TOKEN,
   type FinalCodeReviewSpawnPayload,
@@ -37,10 +38,12 @@ describe('rad-orc:code_review', () => {
       });
       expect(result.executor).toBe('spawn-sub-agent');
       const payload = result.payload as TaskCodeReviewSpawnPayload;
-      expect(payload.kind).toBe('reviewer');
+      expect(payload).not.toHaveProperty('kind');
       expect(payload.level).toBe('task');
       expect(payload.handoff_doc).toBe('/project/tasks/EXAMPLE-TASK-P04-T04.md');
       expect(payload.review_report_path).toBe('/project/reviews/P04-T04.md');
+      expect(payload).not.toHaveProperty('handoffDoc');
+      expect(Object.keys(payload).sort()).toEqual(['agent', 'handoff_doc', 'level', 'repos', 'review_report_path'].sort());
       const [repo] = payload.repos;
       expect(Object.keys(repo)).toEqual(['name', 'path', 'branch', ...Object.keys(TASK_REPO_SHA_FIXTURE)]);
       expect(repo.head_sha).toBe(TASK_REPO_SHA_FIXTURE.head_sha);
@@ -68,6 +71,9 @@ describe('rad-orc:code_review', () => {
       const payload = result.payload as PhaseCodeReviewSpawnPayload;
       expect(payload.level).toBe('phase');
       expect(payload.phase_plan_doc).toBe('phases/PHASE-04.md');
+      expect(payload).not.toHaveProperty('handoffDoc');
+      expect(payload).not.toHaveProperty('handoff_doc');
+      expect(Object.keys(payload).sort()).toEqual(['agent', 'level', 'phase_plan_doc', 'repos', 'review_report_path'].sort());
       const [repo] = payload.repos;
       expect(Object.keys(repo)).toEqual(['name', 'path', 'branch', ...Object.keys(PHASE_REPO_SHA_FIXTURE)]);
       expect(repo.phase_first_sha).toBe(PHASE_REPO_SHA_FIXTURE.phase_first_sha);
@@ -89,6 +95,11 @@ describe('rad-orc:code_review', () => {
       expect(payload.level).toBe('final');
       expect(payload.requirements_doc).toBe('REQUIREMENTS.md');
       expect(payload.phase_plan_paths).toEqual(['phases/PHASE-01.md', 'phases/PHASE-02.md']);
+      expect(payload).not.toHaveProperty('handoffDoc');
+      expect(payload).not.toHaveProperty('handoff_doc');
+      expect(Object.keys(payload).sort()).toEqual(
+        ['agent', 'level', 'requirements_doc', 'phase_plan_paths', 'repos', 'review_report_path'].sort(),
+      );
       const [repo] = payload.repos;
       expect(Object.keys(repo)).toEqual(['name', 'path', 'branch', ...Object.keys(FINAL_REPO_SHA_FIXTURE)]);
     });
@@ -99,6 +110,66 @@ describe('rad-orc:code_review', () => {
       const finalKeys = Object.keys(FINAL_REPO_SHA_FIXTURE);
       const all = [...taskKeys, ...phaseKeys, ...finalKeys];
       expect(new Set(all).size).toBe(all.length);
+    });
+  });
+
+  describe('act — reviewer tiering', () => {
+    it.each([
+      ['simple', 'reviewer-junior'],
+      ['standard', 'reviewer'],
+      ['complex', 'reviewer'],
+    ] as const)('task level with %s complexity resolves to agent %s', (complexity, agent) => {
+      const result = CODE_REVIEW_NODE_TYPE.act({
+        nodeId: 'review-task',
+        data: { level: 'task', reviewReportPath: '/r.md', complexity, repos: [REPO_BASE] },
+      });
+      expect((result.payload as TaskCodeReviewSpawnPayload).agent).toBe(agent);
+    });
+
+    it('task level with no complexity defaults to agent reviewer', () => {
+      const result = CODE_REVIEW_NODE_TYPE.act({
+        nodeId: 'review-task',
+        data: { level: 'task', reviewReportPath: '/r.md', repos: [REPO_BASE] },
+      });
+      expect((result.payload as TaskCodeReviewSpawnPayload).agent).toBe('reviewer');
+    });
+
+    it('phase level with complexity: simple still yields reviewer — the easy-to-get-wrong case', () => {
+      const result = CODE_REVIEW_NODE_TYPE.act({
+        nodeId: 'review-phase',
+        data: { level: 'phase', reviewReportPath: '/r.md', complexity: 'simple', repos: [REPO_BASE] },
+      });
+      expect((result.payload as PhaseCodeReviewSpawnPayload).agent).toBe('reviewer');
+    });
+
+    it('final level with complexity: simple still yields reviewer', () => {
+      const result = CODE_REVIEW_NODE_TYPE.act({
+        nodeId: 'review-final',
+        data: { level: 'final', reviewReportPath: '/r.md', complexity: 'simple', repos: [REPO_BASE] },
+      });
+      expect((result.payload as FinalCodeReviewSpawnPayload).agent).toBe('reviewer');
+    });
+  });
+
+  describe('dataSchema — resolvables and the completion payload', () => {
+    it('declares resolve hints on all six path-bearing fields', () => {
+      expect(CODE_REVIEW_DATA_SCHEMA.repos.resolve).toBe('worktree-repo-set');
+      expect(CODE_REVIEW_DATA_SCHEMA.handoffDocPath.resolve).toBe('project-doc-path');
+      expect(CODE_REVIEW_DATA_SCHEMA.phasePlanDocPath.resolve).toBe('project-doc-path');
+      expect(CODE_REVIEW_DATA_SCHEMA.requirementsDocPath.resolve).toBe('project-doc-path');
+      expect(CODE_REVIEW_DATA_SCHEMA.reviewReportPath.resolve).toBe('project-doc-path');
+      expect(CODE_REVIEW_DATA_SCHEMA.phasePlanPaths.resolve).toBe('project-doc-path');
+    });
+
+    it('declares complexity as an optional string field', () => {
+      expect(CODE_REVIEW_DATA_SCHEMA.complexity).toMatchObject({ kind: 'string', level: 'optional' });
+    });
+
+    it('declares the code_review.reviewed completion payload schema', () => {
+      expect(CODE_REVIEW_NODE_TYPE.completionPayloadSchema).toEqual([
+        { name: 'verdict', flag: true },
+        { name: 'severity', flag: true },
+      ]);
     });
   });
 
