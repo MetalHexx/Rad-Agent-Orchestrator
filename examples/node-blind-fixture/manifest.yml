@@ -1,0 +1,6 @@
+namespace: node-blind-fixture
+version: "1.0.0"
+description: "Custom node-type fixture with novel field names to prove node-blind resolution."
+nodeTypes:
+  - name: node-blind-fixture:resolver
+    entrypoint: ./dist/resolver.js
