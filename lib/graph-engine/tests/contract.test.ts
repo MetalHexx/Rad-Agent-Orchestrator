@@ -18,7 +18,7 @@ function ctxFor(projectId: string): PrimitiveContext {
   return { store: new InMemoryStateStore(), scope: scope(projectId) };
 }
 
-/** A minimal in-test node type whose `act` echoes the engaged node's id back in `instructions`. */
+/** A minimal in-test node type whose `act` always resolves to a no-op executor. */
 function makeFakeNodeType(): NodeTypeDefinition {
   return {
     name: 'test:fake',
@@ -26,9 +26,8 @@ function makeFakeNodeType(): NodeTypeDefinition {
     traits: [],
     capabilities: [],
     presentation: { label: 'Fake' },
-    instructions: '',
-    act(ctx: ActContext): ActResult {
-      return { instructions: `run ${ctx.nodeId}`, executor: 'noop' };
+    act(_ctx: ActContext): ActResult {
+      return { executor: 'noop' };
     },
     handle(_ev: NodeEvent) {
       return {};
@@ -70,7 +69,7 @@ describe('engage', () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.data).toEqual({ instructions: 'run task-a', executor: 'noop' });
+    expect(result.data).toEqual({ executor: 'noop' });
     expect(ctx.store.getNode(ctx.scope, 'task-a')?.status).toBe('in_progress');
   });
 

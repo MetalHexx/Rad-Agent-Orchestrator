@@ -21,14 +21,36 @@ export type DataFieldKind = (typeof DATA_FIELD_KINDS)[number];
 export const DATA_FIELD_LEVELS = ['required', 'optional', 'computed'] as const;
 export type DataFieldLevel = (typeof DATA_FIELD_LEVELS)[number];
 
+/**
+ * What a host must do to a field before `act` reads it: a `worktree-repo-set` field holds an
+ * array of `{ name, path, branch, ... }` entries whose `path` the host fills per repo; a
+ * `project-doc-path` field holds a project-relative doc path — as a string, or an array of them —
+ * the host makes absolute. A separate axis from `kind`, which stays the value's data type.
+ */
+export const DATA_FIELD_RESOLUTIONS = ['worktree-repo-set', 'project-doc-path'] as const;
+export type DataFieldResolution = (typeof DATA_FIELD_RESOLUTIONS)[number];
+
 export interface DataFieldSpec {
   readonly kind: DataFieldKind;
   readonly level: DataFieldLevel;
+  /** Declares that a host must fill this field with fresh, resolved absolute paths before `act` reads it. */
+  readonly resolve?: DataFieldResolution;
   readonly description?: string;
 }
 
 /** A node type's full data surface, keyed by field name. */
 export type DataSchema = Readonly<Record<string, DataFieldSpec>>;
+
+/**
+ * A host-supplied, node-blind resolution of a node's own `data`: reads the type's `dataSchema`
+ * declarations and fills every field carrying a `resolve` hint with fresh absolute paths. Generic
+ * over declarations — never over a concrete type's field names (D24). Throws when a declared,
+ * required field cannot be resolved; the caller must not swallow it.
+ */
+export type DataResolver = (
+  schema: DataSchema,
+  data: Readonly<Record<string, unknown>>,
+) => Readonly<Record<string, unknown>>;
 
 // ── Presentation ─────────────────────────────────────────────────────────────────
 /** View-only display metadata. Never consulted by engine logic — the UI's own concern. */
@@ -61,35 +83,36 @@ export interface Envelope<TData = Readonly<Record<string, unknown>>> {
 export interface ActContext {
   readonly nodeId: NodeId;
   readonly data: Readonly<Record<string, unknown>>;
+  /** READ-ONLY view of this node's scope, for locating a sibling. No store, no scope, no mutation. */
+  readonly nodes: readonly DagNode[];
+  readonly edges: readonly DagEdge[];
 }
 
 /**
- * The typed dispatch payload `ActResult.payload` carries when `executor` is `'spawn-sub-agent'`:
- * either the coder's own spawn request or a reviewer's. Neither carries the idempotency context
+ * The closed set of sub-agents a `spawn-sub-agent` node can dispatch to — the name already
+ * carries the category (coder vs reviewer, and seniority), so no separate `kind`/`tier`/`role`
+ * field rides alongside it.
+ */
+export type AgentName = 'coder-junior' | 'coder' | 'coder-senior' | 'reviewer-junior' | 'reviewer';
+
+/**
+ * The single resolved dispatch payload `ActResult.payload` carries when `executor` is
+ * `'spawn-sub-agent'` — one emitted shape for both a coder's and a reviewer's spawn, discriminated
+ * by `agent` rather than a `kind` field. `repos` stays open-shaped: the per-level SHA fields differ
+ * by scope and must never be collapsed onto one shared name. The open index signature carries the
+ * level-specific doc refs and scalars the node emits. Neither carries the idempotency context
  * itself — that is stamped onto the actual `SpawnAgentPort` call, not onto this dispatch intent.
  */
-export interface AgentSpawnRequest {
-  readonly kind: 'coder';
-  readonly handoffDoc: string;
-  readonly complexity: 'simple' | 'standard' | 'complex';
-  readonly repos: readonly { readonly name: string; readonly path: string; readonly branch: string }[];
-  readonly shouldCommit: boolean;
-  readonly correctiveIndex?: number;
-  readonly reviewReportPath?: string;
-}
-
-export interface ReviewSpawnRequest {
-  readonly kind: 'reviewer';
-  readonly handoffDoc: string;
-  readonly repos: readonly { readonly name: string; readonly path: string; readonly branch: string }[];
-  readonly commitHash?: string;
+export interface SpawnPayload {
+  readonly agent: AgentName;
+  readonly repos: readonly Readonly<Record<string, unknown>>[];
+  readonly [field: string]: unknown;
 }
 
 /** `executor` names how the work is carried out; `payload` is required only for `'spawn-sub-agent'`. */
 export interface ActResult {
-  readonly instructions: string;
   readonly executor: Executor;
-  readonly payload?: AgentSpawnRequest | ReviewSpawnRequest;
+  readonly payload?: SpawnPayload;
 }
 
 // ── Handle ───────────────────────────────────────────────────────────────────────
@@ -144,6 +167,18 @@ export interface ResolveContext {
   readonly ports: CapabilityPortSet;
 }
 
+// ── Completion payload schema ───────────────────────────────────────────────────────
+/**
+ * One field's rendering hint for a downstream CLI relaying a completion event: `true` → the CLI
+ * renders a scalar flag (`--branch <v>`); `false` → the field rides in the flat `--data` array.
+ */
+export interface CompletionPayloadField {
+  readonly name: string;
+  /** `true` → the CLI renders a scalar flag (`--branch <v>`); `false` → the field rides in the flat `--data` array. */
+  readonly flag: boolean;
+}
+export type CompletionPayloadSchema = readonly CompletionPayloadField[];
+
 // ── Node type definition ───────────────────────────────────────────────────────────
 /**
  * The extension seam every built-in and custom node type implements: static declarations
@@ -160,8 +195,8 @@ export interface NodeTypeDefinition {
   /** The capability ports this node type requests by name; a host binds the matching port instances. */
   readonly capabilities: readonly CapabilityName[];
   readonly presentation: Presentation;
-  /** This node type's own action-events markdown, shipped in the bundle. */
-  readonly instructions: string;
+  /** The agent-facing instruction the host relays verbatim at an external-actor stop. Absent when this type never stops at one. */
+  readonly instructions?: string;
   act(ctx: ActContext): ActResult;
   handle(ev: NodeEvent): HandleResult;
   /** Projects this node type's own `data` onto the core-legible status spine. */
@@ -177,4 +212,6 @@ export interface NodeTypeDefinition {
    * so a client knows what to signal back — replaces the service's hardcoded node-type→token map.
    */
   readonly completionToken?: EventToken;
+  /** The completion-event payload's per-field rendering schema, for a downstream CLI. */
+  readonly completionPayloadSchema?: CompletionPayloadSchema;
 }

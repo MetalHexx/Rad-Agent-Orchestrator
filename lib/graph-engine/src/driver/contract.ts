@@ -6,15 +6,15 @@ import { fail, findNode } from '../primitives/primitive.js';
 import { frontier } from '../derive/readiness.js';
 import type { GraphSnapshot } from '../derive/invariants.js';
 import type { NodeTypeRegistry } from '../node-type/registry.js';
-import type { ActContext, ActResult, AgentSpawnRequest, ReviewSpawnRequest } from '../node-type/definition.js';
+import type { ActContext, ActResult, SpawnPayload } from '../node-type/definition.js';
 
 /**
  * The dispatch channel `ActResult.payload` carries when `executor` is `'spawn-sub-agent'` — the
- * contract a host reads to know what to spawn, and to which agent kind. `orchestrator-inline`
+ * contract a host reads to know what to spawn, and to which agent. `orchestrator-inline`
  * (`master_plan`/`explosion`/`pr`) node types carry no payload at all: their `instructions` are
  * executed in-process by the host instead of dispatched to a sub-agent.
  */
-export type DispatchRequest = AgentSpawnRequest | ReviewSpawnRequest;
+export type DispatchRequest = SpawnPayload;
 
 /**
  * The driver-facing frontier read: every node under `scope` a host may currently `engage`, read
@@ -80,6 +80,6 @@ export function engage(ctx: PrimitiveContext, registry: NodeTypeRegistry, node: 
   const applied = ctx.store.apply(ctx.scope, delta);
   if (!applied.ok) return applied;
 
-  const actContext: ActContext = { nodeId: node, data: current.data };
+  const actContext: ActContext = { nodeId: node, data: current.data, nodes: graph.nodes, edges: graph.edges };
   return { ok: true, data: definition.act(actContext) };
 }

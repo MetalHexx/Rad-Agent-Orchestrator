@@ -1,5 +1,5 @@
 import type { NodeId } from '../model/node.js';
-import type { AgentSpawnRequest, Envelope, ReviewSpawnRequest } from './definition.js';
+import type { Envelope, SpawnPayload } from './definition.js';
 
 /**
  * Carried on every outward-reaching capability call — never on a pure read — so a host re-running
@@ -56,7 +56,7 @@ export interface GitFactsPort {
 
 // ── spawn-agent ──────────────────────────────────────────────────────────────────
 export interface SpawnAgentRequest extends IdempotentCallContext {
-  readonly request: AgentSpawnRequest | ReviewSpawnRequest;
+  readonly request: SpawnPayload;
 }
 
 export interface SpawnAgentResult {

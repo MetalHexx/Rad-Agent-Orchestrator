@@ -103,11 +103,15 @@ export function createEngine(store: StateStore, registry: NodeTypeRegistry): Eng
 export type {
   ActContext,
   ActResult,
-  AgentSpawnRequest,
+  AgentName,
+  CompletionPayloadField,
+  CompletionPayloadSchema,
   DataChange,
   DataFieldKind,
   DataFieldLevel,
+  DataFieldResolution,
   DataFieldSpec,
+  DataResolver,
   DataSchema,
   Envelope,
   EnvelopeOutcome,
@@ -117,10 +121,10 @@ export type {
   Presentation,
   ResolveContext,
   ResolveOutcome,
-  ReviewSpawnRequest,
   RoutingRequest,
+  SpawnPayload,
 } from './node-type/definition.js';
-export { DATA_FIELD_KINDS, DATA_FIELD_LEVELS, ENVELOPE_OUTCOMES } from './node-type/definition.js';
+export { DATA_FIELD_KINDS, DATA_FIELD_LEVELS, DATA_FIELD_RESOLUTIONS, ENVELOPE_OUTCOMES } from './node-type/definition.js';
 
 export type { DispatchRequest } from './driver/contract.js';
 export { readFrontier, isQuiescent, engage } from './driver/contract.js';
