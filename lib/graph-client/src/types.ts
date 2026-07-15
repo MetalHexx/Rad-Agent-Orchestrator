@@ -162,6 +162,19 @@ export interface SeedResult {
   edgesCreated: number;
 }
 
+/**
+ * One field's rendering hint for a downstream CLI relaying a completion event. Client-owned
+ * duplicate of `@rad-orchestration/graph-engine`'s `CompletionPayloadField`.
+ */
+export interface CompletionPayloadField {
+  readonly name: string;
+  /** `true` → the CLI renders a scalar flag (`--branch <v>`); `false` → the field rides in the flat `--data` array. */
+  readonly flag: boolean;
+}
+
+/** A completion-event payload's per-field rendering schema. */
+export type CompletionPayloadSchema = readonly CompletionPayloadField[];
+
 // service-LOCAL & unexported there — the client owns this shape.
 export interface NextActionEnvelope {
   readonly action: NodeTypeName | null;
@@ -170,6 +183,7 @@ export interface NextActionEnvelope {
   readonly instructions: string | null;
   readonly context: Readonly<Record<string, unknown>> | null;
   readonly completion_event: EventToken | null;
+  readonly completion_payload_schema: CompletionPayloadSchema | null;
   readonly delta: ChangeDelta;
   readonly frontier: readonly NodeView[];
 }

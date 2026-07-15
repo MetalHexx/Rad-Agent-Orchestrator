@@ -176,6 +176,7 @@ describe('integration: graph-client against a booted graph-service', () => {
       expect(completed.instructions).toBeNull();
       expect(completed.context).toBeNull();
       expect(completed.completion_event).toBeNull();
+      expect(completed.completion_payload_schema).toBeNull();
       expect(
         completed.delta.nodeChanges.some((change) => change.after?.id === 'task-x' && change.after?.status === 'done'),
       ).toBe(true);
