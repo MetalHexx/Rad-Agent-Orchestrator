@@ -54,6 +54,7 @@ export interface SubmitEventResult {
   readonly instructions: string | null;
   readonly context: Readonly<Record<string, unknown>> | null;
   readonly completion_event: string | null;
+  readonly completion_payload_schema: readonly { readonly name: string; readonly flag: boolean }[] | null;
   readonly delta: { readonly nodeChanges: readonly unknown[]; readonly edgeChanges: readonly unknown[] };
   readonly frontier: readonly DagNode[];
 }
@@ -145,6 +146,18 @@ export async function seed(
   const result = assertOk(envelope, `seed('${project}')`);
   await assertProjectAnchored(baseUrl, project);
   return result;
+}
+
+/**
+ * `POST /work-graph/worktree` — registers `repo` against `project` so the generic field resolver
+ * (`resolve/resolve-fields.ts`) has a `WorktreeRecord` to fill a `worktree-repo-set` field's `path`
+ * from once a node naming that repo is engaged. Never seeds a `path` of its own — the resolver's own
+ * conventional-fallback join (`<worktreesRoot>/<project>/<repo>`) is exactly what a scenario wants.
+ * `project` must already exist in the portfolio (i.e. `seed()` has already run against it).
+ */
+export async function addWorktree(baseUrl: string, project: string, repo: string): Promise<void> {
+  const envelope = await postJson<unknown>(baseUrl, '/work-graph/worktree', { projectId: project, repo });
+  assertOk(envelope, `addWorktree('${project}', '${repo}')`);
 }
 
 /** `GET /engine-graph/dag` — the full persisted graph snapshot: nodes, edges, the root-scoped frontier, and the rolled-up project status. */

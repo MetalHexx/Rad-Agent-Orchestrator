@@ -77,6 +77,8 @@ export {
 
 export { CORRECTIVE_NODE_TYPE, CORRECTIVE_DATA_SCHEMA } from './rad-orc/corrective.js';
 
+export { resolveCoderAgent, resolveReviewerAgent } from './rad-orc/agent-tier.js';
+
 export type { PrCreatedData, PrRepoRef, PrRepoResult } from './rad-orc/pr.js';
 export {
   PR_NODE_TYPE,

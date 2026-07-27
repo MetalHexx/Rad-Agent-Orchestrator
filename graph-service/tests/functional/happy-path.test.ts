@@ -8,7 +8,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { BootedDaemon } from '../harness/boot.js';
 import { bootDaemon } from '../harness/boot.js';
-import { dag, driveToQuiescence, seed } from '../harness/drive.js';
+import { addWorktree, dag, driveToQuiescence, seed } from '../harness/drive.js';
 import type { SseCollector } from '../harness/sse.js';
 import { connectSse } from '../harness/sse.js';
 import { PHASE_CHAIN_IDS, REVIEW_REPORT_PATH, phaseChainSeedSteps, reviewReportDoc } from '../fixtures/phase-chain.js';
@@ -32,6 +32,7 @@ describe('functional: happy path', () => {
   it('drives every node in the chain to done and the SSE stream carries the ordered engage+outcome deltas', async () => {
     const project = 'happy-path';
     await seed(daemon.baseUrl(), project, phaseChainSeedSteps());
+    await addWorktree(daemon.baseUrl(), project, 'rad-orc-source');
     // The service reads the review verdict off its report — stage an approved one for the auto-resolve.
     daemon.seedDoc(REVIEW_REPORT_PATH, reviewReportDoc('approved', 'none'));
 

@@ -11,7 +11,7 @@ import { pathToFileURL } from 'node:url';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import yaml from 'js-yaml';
-import { DATA_FIELD_KINDS, DATA_FIELD_LEVELS, type NodeTypeDefinition, type NodeTypeOrigin } from '@rad-orchestration/graph-engine';
+import { DATA_FIELD_KINDS, DATA_FIELD_LEVELS, DATA_FIELD_RESOLUTIONS, type NodeTypeDefinition, type NodeTypeOrigin } from '@rad-orchestration/graph-engine';
 
 export interface NodeTypeLoadError {
   readonly package: string;
@@ -47,7 +47,10 @@ interface Manifest {
 }
 
 const REQUIRED_DEFINITION_HOOKS = ['act', 'handle', 'projectStatus'] as const;
-const REQUIRED_DEFINITION_FIELDS = ['dataSchema', 'traits', 'capabilities', 'presentation', 'instructions'] as const;
+// `instructions` is deliberately absent here: `NodeTypeDefinition.instructions` is optional (a type
+// that never stops at an external actor, e.g. `rad-orc:explosion`, declares none) — checked below
+// only when present, never required outright.
+const REQUIRED_DEFINITION_FIELDS = ['dataSchema', 'traits', 'capabilities', 'presentation'] as const;
 
 /**
  * Scans both `<nodeTypesRoot>/builtin` and `<nodeTypesRoot>/custom` through the same per-package
@@ -253,7 +256,7 @@ function validateShape(candidate: unknown): string | undefined {
   if (!Array.isArray(record.capabilities)) {
     return `"capabilities" is not an array (got ${JSON.stringify(record.capabilities)})`;
   }
-  if (typeof record.instructions !== 'string') {
+  if (record.instructions !== undefined && typeof record.instructions !== 'string') {
     return `"instructions" is not a string (got ${JSON.stringify(record.instructions)})`;
   }
   if (!isPlainObject(record.presentation) || typeof record.presentation.label !== 'string') {
@@ -269,6 +272,20 @@ function validateShape(candidate: unknown): string | undefined {
       !DATA_FIELD_LEVELS.includes(fieldSpec.level as (typeof DATA_FIELD_LEVELS)[number])
     ) {
       return `"dataSchema.${fieldName}" is not a well-formed field spec (requires a valid "kind" and "level")`;
+    }
+    if (fieldSpec.resolve !== undefined && !DATA_FIELD_RESOLUTIONS.includes(fieldSpec.resolve as (typeof DATA_FIELD_RESOLUTIONS)[number])) {
+      return `"dataSchema.${fieldName}" has an unknown "resolve" hint (got ${JSON.stringify(fieldSpec.resolve)})`;
+    }
+  }
+  if (record.completionPayloadSchema !== undefined) {
+    if (!Array.isArray(record.completionPayloadSchema)) {
+      return `"completionPayloadSchema" is not an array (got ${JSON.stringify(record.completionPayloadSchema)})`;
+    }
+    for (let i = 0; i < record.completionPayloadSchema.length; i++) {
+      const entry = record.completionPayloadSchema[i];
+      if (!isPlainObject(entry) || typeof entry.name !== 'string' || typeof entry.flag !== 'boolean') {
+        return `"completionPayloadSchema[${i}]" is not a well-formed entry (requires a string "name" and boolean "flag")`;
+      }
     }
   }
   return undefined;

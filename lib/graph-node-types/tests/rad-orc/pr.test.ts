@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PR_CREATED_TOKEN, PR_NODE_TYPE } from '../../src/rad-orc/pr.js';
+import { PR_CREATED_TOKEN, PR_DATA_SCHEMA, PR_NODE_TYPE } from '../../src/rad-orc/pr.js';
 import { PR_REQUEST_REPO_FIXTURE, PR_RESULT_FIXTURE } from '../fixtures/frozen-contracts.js';
 
 describe('rad-orc:pr', () => {
@@ -9,17 +9,20 @@ describe('rad-orc:pr', () => {
     expect(PR_NODE_TYPE.capabilities).toEqual(['run-command']);
   });
 
-  it('declares its required repos data schema, matching the frozen PrRequestRepo shape', () => {
-    expect(PR_NODE_TYPE.dataSchema.repos).toMatchObject({ kind: 'array', level: 'required' });
+  it('declares its required repos data schema with worktree-repo-set resolve hint, matching the frozen PrRequestRepo shape', () => {
+    expect(PR_DATA_SCHEMA.repos).toMatchObject({ kind: 'array', level: 'required', resolve: 'worktree-repo-set' });
     expect(Object.keys(PR_REQUEST_REPO_FIXTURE).sort()).toEqual(['name', 'path', 'branch', 'base_branch'].sort());
   });
 
-  it('act runs inline (never an expansion) and calls out a stable per-repo idempotency key', () => {
-    const result = PR_NODE_TYPE.act({ nodeId: 'pr-1', data: { repos: [PR_REQUEST_REPO_FIXTURE] } });
+  it('act runs inline (never an expansion) and returns no instructions key', () => {
+    const result = PR_NODE_TYPE.act({ nodeId: 'pr-1', data: { repos: [PR_REQUEST_REPO_FIXTURE] }, nodes: [], edges: [] });
     expect(result.executor).toBe('orchestrator-inline');
     expect(result.payload).toBeUndefined();
-    expect(result.instructions).toMatch(/idempotency/i);
-    expect(result.instructions).toContain(PR_REQUEST_REPO_FIXTURE.name);
+    expect(result).not.toHaveProperty('instructions');
+  });
+
+  it('declares the pr.created completion payload schema', () => {
+    expect(PR_NODE_TYPE.completionPayloadSchema).toEqual([{ name: 'repos', flag: false }]);
   });
 
   it('handle records the frozen {name, pr_url} shape per repo on rad-orc:pr.created', () => {

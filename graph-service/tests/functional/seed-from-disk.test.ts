@@ -115,7 +115,10 @@ describe('functional: seed-from-disk', () => {
       expect(result.node).toBe('greet');
       expect(result.action).toBe('example:greet');
       expect(result.executor).toBe('orchestrator-inline');
-      expect(result.instructions).toContain('Hello Custom Bundle');
+      // `instructions` is relayed from the type's own static declaration (never a per-invocation
+      // `act()` value) — `example:greet`'s per-node greeting text lives in its opaque `data`/payload,
+      // not this field.
+      expect(result.instructions).toContain('example:greet');
     });
   });
 });

@@ -1,4 +1,4 @@
-import type { EventToken, NodeEvent, NodeTypeDefinition, PrimitiveContext, ProjectScope, ResolveContext } from '@rad-orchestration/graph-engine';
+import type { DataResolver, EventToken, NodeEvent, NodeTypeDefinition, PrimitiveContext, ProjectScope, ResolveContext } from '@rad-orchestration/graph-engine';
 import { InMemoryStateStore, ROOT_NODE_ID, add_node, createNodeTypeRegistry } from '@rad-orchestration/graph-engine';
 import { BUILT_IN_NODE_TYPES } from '@rad-orchestration/graph-node-types';
 import { describe, expect, it } from 'vitest';
@@ -268,5 +268,55 @@ describe('runToQuiescence', () => {
 
     const ports = createFakedCapabilityPorts();
     await expect(runToQuiescence(ctx, registry, ROOT_NODE_ID, ports)).rejects.toThrow(/has no resolve hook/);
+  });
+});
+
+describe('advance / runToQuiescence — a resolveData refusal is a structured failure, never a throw', () => {
+  const REFUSING_FIELD = 'handoffDocPath';
+
+  /** A `DataResolver` that refuses every node, mimicking the field resolver failing loud on an absent required field. */
+  function refusingResolver(): DataResolver {
+    return () => {
+      throw new Error(`cannot resolve required field '${REFUSING_FIELD}': field is absent from node data`);
+    };
+  }
+
+  it('advance folds a resolveData refusal into an invalid_delta Result, leaving the node not_started', async () => {
+    const ctx = ctxFor('proj-advance-resolve-refusal');
+    const registry = createNodeTypeRegistry([autoStepType('x:auto-step')]);
+    add_node(ctx, registry, 'step-1', 'x:auto-step', ROOT_NODE_ID, {});
+
+    const ports = createFakedCapabilityPorts();
+    const node = ctx.store.getNode(ctx.scope, 'step-1');
+    if (!node) throw new Error('missing seeded node');
+
+    const result = await advance(ctx, registry, ports, node, refusingResolver());
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe('invalid_delta');
+      expect(result.error.message).toContain(REFUSING_FIELD);
+    }
+    // The refusal rejected before the in-progress write — the node stays re-engageable.
+    expect(ctx.store.getNode(ctx.scope, 'step-1')?.status).toBe('not_started');
+  });
+
+  it('runToQuiescence surfaces a resolveData refusal as a QuiescenceEngageFailed result, never a throw', async () => {
+    const ctx = ctxFor('proj-quiescence-resolve-refusal');
+    const registry = createNodeTypeRegistry([autoStepType('x:auto-step')]);
+    add_node(ctx, registry, 'step-1', 'x:auto-step', ROOT_NODE_ID, {});
+
+    const ports = createFakedCapabilityPorts();
+    const result = await runToQuiescence(ctx, registry, ROOT_NODE_ID, ports, 300, refusingResolver());
+
+    expect(result.settled).toBe(false);
+    if (result.settled) throw new Error('expected the loop to stop at the engage refusal');
+    if (result.reason !== 'engage-failed') throw new Error(`expected engage-failed, got '${result.reason}'`);
+    expect(result.nodeId).toBe('step-1');
+    expect(result.code).toBe('invalid_delta');
+    expect(result.message).toContain(REFUSING_FIELD);
+    expect(result.steps).toBe(0);
+    // Never dispatched: the node stays not_started, re-engageable once the field can resolve.
+    expect(ctx.store.getNode(ctx.scope, 'step-1')?.status).toBe('not_started');
   });
 });

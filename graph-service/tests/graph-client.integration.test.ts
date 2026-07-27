@@ -27,6 +27,22 @@ function phaseData(): Record<string, unknown> {
   return { docPath: 'docs/phases/phase-1.md', exitCriteria: ['Foundations laid'] };
 }
 
+/**
+ * Registers `repo` against `project` via the plain `/work-graph/worktree` route — never through
+ * `GraphClient` (it carries no worktree surface; this is infra the scenario sets up, not part of
+ * the client contract under test), the same raw-`fetch` idiom `createDroppableFetch` below already
+ * uses for its own out-of-band concern. Lets the generic field resolver fill a `worktree-repo-set`
+ * field's `path` fresh off a real `WorktreeRecord` once a node naming `repo` is engaged.
+ */
+async function addWorktree(baseUrl: string, projectId: string, repo: string): Promise<void> {
+  const res = await fetch(`${baseUrl}/work-graph/worktree`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ projectId, repo }),
+  });
+  if (!res.ok) throw new Error(`addWorktree('${projectId}', '${repo}') failed: HTTP ${res.status}`);
+}
+
 async function waitUntil(check: () => boolean, timeoutMs = 5_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (!check()) {
@@ -98,15 +114,15 @@ describe('integration: graph-client against a booted graph-service', () => {
     it('materializes seeded nodes/edges and reports the root- and container-scoped frontiers', async () => {
       const project = client.project('seed-read');
       await project.seed([
-        { primitive: 'add_node', id: 'task-root', type: 'rad-orc:task', parent: ROOT_NODE_ID, data: taskData('/tasks/task-root.md') },
+        { primitive: 'add_node', id: 'task-root', type: 'rad-orc:task', parent: ROOT_NODE_ID, data: taskData('tasks/task-root.md') },
         { primitive: 'add_node', id: 'phase-1', type: 'rad-orc:phase', parent: ROOT_NODE_ID, data: phaseData() },
-        { primitive: 'add_node', id: 'task-a', type: 'rad-orc:task', parent: 'phase-1', data: taskData('/tasks/task-a.md') },
+        { primitive: 'add_node', id: 'task-a', type: 'rad-orc:task', parent: 'phase-1', data: taskData('tasks/task-a.md') },
         {
           primitive: 'add_node',
           id: 'task-b',
           type: 'rad-orc:task',
           parent: 'phase-1',
-          data: taskData('/tasks/task-b.md'),
+          data: taskData('tasks/task-b.md'),
           dependsOn: ['task-a'],
         },
       ]);
@@ -136,8 +152,9 @@ describe('integration: graph-client against a booted graph-service', () => {
     it('advances the run and relays a completion via a populated NextActionEnvelope', async () => {
       const project = client.project('drive');
       await project.seed([
-        { primitive: 'add_node', id: 'task-x', type: 'rad-orc:task', parent: ROOT_NODE_ID, data: taskData('/tasks/task-x.md') },
+        { primitive: 'add_node', id: 'task-x', type: 'rad-orc:task', parent: ROOT_NODE_ID, data: taskData('tasks/task-x.md') },
       ]);
+      await addWorktree(daemon.baseUrl(), 'drive', FIXTURE_REPO.name);
 
       const engaged = await project.submitEvent({ node: 'task-x' });
       expect(engaged.action).toBe('rad-orc:task');
@@ -146,7 +163,11 @@ describe('integration: graph-client against a booted graph-service', () => {
       expect(typeof engaged.instructions).toBe('string');
       expect(engaged.instructions?.length ?? 0).toBeGreaterThan(0);
       expect(engaged.completion_event).toBe('rad-orc:task.completed');
-      expect(engaged.context).toMatchObject({ kind: 'coder' });
+      expect(engaged.context).toMatchObject({ agent: 'coder' });
+      expect(engaged.completion_payload_schema).toEqual([
+        { name: 'repos', flag: false },
+        { name: 'branch', flag: true },
+      ]);
       expect(
         engaged.delta.nodeChanges.some((change) => change.after?.id === 'task-x' && change.after?.status === 'in_progress'),
       ).toBe(true);
@@ -159,6 +180,7 @@ describe('integration: graph-client against a booted graph-service', () => {
       expect(completed.instructions).toBeNull();
       expect(completed.context).toBeNull();
       expect(completed.completion_event).toBeNull();
+      expect(completed.completion_payload_schema).toBeNull();
       expect(
         completed.delta.nodeChanges.some((change) => change.after?.id === 'task-x' && change.after?.status === 'done'),
       ).toBe(true);
@@ -172,8 +194,8 @@ describe('integration: graph-client against a booted graph-service', () => {
     it('addDependency creates a depends_on edge; the reverse edge would cycle and throws', async () => {
       const project = client.project('steer-add-dependency');
       await project.seed([
-        { primitive: 'add_node', id: 'a1', type: 'rad-orc:task', parent: ROOT_NODE_ID, data: taskData('/tasks/a1.md') },
-        { primitive: 'add_node', id: 'b1', type: 'rad-orc:task', parent: ROOT_NODE_ID, data: taskData('/tasks/b1.md') },
+        { primitive: 'add_node', id: 'a1', type: 'rad-orc:task', parent: ROOT_NODE_ID, data: taskData('tasks/a1.md') },
+        { primitive: 'add_node', id: 'b1', type: 'rad-orc:task', parent: ROOT_NODE_ID, data: taskData('tasks/b1.md') },
       ]);
 
       const delta = await project.addDependency('a1', 'b1');
@@ -195,8 +217,8 @@ describe('integration: graph-client against a booted graph-service', () => {
     it('removeNode removes the node and, with a promote strategy, reparents its children', async () => {
       const project = client.project('steer-remove-node');
       await project.seed([
-        { primitive: 'add_node', id: 'c1', type: 'rad-orc:task', parent: ROOT_NODE_ID, data: taskData('/tasks/c1.md') },
-        { primitive: 'add_node', id: 'c1-child', type: 'rad-orc:task', parent: 'c1', data: taskData('/tasks/c1-child.md') },
+        { primitive: 'add_node', id: 'c1', type: 'rad-orc:task', parent: ROOT_NODE_ID, data: taskData('tasks/c1.md') },
+        { primitive: 'add_node', id: 'c1-child', type: 'rad-orc:task', parent: 'c1', data: taskData('tasks/c1-child.md') },
       ]);
 
       const delta = await project.removeNode('c1', { dependents: 'detach', children: 'promote' });
@@ -212,7 +234,7 @@ describe('integration: graph-client against a booted graph-service', () => {
       const project = client.project('steer-move-node');
       await project.seed([
         { primitive: 'add_node', id: 'phase-1', type: 'rad-orc:phase', parent: ROOT_NODE_ID, data: phaseData() },
-        { primitive: 'add_node', id: 'd1', type: 'rad-orc:task', parent: ROOT_NODE_ID, data: taskData('/tasks/d1.md') },
+        { primitive: 'add_node', id: 'd1', type: 'rad-orc:task', parent: ROOT_NODE_ID, data: taskData('tasks/d1.md') },
       ]);
 
       const delta = await project.moveNode('d1', 'phase-1');
@@ -229,7 +251,7 @@ describe('integration: graph-client against a booted graph-service', () => {
 
       const delta = await project.expand('phase-1', {
         specs: [
-          { key: 'expanded-task', type: 'rad-orc:task', parent: 'phase-1', dependsOn: [], data: taskData('/tasks/expanded-task.md') },
+          { key: 'expanded-task', type: 'rad-orc:task', parent: 'phase-1', dependsOn: [], data: taskData('tasks/expanded-task.md') },
         ],
       });
       expect(delta.primitive).toBe('expand');
@@ -239,16 +261,17 @@ describe('integration: graph-client against a booted graph-service', () => {
     it('addCorrective mints a corrective attempt and re-arms the review', async () => {
       const project = client.project('steer-add-corrective');
       await project.seed([
-        { primitive: 'add_node', id: 'f1', type: 'rad-orc:task', parent: ROOT_NODE_ID, data: taskData('/tasks/f1.md') },
+        { primitive: 'add_node', id: 'f1', type: 'rad-orc:task', parent: ROOT_NODE_ID, data: taskData('tasks/f1.md') },
         {
           primitive: 'add_node',
           id: 'g1',
           type: 'rad-orc:task',
           parent: ROOT_NODE_ID,
-          data: taskData('/tasks/g1.md'),
+          data: taskData('tasks/g1.md'),
           dependsOn: ['f1'],
         },
       ]);
+      await addWorktree(daemon.baseUrl(), 'steer-add-corrective', FIXTURE_REPO.name);
 
       // Completing f1 drives the run straight to engaging g1 (its own review analog) within the
       // same call — g1 lands `in_progress`, satisfying add_corrective's own precondition.
@@ -267,8 +290,9 @@ describe('integration: graph-client against a booted graph-service', () => {
     it('reset re-arms a node that already ran', async () => {
       const project = client.project('steer-reset');
       await project.seed([
-        { primitive: 'add_node', id: 'h1', type: 'rad-orc:task', parent: ROOT_NODE_ID, data: taskData('/tasks/h1.md') },
+        { primitive: 'add_node', id: 'h1', type: 'rad-orc:task', parent: ROOT_NODE_ID, data: taskData('tasks/h1.md') },
       ]);
+      await addWorktree(daemon.baseUrl(), 'steer-reset', FIXTURE_REPO.name);
       await project.submitEvent({ node: 'h1' });
 
       const delta = await project.reset('h1', false);
@@ -297,8 +321,8 @@ describe('integration: graph-client against a booted graph-service', () => {
     it('previews a valid mutation without committing it', async () => {
       const project = client.project('dry-run-valid');
       await project.seed([
-        { primitive: 'add_node', id: 'm1', type: 'rad-orc:task', parent: ROOT_NODE_ID, data: taskData('/tasks/m1.md') },
-        { primitive: 'add_node', id: 'm2', type: 'rad-orc:task', parent: ROOT_NODE_ID, data: taskData('/tasks/m2.md') },
+        { primitive: 'add_node', id: 'm1', type: 'rad-orc:task', parent: ROOT_NODE_ID, data: taskData('tasks/m1.md') },
+        { primitive: 'add_node', id: 'm2', type: 'rad-orc:task', parent: ROOT_NODE_ID, data: taskData('tasks/m2.md') },
       ]);
 
       const result = await project.dryRun({ kind: 'add_dependency', from: 'm1', to: 'm2' });
@@ -313,8 +337,8 @@ describe('integration: graph-client against a booted graph-service', () => {
     it('reports an invalid-but-well-formed mutation as { valid: false, reason } without throwing', async () => {
       const project = client.project('dry-run-invalid');
       await project.seed([
-        { primitive: 'add_node', id: 'n1', type: 'rad-orc:task', parent: ROOT_NODE_ID, data: taskData('/tasks/n1.md') },
-        { primitive: 'add_node', id: 'n2', type: 'rad-orc:task', parent: ROOT_NODE_ID, data: taskData('/tasks/n2.md') },
+        { primitive: 'add_node', id: 'n1', type: 'rad-orc:task', parent: ROOT_NODE_ID, data: taskData('tasks/n1.md') },
+        { primitive: 'add_node', id: 'n2', type: 'rad-orc:task', parent: ROOT_NODE_ID, data: taskData('tasks/n2.md') },
       ]);
       await project.addDependency('n1', 'n2');
 
@@ -409,7 +433,7 @@ describe('integration: graph-client against a booted graph-service', () => {
               type: 'rad-orc:task',
               parent: 'phase-1',
               dependsOn: ['does-not-exist'],
-              data: taskData('/tasks/expanded-task.md'),
+              data: taskData('tasks/expanded-task.md'),
             },
           ],
         });
@@ -424,7 +448,7 @@ describe('integration: graph-client against a booted graph-service', () => {
       const project = client.project('error-model-cross-axis-cycle');
       await project.seed([
         { primitive: 'add_node', id: 'phase-1', type: 'rad-orc:phase', parent: ROOT_NODE_ID, data: phaseData() },
-        { primitive: 'add_node', id: 'child-of-phase', type: 'rad-orc:task', parent: 'phase-1', data: taskData('/tasks/child-of-phase.md') },
+        { primitive: 'add_node', id: 'child-of-phase', type: 'rad-orc:task', parent: 'phase-1', data: taskData('tasks/child-of-phase.md') },
       ]);
 
       let caught: unknown;
@@ -461,13 +485,17 @@ describe('integration: graph-client against a booted graph-service', () => {
       // isolation available: even an id collision across projects can never cross-talk.
       await Promise.all([
         p1.seed([
-          { primitive: 'add_node', id: 'task', type: 'rad-orc:task', parent: ROOT_NODE_ID, data: taskData('/tasks/p1-task.md') },
-          { primitive: 'add_node', id: 'p1-only', type: 'rad-orc:task', parent: ROOT_NODE_ID, data: taskData('/tasks/p1-only.md') },
+          { primitive: 'add_node', id: 'task', type: 'rad-orc:task', parent: ROOT_NODE_ID, data: taskData('tasks/p1-task.md') },
+          { primitive: 'add_node', id: 'p1-only', type: 'rad-orc:task', parent: ROOT_NODE_ID, data: taskData('tasks/p1-only.md') },
         ]),
         p2.seed([
-          { primitive: 'add_node', id: 'task', type: 'rad-orc:task', parent: ROOT_NODE_ID, data: taskData('/tasks/p2-task.md') },
-          { primitive: 'add_node', id: 'p2-only', type: 'rad-orc:task', parent: ROOT_NODE_ID, data: taskData('/tasks/p2-only.md') },
+          { primitive: 'add_node', id: 'task', type: 'rad-orc:task', parent: ROOT_NODE_ID, data: taskData('tasks/p2-task.md') },
+          { primitive: 'add_node', id: 'p2-only', type: 'rad-orc:task', parent: ROOT_NODE_ID, data: taskData('tasks/p2-only.md') },
         ]),
+      ]);
+      await Promise.all([
+        addWorktree(daemon.baseUrl(), 'parallel-p1', FIXTURE_REPO.name),
+        addWorktree(daemon.baseUrl(), 'parallel-p2', FIXTURE_REPO.name),
       ]);
 
       await Promise.all([p1.submitEvent({ node: 'task' }), p2.submitEvent({ node: 'task' })]);
@@ -490,8 +518,10 @@ describe('integration: graph-client against a booted graph-service', () => {
     it("delivers only this project's changes, never another project's", async () => {
       const p1 = client.project('sse-p1');
       const p2 = client.project('sse-p2');
-      await p1.seed([{ primitive: 'add_node', id: 'task', type: 'rad-orc:task', parent: ROOT_NODE_ID, data: taskData('/tasks/sse-p1.md') }]);
-      await p2.seed([{ primitive: 'add_node', id: 'task', type: 'rad-orc:task', parent: ROOT_NODE_ID, data: taskData('/tasks/sse-p2.md') }]);
+      await p1.seed([{ primitive: 'add_node', id: 'task', type: 'rad-orc:task', parent: ROOT_NODE_ID, data: taskData('tasks/sse-p1.md') }]);
+      await p2.seed([{ primitive: 'add_node', id: 'task', type: 'rad-orc:task', parent: ROOT_NODE_ID, data: taskData('tasks/sse-p2.md') }]);
+      await addWorktree(daemon.baseUrl(), 'sse-p1', FIXTURE_REPO.name);
+      await addWorktree(daemon.baseUrl(), 'sse-p2', FIXTURE_REPO.name);
 
       const received: StreamDelta[] = [];
       const sub = p1.subscribe((delta) => received.push(delta));
@@ -517,8 +547,9 @@ describe('integration: graph-client against a booted graph-service', () => {
     it('reconnects after a dropped stream and keeps delivering, until close() ends it', async () => {
       const project = client.project('sse-reconnect');
       await project.seed([
-        { primitive: 'add_node', id: 'task', type: 'rad-orc:task', parent: ROOT_NODE_ID, data: taskData('/tasks/sse-reconnect.md') },
+        { primitive: 'add_node', id: 'task', type: 'rad-orc:task', parent: ROOT_NODE_ID, data: taskData('tasks/sse-reconnect.md') },
       ]);
+      await addWorktree(daemon.baseUrl(), 'sse-reconnect', FIXTURE_REPO.name);
 
       const { fetch: droppableFetch, forceDrop, connectionCount } = createDroppableFetch();
       const reconnectClient = new GraphClient({ baseUrl: daemon.baseUrl(), fetch: droppableFetch });

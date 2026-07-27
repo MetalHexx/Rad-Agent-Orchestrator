@@ -23,8 +23,8 @@ function makeFakeNodeType(): NodeTypeDefinition {
     capabilities: [],
     presentation: { label: 'Fake' },
     instructions: '',
-    act(ctx: ActContext): ActResult {
-      return { instructions: `run ${ctx.nodeId}`, executor: 'noop' };
+    act(_ctx: ActContext): ActResult {
+      return { executor: 'noop' };
     },
     handle(_ev: NodeEvent) {
       return {};

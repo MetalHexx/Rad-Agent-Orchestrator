@@ -42,6 +42,19 @@ export interface GraphService {
   readonly capabilities: CapabilityPorts;
   readonly version: { readonly service: string; readonly engine: string };
   readonly dbPath: string;
+  /**
+   * The radorc root (`~/.radorc`, or the harness's own override) — distinct from {@link GraphService.projectRoot}.
+   * The generic field resolver (`resolve/resolve-fields.ts`'s `createFieldResolver`) joins this
+   * against `projects/<projectId>` and `worktrees` to confine/derive its resolved paths; nothing
+   * else in this object derives it, so a caller reaches it here rather than re-resolving its own.
+   */
+  readonly root: string;
+  /**
+   * The filesystem root the real `docRead`/`docWrite` ports are confined to (`ComposeOptions.projectRoot`,
+   * defaulted the same way) — surfaced here so a caller never has to re-derive `compose()`'s own
+   * default. Deliberately distinct from {@link root}: a harness may pass two different directories.
+   */
+  readonly projectRoot: string;
   // SSE sources: `execStore.subscribe`/`portfolio.subscribe` — each store's own row-emission hook,
   // reached directly through the fields above rather than a separate wrapper, the same way every
   // other route reaches state through this one composition object.
@@ -49,6 +62,14 @@ export interface GraphService {
 
 export interface ComposeOptions {
   readonly dbPath: string;
+  /**
+   * The radorc root — forwarded from `lifecycle/daemon.ts`'s `StartOptions.root` (already resolved
+   * there via `resolveRadorcRoot()` when omitted). Optional here too, defaulting the same way, so an
+   * in-memory/test `compose()` call never has to supply one. Deliberately independent of
+   * {@link projectRoot}: a harness may pass two different directories for the two, and both must
+   * stay distinguishable on the returned {@link GraphService}.
+   */
+  readonly root?: string;
   /**
    * The filesystem root the real `docRead`/`docWrite` ports confine every read/write path to
    * (`createRealCapabilityPorts`'s `projectRoot`). Optional so an in-memory/test `compose()` call
@@ -98,7 +119,7 @@ function readServiceVersion(): string {
  * (`subscribe`), which emit the persisted `change_log`/`portfolio_change_log` row instead (D13).
  */
 export function compose(opts: ComposeOptions): GraphService {
-  const { dbPath, projectRoot = resolveRadorcRoot() } = opts;
+  const { dbPath, root = resolveRadorcRoot(), projectRoot = resolveRadorcRoot() } = opts;
   const db = openDatabase(dbPath);
   const execStore = new SqliteStateStore(db);
   const registry = createNodeTypeRegistry(opts.builtInNodeTypes, opts.customNodeTypes ?? []);
@@ -115,5 +136,7 @@ export function compose(opts: ComposeOptions): GraphService {
     capabilities,
     version: { service: readServiceVersion(), engine: ENGINE_SCHEMA_VERSION },
     dbPath,
+    root,
+    projectRoot,
   };
 }

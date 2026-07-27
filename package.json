@@ -11,6 +11,7 @@
     "lib/graph-store-sqlite",
     "graph-service",
     "examples/example",
+    "examples/node-blind-fixture",
     "cli",
     "ui",
     "harness-adapters/engine",

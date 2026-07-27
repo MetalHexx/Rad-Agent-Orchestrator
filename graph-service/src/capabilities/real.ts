@@ -22,8 +22,12 @@ import type { CapabilityPorts } from './ports.js';
  * Resolves `requestedPath` against `root` and rejects anything that escapes it — a `..`
  * traversal or an absolute path outside the root — returning `null` rather than throwing so
  * callers can turn it into an error `Envelope`.
+ *
+ * Exported so the generic field resolver (`resolve/resolve-fields.ts`) confines project doc paths
+ * through this exact check rather than a second copy — two confinement checks that can drift is the
+ * bug class this guards against.
  */
-function resolveWithinRoot(root: string, requestedPath: string): string | null {
+export function resolveWithinRoot(root: string, requestedPath: string): string | null {
   const resolvedRoot = path.resolve(root);
   const resolved = path.resolve(resolvedRoot, requestedPath);
   const relative = path.relative(resolvedRoot, resolved);

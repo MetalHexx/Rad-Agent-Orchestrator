@@ -1,7 +1,7 @@
 import type {
   ActContext,
   ActResult,
-  AgentSpawnRequest,
+  CompletionPayloadSchema,
   DataSchema,
   HandleResult,
   NodeEvent,
@@ -11,19 +11,13 @@ import type {
 } from '@rad-orchestration/graph-engine';
 import { TASK_COMPLETED_TOKEN } from './task.js';
 import type { TaskCompletedData } from './task.js';
-
-/** One repo target as seeded on this node's own `data.repos` — mirrors `task.ts`'s own `TaskRepoRef`. */
-interface CorrectiveRepoRef {
-  readonly name: string;
-  readonly path: string;
-  readonly branch: string;
-}
+import { resolveCoderAgent } from './agent-tier.js';
 
 function readComplexity(value: unknown): 'simple' | 'standard' | 'complex' {
   return value === 'simple' || value === 'complex' ? value : 'standard';
 }
 
-function readRepos(value: unknown): readonly CorrectiveRepoRef[] {
+function readRepos(value: unknown): readonly Readonly<Record<string, unknown>>[] {
   if (!Array.isArray(value)) return [];
   return value
     .filter((entry): entry is Record<string, unknown> => typeof entry === 'object' && entry !== null)
@@ -38,11 +32,13 @@ export const CORRECTIVE_DATA_SCHEMA: DataSchema = {
   handoffDocPath: {
     kind: 'string',
     level: 'required',
+    resolve: 'project-doc-path',
     description: "This attempt's own handoff doc — the same scope contract the chain's original attempt carried.",
   },
   repos: {
     kind: 'array',
     level: 'required',
+    resolve: 'worktree-repo-set',
     description: 'The `{name, path, branch}` repo set this corrective attempt works against.',
   },
   complexity: {
@@ -58,12 +54,18 @@ export const CORRECTIVE_DATA_SCHEMA: DataSchema = {
   reviewReportPath: {
     kind: 'string',
     level: 'required',
+    resolve: 'project-doc-path',
     description: 'The one running review report this attempt self-mediates into — always present, unlike an original task.',
   },
   correctiveIndex: {
     kind: 'number',
     level: 'required',
     description: "This attempt's 1-based position in the corrective chain gating its review.",
+  },
+  maxRetries: {
+    kind: 'number',
+    level: 'computed',
+    description: 'The retry budget the add_corrective primitive stamps — never seeded by a template.',
   },
   completed: {
     kind: 'boolean',
@@ -82,39 +84,38 @@ const PRESENTATION: Presentation = {
   description: 'An additive coder attempt born by `add_corrective`, self-mediating the running review report.',
 };
 
-const INSTRUCTIONS = `# rad-orc:corrective
+const INSTRUCTIONS = [
+  'Implement this task by following the `rad-execute-coding-task` skill.',
+  '',
+  'The task handoff at `handoff_doc` is self-contained — read it and implement it. Work in the',
+  'worktree given for each entry in `repos`, on the branch named there. This attempt also carries',
+  '`review_report_path`, the running review report to self-mediate: fix and commit genuine',
+  'findings, or write a justified disposition into that same report for anything you dispute —',
+  'never both silently. When `should_commit` is true, commit your own work per the',
+  '`rad-source-control` skill before reporting back.',
+  '',
+  'Report per-repo results as `rad-orc:task.completed`.',
+].join('\n');
 
-An additive coder attempt: born by the engine's own \`add_corrective\` primitive once a
-\`rad-orc:code_review\` comes back \`changes_requested\`, \`derivedFrom\` the chain's prior attempt
-and carrying the same scope contract (handoff doc, repos, complexity) plus the one running review
-report it must self-mediate — fixing and committing genuine findings, or disputing them in place,
-never both silently. Reports back on the same \`rad-orc:task.completed\` contract an original
-attempt uses; its own completion re-arms the review it answers, dependency-driven, never a routing
-request this node issues itself.
-`;
+const COMPLETION_PAYLOAD_SCHEMA: CompletionPayloadSchema = [
+  { name: 'repos', flag: false },
+  { name: 'branch', flag: true },
+];
 
 function act(ctx: ActContext): ActResult {
-  const handoffDoc = typeof ctx.data.handoffDocPath === 'string' ? ctx.data.handoffDocPath : '';
-  const reviewReportPath = typeof ctx.data.reviewReportPath === 'string' ? ctx.data.reviewReportPath : '';
   const correctiveIndex = typeof ctx.data.correctiveIndex === 'number' ? ctx.data.correctiveIndex : undefined;
-
-  const payload: AgentSpawnRequest = {
-    kind: 'coder',
-    handoffDoc,
-    complexity: readComplexity(ctx.data.complexity),
-    repos: readRepos(ctx.data.repos),
-    shouldCommit: ctx.data.shouldCommit === true,
-    reviewReportPath,
-    correctiveIndex,
-  };
+  const maxRetries = typeof ctx.data.maxRetries === 'number' ? ctx.data.maxRetries : undefined;
 
   return {
-    instructions:
-      "Spawn the coder sub-agent via the spawn-agent capability, carrying this attempt's handoff scope plus " +
-      'the running review report path, so it can self-mediate the prior findings (fix-and-commit, or dispute ' +
-      'into the same report) — then feed its per-repo commit results back as `rad-orc:task.completed`.',
     executor: 'spawn-sub-agent',
-    payload,
+    payload: {
+      agent: resolveCoderAgent({ complexity: readComplexity(ctx.data.complexity), correctiveIndex, maxRetries }),
+      handoff_doc: typeof ctx.data.handoffDocPath === 'string' ? ctx.data.handoffDocPath : '',
+      repos: readRepos(ctx.data.repos),
+      should_commit: ctx.data.shouldCommit === true,
+      review_report_path: typeof ctx.data.reviewReportPath === 'string' ? ctx.data.reviewReportPath : '',
+      corrective_index: correctiveIndex,
+    },
   };
 }
 
@@ -139,4 +140,5 @@ export const CORRECTIVE_NODE_TYPE: NodeTypeDefinition = {
   handle,
   projectStatus,
   completionToken: TASK_COMPLETED_TOKEN,
+  completionPayloadSchema: COMPLETION_PAYLOAD_SCHEMA,
 };

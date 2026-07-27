@@ -3,11 +3,13 @@
 // `dry-run`, and the programmatic `seed` — a Hono sub-router mounted at `/engine-graph` by
 // `http/app.ts`. Every route resolves its own `ProjectScope` from the `project` query/body param and
 // reaches state exclusively through the injected `GraphService`.
+import path from 'node:path';
 import { Hono } from 'hono';
 import type { Context } from 'hono';
 import type {
   AddCorrectivePreview,
   ChangeDelta,
+  CompletionPayloadSchema,
   DagEdge,
   DagNode,
   EdgeChange,
@@ -47,6 +49,7 @@ import type { QuiescenceResult } from '../driver/drive.js';
 import { resolveViaNodeType, runToQuiescence } from '../driver/drive.js';
 import { globalFrontier } from '../driver/frontier.js';
 import { applyOutcome } from '../driver/outcome.js';
+import { createFieldResolver } from '../resolve/resolve-fields.js';
 import type { SeedStep } from '../seed-step.js';
 import { SHARED_MUTATION_KINDS, isSharedMutationKind, parseSharedMutation, toEngineMutationSpec } from './mutation-spec.js';
 import type { FailureEnvelope, SuccessEnvelope } from './respond.js';
@@ -223,15 +226,18 @@ interface NextActionEnvelope {
   readonly instructions: string | null;
   readonly context: Readonly<Record<string, unknown>> | null;
   readonly completion_event: EventToken | null;
+  readonly completion_payload_schema: CompletionPayloadSchema | null;
   readonly delta: ChangeDelta;
   readonly frontier: readonly NodeView[];
 }
 
 /**
  * Shapes `driven`'s stop into the next-action envelope; `null` fields throughout once there is no
- * next action (settled, or a self-halted node quiesced the driver on its own). The stopped node's
- * `completion_event` is sourced from its own type definition's declared `completionToken` (`null`
- * for a type that declares none) — the service holds no node-type→token map of its own.
+ * next action (settled, or a self-halted node quiesced the driver on its own). `instructions`,
+ * `completion_event`, and `completion_payload_schema` are all sourced from the stopped node's own
+ * type definition (`null` for a type that declares none) — the service holds no per-type map of its
+ * own, here or anywhere else; this reads the definition exactly as `toNodeView` already does for
+ * `presentation`.
  */
 function buildNextActionEnvelope(
   registry: NodeTypeRegistry,
@@ -241,18 +247,30 @@ function buildNextActionEnvelope(
 ): NextActionEnvelope {
   const frontierView = frontierNow.map((node) => toNodeView(registry, node));
   if (!driven.settled && driven.reason === 'external-actor') {
+    const definition = registry.resolve(driven.type);
     return {
       action: driven.type,
       node: driven.nodeId,
       executor: driven.actResult.executor,
-      instructions: driven.actResult.instructions,
+      instructions: definition?.instructions ?? null,
       context: driven.actResult.payload ? { ...driven.actResult.payload } : {},
-      completion_event: registry.resolve(driven.type)?.completionToken ?? null,
+      completion_event: definition?.completionToken ?? null,
+      completion_payload_schema: definition?.completionPayloadSchema ?? null,
       delta,
       frontier: frontierView,
     };
   }
-  return { action: null, node: null, executor: null, instructions: null, context: null, completion_event: null, delta, frontier: frontierView };
+  return {
+    action: null,
+    node: null,
+    executor: null,
+    instructions: null,
+    context: null,
+    completion_event: null,
+    completion_payload_schema: null,
+    delta,
+    frontier: frontierView,
+  };
 }
 
 // ── seed: replay add_node / add_dependency / expand to stamp a project's initial dag ──────────
@@ -447,13 +465,29 @@ export function buildEngineGraphRouter(service: GraphService): Hono {
       }
     }
 
+    // Built fresh per request, from the scope and service both in hand — never cached, so a
+    // worktree added since the last call is picked up immediately. `listWorktrees` is a plain
+    // synchronous, non-transactional read, so this costs one query per request, not per node.
+    const resolver = createFieldResolver({
+      projectDocRoot: path.join(service.root, 'projects', scope.projectId),
+      worktreesRoot: path.join(service.root, 'worktrees'),
+      worktrees: service.portfolio.listWorktrees(scope.projectId),
+      projectId: scope.projectId,
+    });
+
     // With or without a relayed event: drive as far as deterministic/host-side nodes allow —
     // auto-resolving every `noop` executor — then stop at the first node whose executor needs the
     // orchestrator/human, never faking that work. One call relays a result (or, with no event,
     // just kicks off driving from wherever the graph currently stands) and gets the next move.
-    const driven = await runToQuiescence(ctx, service.registry, ROOT_NODE_ID, service.capabilities);
+    const driven = await runToQuiescence(ctx, service.registry, ROOT_NODE_ID, service.capabilities, undefined, resolver);
     if (!driven.settled && driven.reason === 'max-steps') {
       return c.json(err('driver_stalled', `drive loop exceeded ${driven.steps} steps without reaching quiescence or an external actor`), 400);
+    }
+    if (!driven.settled && driven.reason === 'engage-failed') {
+      // A resolution refusal (or a frontier race) is an expected, operator-actionable outcome —
+      // never a thrown 500. The node stays exactly where `engage` found it (still re-engageable).
+      // `engage`'s own code/message travel through verbatim, never re-derived here.
+      return c.json(err(driven.code, driven.message), 400);
     }
 
     const after: GraphSnapshot = { nodes: service.execStore.listNodes(scope), edges: service.execStore.listEdges(scope) };

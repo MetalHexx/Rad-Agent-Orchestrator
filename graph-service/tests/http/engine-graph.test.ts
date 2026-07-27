@@ -63,8 +63,10 @@ function postJson(app: ReturnType<typeof buildApp>, path: string, body: unknown)
 }
 
 const TASK_DATA = {
-  handoffDocPath: '/tasks/task-1.md',
-  repos: [{ name: 'rad-orc-source', path: '/repos/rad-orc-source', branch: 'radorch/STEERABLE-DAG-2.3' }],
+  handoffDocPath: 'tasks/task-1.md',
+  // No `path` seeded here — the generic field resolver fills it fresh off a real `WorktreeRecord`
+  // (`service.portfolio.addWorktree`), never a stored absolute path.
+  repos: [{ name: 'rad-orc-source', branch: 'radorch/STEERABLE-DAG-2.3' }],
   complexity: 'simple' as const,
   shouldCommit: true,
 };
@@ -214,14 +216,18 @@ interface NextActionEnvelopeBody {
   readonly instructions: string | null;
   readonly context: Record<string, unknown> | null;
   readonly completion_event: string | null;
+  readonly completion_payload_schema: readonly { readonly name: string; readonly flag: boolean }[] | null;
   readonly delta: { nodeChanges: unknown[] };
   readonly frontier: DagNode[];
 }
 
 describe('POST /engine-graph/submit-event', () => {
   it('with no event, a deterministic drive auto-resolves nothing here (task-1 is spawn-sub-agent) and stops at it, surfacing the next-action envelope rather than faking the agent work', async () => {
-    const { app } = buildTestService();
+    const { service, app } = buildTestService();
     await seedTaskAndApproval(app, 'proj-submit');
+    // task-1's own engage resolves its declared fields — a real worktree record for the repo its
+    // `repos` entry names must exist first.
+    service.portfolio.addWorktree({ projectId: 'proj-submit', repo: 'rad-orc-source' }, null);
 
     const res = await postJson(app, '/engine-graph/submit-event', { project: 'proj-submit', node: 'task-1' });
     expect(res.status).toBe(200);
@@ -233,9 +239,24 @@ describe('POST /engine-graph/submit-event', () => {
     expect(data.executor).toBe('spawn-sub-agent');
     expect(data.instructions).toEqual(expect.any(String));
     expect(data.completion_event).toBe('rad-orc:task.completed');
+    expect(data.completion_payload_schema).toEqual([
+      { name: 'repos', flag: false },
+      { name: 'branch', flag: true },
+    ]);
     expect(data.delta.nodeChanges.length).toBeGreaterThan(0);
     // task-1 only reached in_progress (engaged, never faked done) — approval-1 stays gated.
     expect(data.frontier).toEqual([]);
+
+    // The wiring seam this task exists for: the resolved `context` carries absolute paths under
+    // this service's own `root`, never the seeded project-relative/bare values verbatim.
+    const context = data.context as {
+      readonly handoff_doc: string;
+      readonly repos: readonly { readonly name: string; readonly path: string; readonly branch: string }[];
+    };
+    expect(context.handoff_doc).toBe(path.join(service.root, 'projects', 'proj-submit', 'tasks', 'task-1.md'));
+    expect(context.repos).toEqual([
+      { name: 'rad-orc-source', path: path.join(service.root, 'worktrees', 'proj-submit', 'rad-orc-source'), branch: 'radorch/STEERABLE-DAG-2.3' },
+    ]);
 
     const nodeRes = await app.request('/engine-graph/node?project=proj-submit&node=task-1');
     const nodeBody = (await nodeRes.json()) as EnvelopeBody<DagNode>;
@@ -295,6 +316,7 @@ describe('POST /engine-graph/submit-event', () => {
       instructions: null,
       context: null,
       completion_event: null,
+      completion_payload_schema: null,
       delta: body.data!.delta,
       frontier: [],
     });
@@ -430,6 +452,37 @@ describe('POST /engine-graph/submit-event', () => {
     const correctiveRes = await app.request('/engine-graph/node?project=proj-submit-review-verdict&node=review-1-corrective-1');
     expect(correctiveRes.status).toBe(404);
   });
+
+  it('a resolution refusal (a repo field naming a repo with no registered worktree) returns a structured 400 with the resolver message intact, never a thrown 500 — and the node stays not_started', async () => {
+    const { app } = buildTestService();
+    await postJson(app, '/engine-graph/seed', {
+      project: 'proj-submit-unresolvable',
+      seed: {
+        steps: [
+          {
+            primitive: 'add_node',
+            id: 'task-1',
+            type: 'rad-orc:task',
+            parent: ROOT_NODE_ID,
+            // No worktree ever registered for 'rad-orc-source' on this project — the repo field
+            // cannot resolve.
+            data: TASK_DATA,
+          },
+        ],
+      },
+    });
+
+    const res = await postJson(app, '/engine-graph/submit-event', { project: 'proj-submit-unresolvable', node: 'task-1' });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as EnvelopeBody<never>;
+    expect(body.ok).toBe(false);
+    expect(body.error?.code).toBe('invalid_delta');
+    expect(body.error?.message).toMatch(/no worktree record for repo 'rad-orc-source'/);
+
+    const nodeRes = await app.request('/engine-graph/node?project=proj-submit-unresolvable&node=task-1');
+    const nodeBody = (await nodeRes.json()) as EnvelopeBody<DagNode>;
+    expect(nodeBody.data?.status).toBe('not_started');
+  });
 });
 
 /** A bespoke custom node type the service knows nothing of: it stops at an external actor and
@@ -467,7 +520,10 @@ describe('node-agnostic custom types', () => {
     expect(data.action).toBe('example:widget');
     expect(data.node).toBe('widget-1');
     expect(data.executor).toBe('request-human');
+    expect(data.instructions).toBe('# widget');
     expect(data.completion_event).toBe('example:widget.built');
+    // No completionPayloadSchema declared on this type — relayed as null, never a crash.
+    expect(data.completion_payload_schema).toBeNull();
 
     // The read view relays the type's own presentation and its opaque data verbatim — no absent
     // generic slot the service could have filled, no per-type knowledge required.
@@ -476,6 +532,35 @@ describe('node-agnostic custom types', () => {
     expect(nodeBody.data?.presentation).toEqual({ label: 'Widget', description: 'A bespoke widget node' });
     expect(nodeBody.data?.data).toEqual({ size: 'large' });
     expect(nodeBody.data?.parent).toBe(ROOT_NODE_ID);
+  });
+
+  it('relays instructions: null for a type declaring none, rather than crashing on the absent field', async () => {
+    const mute: NodeTypeDefinition = {
+      name: 'example:mute',
+      dataSchema: {},
+      traits: [],
+      capabilities: ['request-human'],
+      presentation: { label: 'Mute' },
+      // Deliberately no `instructions` declared.
+      act: () => ({ executor: 'request-human' }),
+      handle: () => ({}),
+      projectStatus: () => 'not_started',
+    };
+    const service = compose({ dbPath: ':memory:', builtInNodeTypes: BUILT_IN_NODE_TYPES, customNodeTypes: [mute] });
+    const app = buildApp(service);
+
+    await postJson(app, '/engine-graph/seed', {
+      project: 'proj-mute',
+      seed: { steps: [{ primitive: 'add_node', id: 'mute-1', type: 'example:mute', parent: ROOT_NODE_ID, data: {} }] },
+    });
+
+    const res = await postJson(app, '/engine-graph/submit-event', { project: 'proj-mute', node: 'mute-1' });
+    expect(res.status).toBe(200);
+    const data = ((await res.json()) as EnvelopeBody<NextActionEnvelopeBody>).data!;
+    expect(data.action).toBe('example:mute');
+    expect(data.instructions).toBeNull();
+    expect(data.completion_event).toBeNull();
+    expect(data.completion_payload_schema).toBeNull();
   });
 });
 

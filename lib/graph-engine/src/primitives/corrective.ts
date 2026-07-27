@@ -154,7 +154,8 @@ export function computeAddCorrective(
     parent: chain.tip.parent,
     order: options.order ?? 0,
     derivedFrom: chain.tip.id,
-    data: options.data ?? {},
+    // D18: the budget travels on the node's own data so its `act` can resolve break-glass without a host lookup.
+    data: { ...(options.data ?? {}), maxRetries },
   };
 
   const edge: DagEdge = { from: id, to: review, kind: 'depends_on' };

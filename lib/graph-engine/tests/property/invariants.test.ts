@@ -62,7 +62,7 @@ const FAKE_NODE_TYPE: NodeTypeDefinition = {
   capabilities: [],
   presentation: { label: 'Fake' },
   instructions: '',
-  act: (ctx) => ({ instructions: `run ${ctx.nodeId}`, executor: 'noop' }),
+  act: () => ({ executor: 'noop' }),
   handle: () => ({}),
   projectStatus: () => 'not_started',
 };

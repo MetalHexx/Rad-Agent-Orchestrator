@@ -36,7 +36,7 @@ function stubType(name: NodeTypeDefinition['name']): NodeTypeDefinition {
     capabilities: [],
     presentation: { label: name },
     instructions: '',
-    act: () => ({ instructions: '', executor: 'noop' }),
+    act: () => ({ executor: 'noop' }),
     handle: () => ({}),
     projectStatus: () => 'not_started',
   };

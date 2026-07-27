@@ -1,6 +1,7 @@
 import type {
   ActContext,
   ActResult,
+  CompletionPayloadSchema,
   DataSchema,
   EventToken,
   HandleResult,
@@ -24,18 +25,6 @@ export interface PrRepoResult {
   readonly pr_url: string | null;
 }
 
-function readRepos(value: unknown): readonly PrRepoRef[] {
-  if (!Array.isArray(value)) return [];
-  return value
-    .filter((entry): entry is Record<string, unknown> => typeof entry === 'object' && entry !== null)
-    .map((entry) => ({
-      name: typeof entry.name === 'string' ? entry.name : '',
-      path: typeof entry.path === 'string' ? entry.path : '',
-      branch: typeof entry.branch === 'string' ? entry.branch : '',
-      base_branch: typeof entry.base_branch === 'string' ? entry.base_branch : '',
-    }));
-}
-
 /** Fires once the inline `gh` loop has settled every repo's PR (opened fresh or resolved already-open). */
 export const PR_CREATED_TOKEN: EventToken = 'rad-orc:pr.created';
 
@@ -48,6 +37,7 @@ export const PR_DATA_SCHEMA: DataSchema = {
   repos: {
     kind: 'array',
     level: 'required',
+    resolve: 'worktree-repo-set',
     description: 'The `{name, path, branch, base_branch}` repo set to open (or resolve) a PR for.',
   },
   completed: {
@@ -69,22 +59,18 @@ const PRESENTATION: Presentation = {
 
 const INSTRUCTIONS = `# rad-orc:pr
 
-Runs \`gh\` once per repo in this node's own \`repos\` data, inline in the orchestrator — a single
-dispatch, never an \`expands\`-trait node — opening a PR against each repo's own \`base_branch\` or
-resolving the one already open for that branch. Each outward \`gh\` call carries a stable
-idempotency key (this node's id plus the repo name) so a re-run of this same node never
-double-opens a PR. Reports back \`{name, pr_url}\` per repo as \`rad-orc:pr.created\`.
+Implement the opening or resolution of pull requests per the procedure in
+\`rad-source-control\`'s \`working-with-prs.md\` reference. This node has seeded
+the repos to work with. Per repo, open a PR against its \`base_branch\` (or resolve
+the one already open for that branch) via the run-command capability, with a stable
+idempotency key (this node's id plus the repo name) so a re-run never double-opens.
+Report back per repo as \`{name, pr_url}\` via \`rad-orc:pr.created\`.
 `;
 
-function act(ctx: ActContext): ActResult {
-  const repos = readRepos(ctx.data.repos);
+const COMPLETION_PAYLOAD_SCHEMA: CompletionPayloadSchema = [{ name: 'repos', flag: false }];
+
+function act(_ctx: ActContext): ActResult {
   return {
-    instructions:
-      "Loop inline over this node's own repos and, per repo, run `gh pr create` against that repo's " +
-      'base_branch (or resolve the PR already open for its branch) via the run-command capability — one ' +
-      "inline loop, never an expansion — each call carrying a stable idempotency key (this node's id plus " +
-      'the repo name) so a re-run never double-opens a PR. Report back per repo as `{name, pr_url}` via ' +
-      `\`rad-orc:pr.created\`. Repos: ${repos.map((repo) => repo.name).join(', ') || '(none seeded)'}.`,
     executor: 'orchestrator-inline',
   };
 }
@@ -110,4 +96,5 @@ export const PR_NODE_TYPE: NodeTypeDefinition = {
   handle,
   projectStatus,
   completionToken: PR_CREATED_TOKEN,
+  completionPayloadSchema: COMPLETION_PAYLOAD_SCHEMA,
 };

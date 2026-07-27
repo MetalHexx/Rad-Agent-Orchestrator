@@ -1,6 +1,8 @@
 import type {
   ActContext,
   ActResult,
+  CompletionPayloadSchema,
+  ContextPayload,
   DataSchema,
   EventToken,
   HandleResult,
@@ -22,12 +24,14 @@ export const MASTER_PLAN_DATA_SCHEMA: DataSchema = {
   requirementsDocPath: {
     kind: 'string',
     level: 'optional',
+    resolve: 'project-doc-path',
     description:
       "Override pointer to the requirements doc(s) to read; falls back to the project's standard location when absent.",
   },
   docPath: {
     kind: 'string',
     level: 'computed',
+    resolve: 'project-doc-path',
     description: 'Path to the authored master-plan doc, set once the doc-write step completes.',
   },
 };
@@ -39,21 +43,29 @@ const PRESENTATION: Presentation = {
 
 const INSTRUCTIONS = `# rad-orc:master_plan
 
-Authors the project's phase/task master plan: read requirements → write the plan doc → the DAG
-routes to \`rad-orc:explosion\` next (dependency-driven, not a routing request this node issues
-itself). Executed inline by the orchestrator — no sub-agent spawn. A plan-level \`approval\` denial
-resets this node back to \`not_started\` (via the engine's own cascade reset), and it re-authors
-fresh the next time it becomes frontier-eligible.
+Author the project's phase/task master plan per the procedure in \`rad-create-plans\`'s
+master-plan mode. Read the requirements doc (at \`requirementsDocPath\` if override-seeded,
+else the project's standard path), author the plan doc following that skill, write it via
+the doc-write capability, and report back with the written doc path. When \`last_parse_error\`
+is present on the payload, this is a re-authoring — fix exactly what that error flags and
+leave the rest of the plan intact.
 `;
 
+const COMPLETION_PAYLOAD_SCHEMA: CompletionPayloadSchema = [{ name: 'doc_path', flag: true }];
+
 function act(ctx: ActContext): ActResult {
-  const requirementsDocPath = typeof ctx.data.requirementsDocPath === 'string' ? ctx.data.requirementsDocPath : undefined;
-  const readTarget = requirementsDocPath ?? "the project's requirements doc";
+  // D18: the parse failure lives on the explosion sibling's own data; `reset` carries no patch, so read it.
+  const explosion = ctx.nodes.find((n) => n.type === 'rad-orc:explosion');
+  const lastParseError = explosion?.data.lastParseError;
+
+  if (lastParseError) {
+    return {
+      executor: 'orchestrator-inline',
+      payload: { last_parse_error: lastParseError } as ContextPayload,
+    };
+  }
+
   return {
-    instructions:
-      `Read ${readTarget} via the doc-read capability, author the phase/task master plan from it, ` +
-      'write it via the doc-write capability, then report back with the written doc path — the DAG ' +
-      'routes to `rad-orc:explosion` next once this node completes.',
     executor: 'orchestrator-inline',
   };
 }
@@ -79,4 +91,5 @@ export const MASTER_PLAN_NODE_TYPE: NodeTypeDefinition = {
   handle,
   projectStatus,
   completionToken: MASTER_PLAN_AUTHORED_TOKEN,
+  completionPayloadSchema: COMPLETION_PAYLOAD_SCHEMA,
 };

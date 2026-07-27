@@ -11,9 +11,15 @@ describe('rad-orc:approval', () => {
     expect(APPROVAL_NODE_TYPE.capabilities).toEqual(['request-human']);
   });
 
-  it('act prompts for the plan-level decision by default and the final-level decision when seeded', () => {
-    expect(APPROVAL_NODE_TYPE.act({ nodeId: 'approval-plan', data: {} }).instructions).toMatch(/plan-level/);
-    expect(APPROVAL_NODE_TYPE.act({ nodeId: 'approval-final', data: { level: 'final' } }).instructions).toMatch(/final-level/);
+  it('act returns request-human executor with no instructions key, and instructions are on the node type definition', () => {
+    const resultPlan = APPROVAL_NODE_TYPE.act({ nodeId: 'approval-plan', data: {}, nodes: [], edges: [] });
+    const resultFinal = APPROVAL_NODE_TYPE.act({ nodeId: 'approval-final', data: { level: 'final' }, nodes: [], edges: [] });
+    expect(resultPlan.executor).toBe('request-human');
+    expect(resultPlan).not.toHaveProperty('instructions');
+    expect(resultFinal.executor).toBe('request-human');
+    expect(resultFinal).not.toHaveProperty('instructions');
+    expect(APPROVAL_NODE_TYPE.instructions).toMatch(/`plan`/);
+    expect(APPROVAL_NODE_TYPE.instructions).toMatch(/`final`/);
   });
 
   it('granted advances with no routing request, at either level', () => {

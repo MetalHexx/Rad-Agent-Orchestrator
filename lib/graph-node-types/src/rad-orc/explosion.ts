@@ -217,6 +217,32 @@ function reviewKeySuffix(type: NodeTypeName): string {
   return name ?? type;
 }
 
+// ── Skeleton scope defaults for materialized execution nodes ─────────────────────
+// The master-plan parse names a phase/task tree and nothing more — no repo set, complexity, or
+// commit policy per task, and no per-review scope. `task.ts`/`code-review.ts`/`pr.ts` nonetheless
+// mark those scope fields `required`, and the host resolves every required field at engage time, so
+// a freshly-materialized node that omits one refuses its very first engage. These are the documented
+// skeleton values a later per-phase elaboration overwrites with the real repo set/complexity/policy.
+
+/** No repo set is known at explosion time; a `worktree-repo-set` field resolves an empty set cleanly, where an absent one refuses. */
+const SKELETON_REPO_SET: readonly unknown[] = [];
+/** The master plan declares no per-task complexity — the coder-tier ladder's middle rung. */
+const SKELETON_TASK_COMPLEXITY = 'standard';
+/** The master plan declares no per-task commit policy — a task coder commits its own work by default. */
+const SKELETON_TASK_SHOULD_COMMIT = true;
+
+/**
+ * The `resolve`-hinted, `required` scope fields a materialized decoration node declares — seeded so
+ * the host's generic field resolver fills them at engage rather than refusing an absent required
+ * field. A `code_review` owns its own running report path plus a repo scope; a `pr` a repo scope
+ * (both take the skeleton repo default above); every other decoration type declares none.
+ */
+function decorationScopeFields(type: NodeTypeName, key: string): Record<string, unknown> {
+  if (type === 'rad-orc:code_review') return { reviewReportPath: `reviews/${key}.md`, repos: SKELETON_REPO_SET };
+  if (type === 'rad-orc:pr') return { repos: SKELETON_REPO_SET };
+  return {};
+}
+
 /**
  * The seam to get right: this function is 100% mechanical given `parsed` + `cadence` — it never
  * decides routing shape itself, only applies the cadence's declared structure to the parse's
@@ -248,7 +274,13 @@ export function buildExecutionExpansion(parsed: ParsedMasterPlan, cadence: Decor
         parent: phase.id,
         dependsOn: taskAnchor ? [taskAnchor] : [],
         order: taskIndex,
-        data: { title: task.title },
+        data: {
+          title: task.title,
+          handoffDocPath: taskDocPath(phase, task),
+          repos: SKELETON_REPO_SET,
+          complexity: SKELETON_TASK_COMPLEXITY,
+          shouldCommit: SKELETON_TASK_SHOULD_COMMIT,
+        },
       });
       taskAnchor = task.id;
 
@@ -259,7 +291,7 @@ export function buildExecutionExpansion(parsed: ParsedMasterPlan, cadence: Decor
           type: reviewType,
           parent: phase.id,
           dependsOn: [taskAnchor],
-          data: { level: 'task' },
+          data: { level: 'task', ...decorationScopeFields(reviewType, reviewKey) },
         });
         taskAnchor = reviewKey;
       }
@@ -273,7 +305,7 @@ export function buildExecutionExpansion(parsed: ParsedMasterPlan, cadence: Decor
         type: reviewType,
         parent: phase.id,
         dependsOn: [phaseAnchor],
-        data: { level: 'phase' },
+        data: { level: 'phase', ...decorationScopeFields(reviewType, reviewKey) },
       });
       phaseAnchor = reviewKey;
     }
@@ -289,7 +321,7 @@ export function buildExecutionExpansion(parsed: ParsedMasterPlan, cadence: Decor
       type: spineType,
       parent: ROOT_NODE_ID,
       dependsOn: [previousPhaseAnchor],
-      data: isFinalLevel ? { level: 'final' } : {},
+      data: { ...(isFinalLevel ? { level: 'final' } : {}), ...decorationScopeFields(spineType, key) },
     });
     previousPhaseAnchor = key;
   }
@@ -468,18 +500,6 @@ const PRESENTATION: Presentation = {
     'Parses the authored master plan into phases/tasks and seeds the decorated execution subgraph, gated behind the plan-level approval.',
 };
 
-const INSTRUCTIONS = `# rad-orc:explosion
-
-The canonical \`expands\`-trait node and the engine's sole code-behind: a deterministic transform
-(\`parseMasterPlan\`) turns the authored \`rad-orc:master_plan\` doc into parsed values, then this
-node's own \`handle\` decorates those values with its declared \`cadence\` data to emit one
-\`expand\` batch — a \`rad-orc:phase\` per parsed phase, a \`rad-orc:task\` per parsed task, plus
-the review nodes the cadence names — gated behind the plan-level \`rad-orc:approval\`. Runs once,
-after \`rad-orc:master_plan\` completes and before that approval; a parse failure or a plan-level
-denial cascade-resets \`rad-orc:master_plan\` and this node re-runs fresh, under a parse-retry cap.
-Never re-fires once the seeded subgraph starts executing.
-`;
-
 export interface ExplosionNodeTypeOptions {
   /** The parse-retry cap before a further failure stops re-requesting a fresh master plan. Host config; default {@link DEFAULT_PARSE_RETRY_LIMIT}. */
   readonly parseRetryLimit?: number;
@@ -503,10 +523,6 @@ export function createExplosionNodeType(options: ExplosionNodeTypeOptions = {}):
 
   function act(_ctx: ActContext): ActResult {
     return {
-      instructions:
-        "Parse the authored `rad-orc:master_plan` doc via this node's own code-behind parser " +
-        '(`parseMasterPlan`), then feed the result back as `rad-orc:explosion.parsed` (success) or ' +
-        '`rad-orc:explosion.parse_failed` (failure) — a deterministic transform, no operator or agent action.',
       executor: 'noop',
     };
   }
@@ -607,7 +623,6 @@ export function createExplosionNodeType(options: ExplosionNodeTypeOptions = {}):
     traits: ['expands'],
     capabilities: [MASTER_PLAN_PARSER_CAPABILITY, 'doc-read', 'doc-write'],
     presentation: PRESENTATION,
-    instructions: INSTRUCTIONS,
     act,
     handle,
     projectStatus,

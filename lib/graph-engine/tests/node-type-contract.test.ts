@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DATA_FIELD_KINDS, DATA_FIELD_LEVELS, ENVELOPE_OUTCOMES } from '../src/index.js';
+import { DATA_FIELD_KINDS, DATA_FIELD_LEVELS, DATA_FIELD_RESOLUTIONS, ENVELOPE_OUTCOMES } from '../src/index.js';
 import type {
   ActContext,
   ActResult,
@@ -35,8 +35,8 @@ function makeFakeNodeType(): NodeTypeDefinition {
     capabilities: ['doc-read'],
     presentation: { label: 'Fake' },
     instructions: '# Fake node type\n\nDoes nothing.',
-    act(ctx: ActContext): ActResult {
-      return { instructions: `run for ${ctx.nodeId}`, executor: 'noop' };
+    act(_ctx: ActContext): ActResult {
+      return { executor: 'noop' };
     },
     handle(ev: NodeEvent): HandleResult {
       if (ev.envelope.outcome === 'error') {
@@ -50,6 +50,12 @@ function makeFakeNodeType(): NodeTypeDefinition {
   };
 }
 
+describe('DataFieldResolution vocabulary', () => {
+  it('has exactly the two resolution hints a host must fill', () => {
+    expect(DATA_FIELD_RESOLUTIONS).toEqual(['worktree-repo-set', 'project-doc-path']);
+  });
+});
+
 describe('NodeTypeDefinition contract shape', () => {
   it('declares traits/capabilities/dataSchema against the closed vocabularies', () => {
     const fake = makeFakeNodeType();
@@ -60,9 +66,24 @@ describe('NodeTypeDefinition contract shape', () => {
   });
 
   it('act returns an ActResult naming the requested executor', () => {
-    const result = makeFakeNodeType().act({ nodeId: 'n1', data: {} });
+    const result = makeFakeNodeType().act({ nodeId: 'n1', data: {}, nodes: [], edges: [] });
     expect(result.executor).toBe('noop');
-    expect(result.instructions).toContain('n1');
+  });
+
+  it('ActContext hands act a read-only view of the node\'s own scope, for locating a sibling', () => {
+    const nodes: readonly DagNode[] = [
+      { id: 'n1', type: 'test:fake', status: 'not_started', parent: 'root', order: 0, derivedFrom: null, data: {} },
+      { id: 'sib', type: 'test:sibling', status: 'not_started', parent: 'root', order: 1, derivedFrom: null, data: {} },
+    ];
+    const edges: readonly DagEdge[] = [{ from: 'n1', to: 'sib', kind: 'depends_on' }];
+
+    const act = (ctx: ActContext): ActResult => {
+      const sibling = ctx.nodes.find((node) => node.id !== ctx.nodeId);
+      return { executor: 'noop', payload: { agent: 'coder', repos: [], sibling: sibling?.type ?? null } };
+    };
+
+    const result = act({ nodeId: 'n1', data: {}, nodes, edges });
+    expect(result.payload?.sibling).toBe('test:sibling');
   });
 
   it('handle reads the output envelope spine and reacts to outcome/route, never the raw graph', () => {
@@ -153,7 +174,7 @@ describe('capability-port idempotency contract', () => {
     const spawnAgent: SpawnAgentRequest = {
       ...idempotency,
       request: {
-        kind: 'coder',
+        agent: 'coder',
         handoffDoc: '/tmp/handoff.md',
         complexity: 'standard',
         repos: [],
@@ -163,6 +184,6 @@ describe('capability-port idempotency contract', () => {
 
     expect(runCommand.originatingNodeId).toBe('n1');
     expect(docWrite.idempotencyKey).toBe('n1:attempt-1');
-    expect(spawnAgent.request.kind).toBe('coder');
+    expect(spawnAgent.request.agent).toBe('coder');
   });
 });

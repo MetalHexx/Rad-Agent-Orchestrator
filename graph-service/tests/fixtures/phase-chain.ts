@@ -16,7 +16,10 @@ export const PHASE_CHAIN_IDS = {
   pr: 'pr-1',
 } as const;
 
-/** Where the `review-1` node's resolver reads its verdict from — the default `reviews/{id}.md` it derives when its `data.reviewReportPath` is unset (the fixture leaves it unset). */
+/** Where the `review-1` node's own `resolve` hook reads its verdict from — seeded explicitly on the
+ * review node below (schema-required, and resolved fresh by the generic field resolver on every
+ * engage), matching the same `reviews/{id}.md` convention the node type's own `resolve` would
+ * otherwise default to. */
 export const REVIEW_REPORT_PATH = `reviews/${PHASE_CHAIN_IDS.review}.md`;
 
 /** A review report whose frontmatter carries the verdict the service reads — the `doc-read` real input that replaces the retired driver script's canned answer. */
@@ -38,14 +41,14 @@ export function phaseChainSeedSteps(): readonly SeedStep[] {
       id: PHASE_CHAIN_IDS.task,
       type: 'rad-orc:task',
       parent: PHASE_CHAIN_IDS.phase,
-      data: taskData('/tasks/task-1.md'),
+      data: taskData('tasks/task-1.md'),
     },
     {
       primitive: 'add_node',
       id: PHASE_CHAIN_IDS.review,
       type: 'rad-orc:code_review',
       parent: PHASE_CHAIN_IDS.phase,
-      data: { level: 'task', repos: [FIXTURE_REPO] },
+      data: { level: 'task', reviewReportPath: REVIEW_REPORT_PATH, repos: [FIXTURE_REPO] },
       dependsOn: [PHASE_CHAIN_IDS.task],
     },
     {
