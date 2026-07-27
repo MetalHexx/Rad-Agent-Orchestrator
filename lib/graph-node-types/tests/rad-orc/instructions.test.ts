@@ -39,7 +39,7 @@ describe('instructions — vocabulary-leak scan across all nine built-in types',
       const instructions = nodeType.instructions ?? '';
       for (const hook of bareHookNames) {
         // Allow these if they appear in code blocks or backticks (like `act`), but not bare
-        const barePattern = new RegExp(`\\b${hook}\\b(?![\\s\\S]*\`)`);
+        const barePattern = new RegExp(`(?<!\`)\\b${hook}\\b(?!\`)`);
         expect(instructions).not.toMatch(
           barePattern,
           `Bare hook name "${hook}" found in ${nodeType.name} instructions`,

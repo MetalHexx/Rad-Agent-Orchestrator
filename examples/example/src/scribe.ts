@@ -1,6 +1,7 @@
 import type {
   ActContext,
   ActResult,
+  ContextPayload,
   DataSchema,
   EventToken,
   HandleResult,
@@ -26,8 +27,8 @@ function noteContent(data: Readonly<Record<string, unknown>>): string {
 
 function act(ctx: ActContext): ActResult {
   return {
-    instructions: `Write the note ("${noteContent(ctx.data)}") through the doc-write capability, then report completion.`,
     executor: 'orchestrator-inline',
+    payload: { content: noteContent(ctx.data) } as ContextPayload,
   };
 }
 
@@ -71,9 +72,9 @@ const scribe: NodeTypeDefinition = {
     description: 'A capability-bearing custom node — writes a note through doc-write and re-derives its own completion host-side.',
   },
   instructions:
-    '# example:scribe\n\nWrite the note through the doc-write capability, then report completion. Requests the ' +
-    'doc-write capability; on relay, the host calls this type\'s own `resolve` to re-derive the outcome rather ' +
-    'than trusting a caller-supplied one.',
+    '# example:scribe\n\nWrite the note (the `content` value from the payload) through the doc-write capability, ' +
+    'then report completion. Requests the doc-write capability; on relay, the host calls this type\'s own ' +
+    '`resolve` to re-derive the outcome rather than trusting a caller-supplied one.',
   act,
   handle,
   projectStatus,

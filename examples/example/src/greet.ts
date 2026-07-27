@@ -1,6 +1,7 @@
 import type {
   ActContext,
   ActResult,
+  ContextPayload,
   DataSchema,
   HandleResult,
   NodeEvent,
@@ -15,7 +16,7 @@ const DATA_SCHEMA: DataSchema = {
 
 function act(ctx: ActContext): ActResult {
   const greeting = typeof ctx.data.greeting === 'string' ? ctx.data.greeting : 'Hello Custom Bundle';
-  return { instructions: greeting, executor: 'orchestrator-inline' };
+  return { executor: 'orchestrator-inline', payload: { greeting } as ContextPayload };
 }
 
 function handle(ev: NodeEvent): HandleResult {
@@ -33,7 +34,9 @@ const greet: NodeTypeDefinition = {
   traits: [],
   capabilities: [],
   presentation: { label: 'Greet', description: 'A zero-capability custom greeting node.' },
-  instructions: '# example:greet\n\nSpeak the greeting inline, then report completion. Requests no capabilities.',
+  instructions:
+    '# example:greet\n\nSpeak the `greeting` value from the payload (or "Hello Custom Bundle" if absent) inline, ' +
+    'then report completion. Requests no capabilities.',
   act,
   handle,
   projectStatus,
