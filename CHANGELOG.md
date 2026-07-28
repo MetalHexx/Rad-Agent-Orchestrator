@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to this project are documented here. For full per-release detail, see the `RELEASE-NOTES-v*.md` files or the [GitHub Releases page](https://github.com/MetalHexx/RadOrchestration/releases).
+All notable changes to this project are documented here. Each `## v{version}` entry below is the source of that release's notes on the [GitHub Releases page](https://github.com/MetalHexx/RadOrchestration/releases) — the publish workflow slices the matching block into the release.
 
 ---
 

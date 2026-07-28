@@ -1,5 +1,9 @@
 // Test suite for the lockstep version-bump engine.
 // Runs against a synthetic tmp-directory git-init'd fixture; never the real repo.
+//
+// The carrier inventories are imported straight from the engine rather than
+// re-declared here, so the fixture can never drift out of sync with the lists
+// the engine actually walks.
 
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -8,53 +12,22 @@ import path from 'node:path';
 import os from 'node:os';
 import { execSync } from 'node:child_process';
 
-import { bumpVersion } from '../scripts/bump-version.mjs';
+import {
+  bumpVersion,
+  WRAPPER_JSON_FILES,
+  PLUGIN_JSON_FILES,
+  MANIFEST_DIRS,
+  HARDCODED_LITERAL_FILES,
+  LOCKFILE_JSON_FILES,
+} from '../scripts/bump-version.mjs';
 
 const from = '1.0.0-alpha.9';
 const to = '1.0.0-alpha.10';
 
-// Files that hold a JSON `version` field bumped in-place (wrappers + plugin authoritative sources)
-const WRAPPER_JSON_FILES = [
-  'cli/package.json',
-  'ui/package.json',
-  'lib/repo-registry/package.json',
-  'harness-adapters/engine/package.json',
-  'harness-installers/standard/package.json',
-  'harness-installers/shared/build-helpers/package.json',
-  'harness-installers/claude-plugin/package.json',
-  'harness-installers/copilot-cli-plugin/package.json',
-  'harness-installers/copilot-vscode-plugin/package.json',
-];
-
-const PLUGIN_JSON_FILES = [
-  'harness-installers/claude-plugin/.claude-plugin/plugin.json',
-  'harness-installers/copilot-cli-plugin/plugin.json',
-  'harness-installers/copilot-vscode-plugin/.claude-plugin/plugin.json',
-];
-
-const MANIFEST_DIRS = [
-  'harness-installers/claude-plugin/manifests',
-  'harness-installers/copilot-cli-plugin/manifests',
-  'harness-installers/copilot-vscode-plugin/manifests',
-  'harness-installers/standard/manifests/claude',
-  'harness-installers/standard/manifests/copilot-cli',
-  'harness-installers/standard/manifests/copilot-vscode',
-];
-
-const HARDCODED_LITERAL_FILES = [
-  'harness-installers/claude-plugin/build-scripts/parity-check.js',
-  'harness-installers/claude-plugin/tests/manifest-shape.test.mjs',
-  'harness-installers/claude-plugin/tests/build-payload.test.mjs',
-  'harness-installers/copilot-cli-plugin/tests/build-payload.test.mjs',
-  'harness-installers/copilot-vscode-plugin/tests/build-payload.test.mjs',
-  'harness-installers/standard/tests/build/build.test.mjs',
-  'harness-installers/standard/tests/build/emit-manifest.test.mjs',
-  'harness-installers/standard/tests/build/validate.test.mjs',
-  'harness-installers/standard/tests/install/uninstall-harness.test.mjs',
-  'harness-installers/standard/tests/integration/build-then-install.test.mjs',
-  'harness-installers/standard/tests/lib/drift-hint.test.mjs',
-  'harness-installers/standard/tests/lib/wizard.test.mjs',
-];
+// A wrapper that also carries intra-repo dependency pins, so the fixture can
+// prove the pin-rewrite behavior. `cli/package.json` is the real-world carrier
+// of these pins; assert against it specifically.
+const PIN_CARRIER = 'cli/package.json';
 
 function writeFileSyncRecursive(filePath, content) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
@@ -83,8 +56,18 @@ function makeFixture() {
 
   // Wrappers + plugin authoritative sources: JSON files with version field.
   for (const p of [...WRAPPER_JSON_FILES, ...PLUGIN_JSON_FILES]) {
-    const body = JSON.stringify({ name: 'fixture', version: from }, null, 2) + '\n';
-    writeFileSyncRecursive(path.join(tmp, p), body);
+    const pkg = { name: 'fixture', version: from };
+    // Give the pin carrier a realistic mix of intra-repo pins (must be rewritten)
+    // and an external dependency (must be left untouched).
+    if (p === PIN_CARRIER) {
+      pkg.dependencies = {
+        '@rad-orchestration/repo-registry': from,
+        '@rad-orchestration/telemetry': from,
+        'some-external-dep': '^2.3.4',
+      };
+      pkg.devDependencies = { '@rad-orchestration/work-graph': from };
+    }
+    writeFileSyncRecursive(path.join(tmp, p), JSON.stringify(pkg, null, 2) + '\n');
   }
 
   // Per-version manifest catalog files: v<from>.json in each manifest dir.
@@ -97,6 +80,17 @@ function makeFixture() {
   for (const p of HARDCODED_LITERAL_FILES) {
     const body = `// fixture file\nconst V = '${from}';\nexport default V;\n`;
     writeFileSyncRecursive(path.join(tmp, p), body);
+  }
+
+  // Nested per-workspace lockfiles: the two version fields the engine rewrites.
+  for (const p of LOCKFILE_JSON_FILES) {
+    const lock = {
+      name: 'fixture',
+      version: from,
+      lockfileVersion: 3,
+      packages: { '': { name: 'fixture', version: from } },
+    };
+    writeFileSyncRecursive(path.join(tmp, p), JSON.stringify(lock, null, 2) + '\n');
   }
 
   // runtime-config/orchestration.yml — auto-stamped carrier (explicitly excluded from guard).
@@ -142,6 +136,33 @@ test('bumpVersion edits every wrapper package.json', async () => {
   }
 });
 
+test('bumpVersion rewrites intra-repo @rad-orchestration dependency pins', async () => {
+  const tmp = makeFixture();
+  fixtures.push(tmp);
+
+  await bumpVersion({ from, to, repoRoot: tmp });
+
+  const pkg = JSON.parse(await fs.promises.readFile(path.join(tmp, PIN_CARRIER), 'utf8'));
+  assert.strictEqual(pkg.dependencies['@rad-orchestration/repo-registry'], to);
+  assert.strictEqual(pkg.dependencies['@rad-orchestration/telemetry'], to);
+  assert.strictEqual(pkg.devDependencies['@rad-orchestration/work-graph'], to);
+  // External dependency must be left exactly as-is.
+  assert.strictEqual(pkg.dependencies['some-external-dep'], '^2.3.4');
+});
+
+test('bumpVersion rewrites both version fields in every nested lockfile', async () => {
+  const tmp = makeFixture();
+  fixtures.push(tmp);
+
+  await bumpVersion({ from, to, repoRoot: tmp });
+
+  for (const p of LOCKFILE_JSON_FILES) {
+    const lock = JSON.parse(await fs.promises.readFile(path.join(tmp, p), 'utf8'));
+    assert.strictEqual(lock.version, to, `lockfile ${p} top-level version not bumped`);
+    assert.strictEqual(lock.packages[''].version, to, `lockfile ${p} self version not bumped`);
+  }
+});
+
 test('bumpVersion renames every per-version manifest catalog and updates internal version', async () => {
   const tmp = makeFixture();
   fixtures.push(tmp);
@@ -158,12 +179,17 @@ test('bumpVersion renames every per-version manifest catalog and updates interna
   }
 });
 
-test('bumpVersion enrolls the repo-registry library wrapper', async () => {
-  const { WRAPPER_JSON_FILES: inv } = await import('../scripts/bump-version.mjs');
-  assert.ok(
-    inv.includes('lib/repo-registry/package.json'),
-    'repo-registry package.json must be in the bump inventory',
-  );
+test('bumpVersion enrolls the product library wrappers', async () => {
+  for (const lib of [
+    'lib/repo-registry/package.json',
+    'lib/telemetry/package.json',
+    'lib/work-graph/package.json',
+  ]) {
+    assert.ok(
+      WRAPPER_JSON_FILES.includes(lib),
+      `${lib} must be in the bump inventory`,
+    );
+  }
 });
 
 test('bumpVersion fails loudly when stray copies of the prior version remain', async () => {

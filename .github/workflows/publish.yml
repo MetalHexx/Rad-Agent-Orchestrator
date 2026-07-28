@@ -1,0 +1,96 @@
+# .github/workflows/publish.yml — Publish the standard installer (rad-orc) to
+# npm and cut a GitHub Release when a v* tag is pushed.
+#
+# The /rad-release skill owns everything up to and including the `v{version}`
+# tag push (version reconcile, build, validate, CHANGELOG approval, the single
+# commit, plugin sync to the marketplace satellite, and tag/push). Pushing the
+# main-repo tag is the trigger for this workflow, which owns only the
+# standard-installer npm publish + the GitHub Release. The npm credential lives
+# in CI (secrets.NPM_TOKEN), not on the operator's machine.
+
+name: Publish rad-orc
+
+on:
+  push:
+    tags: ['v*']
+
+# Never run two publishes for the same tag at once; do not cancel an in-flight
+# publish (a half-published release is worse than a queued one).
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the GitHub Release
+      id-token: write # npm --provenance OIDC attestation
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      # Guard: the pushed tag must match the version the skill bumped into the
+      # standard installer's package.json (NOT cli/ — the published package is
+      # harness-installers/standard). A mismatch means the tag and the tree
+      # disagree; fail before publishing anything.
+      - name: Verify tag matches standard installer version
+        run: |
+          PKG_VERSION="v$(node -p "require('./harness-installers/standard/package.json').version")"
+          if [ "$PKG_VERSION" != "${{ github.ref_name }}" ]; then
+            echo "::error::tag ${{ github.ref_name }} does not match standard installer version $PKG_VERSION"
+            exit 1
+          fi
+
+      - name: Install dependencies (root workspace)
+        run: npm install
+
+      # Mandatory: output/ is git-ignored and there is no prepublishOnly hook,
+      # so the published artifact only exists after this build. build.js also
+      # builds the lib deps (repo-registry / work-graph / telemetry) and packs
+      # ui.tgz internally.
+      - name: Build standard installer
+        run: node harness-installers/standard/build-scripts/build.js
+
+      - name: Standard installer — manifest drift gate
+        run: npm run check:manifest-drift -w harness-installers/standard
+
+      - name: Standard installer tests
+        run: npm test -w harness-installers/standard
+
+      # Reuse the human-approved CHANGELOG entry as the release notes. Slice the
+      # block for this tag's version — from its `## v<version> — <date>` heading
+      # up to (not including) the next `## v` heading. The trailing space in the
+      # match prefix disambiguates e.g. v1.0.0-alpha.9 from v1.0.0-alpha.99.
+      - name: Slice release notes from CHANGELOG
+        run: |
+          awk -v h="## ${{ github.ref_name }} " '
+            index($0, h) == 1 { cap = 1; print; next }
+            cap && /^## v/ { exit }
+            cap { print }
+          ' CHANGELOG.md > "$GITHUB_WORKSPACE/.release-notes.md"
+          if [ ! -s "$GITHUB_WORKSPACE/.release-notes.md" ]; then
+            echo "::error::no CHANGELOG block found for ${{ github.ref_name }}"
+            exit 1
+          fi
+
+      # First publish of the unscoped `rad-orc` name requires --access public.
+      # NOTE: OIDC trusted publishing is unavailable until a package has >=1
+      # published version, so the FIRST release authenticates with NPM_TOKEN.
+      # Once rad-orc exists on npm, migrate to trusted publishing and drop the
+      # token. --provenance emits a signed build attestation (needs id-token).
+      - name: Publish to npm
+        working-directory: harness-installers/standard
+        run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Create GitHub Release
+        run: gh release create "${{ github.ref_name }}" --verify-tag --title "${{ github.ref_name }}" --notes-file "$GITHUB_WORKSPACE/.release-notes.md"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

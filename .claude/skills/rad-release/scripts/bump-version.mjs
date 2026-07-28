@@ -2,11 +2,12 @@
 // Lockstep version-bump engine.
 //
 // Bumps a single carrier inventory in one atomic pass:
-//   1. Wrapper `package.json` files — in-place JSON edit
+//   1. Wrapper `package.json` files — in-place JSON edit (version + intra-repo pins)
 //   2. Plugin authoritative version sources — in-place JSON edit
 //   3. Per-version manifest catalog files — `git mv` rename + internal `version` field update
 //   4. Hardcoded-literal files — bare string replacement
-//   5. Stray-carrier guard — `git grep -l <from>` and fail loudly on any unlisted carrier
+//   5. Nested per-workspace lockfiles — deterministic two-field version rewrite
+//   6. Stray-carrier guard — `git grep -l <from>` and fail loudly on any unlisted carrier
 //
 // All edits are made relative to `repoRoot`. CLI wrapper:
 //   node bump-version.mjs --from <prev> --to <next>
@@ -20,11 +21,15 @@ import { fileURLToPath } from 'node:url';
 // Carrier inventory
 // -----------------------------------------------------------------------------
 
-// 1. Wrapper package.json files (9) — JSON, in-place `version` bump.
+// 1. Wrapper package.json files (11) — JSON, in-place `version` bump. Any
+// intra-repo `@rad-orchestration/*` dependency pin equal to `from` is rewritten
+// to `to` in the same pass (see `bumpJsonFile`) so workspace resolution stays intact.
 export const WRAPPER_JSON_FILES = [
   'cli/package.json',
   'ui/package.json',
   'lib/repo-registry/package.json',
+  'lib/telemetry/package.json',
+  'lib/work-graph/package.json',
   'harness-adapters/engine/package.json',
   'harness-installers/standard/package.json',
   'harness-installers/shared/build-helpers/package.json',
@@ -54,28 +59,86 @@ export const MANIFEST_DIRS = [
   'harness-installers/standard/manifests/copilot-vscode',
 ];
 
-// 4. Hardcoded-literal files (12) — bare `from` string replaced everywhere.
+// 4. Hardcoded-literal files (21) — bare `from` string replaced everywhere.
+// These embed the version as a literal (manifest filenames like
+// `v<version>.json`, or `version: '<version>'` assertions in tests / build
+// helpers) rather than reading it from a package.json. NOTE: never write a
+// concrete version literal in this engine's own source (comments included) —
+// the guard greps every tracked file, so a literal here would flag this file
+// as an unknown carrier after a real bump.
 export const HARDCODED_LITERAL_FILES = [
   'harness-installers/claude-plugin/build-scripts/parity-check.js',
   'harness-installers/claude-plugin/tests/manifest-shape.test.mjs',
-  'harness-installers/claude-plugin/tests/build-payload.test.mjs',
+  'harness-installers/claude-plugin/tests/helpers/install-bench.js',
   'harness-installers/copilot-cli-plugin/tests/build-payload.test.mjs',
+  'harness-installers/copilot-cli-plugin/tests/helpers/install-bench.js',
+  'harness-installers/copilot-cli-plugin/tests/helpers/run-build.js',
   'harness-installers/copilot-vscode-plugin/tests/build-payload.test.mjs',
+  'harness-installers/copilot-vscode-plugin/tests/helpers/install-bench.js',
+  'harness-installers/copilot-vscode-plugin/tests/helpers/run-build.js',
+  'harness-installers/standard/tests/build/action-events-bundling.test.mjs',
   'harness-installers/standard/tests/build/build.test.mjs',
   'harness-installers/standard/tests/build/emit-manifest.test.mjs',
+  'harness-installers/standard/tests/build/standard-manifest-no-parallel.test.mjs',
   'harness-installers/standard/tests/build/validate.test.mjs',
+  'harness-installers/standard/tests/helpers/run-build.js',
+  'harness-installers/standard/tests/install/hook-wiring.test.mjs',
   'harness-installers/standard/tests/install/uninstall-harness.test.mjs',
   'harness-installers/standard/tests/integration/build-then-install.test.mjs',
   'harness-installers/standard/tests/lib/drift-hint.test.mjs',
   'harness-installers/standard/tests/lib/wizard.test.mjs',
+  'cli/tests/behavioral/manifest-integrity/explode-master-plan-restored.test.ts',
 ];
 
-// Auto-stamped / legacy-comment carriers that are intentionally excluded from
-// the stray-carrier guard. `runtime-config/orchestration.yml` is regenerated
-// downstream; `CHANGELOG.md` legacy comments preserve history.
+// 5. Nested per-workspace lockfiles (3) — committed `package-lock.json` files
+// that live under an individually-packed workspace (cli / ui / the harness
+// adapter engine). The repo-root lockfile is git-ignored; these three are
+// tracked and carry the workspace version in exactly two fields: top-level
+// `version` and `packages[""].version`. A version-only bump never changes their
+// resolved dependency tree (intra-repo deps resolve through the workspace
+// parent and are not enumerated here), so both fields are rewritten
+// deterministically rather than regenerated via `npm install`.
+export const LOCKFILE_JSON_FILES = [
+  'cli/package-lock.json',
+  'ui/package-lock.json',
+  'harness-adapters/engine/package-lock.json',
+];
+
+// Carriers intentionally excluded from the stray-carrier guard — files that
+// legitimately hold the prior version but must NOT be swept by this engine:
+//   - Auto-stamped / legacy-comment: `runtime-config/orchestration.yml` is
+//     regenerated downstream; `CHANGELOG.md` legacy comments preserve history.
+//   - WIP graph subsystem (graph-service + graph-* libs + their sandboxes /
+//     fixtures): out of scope for release, frozen at their current version.
+//   - Test / doc fixtures that reference a version literal incidentally (e.g.
+//     `dev-bump.test.mjs` mentions a nearby alpha-counter literal that the
+//     unanchored grep matches as a false positive) and are not release carriers.
+// Nested per-workspace lockfiles are NOT excluded — they get a dedicated bump
+// pass (see `LOCKFILE_JSON_FILES` / `bumpLockfileVersionFields`) so a lingering
+// prior version in one still trips the guard and fails loud.
 const GUARD_EXCLUDED_FILES = new Set([
   'runtime-config/orchestration.yml',
   'CHANGELOG.md',
+  // WIP graph subsystem — not released, not bumped.
+  'graph-service/package.json',
+  'lib/graph-client/package.json',
+  'lib/graph-engine/package.json',
+  'lib/graph-node-types/package.json',
+  'lib/graph-node-types/tests/dependency-direction.test.ts',
+  'lib/graph-store-sqlite/package.json',
+  'examples/example/package.json',
+  'examples/node-blind-fixture/package.json',
+  'prompt-tests/_handoff-sandbox/graph-service/package.json',
+  'prompt-tests/_handoff-sandbox/lib/graph-engine/package.json',
+  'prompt-tests/_handoff-sandbox/lib/graph-node-types/package.json',
+  'prompt-tests/_handoff-sandbox/lib/graph-store-sqlite/package.json',
+  // Test / doc fixtures that reference a version literal incidentally.
+  'docs/internals/_private/INSTALL-REFACTOR-DESIGN.md',
+  'cli/tests/lib/install-json.test.ts',
+  'cli/tests/commands/doctor.test.ts',
+  'cli/tests/lib/cross-harness-scan.test.ts',
+  '.claude/skills/rad-release/tests/bump-version.test.mjs',
+  '.claude/skills/rad-release/tests/dev-bump.test.mjs',
 ]);
 
 // -----------------------------------------------------------------------------
@@ -97,6 +160,26 @@ function writeJsonPreservingTrailingNewline(absPath, obj) {
   fs.writeFileSync(absPath, JSON.stringify(obj, null, 2) + '\n');
 }
 
+// Rewrite any intra-repo `@rad-orchestration/*` dependency whose pin is exactly
+// `from` to `to`, across dependencies / devDependencies / peerDependencies.
+// These workspace libs are published only inside the monorepo, so their pins
+// must move in lockstep with the version bump or `npm install` breaks. Returns
+// the count of pins rewritten (for diagnostics).
+function rewriteIntraRepoPins(json, from, to) {
+  let rewritten = 0;
+  for (const field of ['dependencies', 'devDependencies', 'peerDependencies']) {
+    const deps = json[field];
+    if (!deps || typeof deps !== 'object') continue;
+    for (const [name, spec] of Object.entries(deps)) {
+      if (name.startsWith('@rad-orchestration/') && spec === from) {
+        deps[name] = to;
+        rewritten += 1;
+      }
+    }
+  }
+  return rewritten;
+}
+
 function bumpJsonFile(repoRoot, relPath, from, to, kind) {
   const abs = path.join(repoRoot, relPath);
   if (!fs.existsSync(abs)) {
@@ -109,7 +192,29 @@ function bumpJsonFile(repoRoot, relPath, from, to, kind) {
     );
   }
   json.version = to;
+  rewriteIntraRepoPins(json, from, to);
   writeJsonPreservingTrailingNewline(abs, json);
+}
+
+// Rewrite the two version fields a committed nested lockfile carries — its
+// top-level `version` and its self entry `packages[""].version`. Deterministic:
+// no `npm install`, so it works offline and never perturbs the resolved tree.
+function bumpLockfileVersionFields(repoRoot, relPath, from, to) {
+  const abs = path.join(repoRoot, relPath);
+  if (!fs.existsSync(abs)) {
+    throw new Error(`lockfile not found: ${relPath}`);
+  }
+  const lock = readJson(abs);
+  if (lock.version !== from) {
+    throw new Error(
+      `lockfile ${relPath} has version "${lock.version}", expected "${from}"`,
+    );
+  }
+  lock.version = to;
+  if (lock.packages && lock.packages[''] && lock.packages[''].version === from) {
+    lock.packages[''].version = to;
+  }
+  writeJsonPreservingTrailingNewline(abs, lock);
 }
 
 function bumpManifestCatalogFile(repoRoot, dir, from, to) {
@@ -220,7 +325,12 @@ export async function bumpVersion({ from, to, repoRoot }) {
     sweepHardcodedLiteral(repoRoot, rel, from, to);
   }
 
-  // 5. Stray-carrier guard.
+  // 5. Nested per-workspace lockfile version fields.
+  for (const rel of LOCKFILE_JSON_FILES) {
+    bumpLockfileVersionFields(repoRoot, rel, from, to);
+  }
+
+  // 6. Stray-carrier guard.
   strayCarrierGuard(repoRoot, from, to);
 }
 
