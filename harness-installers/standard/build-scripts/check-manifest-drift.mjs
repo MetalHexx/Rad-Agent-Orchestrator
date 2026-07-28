@@ -12,8 +12,13 @@
 // does not touch the manifest, so it never trips this gate.
 //
 // Fast path: the UI bundle (output/ui.tgz) is written OUTSIDE the per-harness
-// dirs that emit-manifest walks, so skipping the ~3-min `next build`
-// (skipUiRunner) yields byte-identical manifests in a fraction of the time.
+// dirs that emit-manifest walks, so this rebuild skips the emit-ui-bundle
+// step entirely (skipUiBundle) rather than running it with a stubbed `next
+// build` — the latter would delete/overwrite whatever ui.tgz a prior real
+// build had produced (emitUiBundle always cleans up ui/.next after packing,
+// so a stubbed rerun finds nothing to bundle and clobbers it with a
+// near-empty tarball). Manifest generation never reads ui.tgz's content, so
+// leaving it untouched is safe and also faster than the old stub path.
 //
 // Cross-platform: every manifest field is platform-stable — POSIX-normalised
 // bundlePaths, tokenised ${HARNESS_ROOT}/${RAD_HOME} destinations, entries
@@ -39,7 +44,7 @@ function git(args) {
 
 async function main() {
   process.stderr.write('[check-manifest-drift] rebuilding standard manifests (UI skipped) ...\n');
-  await runBuild({ rootDir: REPO_ROOT, skipUiRunner: true });
+  await runBuild({ rootDir: REPO_ROOT, skipUiBundle: true });
 
   // --porcelain catches modified, deleted, AND untracked manifest files (a
   // version bump that forgot to commit the new vX.json, say) — stricter than

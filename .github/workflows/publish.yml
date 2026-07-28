@@ -50,15 +50,23 @@ jobs:
       - name: Install dependencies (root workspace)
         run: npm install
 
+      # The manifest drift gate does its OWN full rebuild of output/ (with the
+      # UI bundle step skipped entirely — manifest generation never reads
+      # ui.tgz) purely to diff manifests/ against the committed catalog. It
+      # must run BEFORE "Build standard installer" below: both steps rebuild
+      # the same output/ directory from a clean slate, so whichever runs last
+      # is what ships. Running the drift gate first means the real build (with
+      # its real, ~3-min `next build`-produced ui.tgz) is the last write
+      # before publish — nothing after it touches output/ again.
+      - name: Standard installer — manifest drift gate
+        run: npm run check:manifest-drift -w harness-installers/standard
+
       # Mandatory: output/ is git-ignored and there is no prepublishOnly hook,
       # so the published artifact only exists after this build. build.js also
       # builds the lib deps (repo-registry / work-graph / telemetry) and packs
       # ui.tgz internally.
       - name: Build standard installer
         run: node harness-installers/standard/build-scripts/build.js
-
-      - name: Standard installer — manifest drift gate
-        run: npm run check:manifest-drift -w harness-installers/standard
 
       - name: Standard installer tests
         run: npm test -w harness-installers/standard
