@@ -6,9 +6,43 @@ All notable changes to this project are documented here. Each `## v{version}` en
 
 ## Unreleased
 
+_(none)_
+
+---
+
+## v1.0.0-alpha.9 — 2026-07-28
+
+The largest release since the process refactor: a brand-new observability and telemetry stack, multi-repo orchestration, a work-graph that relates projects to each other, a rebuilt installer and plugin distribution story, and a planning flow that collapses to a single requirements conversation plus a Master Plan.
+
+### What's New
+
+- **Observability & telemetry** — An entirely new subsystem, off by default and opt-in via `orchestration.yml`. A harness-neutral capture library records per-request token usage to NDJSON with daily partitioning, and a new **Observability** dashboard section reads it live over SSE. Includes an all-sessions surface with spend/duration/rate cards and time-range filters, a per-session detail view with a spend-rate chart and subagent cost breakdown, and an **Agent Inspector** with a live transcript viewer plus Overview, Tools, and Files Touched facets. Costs are priced per model and per token class (input, output, cache-read, cache-create) at the record's own timestamp.
+- **Multi-repo orchestration** — Projects can now span several repositories. A new repo registry manages repos and repo-groups; each Master Plan task declares a **Target repo**, phases derive their repo set as the union of their tasks, and the pipeline fans out per-repo across signal, state, execution, review, and source control. A new **Source Control** panel shows per-repo branch, bind status, and location kind (worktree / in-place / side-project), deep-linked to the Repo Registry.
+- **Work graph & project relationships** — A new work-graph library and `/rad-project` skill let projects declare relationships to one another, resolve where you're working from, and surface the active set. A structured session preamble reports registered repos, repo-groups, and active projects at session start.
+- **`/rad-repo` skill** — Register, bind, describe, and group repositories from chat, so work that spans repos no longer assumes the current directory is the whole system.
+- **`/rad-visual-docs` skill** — Extracted into a standalone skill for wireframes, UI mockups, and architecture / data-flow / sequence diagrams. Mockups are clean and grounded by default — annotations are opt-in, and every rendered element must trace back to the conversation.
+- **Live dashboard** — Artifacts, project state, and the registry now stream to the UI over SSE with a supervised file watcher, so documents and pipeline state update in place instead of on refresh. Adds a launch screen with an artifact viewer, a unified document modal that addresses every document (including phase plans, task handoffs, and review reports) by path with deep links and toggleable frontmatter, and DAG planning cards that surface Requirements/Master Plan status inline.
+- **Configurable dashboard port** — The UI port is sourced from `orchestration.yml` (`ui.port`, default `1337`) and editable from the dashboard config editor.
+- **UI control skills** — `/rad-ui-start`, `/rad-ui-status`, and `/rad-ui-stop` for launching, diagnosing, and stopping the dashboard.
+
 ### What's Changed
 
-- **Worktree-launch folded into `/rad-execute`** — The previously separate worktree-launch command has been retired. Running `/rad-execute` from the main clone now launches a fresh worktree and branch automatically; running it from inside an existing worktree executes in place after a confirmation. No separate command is needed.
+- **Planning overhaul** — The requirements document is now requirement-grouped (`R{n}`), co-locating functional, design, and technical detail per requirement in place of the old FR/NFR/AD/DD ledger. `/rad-brainstorm` is a pure collaboration partner — there is no longer a separate brainstorming document; the requirements doc is scribed inline as consensus forms, and `/rad-plan` starts from it. Master Plan authoring, the plan audit, and approval all moved onto the main agent, retiring the standalone `planner` agent and the `rad-plan-audit` / `rad-approve-plan` skills. Tasks route by **complexity** (`simple` / `standard` / `complex`) rather than requirement tags, and the prescriptive per-phase task caps are gone.
+- **New distribution model** — The installer was rearchitected and the npm package renamed **`rad-orchestration` → `rad-orc`**. Alongside the standard installer, the system now ships as three marketplace plugins — Claude Code, GitHub Copilot CLI, and Copilot in VS Code — published to a satellite marketplace repo. The canonical user-data root is standardized at `~/.radorc`. Publishing is now CI-owned: pushing a `v*` tag builds, gates, publishes to npm with provenance, and cuts the GitHub Release.
+- **Worktree-launch folded into `/rad-execute`** — The separate worktree-launch command is retired. Running `/rad-execute` from the main clone launches a fresh worktree and branch automatically; running it from inside an existing worktree executes in place after a confirmation.
+- **Lower agent token spend** — Coder and reviewer skills were reworked for turn economy, and task handoffs are now *compile-complete*: the planner inlines each external dependency's import-ready contract so the coder never sweeps engine source to orient. Measured on an A/B benchmark: cache-read **14.9M → 6.5M (−57%)**, engine-source file reads 22 → 0, peak context 281K → 176K, with identical output.
+- **Orchestrator agent retired** — The pipeline drives from skills; the `orchestrator` agent and its Copilot launch pin are gone. Also retired: the `rad-configure-system`, `rad-execute-parallel`, `rad-plan-quick`, and `rad-run-tests` skills.
+- **Monorepo on npm workspaces** — Shared libraries (`repo-registry`, `work-graph`, `telemetry`) build to `dist/` and are consumed by name across the CLI, UI, and installers.
+- **CI coverage** — New gates for installer-manifest drift and the four installer test suites, which were previously never run in CI. Installer manifests are now a hash-free path catalog that regenerates byte-identically on any OS, ending the recurring manifest-resync churn.
+
+### What's Fixed
+
+- **Dashboard cost now reconciles with terminal `/cost`** — Claude Code writes 100% 1-hour prompt cache, but capture flattened cache-creation to a single total and priced all of it at the 5-minute rate, undercounting spend. Cache-creation is now split by TTL and priced correctly.
+- **Token totals no longer inflated** — Transcript parsing summed every raw line instead of one contribution per request, multiplying cache-read and output tokens up to 4× on multi-line requests. Both the harvest and modal paths now resolve a single final value per request.
+- **Cross-harness install on Windows** — Installing one harness while another's dashboard held a lock on `~/.radorc/ui/` raised an EPERM that bricked the install. Every install path now stops a live UI first, keeps staging retry-safe, and no longer wipes the plugin payload on a transient failure.
+- **Spawned agents can open their documents** — Doc paths on the pipeline envelope (handoff, review report, phase plan, requirements) are now emitted absolute, so a coder or reviewer can open them directly from its worktree.
+- **Dashboard navigation** — Stale document pulses and badges on project switch and cold load are gone, the sidebar filter survives selecting a project, and the document modal's delete action now resolves subfolder documents correctly.
+- **Observability UI** — Token breakdown wrapped in a proper card shell with a tooltip; scroll-lock and repaint-safe reveal fixed in the agent inspector.
 
 ---
 

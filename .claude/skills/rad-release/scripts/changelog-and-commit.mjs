@@ -61,7 +61,11 @@ export async function commitRelease({
   const existing = fs.existsSync(changelogPath)
     ? await fs.promises.readFile(changelogPath, 'utf8')
     : '# Changelog\n\n---\n\n';
-  const insertionPoint = existing.indexOf('## v');
+  // Anchor to a line-start "## v" heading only — a bare indexOf('## v') can
+  // false-match inline-code prose elsewhere in the file (e.g. the intro
+  // sentence's `` `## v{version}` ``) and splice the new entry mid-sentence.
+  const headingMatch = existing.match(/^## v/m);
+  const insertionPoint = headingMatch ? headingMatch.index : -1;
   const updated =
     insertionPoint === -1
       ? existing + approvedChangelog + '\n'
