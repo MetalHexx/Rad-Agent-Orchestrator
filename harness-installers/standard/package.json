@@ -3,6 +3,10 @@
   "version": "1.0.0-alpha.9",
   "type": "module",
   "description": "Greenfield standard installer for the Rad orchestration system.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MetalHexx/RadOrchestration.git"
+  },
   "bin": {
     "rad-orc": "index.js"
   },
