@@ -1,7 +1,7 @@
 {
   "name": "rad-orc",
   "description": "Document-driven, multi-agent orchestration loop for Claude Code.",
-  "version": "1.0.0-alpha.10",
+  "version": "1.0.0-alpha.11",
   "author": {
     "name": "metalhexx"
   },

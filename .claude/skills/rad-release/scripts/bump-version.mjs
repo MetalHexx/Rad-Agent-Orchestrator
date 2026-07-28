@@ -4,16 +4,30 @@
 // Bumps a single carrier inventory in one atomic pass:
 //   1. Wrapper `package.json` files — in-place JSON edit (version + intra-repo pins)
 //   2. Plugin authoritative version sources — in-place JSON edit
-//   3. Hardcoded-literal files — bare string replacement
-//   4. Nested per-workspace lockfiles — deterministic two-field version rewrite
-//   5. Stray-carrier guard — `git grep -l <from>` and fail loudly on any unlisted carrier
+//   3. Per-plugin manifest catalog files — `git mv`-rename + internal version bump
+//   4. Hardcoded-literal files — bare string replacement
+//   5. Nested per-workspace lockfiles — deterministic two-field version rewrite
+//   6. Stray-carrier guard — `git grep -l <from>` and fail loudly on any unlisted carrier
 //
-// Per-version manifest catalog files (MANIFEST_DIRS) are deliberately NOT
-// touched here. catalog.js's upgrade path requires every prior version's
-// manifest to remain bundled (AD-4) so upgraders can resolve their
-// currently-installed version's file tree; the build step (build.js /
-// emit-manifest.js) adds the new version's manifest fresh, alongside every
-// manifest already checked into the repo, rather than replacing it.
+// Manifest catalog files split into two behaviorally distinct groups
+// (`PLUGIN_MANIFEST_DIRS` vs `STANDARD_MANIFEST_DIRS`), because the two
+// installers' `catalog.js` implementations have different upgrade contracts:
+//
+//   - `PLUGIN_MANIFEST_DIRS` (the three `<plugin>/manifests/` dirs): each
+//     holds a single HAND-AUTHORED manifest for whatever version is currently
+//     in-tree (kept in sync with the plugin's `_install-source/` tree by
+//     `manifest-payload-parity.test.mjs`, not machine-generated). The
+//     per-plugin `catalog.js` has no prior-version lookup, so this file is
+//     renamed forward at every release: `v<from>.json` -> `v<to>.json` with
+//     its internal `version` field updated. Exactly one file exists at a time.
+//
+//   - `STANDARD_MANIFEST_DIRS` (`harness-installers/standard/manifests/*`):
+//     `harness-installers/standard/lib/install/catalog.js`'s upgrade path
+//     requires every prior version's manifest to remain bundled (AD-4) so
+//     upgraders can resolve whatever version they're currently on. These are
+//     deliberately NOT touched by this engine — the build step (build.js /
+//     emit-manifest.js) adds the new version's manifest fresh, alongside
+//     every manifest already checked into the repo, rather than replacing it.
 //
 // All edits are made relative to `repoRoot`. CLI wrapper:
 //   node bump-version.mjs --from <prev> --to <next>
@@ -54,16 +68,25 @@ export const PLUGIN_JSON_FILES = [
   'harness-installers/copilot-vscode-plugin/.claude-plugin/plugin.json',
 ];
 
-// 3. Per-version manifest catalog directories (6) — files named `v<version>.json`
-// inside each dir get `git mv`-renamed + internal `version` field bumped.
-export const MANIFEST_DIRS = [
+// 3a. Per-plugin manifest catalog directories (3) — each holds exactly one
+// hand-authored `v<version>.json` for the in-tree version; `git mv`-renamed +
+// internal `version` field bumped on every release (see file header).
+export const PLUGIN_MANIFEST_DIRS = [
   'harness-installers/claude-plugin/manifests',
   'harness-installers/copilot-cli-plugin/manifests',
   'harness-installers/copilot-vscode-plugin/manifests',
+];
+
+// 3b. Standard-installer per-harness manifest catalog directories (3) — AD-4
+// accumulation; never touched by this engine (see file header).
+export const STANDARD_MANIFEST_DIRS = [
   'harness-installers/standard/manifests/claude',
   'harness-installers/standard/manifests/copilot-cli',
   'harness-installers/standard/manifests/copilot-vscode',
 ];
+
+// Combined, for the stray-carrier guard's historical-file allowance.
+export const MANIFEST_DIRS = [...PLUGIN_MANIFEST_DIRS, ...STANDARD_MANIFEST_DIRS];
 
 // 4. Hardcoded-literal files (21) — bare `from` string replaced everywhere.
 // These embed the version as a literal (manifest filenames like
@@ -145,6 +168,10 @@ const GUARD_EXCLUDED_FILES = new Set([
   'cli/tests/lib/cross-harness-scan.test.ts',
   '.claude/skills/rad-release/tests/bump-version.test.mjs',
   '.claude/skills/rad-release/tests/dev-bump.test.mjs',
+  '.claude/skills/rad-release/tests/changelog-and-commit.test.mjs',
+  '.claude/skills/rad-release/tests/sync-satellite-and-tag.test.mjs',
+  // Illustrative version-literal example in the workflow_dispatch input description.
+  '.github/workflows/npm-dist-tag.yml',
   // Illustrative version-literal example in prose (step 10 docs), not a carrier.
   '.claude/skills/rad-release/SKILL.md',
   // Illustrative version-literal examples in comments only; version is derived
@@ -228,6 +255,27 @@ function bumpLockfileVersionFields(repoRoot, relPath, from, to) {
   writeJsonPreservingTrailingNewline(abs, lock);
 }
 
+// Renames a plugin's single hand-authored manifest forward: `v<from>.json` ->
+// `v<to>.json` via `git mv`, then updates its internal `version` field. Unlike
+// the standard installer's AD-4 catalog, exactly one file is expected to
+// exist per plugin manifest dir at any time (see file header).
+function bumpManifestCatalogFile(repoRoot, dir, from, to) {
+  const fromRel = normalizeRelative(path.join(dir, `v${from}.json`));
+  const toRel = normalizeRelative(path.join(dir, `v${to}.json`));
+  const fromAbs = path.join(repoRoot, fromRel);
+  if (!fs.existsSync(fromAbs)) {
+    throw new Error(`manifest catalog file not found: ${fromRel}`);
+  }
+  execSync(`git mv "${fromRel}" "${toRel}"`, { cwd: repoRoot });
+  const toAbs = path.join(repoRoot, toRel);
+  const body = readJson(toAbs);
+  if (body.version !== from) {
+    throw new Error(`manifest catalog ${toRel} has version "${body.version}", expected "${from}"`);
+  }
+  body.version = to;
+  writeJsonPreservingTrailingNewline(toAbs, body);
+}
+
 function sweepHardcodedLiteral(repoRoot, relPath, from, to) {
   const abs = path.join(repoRoot, relPath);
   if (!fs.existsSync(abs)) {
@@ -250,12 +298,16 @@ function buildInventorySet() {
   return inventory;
 }
 
-// Manifest catalog files accumulate forever (AD-4) — a match under any
-// MANIFEST_DIRS entry is always an expected historical carrier, whether it's
-// the version just bumped from, the version just bumped to (emitted by the
-// build step, not this engine), or any earlier shipped version still on disk.
+// Standard-installer manifest catalog files accumulate forever (AD-4) — a
+// match under any STANDARD_MANIFEST_DIRS entry is always an expected
+// historical carrier, whether it's the version just bumped from, the version
+// just bumped to (emitted by the build step, not this engine), or any earlier
+// shipped version still on disk. Plugin manifest dirs are NOT exempted here:
+// `bumpManifestCatalogFile` renames their single file forward in this same
+// pass, so a lingering `from`-versioned file after that step is a real bug
+// the guard should catch.
 function isManifestCatalogFile(match) {
-  for (const dir of MANIFEST_DIRS) {
+  for (const dir of STANDARD_MANIFEST_DIRS) {
     const prefix = normalizeRelative(dir) + '/';
     if (match.startsWith(prefix) && /^v.+\.json$/.test(match.slice(prefix.length))) {
       return true;
@@ -314,19 +366,26 @@ export async function bumpVersion({ from, to, repoRoot }) {
     bumpJsonFile(repoRoot, rel, from, to, 'plugin authoritative source');
   }
 
-  // 3. Hardcoded-literal sweep.
+  // 3. Per-plugin manifest catalog files — rename forward (see file header).
+  for (const dir of PLUGIN_MANIFEST_DIRS) {
+    bumpManifestCatalogFile(repoRoot, dir, from, to);
+  }
+
+  // 4. Hardcoded-literal sweep.
   for (const rel of HARDCODED_LITERAL_FILES) {
     sweepHardcodedLiteral(repoRoot, rel, from, to);
   }
 
-  // 4. Nested per-workspace lockfile version fields.
+  // 5. Nested per-workspace lockfile version fields.
   for (const rel of LOCKFILE_JSON_FILES) {
     bumpLockfileVersionFields(repoRoot, rel, from, to);
   }
 
-  // 5. Stray-carrier guard. Manifest catalog files (MANIFEST_DIRS) are
-  // intentionally left untouched above — see file header — so the guard
-  // permits any historical manifest still carrying `from` as version content.
+  // 6. Stray-carrier guard. Standard-installer manifest catalog files
+  // (STANDARD_MANIFEST_DIRS) are intentionally left untouched above — see
+  // file header — so the guard permits any historical one still carrying
+  // `from` as version content. Plugin manifest files were already renamed
+  // forward in step 3, so no exemption applies to them here.
   strayCarrierGuard(repoRoot, from);
 }
 

@@ -7,7 +7,7 @@ import { validatePackageTree, REQUIRED_PER_HARNESS } from '../../build-scripts/v
 
 const HARNESSES = ['claude', 'copilot-vscode', 'copilot-cli'];
 const COPILOT_AGENT_SUFFIX_HARNESSES = new Set(['copilot-vscode', 'copilot-cli']);
-const VERSION = '1.0.0-alpha.10';
+const VERSION = '1.0.0-alpha.11';
 
 test('REQUIRED_PER_HARNESS no longer includes the retired pipeline bundle', () => {
   assert.ok(!REQUIRED_PER_HARNESS.includes('skills/rad-orchestration/scripts/pipeline.js'),

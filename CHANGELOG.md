@@ -10,6 +10,13 @@ _(none)_
 
 ---
 
+## v1.0.0-alpha.11 — 2026-07-28
+
+### What's Fixed
+- Upgrades from 1.0.0-alpha.9 no longer fail with `bundled manifest not found` — the release engine was deleting each harness's prior-version manifest on every bump, violating the installer's own upgrade contract (AD-4). Manifests now accumulate correctly for the standard installer, and each plugin's single hand-authored manifest is renamed forward as before.
+- `npx rad-orc` now always installs the newest published version. The npm `latest` dist-tag was stuck on the very first published version (1.0.0-alpha.9) because npm force-tags a package's first-ever publish regardless of the `--tag` flag used; CI now always repoints `latest` at whatever version it just published.
+
+This release ships the actual fix for both issues to npm — 1.0.0-alpha.10 was published before the manifest fix landed, so anyone still on alpha.9 needs this version to upgrade cleanly.
 ## v1.0.0-alpha.10 — 2026-07-28
 
 ### What's New

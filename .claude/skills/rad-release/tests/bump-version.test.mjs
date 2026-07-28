@@ -17,6 +17,8 @@ import {
   WRAPPER_JSON_FILES,
   PLUGIN_JSON_FILES,
   MANIFEST_DIRS,
+  PLUGIN_MANIFEST_DIRS,
+  STANDARD_MANIFEST_DIRS,
   HARDCODED_LITERAL_FILES,
   LOCKFILE_JSON_FILES,
 } from '../scripts/bump-version.mjs';
@@ -163,19 +165,35 @@ test('bumpVersion rewrites both version fields in every nested lockfile', async 
   }
 });
 
-test('bumpVersion leaves per-version manifest catalogs untouched (AD-4 accumulation)', async () => {
+test('bumpVersion leaves standard-installer manifest catalogs untouched (AD-4 accumulation)', async () => {
   const tmp = makeFixture();
   fixtures.push(tmp);
 
   await bumpVersion({ from, to, repoRoot: tmp });
 
-  for (const dir of MANIFEST_DIRS) {
+  for (const dir of STANDARD_MANIFEST_DIRS) {
     const oldFile = path.join(tmp, dir, `v${from}.json`);
     const newFile = path.join(tmp, dir, `v${to}.json`);
     assert.ok(await fileExists(oldFile), `expected prior-version manifest to survive ${oldFile}`);
     assert.ok(!(await fileExists(newFile)), `bumpVersion must not emit the new manifest itself — that's the build step's job: ${newFile}`);
     const body = JSON.parse(await fs.promises.readFile(oldFile, 'utf8'));
     assert.strictEqual(body.version, from, `prior manifest ${dir} version must remain untouched`);
+  }
+});
+
+test('bumpVersion renames each plugin manifest forward (single current-version file)', async () => {
+  const tmp = makeFixture();
+  fixtures.push(tmp);
+
+  await bumpVersion({ from, to, repoRoot: tmp });
+
+  for (const dir of PLUGIN_MANIFEST_DIRS) {
+    const oldFile = path.join(tmp, dir, `v${from}.json`);
+    const newFile = path.join(tmp, dir, `v${to}.json`);
+    assert.ok(!(await fileExists(oldFile)), `expected prior-version plugin manifest to be renamed away: ${oldFile}`);
+    assert.ok(await fileExists(newFile), `expected renamed plugin manifest to exist: ${newFile}`);
+    const body = JSON.parse(await fs.promises.readFile(newFile, 'utf8'));
+    assert.strictEqual(body.version, to, `renamed plugin manifest ${dir} version must be bumped`);
   }
 });
 

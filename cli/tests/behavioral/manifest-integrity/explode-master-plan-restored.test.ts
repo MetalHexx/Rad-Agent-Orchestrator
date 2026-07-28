@@ -5,9 +5,9 @@ import { describe, it, expect } from 'vitest';
 const REPO_ROOT = join(__dirname, '..', '..', '..', '..');
 const ACTION_FILE = join(REPO_ROOT, 'runtime-config', 'action-events', 'action.explode_master_plan.md');
 const MANIFESTS = [
-  join(REPO_ROOT, 'harness-installers', 'standard', 'manifests', 'claude', 'v1.0.0-alpha.10.json'),
-  join(REPO_ROOT, 'harness-installers', 'standard', 'manifests', 'copilot-cli', 'v1.0.0-alpha.10.json'),
-  join(REPO_ROOT, 'harness-installers', 'standard', 'manifests', 'copilot-vscode', 'v1.0.0-alpha.10.json'),
+  join(REPO_ROOT, 'harness-installers', 'standard', 'manifests', 'claude', 'v1.0.0-alpha.11.json'),
+  join(REPO_ROOT, 'harness-installers', 'standard', 'manifests', 'copilot-cli', 'v1.0.0-alpha.11.json'),
+  join(REPO_ROOT, 'harness-installers', 'standard', 'manifests', 'copilot-vscode', 'v1.0.0-alpha.11.json'),
 ];
 const CANONICAL_COMMAND = '`radorch.mjs plan explode`';
 
