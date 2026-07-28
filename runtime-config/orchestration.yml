@@ -9,3 +9,7 @@ human_gates:
 source_control:
   auto_commit: ask
   auto_pr: ask
+telemetry:
+  enabled: true
+ui:
+  port: 1337

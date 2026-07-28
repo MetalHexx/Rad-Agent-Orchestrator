@@ -1,8 +1,11 @@
 "use client";
 
+import { useEffect } from "react";
 import { SSEProvider, useSSEContext } from "@/hooks/use-sse-context";
 import { ConfigClickProvider, useConfigClickContext } from "@/hooks/use-config-click-context";
+import { useConfigEditor } from "@/hooks/use-config-editor";
 import { AppHeader } from "./app-header";
+import { ConfigEditorPanel } from "@/components/config";
 import type { NavLink } from "./app-header";
 
 // ─── Nav Links ───────────────────────────────────────────────────────────────
@@ -27,7 +30,15 @@ interface AppHeaderShellProps {
 
 function AppHeaderShellInner({ children, version }: AppHeaderShellProps) {
   const { sseStatus, reconnect } = useSSEContext();
-  const { onConfigClick } = useConfigClickContext();
+  const { onConfigClick, setOnConfigClick } = useConfigClickContext();
+  const configEditor = useConfigEditor();
+
+  useEffect(() => {
+    setOnConfigClick(configEditor.open);
+    return () => {
+      setOnConfigClick(undefined);
+    };
+  }, [setOnConfigClick, configEditor.open]);
 
   return (
     <>
@@ -39,6 +50,7 @@ function AppHeaderShellInner({ children, version }: AppHeaderShellProps) {
         version={version}
       />
       {children}
+      <ConfigEditorPanel editor={configEditor} />
     </>
   );
 }

@@ -4,15 +4,12 @@ import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useProjects } from "@/hooks/use-projects";
 import { useFollowMode } from "@/hooks/use-follow-mode";
-import { useConfigEditor } from "@/hooks/use-config-editor";
-import { useConfigClickContext } from "@/hooks/use-config-click-context";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { ProjectSidebar } from "@/components/sidebar";
 import { LaunchScreen } from "@/components/layout";
 import { useStartAction } from "@/hooks/use-start-action";
 import { deleteArtifact } from "@/hooks/use-project-artifacts";
 import { ConfirmApprovalDialog } from "@/components/dashboard";
-import { ConfigEditorPanel } from "@/components/config";
 import { DAGTimeline, DAGTimelineSkeleton, ProjectHeader, HaltReasonBanner, SourceControlPanel, deriveCurrentPhase, derivePhaseProgress } from "@/components/dag-timeline";
 import { PlanningSection } from "@/components/planning-section";
 import { hasSourceControlRepos, selectSourceControlRepos } from "@/components/dag-timeline/source-control-helpers";
@@ -400,14 +397,6 @@ export default function ProjectsPage() {
   const nodesForFollowMode = v5State ? v5State.graph.nodes : null;
   const { followMode, expandedLoopIds, onAccordionChange, toggleFollowMode } = useFollowMode(nodesForFollowMode, selectedProject);
 
-  const configEditor = useConfigEditor();
-  const { setOnConfigClick } = useConfigClickContext();
-
-  useEffect(() => {
-    setOnConfigClick(configEditor.open);
-    return () => { setOnConfigClick(undefined); };
-  }, [setOnConfigClick, configEditor.open]);
-
   const selected: ProjectSummary | undefined = useMemo(
     () => projects.find((p) => p.name === selectedProject),
     [projects, selectedProject],
@@ -573,8 +562,6 @@ export default function ProjectsPage() {
           }
         }}
       />
-
-      <ConfigEditorPanel editor={configEditor} />
     </div>
   );
 }
