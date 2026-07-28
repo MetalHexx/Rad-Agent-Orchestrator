@@ -116,6 +116,18 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
+      # During pre-1.0 development every release IS the newest usable build,
+      # channel tag (alpha/beta/next) notwithstanding — so `latest` always
+      # tracks the version just published, keeping plain `npx rad-orc` current.
+      # Revisit this once there's a real stable line worth protecting `latest` for.
+      - name: Point latest at newest publish
+        working-directory: harness-installers/standard
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          npm dist-tag add "rad-orc@$VERSION" latest
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
       - name: Create GitHub Release
         run: gh release create "${{ github.ref_name }}" --verify-tag --title "${{ github.ref_name }}" --notes-file "$GITHUB_WORKSPACE/.release-notes.md"
         env:
