@@ -11,3 +11,5 @@ source_control:
   auto_pr: ask
 telemetry:
   enabled: true
+ui:
+  port: 1337
