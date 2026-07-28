@@ -52,7 +52,7 @@ describe('computeDriftHint — defensive defaults (NFR-4)', () => {
     try {
       const installJsonPath = writeInstallJson(tmp, {
         harnesses: {
-          claude: { version: '1.0.0-alpha.9' },
+          claude: { version: '1.0.0-alpha.10' },
         },
       });
       const result = computeDriftHint({ installJsonPath });
@@ -67,7 +67,7 @@ describe('computeDriftHint — defensive defaults (NFR-4)', () => {
     try {
       const installJsonPath = writeInstallJson(tmp, {
         harnesses: {
-          'claude-plugin': { version: '1.0.0-alpha.9' },
+          'claude-plugin': { version: '1.0.0-alpha.10' },
         },
       });
       const result = computeDriftHint({ installJsonPath });
@@ -82,8 +82,8 @@ describe('computeDriftHint — defensive defaults (NFR-4)', () => {
     try {
       const installJsonPath = writeInstallJson(tmp, {
         harnesses: {
-          claude: { version: '1.0.0-alpha.9' },
-          'claude-plugin': { version: '1.0.0-alpha.9' },
+          claude: { version: '1.0.0-alpha.10' },
+          'claude-plugin': { version: '1.0.0-alpha.10' },
         },
       });
       const result = computeDriftHint({ installJsonPath });
@@ -100,13 +100,13 @@ describe('computeDriftHint — drift detection (FR-9, AD-15)', () => {
     try {
       const installJsonPath = writeInstallJson(tmp, {
         harnesses: {
-          claude: { version: '1.0.0-alpha.9' },
+          claude: { version: '1.0.0-alpha.10' },
           'claude-plugin': { version: '1.0.0-alpha.8' },
         },
       });
       const result = computeDriftHint({ installJsonPath });
       assert.ok(result, 'expected a truthy drift hint');
-      assert.equal(result.installedVersion, '1.0.0-alpha.9');
+      assert.equal(result.installedVersion, '1.0.0-alpha.10');
       assert.equal(result.pluginVersion, '1.0.0-alpha.8');
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });

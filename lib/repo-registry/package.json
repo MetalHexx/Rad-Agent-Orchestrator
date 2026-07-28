@@ -1,6 +1,6 @@
 {
   "name": "@rad-orchestration/repo-registry",
-  "version": "1.0.0-alpha.9",
+  "version": "1.0.0-alpha.10",
   "private": true,
   "type": "module",
   "main": "dist/index.js",
@@ -19,7 +19,9 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
   },
-  "dependencies": { "js-yaml": "^4.1.0" },
+  "dependencies": {
+    "js-yaml": "^4.1.0"
+  },
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.19.17",

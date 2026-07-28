@@ -71,14 +71,14 @@ function stageFixture(root) {
   fs.writeFileSync(path.join(installerSrc, 'hooks/hooks.json'),
     JSON.stringify({ version: 1, hooks: { userPromptSubmitted: [], sessionStart: [] } }, null, 2));
   fs.writeFileSync(path.join(installerSrc, 'plugin.json'),
-    JSON.stringify({ name: 'rad-orc', version: '1.0.0-alpha.9', author: { name: 'metalhexx' }, license: 'MIT' }));
+    JSON.stringify({ name: 'rad-orc', version: '1.0.0-alpha.10', author: { name: 'metalhexx' }, license: 'MIT' }));
   fs.mkdirSync(path.join(installerSrc, 'manifests'), { recursive: true });
-  fs.writeFileSync(path.join(installerSrc, 'manifests/v1.0.0-alpha.9.json'),
-    JSON.stringify({ version: '1.0.0-alpha.9', channel: 'copilot-cli-plugin', files: [] }));
+  fs.writeFileSync(path.join(installerSrc, 'manifests/v1.0.0-alpha.10.json'),
+    JSON.stringify({ version: '1.0.0-alpha.10', channel: 'copilot-cli-plugin', files: [] }));
   fs.writeFileSync(path.join(installerSrc, 'package.json'),
     JSON.stringify({
       name: '@rad-orchestration/copilot-cli-plugin-source',
-      version: '1.0.0-alpha.9', private: true, type: 'module', license: 'MIT',
+      version: '1.0.0-alpha.10', private: true, type: 'module', license: 'MIT',
       engines: { node: '>=20' },
     }));
 }

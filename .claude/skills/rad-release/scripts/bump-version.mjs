@@ -139,6 +139,11 @@ const GUARD_EXCLUDED_FILES = new Set([
   'cli/tests/lib/cross-harness-scan.test.ts',
   '.claude/skills/rad-release/tests/bump-version.test.mjs',
   '.claude/skills/rad-release/tests/dev-bump.test.mjs',
+  // Illustrative version-literal example in prose (step 10 docs), not a carrier.
+  '.claude/skills/rad-release/SKILL.md',
+  // Illustrative version-literal examples in comments only; version is derived
+  // dynamically from `github.ref_name` at CI runtime, not a literal carrier.
+  '.github/workflows/publish.yml',
 ]);
 
 // -----------------------------------------------------------------------------

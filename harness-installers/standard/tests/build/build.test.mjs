@@ -96,7 +96,7 @@ function makeFixture() {
     path.join(installerSrc, 'package.json'),
     JSON.stringify({
       name: '@rad-orchestration/standard-source',
-      version: '1.0.0-alpha.9',
+      version: '1.0.0-alpha.10',
       private: true,
       type: 'module',
       description: 'Standard installer source wrapper.',
@@ -167,7 +167,7 @@ test('runBuild produces output/<harness>/ per harness and shared output/ui/', as
       assert.ok(!fs.existsSync(path.join(hOut, 'skills/rad-orchestration/scripts/stray.ts')),
         `${h}: stray.ts pruned`);
       // Per-harness manifest copy-forward (FR-25, AD-4).
-      assert.ok(fs.existsSync(path.join(hOut, 'manifests/v1.0.0-alpha.9.json')),
+      assert.ok(fs.existsSync(path.join(hOut, 'manifests/v1.0.0-alpha.10.json')),
         `${h}: per-harness manifest copied forward`);
     }
 

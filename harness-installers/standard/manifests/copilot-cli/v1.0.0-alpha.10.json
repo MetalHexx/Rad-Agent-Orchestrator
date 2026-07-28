@@ -1,5 +1,5 @@
 {
-  "version": "1.0.0-alpha.9",
+  "version": "1.0.0-alpha.10",
   "channel": "standard",
   "files": [
     {
@@ -143,24 +143,24 @@
       "destinationPath": "${RAD_HOME}/action-events/event.task_gate_approved.md"
     },
     {
-      "bundlePath": "agents/coder-junior.md",
-      "destinationPath": "${HARNESS_ROOT}/agents/coder-junior.md"
+      "bundlePath": "agents/coder-junior.agent.md",
+      "destinationPath": "${HARNESS_ROOT}/agents/coder-junior.agent.md"
     },
     {
-      "bundlePath": "agents/coder-senior.md",
-      "destinationPath": "${HARNESS_ROOT}/agents/coder-senior.md"
+      "bundlePath": "agents/coder-senior.agent.md",
+      "destinationPath": "${HARNESS_ROOT}/agents/coder-senior.agent.md"
     },
     {
-      "bundlePath": "agents/coder.md",
-      "destinationPath": "${HARNESS_ROOT}/agents/coder.md"
+      "bundlePath": "agents/coder.agent.md",
+      "destinationPath": "${HARNESS_ROOT}/agents/coder.agent.md"
     },
     {
-      "bundlePath": "agents/reviewer-junior.md",
-      "destinationPath": "${HARNESS_ROOT}/agents/reviewer-junior.md"
+      "bundlePath": "agents/reviewer-junior.agent.md",
+      "destinationPath": "${HARNESS_ROOT}/agents/reviewer-junior.agent.md"
     },
     {
-      "bundlePath": "agents/reviewer.md",
-      "destinationPath": "${HARNESS_ROOT}/agents/reviewer.md"
+      "bundlePath": "agents/reviewer.agent.md",
+      "destinationPath": "${HARNESS_ROOT}/agents/reviewer.agent.md"
     },
     {
       "bundlePath": "hooks/session-preamble.mjs",

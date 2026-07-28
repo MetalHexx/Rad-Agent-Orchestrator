@@ -1,6 +1,6 @@
 {
   "name": "rad-orc",
-  "version": "1.0.0-alpha.9",
+  "version": "1.0.0-alpha.10",
   "type": "module",
   "description": "Greenfield standard installer for the Rad orchestration system.",
   "repository": {
@@ -32,5 +32,7 @@
     "figlet": "^1.11.0",
     "tar": "^7.4.3"
   },
-  "engines": { "node": ">=18" }
+  "engines": {
+    "node": ">=18"
+  }
 }

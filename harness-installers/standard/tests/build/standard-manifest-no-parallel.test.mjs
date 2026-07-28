@@ -9,7 +9,7 @@ const MANIFESTS = path.resolve(
 const HARNESSES = ['claude', 'copilot-cli', 'copilot-vscode'];
 
 for (const h of HARNESSES) {
-  const file = path.join(MANIFESTS, h, 'v1.0.0-alpha.9.json');
+  const file = path.join(MANIFESTS, h, 'v1.0.0-alpha.10.json');
   test(`${h} manifest has no rad-execute-parallel entry (FR-18, NFR-3)`, () => {
     const m = JSON.parse(fs.readFileSync(file, 'utf8'));
     const bad = m.files.filter((e) =>

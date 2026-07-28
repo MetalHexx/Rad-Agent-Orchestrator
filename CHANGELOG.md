@@ -10,6 +10,17 @@ _(none)_
 
 ---
 
+## v1.0.0-alpha.10 — 2026-07-28
+
+### What's New
+_(none)_
+
+### What's Fixed
+- fix(ci): stop manifest drift gate from clobbering published ui.tgz (#193)
+
+### Changes
+- Enable telemetry by default, pin UI port, and make config gear icon global (#194)
+
 ## v1.0.0-alpha.9 — 2026-07-28
 
 The largest release since the process refactor: a brand-new observability and telemetry stack, multi-repo orchestration, a work-graph that relates projects to each other, a rebuilt installer and plugin distribution story, and a planning flow that collapses to a single requirements conversation plus a Master Plan.

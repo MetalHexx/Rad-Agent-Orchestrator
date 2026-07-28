@@ -1,11 +1,20 @@
 {
   "name": "rad-orc",
   "description": "Document-driven, multi-agent orchestration loop for GitHub Copilot CLI.",
-  "version": "1.0.0-alpha.9",
-  "author": { "name": "metalhexx" },
-  "repository": { "type": "git", "url": "https://github.com/MetalHexx/RadOrchestration" },
+  "version": "1.0.0-alpha.10",
+  "author": {
+    "name": "metalhexx"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MetalHexx/RadOrchestration"
+  },
   "license": "MIT",
   "homepage": "https://github.com/MetalHexx/RadOrchestration",
-  "keywords": ["copilot-cli", "orchestration", "rad-orchestration"],
+  "keywords": [
+    "copilot-cli",
+    "orchestration",
+    "rad-orchestration"
+  ],
   "hooks": "hooks/hooks.json"
 }
