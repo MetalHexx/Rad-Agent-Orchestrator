@@ -1,0 +1,354 @@
+{
+  "version": "1.0.0-alpha.9",
+  "channel": "standard",
+  "files": [
+    {
+      "bundlePath": "action-events/.gitkeep",
+      "destinationPath": "${RAD_HOME}/action-events/.gitkeep"
+    },
+    {
+      "bundlePath": "action-events/README.md",
+      "destinationPath": "${RAD_HOME}/action-events/README.md"
+    },
+    {
+      "bundlePath": "action-events/action.ask_gate_mode.md",
+      "destinationPath": "${RAD_HOME}/action-events/action.ask_gate_mode.md"
+    },
+    {
+      "bundlePath": "action-events/action.display_complete.md",
+      "destinationPath": "${RAD_HOME}/action-events/action.display_complete.md"
+    },
+    {
+      "bundlePath": "action-events/action.display_halted.md",
+      "destinationPath": "${RAD_HOME}/action-events/action.display_halted.md"
+    },
+    {
+      "bundlePath": "action-events/action.execute_task.md",
+      "destinationPath": "${RAD_HOME}/action-events/action.execute_task.md"
+    },
+    {
+      "bundlePath": "action-events/action.explode_master_plan.md",
+      "destinationPath": "${RAD_HOME}/action-events/action.explode_master_plan.md"
+    },
+    {
+      "bundlePath": "action-events/action.gate_phase.md",
+      "destinationPath": "${RAD_HOME}/action-events/action.gate_phase.md"
+    },
+    {
+      "bundlePath": "action-events/action.gate_task.md",
+      "destinationPath": "${RAD_HOME}/action-events/action.gate_task.md"
+    },
+    {
+      "bundlePath": "action-events/action.invoke_source_control_pr.md",
+      "destinationPath": "${RAD_HOME}/action-events/action.invoke_source_control_pr.md"
+    },
+    {
+      "bundlePath": "action-events/action.request_final_approval.md",
+      "destinationPath": "${RAD_HOME}/action-events/action.request_final_approval.md"
+    },
+    {
+      "bundlePath": "action-events/action.request_plan_approval.md",
+      "destinationPath": "${RAD_HOME}/action-events/action.request_plan_approval.md"
+    },
+    {
+      "bundlePath": "action-events/action.spawn_code_reviewer.md",
+      "destinationPath": "${RAD_HOME}/action-events/action.spawn_code_reviewer.md"
+    },
+    {
+      "bundlePath": "action-events/action.spawn_final_reviewer.md",
+      "destinationPath": "${RAD_HOME}/action-events/action.spawn_final_reviewer.md"
+    },
+    {
+      "bundlePath": "action-events/action.spawn_master_plan.md",
+      "destinationPath": "${RAD_HOME}/action-events/action.spawn_master_plan.md"
+    },
+    {
+      "bundlePath": "action-events/action.spawn_phase_reviewer.md",
+      "destinationPath": "${RAD_HOME}/action-events/action.spawn_phase_reviewer.md"
+    },
+    {
+      "bundlePath": "action-events/event.code_review_completed.md",
+      "destinationPath": "${RAD_HOME}/action-events/event.code_review_completed.md"
+    },
+    {
+      "bundlePath": "action-events/event.explosion_completed.md",
+      "destinationPath": "${RAD_HOME}/action-events/event.explosion_completed.md"
+    },
+    {
+      "bundlePath": "action-events/event.explosion_failed.md",
+      "destinationPath": "${RAD_HOME}/action-events/event.explosion_failed.md"
+    },
+    {
+      "bundlePath": "action-events/event.final_approved.md",
+      "destinationPath": "${RAD_HOME}/action-events/event.final_approved.md"
+    },
+    {
+      "bundlePath": "action-events/event.final_rejected.md",
+      "destinationPath": "${RAD_HOME}/action-events/event.final_rejected.md"
+    },
+    {
+      "bundlePath": "action-events/event.final_review_completed.md",
+      "destinationPath": "${RAD_HOME}/action-events/event.final_review_completed.md"
+    },
+    {
+      "bundlePath": "action-events/event.gate_mode_set.md",
+      "destinationPath": "${RAD_HOME}/action-events/event.gate_mode_set.md"
+    },
+    {
+      "bundlePath": "action-events/event.gate_rejected.md",
+      "destinationPath": "${RAD_HOME}/action-events/event.gate_rejected.md"
+    },
+    {
+      "bundlePath": "action-events/event.halt.md",
+      "destinationPath": "${RAD_HOME}/action-events/event.halt.md"
+    },
+    {
+      "bundlePath": "action-events/event.master_plan_completed.md",
+      "destinationPath": "${RAD_HOME}/action-events/event.master_plan_completed.md"
+    },
+    {
+      "bundlePath": "action-events/event.phase_gate_approved.md",
+      "destinationPath": "${RAD_HOME}/action-events/event.phase_gate_approved.md"
+    },
+    {
+      "bundlePath": "action-events/event.phase_review_completed.md",
+      "destinationPath": "${RAD_HOME}/action-events/event.phase_review_completed.md"
+    },
+    {
+      "bundlePath": "action-events/event.plan_approved.md",
+      "destinationPath": "${RAD_HOME}/action-events/event.plan_approved.md"
+    },
+    {
+      "bundlePath": "action-events/event.plan_rejected.md",
+      "destinationPath": "${RAD_HOME}/action-events/event.plan_rejected.md"
+    },
+    {
+      "bundlePath": "action-events/event.pr_created.md",
+      "destinationPath": "${RAD_HOME}/action-events/event.pr_created.md"
+    },
+    {
+      "bundlePath": "action-events/event.pr_requested.md",
+      "destinationPath": "${RAD_HOME}/action-events/event.pr_requested.md"
+    },
+    {
+      "bundlePath": "action-events/event.start.md",
+      "destinationPath": "${RAD_HOME}/action-events/event.start.md"
+    },
+    {
+      "bundlePath": "action-events/event.task_completed.md",
+      "destinationPath": "${RAD_HOME}/action-events/event.task_completed.md"
+    },
+    {
+      "bundlePath": "action-events/event.task_gate_approved.md",
+      "destinationPath": "${RAD_HOME}/action-events/event.task_gate_approved.md"
+    },
+    {
+      "bundlePath": "agents/coder-junior.agent.md",
+      "destinationPath": "${HARNESS_ROOT}/agents/coder-junior.agent.md"
+    },
+    {
+      "bundlePath": "agents/coder-senior.agent.md",
+      "destinationPath": "${HARNESS_ROOT}/agents/coder-senior.agent.md"
+    },
+    {
+      "bundlePath": "agents/coder.agent.md",
+      "destinationPath": "${HARNESS_ROOT}/agents/coder.agent.md"
+    },
+    {
+      "bundlePath": "agents/reviewer-junior.agent.md",
+      "destinationPath": "${HARNESS_ROOT}/agents/reviewer-junior.agent.md"
+    },
+    {
+      "bundlePath": "agents/reviewer.agent.md",
+      "destinationPath": "${HARNESS_ROOT}/agents/reviewer.agent.md"
+    },
+    {
+      "bundlePath": "hooks/session-preamble.mjs",
+      "destinationPath": "${HARNESS_ROOT}/hooks/session-preamble.mjs"
+    },
+    {
+      "bundlePath": "hooks/telemetry-capture.mjs",
+      "destinationPath": "${HARNESS_ROOT}/hooks/telemetry-capture.mjs"
+    },
+    {
+      "bundlePath": "skills/rad-brainstorm/SKILL.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-brainstorm/SKILL.md"
+    },
+    {
+      "bundlePath": "skills/rad-brainstorm/references/collaboration.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-brainstorm/references/collaboration.md"
+    },
+    {
+      "bundlePath": "skills/rad-brainstorm/references/project-memory.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-brainstorm/references/project-memory.md"
+    },
+    {
+      "bundlePath": "skills/rad-brainstorm/references/project-series.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-brainstorm/references/project-series.md"
+    },
+    {
+      "bundlePath": "skills/rad-code-review/SKILL.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-code-review/SKILL.md"
+    },
+    {
+      "bundlePath": "skills/rad-code-review/final-review.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-code-review/final-review.md"
+    },
+    {
+      "bundlePath": "skills/rad-code-review/phase-review.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-code-review/phase-review.md"
+    },
+    {
+      "bundlePath": "skills/rad-code-review/task-review.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-code-review/task-review.md"
+    },
+    {
+      "bundlePath": "skills/rad-create-plans/SKILL.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-create-plans/SKILL.md"
+    },
+    {
+      "bundlePath": "skills/rad-create-plans/references/master-plan/templates/MASTER-PLAN.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-create-plans/references/master-plan/templates/MASTER-PLAN.md"
+    },
+    {
+      "bundlePath": "skills/rad-create-plans/references/master-plan/workflow.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-create-plans/references/master-plan/workflow.md"
+    },
+    {
+      "bundlePath": "skills/rad-create-plans/references/requirements/templates/REQUIREMENTS.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-create-plans/references/requirements/templates/REQUIREMENTS.md"
+    },
+    {
+      "bundlePath": "skills/rad-create-plans/references/requirements/workflow.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-create-plans/references/requirements/workflow.md"
+    },
+    {
+      "bundlePath": "skills/rad-execute-coding-task/SKILL.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-execute-coding-task/SKILL.md"
+    },
+    {
+      "bundlePath": "skills/rad-execute/SKILL.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-execute/SKILL.md"
+    },
+    {
+      "bundlePath": "skills/rad-log-error/SKILL.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-log-error/SKILL.md"
+    },
+    {
+      "bundlePath": "skills/rad-log-error/templates/ERROR-LOG.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-log-error/templates/ERROR-LOG.md"
+    },
+    {
+      "bundlePath": "skills/rad-orchestration/SKILL.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-orchestration/SKILL.md"
+    },
+    {
+      "bundlePath": "skills/rad-orchestration/references/context.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-orchestration/references/context.md"
+    },
+    {
+      "bundlePath": "skills/rad-orchestration/references/corrective-playbook.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-orchestration/references/corrective-playbook.md"
+    },
+    {
+      "bundlePath": "skills/rad-orchestration/references/document-conventions.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-orchestration/references/document-conventions.md"
+    },
+    {
+      "bundlePath": "skills/rad-orchestration/references/pipeline-guide.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-orchestration/references/pipeline-guide.md"
+    },
+    {
+      "bundlePath": "skills/rad-orchestration/scripts/radorch.mjs",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-orchestration/scripts/radorch.mjs"
+    },
+    {
+      "bundlePath": "skills/rad-plan/SKILL.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-plan/SKILL.md"
+    },
+    {
+      "bundlePath": "skills/rad-plan/references/audit.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-plan/references/audit.md"
+    },
+    {
+      "bundlePath": "skills/rad-project/SKILL.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-project/SKILL.md"
+    },
+    {
+      "bundlePath": "skills/rad-project/references/cli-commands.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-project/references/cli-commands.md"
+    },
+    {
+      "bundlePath": "skills/rad-project/references/concepts.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-project/references/concepts.md"
+    },
+    {
+      "bundlePath": "skills/rad-project/references/interacting-with-users.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-project/references/interacting-with-users.md"
+    },
+    {
+      "bundlePath": "skills/rad-project/references/where-to-work.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-project/references/where-to-work.md"
+    },
+    {
+      "bundlePath": "skills/rad-repo/SKILL.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-repo/SKILL.md"
+    },
+    {
+      "bundlePath": "skills/rad-repo/references/cli-commands.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-repo/references/cli-commands.md"
+    },
+    {
+      "bundlePath": "skills/rad-repo/references/concepts.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-repo/references/concepts.md"
+    },
+    {
+      "bundlePath": "skills/rad-repo/references/interacting-with-users.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-repo/references/interacting-with-users.md"
+    },
+    {
+      "bundlePath": "skills/rad-source-control/SKILL.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-source-control/SKILL.md"
+    },
+    {
+      "bundlePath": "skills/rad-source-control/references/creating-commits.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-source-control/references/creating-commits.md"
+    },
+    {
+      "bundlePath": "skills/rad-source-control/references/working-with-prs.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-source-control/references/working-with-prs.md"
+    },
+    {
+      "bundlePath": "skills/rad-source-control/references/working-with-worktrees.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-source-control/references/working-with-worktrees.md"
+    },
+    {
+      "bundlePath": "skills/rad-ui-start/SKILL.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-ui-start/SKILL.md"
+    },
+    {
+      "bundlePath": "skills/rad-ui-status/SKILL.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-ui-status/SKILL.md"
+    },
+    {
+      "bundlePath": "skills/rad-ui-stop/SKILL.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-ui-stop/SKILL.md"
+    },
+    {
+      "bundlePath": "skills/rad-visual-docs/SKILL.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-visual-docs/SKILL.md"
+    },
+    {
+      "bundlePath": "skills/rad-visual-docs/references/architecture-visuals.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-visual-docs/references/architecture-visuals.md"
+    },
+    {
+      "bundlePath": "skills/rad-visual-docs/references/generate-mockup.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-visual-docs/references/generate-mockup.md"
+    },
+    {
+      "bundlePath": "skills/rad-visual-docs/references/make-it-visual.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-visual-docs/references/make-it-visual.md"
+    }
+  ]
+}

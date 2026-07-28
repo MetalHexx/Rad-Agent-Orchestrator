@@ -4,10 +4,16 @@
 // Bumps a single carrier inventory in one atomic pass:
 //   1. Wrapper `package.json` files — in-place JSON edit (version + intra-repo pins)
 //   2. Plugin authoritative version sources — in-place JSON edit
-//   3. Per-version manifest catalog files — `git mv` rename + internal `version` field update
-//   4. Hardcoded-literal files — bare string replacement
-//   5. Nested per-workspace lockfiles — deterministic two-field version rewrite
-//   6. Stray-carrier guard — `git grep -l <from>` and fail loudly on any unlisted carrier
+//   3. Hardcoded-literal files — bare string replacement
+//   4. Nested per-workspace lockfiles — deterministic two-field version rewrite
+//   5. Stray-carrier guard — `git grep -l <from>` and fail loudly on any unlisted carrier
+//
+// Per-version manifest catalog files (MANIFEST_DIRS) are deliberately NOT
+// touched here. catalog.js's upgrade path requires every prior version's
+// manifest to remain bundled (AD-4) so upgraders can resolve their
+// currently-installed version's file tree; the build step (build.js /
+// emit-manifest.js) adds the new version's manifest fresh, alongside every
+// manifest already checked into the repo, rather than replacing it.
 //
 // All edits are made relative to `repoRoot`. CLI wrapper:
 //   node bump-version.mjs --from <prev> --to <next>
@@ -222,21 +228,6 @@ function bumpLockfileVersionFields(repoRoot, relPath, from, to) {
   writeJsonPreservingTrailingNewline(abs, lock);
 }
 
-function bumpManifestCatalogFile(repoRoot, dir, from, to) {
-  const oldRel = normalizeRelative(path.join(dir, `v${from}.json`));
-  const newRel = normalizeRelative(path.join(dir, `v${to}.json`));
-  const oldAbs = path.join(repoRoot, oldRel);
-  if (!fs.existsSync(oldAbs)) {
-    throw new Error(`manifest catalog file not found: ${oldRel}`);
-  }
-  // Stage the rename via `git mv` so the diff stays attributable as a rename.
-  execSync(`git mv "${oldRel}" "${newRel}"`, { cwd: repoRoot });
-  const newAbs = path.join(repoRoot, newRel);
-  const body = readJson(newAbs);
-  body.version = to;
-  writeJsonPreservingTrailingNewline(newAbs, body);
-}
-
 function sweepHardcodedLiteral(repoRoot, relPath, from, to) {
   const abs = path.join(repoRoot, relPath);
   if (!fs.existsSync(abs)) {
@@ -259,17 +250,21 @@ function buildInventorySet() {
   return inventory;
 }
 
-function manifestPathsAfterBump(to) {
-  // After bump, only the v<to>.json files should remain — these are still part
-  // of the carrier inventory and will (correctly) match the post-bump `git grep`.
-  const out = new Set();
+// Manifest catalog files accumulate forever (AD-4) — a match under any
+// MANIFEST_DIRS entry is always an expected historical carrier, whether it's
+// the version just bumped from, the version just bumped to (emitted by the
+// build step, not this engine), or any earlier shipped version still on disk.
+function isManifestCatalogFile(match) {
   for (const dir of MANIFEST_DIRS) {
-    out.add(normalizeRelative(path.join(dir, `v${to}.json`)));
+    const prefix = normalizeRelative(dir) + '/';
+    if (match.startsWith(prefix) && /^v.+\.json$/.test(match.slice(prefix.length))) {
+      return true;
+    }
   }
-  return out;
+  return false;
 }
 
-function strayCarrierGuard(repoRoot, from, to) {
+function strayCarrierGuard(repoRoot, from) {
   let raw;
   try {
     // `git grep -l` exits non-zero with no output when nothing matches.
@@ -285,11 +280,10 @@ function strayCarrierGuard(repoRoot, from, to) {
     .map(normalizeRelative);
 
   const inventory = buildInventorySet();
-  const manifestSurvivors = manifestPathsAfterBump(to);
 
   for (const match of matches) {
     if (inventory.has(match)) continue;
-    if (manifestSurvivors.has(match)) continue;
+    if (isManifestCatalogFile(match)) continue;
     if (GUARD_EXCLUDED_FILES.has(match)) continue;
     throw new Error(`unknown carrier: ${match}`);
   }
@@ -320,23 +314,20 @@ export async function bumpVersion({ from, to, repoRoot }) {
     bumpJsonFile(repoRoot, rel, from, to, 'plugin authoritative source');
   }
 
-  // 3. Per-version manifest catalog files — `git mv` rename + internal bump.
-  for (const dir of MANIFEST_DIRS) {
-    bumpManifestCatalogFile(repoRoot, dir, from, to);
-  }
-
-  // 4. Hardcoded-literal sweep.
+  // 3. Hardcoded-literal sweep.
   for (const rel of HARDCODED_LITERAL_FILES) {
     sweepHardcodedLiteral(repoRoot, rel, from, to);
   }
 
-  // 5. Nested per-workspace lockfile version fields.
+  // 4. Nested per-workspace lockfile version fields.
   for (const rel of LOCKFILE_JSON_FILES) {
     bumpLockfileVersionFields(repoRoot, rel, from, to);
   }
 
-  // 6. Stray-carrier guard.
-  strayCarrierGuard(repoRoot, from, to);
+  // 5. Stray-carrier guard. Manifest catalog files (MANIFEST_DIRS) are
+  // intentionally left untouched above — see file header — so the guard
+  // permits any historical manifest still carrying `from` as version content.
+  strayCarrierGuard(repoRoot, from);
 }
 
 // -----------------------------------------------------------------------------

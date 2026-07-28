@@ -163,19 +163,19 @@ test('bumpVersion rewrites both version fields in every nested lockfile', async 
   }
 });
 
-test('bumpVersion renames every per-version manifest catalog and updates internal version', async () => {
+test('bumpVersion leaves per-version manifest catalogs untouched (AD-4 accumulation)', async () => {
   const tmp = makeFixture();
   fixtures.push(tmp);
 
   await bumpVersion({ from, to, repoRoot: tmp });
 
   for (const dir of MANIFEST_DIRS) {
-    const newFile = path.join(tmp, dir, `v${to}.json`);
     const oldFile = path.join(tmp, dir, `v${from}.json`);
-    assert.ok(await fileExists(newFile), `expected renamed file ${newFile}`);
-    assert.ok(!(await fileExists(oldFile)), `expected old file removed ${oldFile}`);
-    const body = JSON.parse(await fs.promises.readFile(newFile, 'utf8'));
-    assert.strictEqual(body.version, to, `manifest ${dir} internal version not bumped`);
+    const newFile = path.join(tmp, dir, `v${to}.json`);
+    assert.ok(await fileExists(oldFile), `expected prior-version manifest to survive ${oldFile}`);
+    assert.ok(!(await fileExists(newFile)), `bumpVersion must not emit the new manifest itself — that's the build step's job: ${newFile}`);
+    const body = JSON.parse(await fs.promises.readFile(oldFile, 'utf8'));
+    assert.strictEqual(body.version, from, `prior manifest ${dir} version must remain untouched`);
   }
 });
 
