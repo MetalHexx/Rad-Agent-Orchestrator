@@ -79,6 +79,24 @@ jobs:
             exit 1
           fi
 
+      # npm refuses to publish a prerelease semver (e.g. 1.0.0-alpha.9) without
+      # an explicit --tag — it will not silently move the `latest` dist-tag to
+      # a prerelease. Derive the channel from the version so stable releases
+      # still land on `latest`.
+      - name: Determine npm dist-tag
+        id: npmtag
+        run: |
+          VERSION="$(node -p "require('./harness-installers/standard/package.json').version")"
+          if [[ "$VERSION" == *-alpha.* ]]; then
+            echo "tag=alpha" >> "$GITHUB_OUTPUT"
+          elif [[ "$VERSION" == *-beta.* ]]; then
+            echo "tag=beta" >> "$GITHUB_OUTPUT"
+          elif [[ "$VERSION" == *-* ]]; then
+            echo "tag=next" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=latest" >> "$GITHUB_OUTPUT"
+          fi
+
       # First publish of the unscoped `rad-orc` name requires --access public.
       # NOTE: OIDC trusted publishing is unavailable until a package has >=1
       # published version, so the FIRST release authenticates with NPM_TOKEN.
@@ -86,7 +104,7 @@ jobs:
       # token. --provenance emits a signed build attestation (needs id-token).
       - name: Publish to npm
         working-directory: harness-installers/standard
-        run: npm publish --access public --provenance
+        run: npm publish --access public --provenance --tag "${{ steps.npmtag.outputs.tag }}"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
