@@ -49,7 +49,7 @@ function tokenMapFor() {
 }
 
 /** @param {{ rootDir: string, skipAdapterEngine?: boolean, skipUiRunner?: boolean,
- *            skipBootstrap?: boolean, greenfieldRel?: string }} opts
+ *            skipUiBundle?: boolean, skipBootstrap?: boolean, greenfieldRel?: string }} opts
  *  `rootDir` is the repo root. `greenfieldRel` (default '.') names
  *  the relative folder under `rootDir` that hosts the new staged subsystems.
  *  Unit tests construct a synthetic fixture without a parent folder,
@@ -194,11 +194,24 @@ export async function runBuild(opts) {
 
   // UI bundle ONCE at top-level output/ui/ — shared across all three harnesses
   // (AD-9). Never duplicated under output/<harness>/.
-  await step('emit-ui-bundle', () => emitUiBundle({
-    source: path.join(root, 'ui'),
-    target: path.join(out, 'ui.tgz'),
-    runner: opts.skipUiRunner ? async () => { /* unit-test fast path */ } : undefined,
-  }));
+  //
+  // skipUiBundle skips this step ENTIRELY, leaving any existing output/ui.tgz
+  // untouched — for callers (check-manifest-drift.mjs) that rebuild output/
+  // purely to diff manifests/ and never look at ui.tgz. This is distinct from
+  // skipUiRunner, which still runs emitUiBundle (writing a real, if minimal,
+  // ui.tgz) but stubs the `next build` — used by unit tests that need *a*
+  // tarball to exist. Conflating the two used to mean a manifest-drift rerun
+  // after a real build would find ui/.next already deleted (emitUiBundle
+  // cleans it up) and silently overwrite the good ui.tgz with a near-empty
+  // one containing only public/.gitkeep — the CI-published package shipped
+  // a UI bundle with no server.js.
+  if (!opts.skipUiBundle) {
+    await step('emit-ui-bundle', () => emitUiBundle({
+      source: path.join(root, 'ui'),
+      target: path.join(out, 'ui.tgz'),
+      runner: opts.skipUiRunner ? async () => { /* unit-test fast path */ } : undefined,
+    }));
+  }
 
   // Per-harness token expansion. Standard installer passes agentNames: [] so
   // NO `rad-orc:` namespacing is applied (AD-6). Read from out/<h>/,
