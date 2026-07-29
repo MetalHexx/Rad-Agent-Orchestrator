@@ -210,6 +210,27 @@ test('bumpVersion enrolls the product library wrappers', async () => {
   }
 });
 
+test('bumpVersion enrolls the graph-subsystem packages', async () => {
+  for (const p of [
+    'graph-service/package.json',
+    'lib/graph-client/package.json',
+    'lib/graph-engine/package.json',
+    'lib/graph-node-types/package.json',
+    'lib/graph-store-sqlite/package.json',
+    'examples/example/package.json',
+    'examples/node-blind-fixture/package.json',
+  ]) {
+    assert.ok(
+      WRAPPER_JSON_FILES.includes(p),
+      `${p} must be in the bump inventory`,
+    );
+  }
+  assert.ok(
+    HARDCODED_LITERAL_FILES.includes('lib/graph-node-types/tests/dependency-direction.test.ts'),
+    'lib/graph-node-types/tests/dependency-direction.test.ts must be in the hardcoded-literal inventory',
+  );
+});
+
 test('bumpVersion fails loudly when stray copies of the prior version remain', async () => {
   const tmp = makeFixture();
   fixtures.push(tmp);
