@@ -7,7 +7,7 @@ This file is designed to be read by AI coding assistants. If you're an LLM helpi
 rad-orc is a document-driven, multi-agent SDLC orchestration system: skills (`/rad-brainstorm`, `/rad-plan`, `/rad-execute`, plus dashboard-control skills), coder/reviewer agents, a deterministic pipeline engine, and a Next.js monitoring dashboard. It ships two ways, and **both give you the identical skill/agent set** — they differ only in distribution mechanism:
 
 - **Marketplace plugin** — installed via your harness's `/plugin` command from a satellite marketplace repo. Nothing is written into your project; the skills/agents live in the plugin's own install location and are namespaced (`rad-orc:rad-plan`, etc.). Updates are a single `/plugin marketplace update` command.
-- **Standard installer** (`npx rad-orc`) — writes the compiled agent/skill files directly into your repo (`.claude/` for Claude Code, `.github/` for either Copilot variant). Useful if you want the files vendored in-repo, want to inspect/customize them, or your harness doesn't support plugins yet.
+- **Standard installer** (`npx rad-orc`) — writes the compiled agent/skill files into your **home directory** (`~/.claude` for Claude Code, `~/.copilot` for either Copilot variant) — never into the current repo. Useful if you want to inspect/customize the shipped files, or your harness doesn't support plugins yet.
 
 **Recommendation: install the plugin for whichever harness you're currently running in.** It's less invasive (no files added to the user's repo), updates are a single command, and it's the actively maintained default path. Fall back to the standard installer only if the user prefers vendored files, needs to customize the shipped skills/agents, or the plugin path fails for some reason.
 
@@ -35,7 +35,7 @@ Restart your session. After restart, `/rad-orc:rad-brainstorm`, `/rad-orc:rad-pl
 npx rad-orc --harness claude
 ```
 
-This writes agents and skills into `.claude/` in the current repo. Re-running `npx rad-orc` later upgrades an existing install (removes orphaned files from the prior version, writes new ones, and prompts before touching anything you've locally modified).
+This writes agents and skills into `~/.claude` (your home directory, not the current repo). Re-running `npx rad-orc` later upgrades an existing install (removes orphaned files from the prior version, writes new ones, and prompts before touching anything you've locally modified).
 
 ## GitHub Copilot CLI
 
@@ -54,7 +54,7 @@ Run in the Copilot CLI:
 npx rad-orc --harness copilot-cli
 ```
 
-This writes agents and skills into `.github/` in the current repo.
+This writes agents and skills into `~/.copilot` (your home directory, not the current repo). Note: `~/.copilot` is shared with the Copilot VS Code standard install below — installing one standard variant evicts the other's registry entry from that shared folder (a plugin install of either variant can still coexist alongside it).
 
 ## GitHub Copilot in VS Code
 
@@ -75,7 +75,7 @@ Run in Copilot Chat (agent mode):
 npx rad-orc --harness copilot-vscode
 ```
 
-This writes agents, skills, prompt files, and instruction files into `.github/` in the current repo.
+This writes agents, skills, prompt files, and instruction files into `~/.copilot` (your home directory, not the current repo). Note: `~/.copilot` is shared with the Copilot CLI standard install above — installing one standard variant evicts the other's registry entry from that shared folder (a plugin install of either variant can still coexist alongside it).
 
 ## One-shot / non-interactive install
 
