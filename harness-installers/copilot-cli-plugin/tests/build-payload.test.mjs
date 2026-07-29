@@ -43,13 +43,13 @@ function makeFixtureRoot() {
   fs.mkdirSync(join(installerDir, 'manifests'), { recursive: true });
   fs.writeFileSync(join(installerDir, 'plugin.json'), JSON.stringify({
     name: 'rad-orc',
-    version: '1.0.0-alpha.11',
+    version: '1.0.0-alpha.12',
     author: { name: 'metalhexx' },
     license: 'MIT',
   }));
   fs.writeFileSync(join(installerDir, 'package.json'), JSON.stringify({
     name: '@rad-orchestration/copilot-cli-plugin-source',
-    version: '1.0.0-alpha.11',
+    version: '1.0.0-alpha.12',
     private: true,
     type: 'module',
     license: 'MIT',
@@ -62,8 +62,8 @@ function makeFixtureRoot() {
   fs.writeFileSync(join(installerDir, 'hooks/drift-check.mjs'), '// drift-check verbatim\n');
   fs.writeFileSync(join(installerDir, 'hooks/hooks.json'),
     JSON.stringify({ version: 1, hooks: { userPromptSubmitted: [], sessionStart: [] } }, null, 2));
-  fs.writeFileSync(join(installerDir, 'manifests/v1.0.0-alpha.11.json'),
-    JSON.stringify({ version: '1.0.0-alpha.11', channel: 'copilot-cli-plugin', files: [] }));
+  fs.writeFileSync(join(installerDir, 'manifests/v1.0.0-alpha.12.json'),
+    JSON.stringify({ version: '1.0.0-alpha.12', channel: 'copilot-cli-plugin', files: [] }));
   return root;
 }
 
@@ -91,7 +91,7 @@ test('runBuild produces a full output/ tree with adapter content, runtime-config
     assert.ok(fs.existsSync(join(out, 'hooks/hooks.json')));
     assert.ok(fs.existsSync(join(out, 'hooks/bootstrap.mjs')), 'bundled bootstrap');
     assert.ok(fs.existsSync(join(out, 'hooks/drift-check.mjs')), 'verbatim drift-check');
-    assert.ok(fs.existsSync(join(out, 'manifests/v1.0.0-alpha.11.json')));
+    assert.ok(fs.existsSync(join(out, 'manifests/v1.0.0-alpha.12.json')));
     // No .claude-plugin/ subfolder per FR-36.
     assert.ok(!fs.existsSync(join(out, '.claude-plugin')), '.claude-plugin/ absent — plugin.json at root');
   } finally {
@@ -147,7 +147,7 @@ test('synthesized output/package.json declares the published name @rad-orchestra
     });
     const pkg = JSON.parse(fs.readFileSync(join(root, 'harness-installers/copilot-cli-plugin/output/package.json'), 'utf8'));
     assert.strictEqual(pkg.name, '@rad-orchestration/copilot-cli-plugin', 'published name (FR-31)');
-    assert.strictEqual(pkg.version, '1.0.0-alpha.11', 'version stamped from plugin.json');
+    assert.strictEqual(pkg.version, '1.0.0-alpha.12', 'version stamped from plugin.json');
     for (const required of ['plugin.json', 'agents/', 'skills/', 'hooks/', 'manifests/']) {
       assert.ok(pkg.files.includes(required), `pkg.files must include ${required}`);
     }

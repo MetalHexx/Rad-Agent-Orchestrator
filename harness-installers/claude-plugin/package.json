@@ -1,6 +1,6 @@
 {
   "name": "@rad-orchestration/claude-plugin-source",
-  "version": "1.0.0-alpha.11",
+  "version": "1.0.0-alpha.12",
   "private": true,
   "type": "module",
   "description": "Source-side wrapper for the Claude marketplace plugin installer. Never published — npm pack is run against output/ after build.",

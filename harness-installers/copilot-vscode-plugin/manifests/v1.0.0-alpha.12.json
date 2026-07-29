@@ -1,6 +1,6 @@
 {
-  "version": "1.0.0-alpha.11",
-  "channel": "copilot-cli-plugin",
+  "version": "1.0.0-alpha.12",
+  "channel": "copilot-vscode-plugin",
   "files": [
     {
       "destinationPath": "${RAD_HOME}/orchestration.yml",

@@ -69,7 +69,7 @@ test('uninstallHarness removes per-harness files and the registry entry; preserv
   const restoreHome = withHome(path.join(tmp, 'home'));
   try {
     const bundle = path.join(tmp, 'bundle');
-    buildBundle(bundle, '1.0.0-alpha.11');
+    buildBundle(bundle, '1.0.0-alpha.12');
 
     // First install so there's something to remove.
     const installResult = await installHarness({ bundleRoot: bundle, harness: 'claude' });
@@ -99,7 +99,7 @@ test('uninstallHarness removes per-harness files and the registry entry; preserv
     // Now uninstall.
     const result = await uninstallHarness({ bundleRoot: bundle, harness: 'claude' });
     assert.equal(result.action, 'uninstalled');
-    assert.equal(result.removedVersion, '1.0.0-alpha.11');
+    assert.equal(result.removedVersion, '1.0.0-alpha.12');
     assert.equal(result.removedCount, 2);
     assert.ok(result.prunedDirs >= 1, 'at least one empty installer subfolder was pruned');
 
@@ -166,7 +166,7 @@ test('uninstallHarness on a non-registered harness returns { action: "not-instal
   const restoreHome = withHome(path.join(tmp, 'home'));
   try {
     const bundle = path.join(tmp, 'bundle');
-    buildBundle(bundle, '1.0.0-alpha.11');
+    buildBundle(bundle, '1.0.0-alpha.12');
 
     // No prior install — install.json doesn't exist yet.
     const result = await uninstallHarness({ bundleRoot: bundle, harness: 'copilot-cli' });
@@ -186,7 +186,7 @@ test('uninstallHarness does not remove the harness root directory itself when it
   const restoreHome = withHome(path.join(tmp, 'home'));
   try {
     const bundle = path.join(tmp, 'bundle');
-    buildBundle(bundle, '1.0.0-alpha.11');
+    buildBundle(bundle, '1.0.0-alpha.12');
 
     await installHarness({ bundleRoot: bundle, harness: 'claude' });
     const home = path.join(tmp, 'home');

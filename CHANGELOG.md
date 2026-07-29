@@ -10,6 +10,23 @@ _(none)_
 
 ---
 
+## v1.0.0-alpha.12 — 2026-07-29
+
+### What's New
+- feat(P01-T01): add plan resolve read-only planning classifier
+- feat(P01-T02): plan prepare - stamp approval and seal the planning parameters
+
+### What's Fixed
+- fix(P01-T02-corrective1): plan prepare guards a missing Requirements doc
+- fix(P02-T01-corrective1): restore silent Open-Questions resolution and fix stale template docstring
+- fix(rad-plan): decouple review-tier and Phase/Task Size questions
+- fix(rad-release): lockstep-bump graph-service, lib/graph-*, and examples/ packages
+
+### Changes
+- docs(P02-T01): rewrite /rad-plan as a thin relay
+- chore: cleaned up some of the question prose for added clarity.
+- chore: catch up graph-service, lib/graph-*, and examples/ to 1.0.0-alpha.11
+
 ## v1.0.0-alpha.11 — 2026-07-28
 
 ### What's Fixed

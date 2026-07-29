@@ -1,6 +1,6 @@
 {
   "name": "@rad-orchestration/cli",
-  "version": "1.0.0-alpha.11",
+  "version": "1.0.0-alpha.12",
   "private": true,
   "type": "module",
   "description": "radorch CLI — global orchestration root manager",
@@ -25,9 +25,9 @@
   },
   "dependencies": {
     "@inquirer/prompts": "^8.3.0",
-    "@rad-orchestration/repo-registry": "1.0.0-alpha.11",
-    "@rad-orchestration/telemetry": "1.0.0-alpha.11",
-    "@rad-orchestration/work-graph": "1.0.0-alpha.11",
+    "@rad-orchestration/repo-registry": "1.0.0-alpha.12",
+    "@rad-orchestration/telemetry": "1.0.0-alpha.12",
+    "@rad-orchestration/work-graph": "1.0.0-alpha.12",
     "ajv": "^8.17.1",
     "chalk": "^5.6.0",
     "commander": "^14.0.0",

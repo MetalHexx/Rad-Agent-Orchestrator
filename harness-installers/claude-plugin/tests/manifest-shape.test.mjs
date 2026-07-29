@@ -26,7 +26,7 @@ test('every manifests/v*.json has version + files; each file has destinationPath
 
 test('orchestration.yml entry is ownership:user-config so upgrade skips removal', () => {
   const m = JSON.parse(fs.readFileSync(
-    path.join(MANIFESTS_DIR, 'v1.0.0-alpha.11.json'), 'utf8'));
+    path.join(MANIFESTS_DIR, 'v1.0.0-alpha.12.json'), 'utf8'));
   const orch = m.files.find((e) => e.destinationPath === '${RAD_HOME}/orchestration.yml');
   assert.ok(orch, 'orchestration.yml entry present');
   assert.strictEqual(orch.ownership, 'user-config');

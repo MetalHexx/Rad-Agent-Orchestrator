@@ -1,6 +1,6 @@
 {
   "name": "node-blind-fixture",
-  "version": "1.0.0-alpha.11",
+  "version": "1.0.0-alpha.12",
   "private": true,
   "type": "module",
   "description": "Custom node-type fixture with novel field names to prove node-blind resolution.",
@@ -9,7 +9,7 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@rad-orchestration/graph-engine": "1.0.0-alpha.11",
+    "@rad-orchestration/graph-engine": "1.0.0-alpha.12",
     "@types/node": "^22.19.17",
     "typescript": "^5.9.3"
   }
