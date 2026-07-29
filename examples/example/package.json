@@ -1,6 +1,6 @@
 {
   "name": "example",
-  "version": "1.0.0-alpha.9",
+  "version": "1.0.0-alpha.11",
   "private": true,
   "type": "module",
   "description": "Reference custom node-type package — a zero-capability greeting node and a capability-bearing scribe node, authored in TypeScript and built to the JS the loader dynamic-imports.",
@@ -9,7 +9,7 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@rad-orchestration/graph-engine": "1.0.0-alpha.9",
+    "@rad-orchestration/graph-engine": "1.0.0-alpha.11",
     "@types/node": "^22.19.17",
     "typescript": "^5.9.3"
   }
