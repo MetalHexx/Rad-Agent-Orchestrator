@@ -6,7 +6,7 @@ user-invocable: true
 
 ## Inputs:
 - `project_name`: $0 — The name of the new project to plan. (e.g., "DAG-PIPELINE-2")
-- `project_template`: $1 — The template to use for planning. (e.g., "extra-high" or a custom template name if one exists)
+- `project_template`: $1 — The template to use for planning. One of the four shipped tiers (e.g., "extra-high"); custom process templates are not supported.
 
 You are an orchestrator. You will use the `rad-orchestration` skill to drive the planning pipeline. This skill is a **thin relay**: the `plan resolve` CLI command does the project-directory resolution and the Requirements-doc check and hands back a data envelope; you run only the one human beat it flags, then the commands it returns. Do not re-derive project paths, Requirements existence, or valid template names yourself — the CLI owns all of that.
 
@@ -79,6 +79,8 @@ node "${PLUGIN_ROOT}/skills/rad-orchestration/scripts/radorch.mjs" <command from
 Substitute only `{template}` and `{size}` — the surrounding quotes stay exactly where the resolver put them. Substitute `{template}` with the resolved tier (the operator's Step 2 answer if asked, otherwise the `project_template` argument that skipped the question), and `{size}` with the operator's size answer, **inside** the existing double quotes — never strip them. A custom sizing criterion is multi-word prose, and unquoted it is parsed as excess arguments and rejected before the command runs.
 
 ## Step 4: Author the Master Plan inline
+
+Before authoring, check the Requirements doc at `data.requirementsPath` for a `## Open Questions` section. If any items remain unresolved, resolve them yourself and update the document — silently, without prompting the operator. The Master Plan is not scribed while any remain.
 
 Parse the JSON envelope from the last `next[]` command and act on `data.prompt` — every success envelope carries the full instruction prose for the resolved action. The first action will be `spawn_master_plan`; follow the prose in `data.prompt` exactly and **author the Master Plan yourself, inline**, following `rad-create-plans` `master-plan` mode. Read the Requirements doc at `data.requirementsPath` as the source of the requirement substance each task must carry.
 
