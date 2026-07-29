@@ -1,8 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
-import { planPrepare } from '../../../src/commands/plan/prepare.js';
+import { planPrepare, planPrepareCommand } from '../../../src/commands/plan/prepare.js';
 import type { PlanPrepareOptions } from '../../../src/commands/plan/prepare.js';
 import { UserError } from '../../../src/framework/errors.js';
 import { parseYaml } from '../../../src/lib/yaml.js';
+import type { CommandContext } from '../../../src/framework/context.js';
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -30,6 +31,7 @@ const options = (over: Partial<PlanPrepareOptions> = {}): PlanPrepareOptions => 
   template: 'medium',
   taskSize: 'Large',
   requirementsPath: '/projects/P/P-REQUIREMENTS.md',
+  fileExists: () => true,
   readDoc: () => DRAFT_DOC,
   writeDoc: vi.fn(),
   ...over,
@@ -132,5 +134,36 @@ describe('planPrepare — no frontmatter', () => {
   it('throws a UserError naming the path', () => {
     expect(() => planPrepare(options({ readDoc: () => '# No frontmatter here\n' }))).toThrow(UserError);
     expect(() => planPrepare(options({ readDoc: () => '# No frontmatter here\n' }))).toThrow(/\/projects\/P\/P-REQUIREMENTS\.md/);
+  });
+});
+
+// ── Missing Requirements doc ──────────────────────────────────────────────────
+
+describe('planPrepare — no Requirements doc', () => {
+  it('throws a friendly UserError naming the path instead of reading (no readDoc call)', () => {
+    const readDoc = vi.fn(() => DRAFT_DOC);
+    expect(() => planPrepare(options({ fileExists: () => false, readDoc }))).toThrow(UserError);
+    expect(() => planPrepare(options({ fileExists: () => false, readDoc }))).toThrow(/\/projects\/P\/P-REQUIREMENTS\.md/);
+    expect(readDoc).not.toHaveBeenCalled();
+  });
+});
+
+// ── Project-name guard (handler level) ────────────────────────────────────────
+
+describe('planPrepareCommand.handler — project-name guard', () => {
+  const ctx = {} as CommandContext;
+
+  it('rejects a relative-escape segment', async () => {
+    await expect(planPrepareCommand.handler({
+      args: { project: '../escape', template: 'medium', 'task-size': 'Large' },
+      ctx,
+    })).rejects.toThrow(UserError);
+  });
+
+  it('rejects a value with a path separator', async () => {
+    await expect(planPrepareCommand.handler({
+      args: { project: 'a/b', template: 'medium', 'task-size': 'Large' },
+      ctx,
+    })).rejects.toThrow(UserError);
   });
 });

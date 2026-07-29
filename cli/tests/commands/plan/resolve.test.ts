@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import path from 'node:path';
-import { planResolve, validateTemplate, SHIPPED_TIERS } from '../../../src/commands/plan/resolve.js';
+import { planResolve, planResolveCommand, validateTemplate, SHIPPED_TIERS } from '../../../src/commands/plan/resolve.js';
 import type { PlanResolveDeps } from '../../../src/commands/plan/resolve.js';
 import { UserError } from '../../../src/framework/errors.js';
+import type { CommandContext } from '../../../src/framework/context.js';
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -98,5 +99,19 @@ describe('planResolve — project-name guard', () => {
 
   it('rejects an absolute path', () => {
     expect(() => planResolve(deps({ project: path.resolve('/abs/path') }))).toThrow(UserError);
+  });
+});
+
+// ── Project-name guard (handler level) ────────────────────────────────────────
+
+describe('planResolveCommand.handler — project-name guard', () => {
+  const ctx = {} as CommandContext;
+
+  it('rejects a relative-escape segment', async () => {
+    await expect(planResolveCommand.handler({ args: { project: '../escape' }, ctx })).rejects.toThrow(UserError);
+  });
+
+  it('rejects a value with a path separator', async () => {
+    await expect(planResolveCommand.handler({ args: { project: 'a/b' }, ctx })).rejects.toThrow(UserError);
   });
 });

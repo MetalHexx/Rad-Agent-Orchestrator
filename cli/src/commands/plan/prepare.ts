@@ -25,6 +25,7 @@ export interface PlanPrepareOptions {
   /** Verbatim operator answer — a size name, or free-form prose for a custom criterion. */
   taskSize: string;
   requirementsPath: string;
+  fileExists: (p: string) => boolean;
   readDoc: (p: string) => string;
   writeDoc: (p: string, content: string) => void;
 }
@@ -41,6 +42,9 @@ export interface PlanPrepareResult {
 // ── Core logic ────────────────────────────────────────────────────────────────
 
 export function planPrepare(opts: PlanPrepareOptions): PlanPrepareResult {
+  if (!opts.fileExists(opts.requirementsPath)) {
+    throw new UserError(`No requirements document at ${opts.requirementsPath}. Run \`plan resolve --project ${opts.project}\` first.`);
+  }
   const raw = opts.readDoc(opts.requirementsPath);
   const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
   if (!match) {
@@ -107,6 +111,7 @@ export const planPrepareCommand = defineCommand({
       template: args.template,
       taskSize: args['task-size'],
       requirementsPath,
+      fileExists: (p) => fs.existsSync(p),
       readDoc: (p) => fs.readFileSync(p, 'utf-8'),
       writeDoc: (p, content) => fs.writeFileSync(p, content, 'utf-8'),
     });
