@@ -57,6 +57,7 @@ A real-time Next.js dashboard visualizes project state, pipeline progress, docum
 
 | Page | Description |
 |------|-------------|
+| [Install](docs/INSTALL.md) | Per-harness install instructions — plugin (recommended) vs. standard installer, upgrade, uninstall. |
 | [Getting Started](docs/getting-started.md) | Install the system, walk through your first project, learn the common commands. |
 | [Pipeline](docs/pipeline.md) | The planning and execution flow, human gates, corrective cycles, error handling. |
 | [Agents](docs/agents.md) | Each agent's role, tool access, write permissions, and where it sits in the flow. |
