@@ -71,6 +71,23 @@ describe('radorch program wiring', () => {
     expect(explodeHelp).toMatch(/--project-name/);
   }, 30_000);
 
+  it('exposes plan resolve and prepare at three help depths', async () => {
+    const node = (args: string[]) => execP('node', ['dist/bin/radorch.js', ...args], {
+      cwd: repoRoot, env: { ...process.env, RADORCH_NO_LOG: '1' },
+    });
+    const { stdout: rootHelp } = await node(['--help']);
+    expect(rootHelp).toMatch(/\bplan\b/);
+    const { stdout: nounHelp } = await node(['plan', '--help']);
+    expect(nounHelp).toMatch(/resolve\s+Classify planning readiness/);
+    expect(nounHelp).toMatch(/prepare\s+Stamp planning approval/);
+    const { stdout: resolveHelp } = await node(['plan', 'resolve', '--help']);
+    expect(resolveHelp).toMatch(/--project/);
+    const { stdout: prepareHelp } = await node(['plan', 'prepare', '--help']);
+    expect(prepareHelp).toMatch(/--project/);
+    expect(prepareHelp).toMatch(/--template/);
+    expect(prepareHelp).toMatch(/--task-size/);
+  }, 30_000);
+
   it('exposes skill list at three help depths', async () => {
     const node = (args: string[]) => execP('node', ['dist/bin/radorch.js', ...args], {
       cwd: repoRoot, env: { ...process.env, RADORCH_NO_LOG: '1' },

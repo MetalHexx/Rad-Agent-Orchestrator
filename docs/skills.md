@@ -16,9 +16,9 @@ The shipped review-intensity tiers are `extra-high`, `high`, `medium`, and `low`
 
 ### /rad-plan
 
-**What it does** — Starts the full planning pipeline from an existing requirements document. At the start you confirm the requirements, then pick a review-intensity tier (`extra-high`, `high`, `medium`, `low`) and a Phase/Task Size (`Small`, `Medium`, `Large`, `Extra Large`, or `Custom` prose). The planner then builds the Master Plan and the execution plan from the approved requirements.
+**What it does** — Starts the full planning pipeline from an existing requirements document. Invoking it is itself the approval act; you then pick a review-intensity tier (`extra-high`, `high`, `medium`, `low`) and a Phase/Task Size (`Small`, `Medium`, `Large`, `Extra Large`, or `Custom` prose) in a single batched prompt. The planner then builds the Master Plan and the execution plan from the approved requirements.
 
-The tier governs review depth — `extra-high` runs per-task code review plus phase review plus final review; `low` runs final review only; `high` and `medium` are intermediate. Phase/Task Size governs task scope and phase scope, with a `(Recommended)` size that moves with the chosen tier.
+The tier governs review depth — `extra-high` runs per-task code review plus phase review plus final review; `low` runs final review only; `high` and `medium` are intermediate. Phase/Task Size independently governs task scope and phase scope, with its own `(Recommended)` default (`Large`) unrelated to the chosen tier.
 
 **When to use it** — Use it after `/rad-brainstorm` has scribed a requirements document, when you want planning ceremony plus the review depth your project needs.
 
