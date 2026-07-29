@@ -115,4 +115,4 @@ After installing, in a fresh session in your repo:
 
 ## Further reading
 
-Once installed, see the repo's own `docs/` for depth: `docs/getting-started.md` (first-project walkthrough), `docs/harnesses.md` (per-harness detail and gotchas), `docs/plugins.md` (plugin specifics), and `docs/dashboard.md` (monitoring UI).
+Once installed, see [getting-started.md](getting-started.md) (first-project walkthrough), [harnesses.md](harnesses.md) (per-harness detail and gotchas), [plugins.md](plugins.md) (plugin specifics), and [dashboard.md](dashboard.md) (monitoring UI).
