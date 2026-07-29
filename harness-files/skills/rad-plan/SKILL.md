@@ -34,7 +34,7 @@ This rule **overrides** any outer "don't ask clarifying questions," "stop checki
 
 Ask a **single** `askUserQuestion` carrying up to three sub-questions, in this order, with no reasoning, computation, or tool call between them. Every sub-question is driven by a `data.ask.*` flag — never decide one yourself; if a flag is absent, do not ask that sub-question. Surface every concrete option as an explicit labeled menu item — do NOT rely on the auto-injected `Other` slot, except for the free-form size response noted below.
 
-**Review intensity** — only when `data.ask.template` is present. Row *n* pairs with row *n* of the Phase/Task Size sub-question below: `low`↔`Extra Large`, `medium`↔`Large`, `high`↔`Medium`, `extra-high`↔`Small`.
+**Review intensity** — only when `data.ask.template` is present.
 
 | Option | Copy (two sentences max) |
 |---|---|
@@ -43,7 +43,7 @@ Ask a **single** `askUserQuestion` carrying up to three sub-questions, in this o
 | `high` | Per-task code review + final review (no phase review). |
 | `extra-high` | Per-task code review + phase review + final review. Maximum defense in depth — for production-critical, regulated, or untrusted-contributor work. |
 
-Framing prose: "Which review-intensity tier should this project run? Tier names map to defensive review depth; cost rises with depth. Plan approval and final approval are mandatory in every tier. Review intensity and Phase/Task Size pair row-for-row below — the lighter the review, the larger the scope."
+Framing prose: "Which review-intensity tier should this project run? Tier names map to defensive review depth; cost rises with depth. Plan approval and final approval are mandatory in every tier."
 
 **Phase/Task Size** — when `data.ask.taskSize` is present:
 
@@ -54,7 +54,7 @@ Framing prose: "Which review-intensity tier should this project run? Tier names 
 | `Medium` | A vertical slice through one layer per task: a module, a config section, a CLI command with its tests. |
 | `Small` | One named, self-contained change per task — a function, a validator, a constant. |
 
-Framing prose: "How big should each task and phase be? Phase/Task Size scales task scope and phase scope together, pairing row-for-row with the review-intensity tier above. Pick one of the four sizes, or use the free-form response to describe your own sizing criterion in your own words instead — e.g. 'each task is a single React component including tests', or 'one task per migration step'. Your own words are treated as the authoritative task-scope target, with natural-seam judgment still applied to phase boundaries."
+Framing prose: "How big should each task and phase be? Pick one of the four sizes, or use the free-form response to describe your own sizing criterion in your own words instead — e.g. 'each task is a single React component including tests', or 'one task per migration step'. Your own words are treated as the authoritative task-scope target, with natural-seam judgment still applied to phase boundaries."
 
 When the operator answers with free-form prose instead of one of the four labeled sizes, store it verbatim — this is the `{size}` substitution in Step 3.
 
