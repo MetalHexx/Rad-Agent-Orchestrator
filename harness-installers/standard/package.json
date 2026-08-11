@@ -5,7 +5,7 @@
   "description": "Greenfield standard installer for the Rad orchestration system.",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/radancy-pe/rai-ops-rad-orchestration.git"
+    "url": "git+https://github.com/MetalHexx/RadOrchestration.git"
   },
   "bin": {
     "rad-orc": "index.js"

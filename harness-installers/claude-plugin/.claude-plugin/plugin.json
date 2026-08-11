@@ -3,10 +3,9 @@
   "description": "Document-driven, multi-agent orchestration loop for Claude Code.",
   "version": "1.0.0-alpha.13",
   "author": {
-    "name": "wpereira_radancy",
-    "url": "https://github.com/wpereira_radancy"
+    "name": "metalhexx"
   },
-  "repository": "https://github.com/radancy-pe/rai-ops-rad-orchestration",
+  "repository": "https://github.com/MetalHexx/RadOrchestration",
   "license": "MIT",
-  "homepage": "https://github.com/radancy-pe/rai-ops-rad-orchestration"
+  "homepage": "https://github.com/MetalHexx/RadOrchestration"
 }

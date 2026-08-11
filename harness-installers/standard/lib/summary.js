@@ -102,7 +102,7 @@ export function renderPostInstallSummary({ harnessResults, configPath, driftHint
   console.log('     ' + THEME.command('/rad-ui-start'));
   console.log('');
 
-  console.log('  ' + THEME.body('Full guide: ') + THEME.command('https://github.com/radancy-pe/rai-ops-rad-orchestration/blob/main/docs/getting-started.md'));
+  console.log('  ' + THEME.body('Full guide: ') + THEME.command('https://github.com/MetalHexx/RadOrchestration/blob/main/docs/getting-started.md'));
   console.log('');
 
   divider();
