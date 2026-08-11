@@ -73,16 +73,16 @@ function stageFixture(root) {
   fs.mkdirSync(path.join(installerSrc, '.claude-plugin'), { recursive: true });
   fs.writeFileSync(path.join(installerSrc, '.claude-plugin/plugin.json'),
     JSON.stringify({
-      name: 'rad-orc-vscode', version: '1.0.0-alpha.12',
+      name: 'rad-orc-vscode', version: '1.0.0-alpha.13',
       author: { name: 'metalhexx' }, license: 'MIT', hooks: 'hooks/hooks.json',
     }));
   fs.mkdirSync(path.join(installerSrc, 'manifests'), { recursive: true });
-  fs.writeFileSync(path.join(installerSrc, 'manifests/v1.0.0-alpha.12.json'),
-    JSON.stringify({ version: '1.0.0-alpha.12', channel: 'copilot-vscode-plugin', files: [] }));
+  fs.writeFileSync(path.join(installerSrc, 'manifests/v1.0.0-alpha.13.json'),
+    JSON.stringify({ version: '1.0.0-alpha.13', channel: 'copilot-vscode-plugin', files: [] }));
   fs.writeFileSync(path.join(installerSrc, 'package.json'),
     JSON.stringify({
       name: '@rad-orchestration/copilot-vscode-plugin-source',
-      version: '1.0.0-alpha.12', private: true, type: 'module', license: 'MIT',
+      version: '1.0.0-alpha.13', private: true, type: 'module', license: 'MIT',
       engines: { node: '>=20' },
     }));
 }

@@ -187,7 +187,7 @@ test('Final Review reads the report + verdict from the top-level final_review no
     nodeId: 'final_pr',
     node: state.graph.nodes['final_pr'],
     isCorrective: false,
-    isPhaseCorrective: false,
+    correctiveScope: null,
     iteration: undefined,
     correctiveEntry: undefined,
     phaseName: null,

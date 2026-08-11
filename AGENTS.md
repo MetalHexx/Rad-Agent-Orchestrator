@@ -152,6 +152,11 @@ This repo is a polyglot monorepo with several test runners. Pick the right one:
   ```
   node --test harness-adapters/**/*.test.js
   ```
+- **Harness files / cross-cutting guards** (`harness-files/tests/`) — Node's built-in test runner. Run from repo root:
+  ```
+  node --test harness-files/tests/*.test.mjs
+  ```
+  Covers corpus-wide invariants: agent skill-reference integrity (unprefixed legacy names), canonical CLI call form in shipped skills, and forbidden corrective-cycle claims across canonical source.
 - **Installer** (`harness-installers/standard/`) — Node test runner:
   ```
   cd harness-installers/standard && npm test
@@ -196,9 +201,9 @@ The system targets multiple AI coding harnesses (Claude Code, GitHub Copilot in 
 The pipeline runtime is the load-bearing piece. It lives at `cli/src/lib/pipeline-engine/`
 and is invoked by skills via `radorch pipeline signal`. The engine emits the canonical
 envelope `{ ok, data, error }`; the orchestrator dispatches on `data.action`. The
-action routing table at `harness-files/skills/rad-orchestration/references/action-event-reference.md`
+action/event catalog at `runtime-config/action-events/`
 (16 actions) is the contract; the schema at
-`cli/src/lib/pipeline-engine/schemas/orchestration-state-v5.schema.json` validates
+`cli/src/lib/pipeline-engine/schemas/orchestration-state-v6.schema.json` validates
 every write.
 
 ## Installer
@@ -227,7 +232,7 @@ The canonical sources at `harness-files/agents/` and `harness-files/skills/` are
 - `cli/` — CLI bundle source (committed)
 - `ui/` — Next.js dashboard (committed)
 - `prompt-tests/` — operator-driven planner regression harness (committed)
-- `harness-files/tests/` — repo-wide cross-cutting tests (e.g., reserved-namespace, agent-skill ref integrity) (committed)
+- `harness-files/tests/` — repo-wide cross-cutting tests: agent skill-reference integrity, canonical CLI call form, and corrective-cycle claims (committed)
 - `tests/` — root-level workspace/integration guard tests: by-name resolution of `@rad-orchestration/repo-registry`, npm workspace linkage, and CI workflow wiring assertions (committed)
 - `docs/` — user-facing docs; `docs/internals/` for refactor design notes (committed)
 - `.agents/` — non-production / dev-only skills and prompts (e.g., `rad-create-skill` scaffolding) (committed)

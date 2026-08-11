@@ -96,7 +96,7 @@ Only these actions pause execution for human input or stop the loop. All other a
 
 ## Corrective Flow
 
-The orchestrator is a dumb router for corrective cycles — it does not read findings or judge them. When a reviewer (task or phase scope) returns raw `verdict: changes_requested`, signal the completion event (`code_review_completed` / `phase_review_completed`) exactly as you would for any other outcome. The pipeline engine reads the raw verdict off the review doc, births the corrective, and returns the next `execute_task` action carrying the same `handoff_doc` — never re-authored — plus `review_report_path`, the path to the review doc the reviewer just wrote. Relay both into the coder's spawn prompt; the coder self-mediates, fixing real findings and writing a justified disposition for anything it disputes back into that same `review_report_path`. The re-spawned reviewer reopens the same path and re-adjudicates — one running review report per scope, stable across a task's corrective cycles.
+The orchestrator is a dumb router for corrective cycles — it does not read findings or judge them. When a reviewer (task, phase, or final scope) returns raw `verdict: changes_requested`, signal the completion event (`code_review_completed` / `phase_review_completed` / `final_review_completed`) exactly as you would for any other outcome. The pipeline engine reads the raw verdict off the review doc, births the corrective, and returns the next `execute_task` action carrying the same `handoff_doc` — never re-authored — plus `review_report_path`, the path to the review doc the reviewer just wrote. Relay both into the coder's spawn prompt; the coder self-mediates, fixing real findings and writing a justified disposition for anything it disputes back into that same `review_report_path`. The re-spawned reviewer reopens the same path and re-adjudicates — one running review report per scope, stable across a task's corrective cycles. At final scope, the coder receives the review report with no handoff — there is no `handoff_doc` at that scope, only `review_report_path`.
 
 `approved` and `rejected` verdicts propagate untouched — signal the completion event with nothing extra; `rejected` routes into a clean pipeline halt. The orchestrator never flips an `approved` verdict to `changes_requested`. See [`corrective-playbook.md`](corrective-playbook.md) for the full flow, and "Coder escalation (break-glass)" below for tier selection on the re-spawn.
 
@@ -177,7 +177,7 @@ For `spawn_code_reviewer`, spawn the right-sized reviewer from the task's `data.
 | `simple` | reviewer-junior |
 | `standard` \| `complex` | reviewer |
 
-`reviewer-junior` is scoped narrowly to simple task-scope reviews. For `spawn_phase_reviewer` and `spawn_final_reviewer`, always spawn `reviewer` — there is no junior tier at phase or final scope.
+`reviewer-junior` is scoped narrowly to simple task-scope reviews. For `spawn_phase_reviewer` and `spawn_final_reviewer`, always spawn `reviewer` — there is no junior tier at phase or final scope. `spawn_final_reviewer` is single-dispatch per review round — it fires once, and again only if the operator rejects at the final-approval gate (`final_rejected`) and opens a fresh round; a `changes_requested` corrective within a round never re-dispatches it. A final corrective's child review is a `spawn_code_reviewer` dispatch — a task-scope review like any other — and follows the normal tier selection above, not the `spawn_final_reviewer` row.
 
 ### Coder escalation (break-glass)
 

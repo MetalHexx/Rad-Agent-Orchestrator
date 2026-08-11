@@ -1,16 +1,17 @@
 {
   "name": "rad-orc-vscode",
   "description": "Document-driven, multi-agent orchestration loop for GitHub Copilot in VS Code (correctly-shaped model routing for VS Code's resolver).",
-  "version": "1.0.0-alpha.12",
+  "version": "1.0.0-alpha.13",
   "author": {
-    "name": "metalhexx"
+    "name": "wpereira_radancy",
+    "url": "https://github.com/wpereira_radancy"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/MetalHexx/RadOrchestration"
+    "url": "https://github.com/radancy-pe/rai-ops-rad-orchestration"
   },
   "license": "MIT",
-  "homepage": "https://github.com/MetalHexx/RadOrchestration",
+  "homepage": "https://github.com/radancy-pe/rai-ops-rad-orchestration",
   "keywords": [
     "copilot-vscode",
     "orchestration",

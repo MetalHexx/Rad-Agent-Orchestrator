@@ -1,7 +1,26 @@
-import type { StepNodeState, GateNodeState, ConditionalNodeState, ParallelNodeState, NodesRecord, NodeState, ForEachPhaseNodeState, GateEvent, NodeStatus, IterationEntry } from '@/types/state';
+import type { StepNodeState, GateNodeState, ConditionalNodeState, ParallelNodeState, NodesRecord, NodeState, ForEachPhaseNodeState, GateEvent, NodeStatus, IterationEntry, CorrectiveTaskEntry } from '@/types/state';
 import { STATUS_MAP } from './node-status-map';
+import { PENDING_REVIEW_LABEL, PENDING_REVIEW_CSS_VAR } from '@/components/badges/pending-review';
 
 export type CompatibleNodeState = StepNodeState | GateNodeState | ConditionalNodeState | ParallelNodeState;
+
+/**
+ * The bordered card treatment a task row carries, including its status variants.
+ * Shared with corrective rows so the two read alike.
+ */
+export function resolveTaskCardClasses(status: NodeStatus): string {
+  switch (status) {
+    case 'in_progress':
+      return 'border border-border/70 bg-card rounded-md mb-1.5';
+    case 'completed':
+      return 'border border-border/50 bg-muted/30 rounded-md mb-1.5';
+    case 'failed':
+    case 'halted':
+      return 'border border-[var(--status-failed)] bg-card rounded-md mb-1.5';
+    default:
+      return 'border border-border/40 bg-card rounded-md mb-1.5';
+  }
+}
 
 /**
  * Hide rows that add no signal beyond what the project header already
@@ -514,8 +533,11 @@ export function deriveIterationBadgeLabel(
 
   // FR-4 / DD-3 — when any corrective entry is in flight under a task
   // iteration, the task parent's badge reads "Correcting" (red + spinner).
-  // This applies only to `for_each_task`; phase iterations do not use
-  // `corrective_tasks` here.
+  // Only this branch is hard-gated to `for_each_task` — phase iterations
+  // do host their own `corrective_tasks` (rendered via
+  // DAGCorrectiveTaskGroup), they just don't fold that state into their
+  // own badge label here. The rest of this function serves both loop
+  // kinds.
   if (parentKind === 'for_each_task' &&
       iteration.corrective_tasks.some((ct) => ct.status === 'in_progress')) {
     return { status: 'in_progress', label: 'Correcting' };
@@ -556,17 +578,40 @@ export function deriveIterationBadgeLabel(
 }
 
 /**
- * Resolves the badge {status, label} for a gate node. When
- * `gate_active === true` (FR-4), forces the gray `not_started` visual
- * with label `'Not Started'` (DD-3). Otherwise returns the gate's own
- * status with its STATUS_MAP defaultLabel.
+ * Resolves the badge for a gate node. A gate blocking on a person renders the
+ * shared Pending Review badge in the review-tier token, non-spinning — it is a
+ * resting state awaiting a human, not active work. Any other gate returns its
+ * own status with its STATUS_MAP defaultLabel, unchanged.
  */
 export function deriveGateBadgeStatusAndLabel(
-  node: GateNodeState
-): { status: NodeStatus; label: string } {
+  node: GateNodeState,
+): { status: NodeStatus; label: string; cssVar?: string; isSpinning?: boolean } {
   if (node.gate_active === true && node.status !== 'completed') {
-    return { status: 'not_started', label: 'Not Started' };
+    return {
+      status: node.status,               // in_progress for the two human approval gates
+      label: PENDING_REVIEW_LABEL,
+      cssVar: PENDING_REVIEW_CSS_VAR,
+      isSpinning: false,
+    };
   }
   const entry = STATUS_MAP[node.status];
   return { status: node.status, label: entry.defaultLabel };
+}
+
+/**
+ * Badge for a corrective-hosting node that is not a loop iteration. `resolveStageBadge`'s
+ * table knows only "Coding" / "Reviewing"; `deriveIterationBadgeLabel` is hard-gated to task
+ * iterations. Returns "Correcting" (red) while any hosted corrective is in flight, otherwise
+ * defers to resolveStageBadge.
+ */
+export function deriveCorrectiveHostBadge(
+  nodeId: string,
+  status: NodeStatus,
+  correctiveTasks: CorrectiveTaskEntry[] | undefined,
+): { status: NodeStatus; label: string; cssVar: string } {
+  if (status === 'in_progress' && (correctiveTasks ?? []).some((ct) => ct.status === 'in_progress')) {
+    return { status: 'in_progress', label: 'Correcting', cssVar: '--status-failed' };
+  }
+  const stage = resolveStageBadge(nodeId, status);
+  return { status, label: stage.label, cssVar: stage.cssVar };
 }

@@ -101,6 +101,31 @@ test('deriveWholeGraphProgress counts an injected corrective step nested under a
   assert.deepEqual(deriveWholeGraphProgress(state), { completed: 2, total: 2 });
 });
 
+test('deriveWholeGraphProgress counts a corrective hosted directly on a standalone step node, with no enclosing iteration', () => {
+  const state = makeStateWithNodes({
+    final_review: {
+      kind: 'step',
+      status: 'not_started',
+      doc_path: null,
+      retries: 0,
+      corrective_tasks: [
+        {
+          index: 1,
+          reason: 'fix',
+          injected_after: 'final_review',
+          status: 'in_progress',
+          doc_path: null,
+          repos: [],
+          nodes: {
+            task_executor: { kind: 'step', status: 'in_progress', doc_path: null, retries: 0 },
+          },
+        },
+      ],
+    },
+  });
+  assert.deepEqual(deriveWholeGraphProgress(state), { completed: 1, total: 2 });
+});
+
 test('deriveWholeGraphProgress excludes gates, loop containers, and parallel wrappers from total while counting their nested step children', () => {
   const state = makeStateWithNodes({
     plan_approval_gate: { kind: 'gate', status: 'completed', gate_active: false },

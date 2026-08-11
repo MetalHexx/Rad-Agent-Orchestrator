@@ -221,6 +221,44 @@ test("AD-4 NodeStatusBadge forwards cssVar to SpinnerBadge with STATUS_MAP fallb
   );
 });
 
+// ─── isSpinning override prop ────────────────────────────────────────────────
+// Used by resting states that are in flight but not active work (a gate
+// awaiting a person) — the override must win over STATUS_MAP[status].isSpinning.
+
+function resolvePropsWithSpinningOverride(status: NodeStatus, isSpinning?: boolean) {
+  const entry: StatusMapEntry = STATUS_MAP[status];
+  return { isSpinning: isSpinning ?? entry.isSpinning };
+}
+
+console.log("\nNodeStatusBadge isSpinning override tests\n");
+
+test("isSpinning=false override suppresses the STATUS_MAP default spinner on in_progress", () => {
+  const r = resolvePropsWithSpinningOverride('in_progress', false);
+  assert.strictEqual(r.isSpinning, false);
+});
+
+test("isSpinning omitted falls back to STATUS_MAP entry (back-compat)", () => {
+  const r = resolvePropsWithSpinningOverride('in_progress');
+  assert.strictEqual(r.isSpinning, true);
+});
+
+test("isSpinning=true override can also force a spinner on a status that defaults to none", () => {
+  const r = resolvePropsWithSpinningOverride('not_started', true);
+  assert.strictEqual(r.isSpinning, true);
+});
+
+test("NodeStatusBadge declares optional isSpinning prop in its props interface", () => {
+  assert.ok(/isSpinning\?\s*:\s*boolean/.test(NSB_SOURCE),
+    "node-status-badge.tsx must declare `isSpinning?: boolean` on NodeStatusBadgeProps");
+});
+
+test("NodeStatusBadge forwards isSpinning to SpinnerBadge with STATUS_MAP fallback", () => {
+  assert.ok(
+    /isSpinning\s*\?\?\s*\w+\.isSpinning/.test(NSB_SOURCE),
+    "NodeStatusBadge body must use `isSpinning ?? <STATUS_MAP entry>.isSpinning` fallback",
+  );
+});
+
 // ─── Summary ─────────────────────────────────────────────────────────────────
 
 console.log(`\n${passed} passed, ${failed} failed\n`);

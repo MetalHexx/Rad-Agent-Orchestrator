@@ -208,11 +208,40 @@ test('deriveCardHeading reads a phase corrective as "Correcting: Phase N — <ti
   const state = makeState(nodes, 'phase_loop.iter1.ct1.task_executor');
   const { ctx } = resolveStateView(state, undefined, noopDeps);
   assert.equal(ctx.stateId, 'corrective');
-  assert.equal(ctx.isPhaseCorrective, true);
+  assert.equal(ctx.correctiveScope, 'phase');
   assert.deepEqual(deriveCardHeading(ctx), {
     heading: 'Correcting: Phase 2 — Overview Facet',
     meta: 'Phase 2',
   });
+});
+
+test('deriveCardHeading reads a final corrective as "Correcting: Final Review", not "Task 1" from the absent iteration', () => {
+  const nodes: NodesRecord = {
+    final_review: {
+      kind: 'step',
+      status: 'not_started',
+      doc_path: null,
+      retries: 0,
+      corrective_tasks: [
+        {
+          index: 1,
+          status: 'in_progress',
+          doc_path: 'tasks/DEMO-FINAL-CT.md',
+          reason: 'fix final review findings',
+          injected_after: 'final_review',
+          repos: [],
+          nodes: {
+            task_executor: { kind: 'step', status: 'in_progress', doc_path: null, retries: 0 },
+          },
+        },
+      ],
+    },
+  };
+  const state = makeState(nodes, 'final_review.ct1.task_executor');
+  const { ctx } = resolveStateView(state, undefined, noopDeps);
+  assert.equal(ctx.stateId, 'corrective');
+  assert.equal(ctx.correctiveScope, 'final');
+  assert.deepEqual(deriveCardHeading(ctx), { heading: 'Correcting: Final Review', meta: 'Final Review' });
 });
 
 test('deriveCardHeading strips the "Phase N — " prefix and prepends "Phase Review: " for the Phase Review state', () => {

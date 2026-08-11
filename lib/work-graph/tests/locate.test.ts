@@ -39,6 +39,20 @@ describe('locate classifier (FR-12, FR-13)', () => {
     expect(r.repo).toBe('rad-orc-source');
   });
 
+  it('reports the branch checked out in a main-clone', () => {
+    const root = tmp();
+    const clone = tmp();
+    const r = locate(path.join(clone, 'cli'), {
+      projectsDir: path.join(root, 'projects'),
+      worktreesDir: path.join(root, 'worktrees'),
+      sideProjectsDir: path.join(root, 'side-projects'),
+      registryLocalPaths: { 'rad-orc-source': clone },
+      exec: () => `worktree ${clone}\nHEAD abc\nbranch refs/heads/radorch/AIOPS-94\n\n`,
+    });
+    expect(r.kind).toBe('main-clone');
+    expect(r.branch).toBe('radorch/AIOPS-94');
+  });
+
   it('classifies a cwd under side-projects/<name> as kind=side-project', () => {
     const root = tmp();
     const sp = path.join(root, 'side-projects', 'TOY');

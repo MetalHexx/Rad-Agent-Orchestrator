@@ -40,6 +40,23 @@ describe('project derivation', () => {
     expect(p?.docs.brainstorming).toBeUndefined();
     expect(p?.docs.others).toEqual(['DEMO-1-ERROR-LOG.md']);
   });
+  it('reports the registered clone path for an in_place repo instead of the convention path', () => {
+    const clonePath = path.join(root, 'clones', 'rad-orc-source');
+    fs.writeFileSync(path.join(projectsDir, 'DEMO-1', 'state.json'), JSON.stringify({
+      project: { name: 'DEMO-1' },
+      pipeline: { source_control: { repos: [{ name: 'rad-orc-source', in_place: true }] } },
+      graph: { nodes: {} },
+    }));
+    const p = deriveProject('DEMO-1', {
+      projectsDir,
+      worktreesDir: path.join(root, 'worktrees'),
+      registryLocalPaths: { 'rad-orc-source': clonePath },
+      exec: () => '',
+    });
+    expect(p?.worktrees).toEqual([
+      { repo: 'rad-orc-source', path: clonePath, branch: null, exists: false, resolvedVia: 'registry-clone' },
+    ]);
+  });
   it('defaults projectType to standard when absent and returns null for a missing folder', () => {
     fs.writeFileSync(path.join(projectsDir, 'DEMO-1', 'state.json'), JSON.stringify({ project: { name: 'DEMO-1' }, graph: { nodes: {} } }));
     expect(deriveProject('DEMO-1', { projectsDir, worktreesDir: path.join(root, 'worktrees'), exec: () => '' })?.projectType).toBe('standard');

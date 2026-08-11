@@ -33,6 +33,7 @@ The CLI is the mechanical executor — fail-loud and non-interactive. *You* brin
 - **[references/concepts.md](references/concepts.md)** — what repos, repo-groups, and the registry are; the two-file model; the unbound state; slug and description rules. Start here when you (or the user) need the *why*.
 - **[references/cli-commands.md](references/cli-commands.md)** — the full command + flag reference for `repo` and `repo-group`.
 - **[references/interacting-with-users.md](references/interacting-with-users.md)** — how to register, scope, bind, and manage *with* the user: the dry-run → interview → confirm flow, project scoping, and the unbound/empty-state cases.
+- **[references/multi-repo-projects.md](references/multi-repo-projects.md)** — what makes a project multi-repo, how the workspace is arranged, why the agent works from above the repos, and why a single clone cannot host a multi-repo project.
 
 Each command emits a JSON envelope `{ "ok": <bool>, "data": { ... }, "error": { ... } }`. On success, surface the relevant `data` fields in a short plain-language confirmation. On failure, surface `error.message`.
 

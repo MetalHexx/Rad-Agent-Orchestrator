@@ -63,7 +63,7 @@ There is no exception to the document-reading rule for correctives — you do no
     - Don't wait until the end of the run to mention it.
 
 ## Additional Resources
-- **`schemas/orchestration-state-v5.schema.json`** — State file JSON Schema
+- **`schemas/orchestration-state-v6.schema.json`** — State file JSON Schema
 - **`scripts/radorch.mjs` CLI** — Pipeline runtime and many other tools.
 - **`~/.radorc/orchestration.yml`** — System configuration; 
 - **`~/.radorc/templates/`** — The review-intensity tier process templates.

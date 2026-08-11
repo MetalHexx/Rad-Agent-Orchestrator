@@ -31,3 +31,43 @@ describe('state schema v6 (FR-9, FR-10, NFR-4)', () => {
     expect(fs.existsSync(path.join(skillSchemas, 'legacy', 'state-v4.schema.json'))).toBe(false);
   });
 });
+
+describe('StepNodeState corrective hosting fields (P01-T01)', () => {
+  function makeFinalReviewState(stepExtra: Record<string, unknown>): Record<string, unknown> {
+    const state = makeV6State({ taskRepos: [] }) as Record<string, unknown>;
+    const graph = state.graph as Record<string, unknown>;
+    const nodes = graph.nodes as Record<string, unknown>;
+    nodes.final_review = {
+      kind: 'step',
+      status: 'not_started',
+      doc_path: null,
+      retries: 0,
+      ...stepExtra,
+    };
+    return state;
+  }
+
+  it('accepts a final_review step with both fields absent (pre-change shape, unchanged)', () => {
+    const state = makeFinalReviewState({});
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect(validateStateSchema(state as any)).toEqual([]);
+  });
+
+  it('accepts a final_review step carrying corrective_tasks: [] and corrective_budget_origin: 0', () => {
+    const state = makeFinalReviewState({ corrective_tasks: [], corrective_budget_origin: 0 });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect(validateStateSchema(state as any)).toEqual([]);
+  });
+
+  it('accepts a final_review step carrying only corrective_tasks (corrective_budget_origin absent)', () => {
+    const state = makeFinalReviewState({ corrective_tasks: [] });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect(validateStateSchema(state as any)).toEqual([]);
+  });
+
+  it('rejects an undeclared sibling property on StepNodeState (closed-object premise)', () => {
+    const state = makeFinalReviewState({ not_a_real_field: true });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect(validateStateSchema(state as any).length).toBeGreaterThan(0);
+  });
+});

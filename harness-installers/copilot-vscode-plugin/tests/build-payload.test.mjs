@@ -47,14 +47,14 @@ function makeFixtureRoot() {
   fs.mkdirSync(join(installerDir, '.claude-plugin'), { recursive: true });
   fs.writeFileSync(join(installerDir, '.claude-plugin/plugin.json'), JSON.stringify({
     name: 'rad-orc-vscode',
-    version: '1.0.0-alpha.12',
+    version: '1.0.0-alpha.13',
     author: { name: 'metalhexx' },
     license: 'MIT',
     hooks: 'hooks/hooks.json',
   }));
   fs.writeFileSync(join(installerDir, 'package.json'), JSON.stringify({
     name: '@rad-orchestration/copilot-vscode-plugin-source',
-    version: '1.0.0-alpha.12',
+    version: '1.0.0-alpha.13',
     private: true,
     type: 'module',
     license: 'MIT',
@@ -67,8 +67,8 @@ function makeFixtureRoot() {
   fs.writeFileSync(join(installerDir, 'hooks/drift-check.mjs'), '// drift-check verbatim\n');
   fs.writeFileSync(join(installerDir, 'hooks/hooks.json'),
     JSON.stringify({ hooks: { UserPromptSubmit: [], SessionStart: [] } }, null, 2));
-  fs.writeFileSync(join(installerDir, 'manifests/v1.0.0-alpha.12.json'),
-    JSON.stringify({ version: '1.0.0-alpha.12', channel: 'copilot-vscode-plugin', files: [] }));
+  fs.writeFileSync(join(installerDir, 'manifests/v1.0.0-alpha.13.json'),
+    JSON.stringify({ version: '1.0.0-alpha.13', channel: 'copilot-vscode-plugin', files: [] }));
   return root;
 }
 
@@ -96,7 +96,7 @@ test('runBuild produces a full output/ tree with plugin.json under .claude-plugi
     assert.ok(fs.existsSync(join(out, 'hooks/hooks.json')));
     assert.ok(fs.existsSync(join(out, 'hooks/bootstrap.mjs')), 'bundled bootstrap');
     assert.ok(fs.existsSync(join(out, 'hooks/drift-check.mjs')), 'verbatim drift-check');
-    assert.ok(fs.existsSync(join(out, 'manifests/v1.0.0-alpha.12.json')));
+    assert.ok(fs.existsSync(join(out, 'manifests/v1.0.0-alpha.13.json')));
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
@@ -141,7 +141,7 @@ test('synthesized output/package.json declares the published name @rad-orchestra
     await runBuild({ rootDir: root, skipAdapterEngine: true, skipBootstrap: true, skipUiRunner: true });
     const pkg = JSON.parse(fs.readFileSync(join(root, 'harness-installers/copilot-vscode-plugin/output/package.json'), 'utf8'));
     assert.strictEqual(pkg.name, '@rad-orchestration/copilot-vscode-plugin', 'published name (FR-33)');
-    assert.strictEqual(pkg.version, '1.0.0-alpha.12', 'version stamped from plugin.json');
+    assert.strictEqual(pkg.version, '1.0.0-alpha.13', 'version stamped from plugin.json');
     for (const f of ['.claude-plugin/', 'agents/', 'skills/', 'hooks/', 'manifests/', '_install-source/']) {
       assert.ok(pkg.files.includes(f), `files[] includes ${f}`);
     }

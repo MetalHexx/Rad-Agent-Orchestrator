@@ -2,12 +2,19 @@ import { Info } from "lucide-react";
 import { humanizeTokens } from "@/lib/observability/format";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
-/** Normalized raw-token shape both surfaces map onto. */
+/**
+ * Normalized raw-token shape both surfaces map onto.
+ * `spend`/`dollars` are accepted so callers (see overview-facet.tsx) can pass the same receipt
+ * used for the trio cards above, but this component never renders a dollar figure (DD-1, enforced
+ * by token-breakdown.test.tsx) — do not destructure or render them here.
+ */
 export interface TokenBreakdownProps {
   input: number;
   output: number;
   cacheRead: number;
   cacheCreate: number;
+  spend?: number;
+  dollars?: number | null;
 }
 
 const CELLS = [

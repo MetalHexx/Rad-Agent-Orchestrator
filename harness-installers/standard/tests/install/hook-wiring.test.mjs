@@ -181,7 +181,7 @@ function makeFixture() {
     path.join(installerSrc, 'package.json'),
     JSON.stringify({
       name: '@rad-orchestration/standard-source',
-      version: '1.0.0-alpha.12',
+      version: '1.0.0-alpha.13',
       private: true,
       type: 'module',
       description: 'Standard installer source wrapper.',

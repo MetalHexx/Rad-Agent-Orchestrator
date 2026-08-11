@@ -99,6 +99,16 @@ test('deriveRetryArc falls back to the degenerate-safe { 0, 1 } domain when no c
   assert.deepEqual(deriveRetryArc(undefined, makeState(5)), { value: 0, max: 1 });
 });
 
+test('deriveRetryArc plots the window-relative attempt, not the raw entry index, once a non-zero budgetOrigin applies', () => {
+  const arc = deriveRetryArc(makeCorrectiveEntry({ index: 3 }), makeState(5), 2);
+  assert.deepEqual(arc, { value: 1, max: 5 });
+});
+
+test('deriveRetryArc falls back to the degenerate-safe { 0, 1 } domain for a spent-window entry', () => {
+  const arc = deriveRetryArc(makeCorrectiveEntry({ index: 1 }), makeState(5), 2);
+  assert.deepEqual(arc, { value: 0, max: 1 });
+});
+
 // ─── source shape ─────────────────────────────────────────────────────────────
 
 test('corrective view id is "corrective"', () => {
@@ -127,9 +137,14 @@ test('corrective view ring center carries a "RETRY" sublabel', () => {
 });
 
 test('corrective view plots the retry budget, not task or phase completion', () => {
-  assert.match(source, /deriveRetryArc\(ctx\.correctiveEntry, ctx\.state\)/);
+  assert.match(source, /deriveRetryArc\(ctx\.correctiveEntry, ctx\.state, budgetOrigin\)/);
   assert.ok(!source.includes('ctx.taskProgress'), 'the retry ring must not read task progress');
   assert.ok(!source.includes('ctx.phaseProgress'), 'the retry ring must not read phase progress');
+});
+
+test('corrective view resolves budgetOrigin from the final_review node for final scope, not a hardcoded 0', () => {
+  assert.match(source, /budgetOrigin = finalReviewNode\?\.corrective_budget_origin \?\? 0/);
+  assert.match(source, /deriveRetryBudgetLabel\(ctx\.correctiveEntry, ctx\.state, budgetOrigin\)/);
 });
 
 test('corrective view renders a commit chip', () => {
@@ -144,15 +159,22 @@ test('corrective view references both the handoff and the triggering review-repo
   assert.match(source, /correctiveEntry\?\.doc_path/);
 });
 
-test('corrective view branches its control labels on ctx.isPhaseCorrective', () => {
-  assert.match(source, /ctx\.isPhaseCorrective\s*\?\s*'Phase Plan'\s*:\s*'Task Handoff'/);
-  assert.match(source, /ctx\.isPhaseCorrective\s*\?\s*'Phase Report'\s*:\s*'Review Report'/);
+test('corrective view branches its control labels on a CORRECTIVE_LABELS table keyed by ctx.correctiveScope', () => {
+  assert.match(source, /task:\s*\{\s*handoff:\s*'Task Handoff',\s*report:\s*'Review Report'\s*\}/);
+  assert.match(source, /phase:\s*\{\s*handoff:\s*'Phase Plan',\s*report:\s*'Phase Report'\s*\}/);
+  assert.match(source, /final:\s*\{\s*handoff:\s*null,\s*report:\s*'Final Review'\s*\}/);
+  assert.match(source, /const labels = CORRECTIVE_LABELS\[ctx\.correctiveScope \?\? 'task'\];/);
 });
 
-test('corrective view derives the report doc from phase_review for a phase corrective and code_review for a task corrective', () => {
+test('corrective view derives the report doc from phase_review for a phase corrective and code_review otherwise', () => {
   assert.match(source, /ctx\.iteration\?\.nodes\['phase_review'\]/);
   assert.match(source, /ctx\.iteration\?\.nodes\['code_review'\]/);
-  assert.match(source, /const reviewReportPath = ctx\.isPhaseCorrective/);
+  assert.match(source, /switch \(ctx\.correctiveScope\)/);
+});
+
+test('corrective view derives the final-scope report doc from the top-level final_review node, not ctx.iteration', () => {
+  assert.match(source, /case 'final':/);
+  assert.match(source, /ctx\.state\.graph\.nodes\['final_review'\]/);
 });
 
 test('corrective view never renders the retry budget as a button', () => {
@@ -330,7 +352,7 @@ test('a phase corrective shows enabled "Phase Plan" and "Phase Report" controls 
     projectName: 'demo',
   });
   assert.equal(ctx.stateId, 'corrective');
-  assert.equal(ctx.isPhaseCorrective, true);
+  assert.equal(ctx.correctiveScope, 'phase');
 
   const html = renderToStaticMarkup(createElement('div', null, view.render(ctx)));
 
@@ -352,7 +374,7 @@ test('a task corrective keeps unchanged "Task Handoff" / "Review Report" labels'
     compareUrlByRepo: { api: 'https://github.com/example/api/compare/main...branch' },
     projectName: 'demo',
   });
-  assert.equal(ctx.isPhaseCorrective, false);
+  assert.equal(ctx.correctiveScope, 'task');
 
   const html = renderToStaticMarkup(createElement('div', null, view.render(ctx)));
 
@@ -360,4 +382,165 @@ test('a task corrective keeps unchanged "Task Handoff" / "Review Report" labels'
   assert.match(html, />Review Report</);
   assert.ok(!html.includes('>Phase Plan<'));
   assert.ok(!html.includes('>Phase Report<'));
+});
+
+// ─── final-scope corrective — no handoff at this scope ─────────────────────
+
+const FINAL_CORRECTIVE_NODES: NodesRecord = {
+  final_review: {
+    kind: 'step',
+    status: 'not_started',
+    doc_path: 'reviews/FINAL-REVIEW-1.md',
+    retries: 0,
+    corrective_tasks: [
+      {
+        index: 1,
+        reason: 'final review found issues',
+        injected_after: 'final_review',
+        status: 'in_progress',
+        doc_path: 'tasks/FINAL-CORRECTIVE-1.md',
+        repos: [{ name: 'api', commit_hash: 'finalcthash' }],
+        nodes: {
+          task_executor: { kind: 'step', status: 'in_progress', doc_path: null, retries: 0 },
+        },
+      },
+    ],
+  },
+};
+
+function makeFinalCorrectiveState(): AnyProjectState {
+  return {
+    $schema: 'orchestration-state-v5',
+    project: { name: 'demo', created: '2026-01-01', updated: '2026-01-01' },
+    config: {
+      gate_mode: 'task',
+      limits: { max_phases: 3, max_tasks_per_phase: 3, max_retries_per_task: 2 },
+      source_control: { auto_commit: 'never', auto_pr: 'never' },
+    },
+    pipeline: { gate_mode: 'task', source_control: null, current_tier: 'execution', halt_reason: null },
+    graph: {
+      template_id: 'std',
+      status: 'in_progress',
+      current_node_path: 'final_review.ct1.task_executor',
+      nodes: FINAL_CORRECTIVE_NODES,
+    },
+  };
+}
+
+test('a final corrective omits the handoff control entirely and shows the "Final Review" report label', () => {
+  const { view, ctx } = resolveStateView(makeFinalCorrectiveState(), undefined, {
+    onDocClick: () => {},
+    compareUrlByRepo: { api: 'https://github.com/example/api/compare/main...branch' },
+    projectName: 'demo',
+  });
+  assert.equal(ctx.stateId, 'corrective');
+  assert.equal(ctx.correctiveScope, 'final');
+
+  const html = renderToStaticMarkup(createElement('div', null, view.render(ctx)));
+
+  assert.ok(!html.includes('>Task Handoff<'));
+  assert.ok(!html.includes('>Phase Plan<'));
+  assert.match(html, />Final Review</);
+
+  // Only the report control renders — the handoff control is omitted
+  // entirely (not rendered disabled) since a final corrective has no handoff doc.
+  const buttonCount = (html.match(/<button/g) ?? []).length;
+  assert.equal(buttonCount, 1, 'only the Final Review report control renders');
+
+  // The report control is active (not disabled), reading its doc path from the
+  // top-level final_review step rather than an (absent) enclosing iteration.
+  // Matches the real `disabled=""` DOM attribute, not Tailwind's `disabled:*` variants.
+  assert.ok(!/\bdisabled=""/.test(html), 'the Final Review report resolved a real doc path');
+});
+
+// ─── final corrective from the raw engine bracket-form path (Done-when) ────
+
+function makeFinalCorrectiveBracketState(): AnyProjectState {
+  const state = makeFinalCorrectiveState();
+  return {
+    ...state,
+    graph: { ...state.graph, current_node_path: 'final_review.corrective_tasks[1].task_executor' },
+  };
+}
+
+test('a bracket-form final_review.corrective_tasks[1] path resolves to the corrective view with a populated ring and no empty state', () => {
+  const { view, ctx } = resolveStateView(makeFinalCorrectiveBracketState(), undefined, {
+    onDocClick: () => {},
+    compareUrlByRepo: { api: 'https://github.com/example/api/compare/main...branch' },
+    projectName: 'demo',
+  });
+  assert.equal(ctx.stateId, 'corrective');
+  assert.equal(ctx.correctiveScope, 'final');
+  assert.equal(ctx.correctiveEntry?.index, 1);
+
+  const html = renderToStaticMarkup(createElement('div', null, view.render(ctx)));
+
+  // The ring center carries the resolved retry budget, not an empty placeholder.
+  assert.match(html, />1\/2</);
+  assert.match(html, />Correcting: Final Review</);
+  assert.match(html, />Final Review</);
+});
+
+// ─── final-scope budgetOrigin threading after a final_rejected reopen ──────
+
+const WINDOWED_FINAL_CORRECTIVE_NODES: NodesRecord = {
+  final_review: {
+    kind: 'step',
+    status: 'in_progress',
+    doc_path: 'reviews/FINAL-REVIEW-1.md',
+    retries: 0,
+    corrective_budget_origin: 2,
+    corrective_tasks: [
+      { index: 1, reason: 'spent history', injected_after: 'final_review', status: 'completed', doc_path: null, repos: [], nodes: {} },
+      { index: 2, reason: 'spent history', injected_after: 'final_review', status: 'completed', doc_path: null, repos: [], nodes: {} },
+      {
+        index: 3,
+        reason: 'final review found issues (new window)',
+        injected_after: 'final_review',
+        status: 'in_progress',
+        doc_path: 'tasks/FINAL-CORRECTIVE-3.md',
+        repos: [{ name: 'api', commit_hash: 'windowedhash' }],
+        nodes: {
+          task_executor: { kind: 'step', status: 'in_progress', doc_path: null, retries: 0 },
+        },
+      },
+    ],
+  },
+};
+
+function makeWindowedFinalCorrectiveState(): AnyProjectState {
+  return {
+    $schema: 'orchestration-state-v5',
+    project: { name: 'demo', created: '2026-01-01', updated: '2026-01-01' },
+    config: {
+      gate_mode: 'task',
+      limits: { max_phases: 3, max_tasks_per_phase: 3, max_retries_per_task: 2 },
+      source_control: { auto_commit: 'never', auto_pr: 'never' },
+    },
+    pipeline: { gate_mode: 'task', source_control: null, current_tier: 'execution', halt_reason: null },
+    graph: {
+      template_id: 'std',
+      status: 'in_progress',
+      current_node_path: 'final_review.corrective_tasks[3].task_executor',
+      nodes: WINDOWED_FINAL_CORRECTIVE_NODES,
+    },
+  };
+}
+
+test('a final corrective past a final_rejected budget-origin advance shows the window-relative retry budget, not the raw entry index', () => {
+  const { view, ctx } = resolveStateView(makeWindowedFinalCorrectiveState(), undefined, {
+    onDocClick: () => {},
+    compareUrlByRepo: { api: 'https://github.com/example/api/compare/main...branch' },
+    projectName: 'demo',
+  });
+  assert.equal(ctx.correctiveScope, 'final');
+  assert.equal(ctx.correctiveEntry?.index, 3);
+
+  const html = renderToStaticMarkup(createElement('div', null, view.render(ctx)));
+
+  // entry.index (3) - budgetOrigin (2) = window-relative attempt 1, over the
+  // configured ceiling of 2 — not "3/2" (which the ring would show if the
+  // origin were silently ignored, and which would also read as saturated).
+  assert.match(html, />1\/2</);
+  assert.ok(!html.includes('>3/2<'), 'must not render the raw ever-growing index as the attempt number');
 });

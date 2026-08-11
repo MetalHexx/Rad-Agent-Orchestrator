@@ -10,7 +10,25 @@ import type {
   ForEachTaskNodeState,
   CorrectiveTaskEntry,
   IterationEntry,
+  AnyProjectState,
 } from '@/types/state';
+
+/** Minimal project state fixture — enough for `deriveRetryBudget`'s `resolveMaxRetriesPerTask` read. */
+export function makeProjectState(maxRetriesPerTask = 2): AnyProjectState {
+  return {
+    $schema: 'orchestration-state-v5',
+    project: { name: 'demo', created: '2026-01-01', updated: '2026-01-01' },
+    config: {
+      gate_mode: 'task',
+      limits: { max_phases: 3, max_tasks_per_phase: 3, max_retries_per_task: maxRetriesPerTask },
+      source_control: { auto_commit: 'never', auto_pr: 'never' },
+    },
+    pipeline: { gate_mode: 'task', source_control: null, current_tier: 'execution', halt_reason: null },
+    graph: { template_id: 'std', status: 'in_progress', current_node_path: null, nodes: {} },
+  };
+}
+
+export const baseProjectState: AnyProjectState = makeProjectState();
 
 export const stepNode: StepNodeState = {
   kind: 'step',

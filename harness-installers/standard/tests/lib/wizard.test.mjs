@@ -61,10 +61,10 @@ describe('runWizard — headless (skipConfirmation) behavior', () => {
         JSON.stringify({
           harnesses: {
             'copilot-cli': {
-              version: '1.0.0-alpha.12',
+              version: '1.0.0-alpha.13',
               channel: 'standard',
               installed_at: 't',
-              last_writer_version: '1.0.0-alpha.12',
+              last_writer_version: '1.0.0-alpha.13',
             },
           },
         }),
@@ -124,10 +124,10 @@ describe('runWizard — headless (skipConfirmation) behavior', () => {
         JSON.stringify({
           harnesses: {
             'copilot-vscode': {
-              version: '1.0.0-alpha.12',
+              version: '1.0.0-alpha.13',
               channel: 'standard',
               installed_at: 't',
-              last_writer_version: '1.0.0-alpha.12',
+              last_writer_version: '1.0.0-alpha.13',
             },
           },
         }),
@@ -138,7 +138,7 @@ describe('runWizard — headless (skipConfirmation) behavior', () => {
         skipConfirmation: true,
         cliOverrides: { harnesses: ['copilot-cli'] },
         homeDir: home,
-        deliveringVersion: '1.0.0-alpha.12',
+        deliveringVersion: '1.0.0-alpha.13',
       });
       assert.deepEqual(result.harnesses, ['copilot-cli']);
     } finally {
@@ -309,7 +309,7 @@ describe('runWizard — uninstall plugin filtering', () => {
     );
   }
 
-  function entry(version = '1.0.0-alpha.12', channel = 'claude-plugin') {
+  function entry(version = '1.0.0-alpha.13', channel = 'claude-plugin') {
     return { version, channel, installed_at: 't', last_writer_version: version };
   }
 
@@ -317,7 +317,7 @@ describe('runWizard — uninstall plugin filtering', () => {
     it(`headless --uninstall --harness ${pluginKey} → PLUGIN_NOT_UNINSTALLABLE_HERE`, async () => {
       const home = mkHome(`std-wiz-uninstall-${pluginKey}-`);
       try {
-        seedRegistry(home, { [pluginKey]: entry('1.0.0-alpha.12', pluginKey) });
+        seedRegistry(home, { [pluginKey]: entry('1.0.0-alpha.13', pluginKey) });
         await assert.rejects(
           async () =>
             runWizard({
@@ -344,8 +344,8 @@ describe('runWizard — uninstall plugin filtering', () => {
     const home = mkHome('std-wiz-uninstall-only-plugins-');
     try {
       seedRegistry(home, {
-        'claude-plugin':      entry('1.0.0-alpha.12', 'claude-plugin'),
-        'copilot-cli-plugin': entry('1.0.0-alpha.12', 'copilot-cli-plugin'),
+        'claude-plugin':      entry('1.0.0-alpha.13', 'claude-plugin'),
+        'copilot-cli-plugin': entry('1.0.0-alpha.13', 'copilot-cli-plugin'),
       });
       await assert.rejects(
         async () =>

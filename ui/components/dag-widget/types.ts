@@ -25,6 +25,13 @@ export type StateId =
   | 'fallback';
 
 /**
+ * The container kind a corrective path is hosted by: a `for_each_task` loop
+ * (`'task'`), a `for_each_phase` loop (`'phase'`), or a standalone `kind:
+ * 'step'` node hosting its own `corrective_tasks` (`'final'`).
+ */
+export type CorrectiveScope = 'task' | 'phase' | 'final';
+
+/**
  * The derived essentials every state view reads, assembled once by the resolver
  * so views stay thin (no re-deriving of phase/iteration/repo data). The card's
  * three fixed slots are filled from these values.
@@ -41,11 +48,13 @@ export interface StateViewContext {
   /** True when the active path descends through a `.ct{N}.` corrective segment. */
   isCorrective: boolean;
   /**
-   * True when `isCorrective` is set and the innermost iteration the corrective
-   * hangs off was selected from a `for_each_phase` loop (`phase_loop.iterN.ctM`)
-   * rather than a `for_each_task` loop (`phase_loop.iterN.task_loop.iterK.ctM`).
+   * The scope of the corrective the active path is inside, derived from the
+   * enclosing container it descended through before the `.ct{N}.` segment: a
+   * `for_each_task` loop (`'task'`), a `for_each_phase` loop (`'phase'`), or a
+   * standalone `kind: 'step'` host (`'final'`). `null` when `isCorrective` is
+   * false.
    */
-  isPhaseCorrective: boolean;
+  correctiveScope: CorrectiveScope | null;
   /** Innermost iteration entry descended into, if the path entered a loop. */
   iteration: IterationEntry | undefined;
   /** Corrective-task entry descended into, if the path entered `.ct{N}.`. */

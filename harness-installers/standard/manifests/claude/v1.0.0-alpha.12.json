@@ -307,6 +307,10 @@
       "destinationPath": "${HARNESS_ROOT}/skills/rad-repo/references/interacting-with-users.md"
     },
     {
+      "bundlePath": "skills/rad-repo/references/multi-repo-projects.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-repo/references/multi-repo-projects.md"
+    },
+    {
       "bundlePath": "skills/rad-source-control/SKILL.md",
       "destinationPath": "${HARNESS_ROOT}/skills/rad-source-control/SKILL.md"
     },

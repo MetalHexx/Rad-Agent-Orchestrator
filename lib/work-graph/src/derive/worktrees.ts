@@ -4,7 +4,14 @@ import { execFileSync } from 'node:child_process';
 import type { WorktreeRef } from '../types.js';
 
 export type GitExec = (file: string, args: string[], opts: { cwd?: string }) => string;
-export interface ResolveDeps { projectsDir: string; worktreesDir: string; sideProjectsDir?: string; exec?: GitExec; }
+export interface ResolveDeps {
+  projectsDir: string;
+  worktreesDir: string;
+  sideProjectsDir?: string;
+  /** Repo name → absolute local clone path, from the registry. Absent → clone bindings fall back to the convention path. */
+  registryLocalPaths?: Record<string, string>;
+  exec?: GitExec;
+}
 
 const defaultExec: GitExec = (file, args, opts) =>
   execFileSync(file, args, { cwd: opts.cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }) as unknown as string;
@@ -57,12 +64,22 @@ export function resolveWorktrees(projectName: string, deps: ResolveDeps): Worktr
   // Genuine reuse: the shared name came from source_control and differs from the folder name.
   const repoResolvedVia: WorktreeRef['resolvedVia'] =
     sharedName !== null && sharedName !== projectName ? 'shared-worktree-name' : 'convention';
+  // A repo bound in place has no managed worktree: it resolves to the operator's
+  // registered clone. With no registry entry the convention path stands in — this
+  // derivation is a read on a hot path and must not become a failure point.
   if (Array.isArray(sc.repos) && sc.repos.length > 0) {
-    return sc.repos.map((r: { name: string }) => {
-      const wtPath = path.join(deps.worktreesDir, worktreeName, r.name);
+    return sc.repos.map((r: { name: string; in_place?: boolean }) => {
+      const clonePath = r.in_place === true ? deps.registryLocalPaths?.[r.name] : undefined;
+      const wtPath = clonePath ?? path.join(deps.worktreesDir, worktreeName, r.name);
       const live = listWorktrees(exec, wtPath);
       const key = path.resolve(wtPath);
-      return { repo: r.name, path: wtPath, branch: live.get(key) ?? null, exists: live.has(key), resolvedVia: repoResolvedVia };
+      return {
+        repo: r.name,
+        path: wtPath,
+        branch: live.get(key) ?? null,
+        exists: live.has(key),
+        resolvedVia: clonePath ? 'registry-clone' as const : repoResolvedVia,
+      };
     });
   }
   const wtPath = typeof sc.worktree_path === 'string' ? sc.worktree_path : null;

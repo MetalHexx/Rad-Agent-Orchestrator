@@ -4,7 +4,7 @@ import { explodeMasterPlan, ParseError } from '../../lib/explode-master-plan.js'
 import type { CommandContext } from '../../framework/context.js';
 
 export type PlanExplodeResult =
-  | { type: 'success'; emittedPhases: number; emittedTasks: number; backupDir: string | null }
+  | { type: 'success'; emittedPhases: number; emittedTasks: number }
   | { type: 'parse_error'; error: { line: number; expected: string; found: string; message: string } }
   | { type: 'real_error'; message: string };
 
@@ -25,7 +25,6 @@ export function planExplode(opts: PlanExplodeOptions): PlanExplodeResult {
       type: 'success',
       emittedPhases: r.emittedPhaseFiles.length,
       emittedTasks: r.emittedTaskFiles.length,
-      backupDir: r.backupDir,
     };
   } catch (err) {
     if (err instanceof ParseError) {
@@ -55,7 +54,7 @@ export const planExplodeCommand = defineCommand({
     if (r.type === 'success') {
       return {
         ok: true,
-        data: { emittedPhases: r.emittedPhases, emittedTasks: r.emittedTasks, backupDir: r.backupDir },
+        data: { emittedPhases: r.emittedPhases, emittedTasks: r.emittedTasks },
         exit_code: 0,
       };
     }

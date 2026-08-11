@@ -18,14 +18,14 @@ async function setup(): Promise<string> {
   const projectsDir = path.join(dir, '.radorc', 'projects');
   await mkdir(projectsDir, { recursive: true });
 
-  // (a) initialized-project: valid v5 state.json with project.updated set
-  await mkdir(path.join(projectsDir, 'initialized-project'));
+  // (a) INITIALIZED-PROJECT: valid v5 state.json with project.updated set
+  await mkdir(path.join(projectsDir, 'INITIALIZED-PROJECT'));
   await writeFile(
-    path.join(projectsDir, 'initialized-project', 'state.json'),
+    path.join(projectsDir, 'INITIALIZED-PROJECT', 'state.json'),
     JSON.stringify({
       $schema: 'orchestration-state-v5',
       project: {
-        name: 'initialized-project',
+        name: 'INITIALIZED-PROJECT',
         created: '2026-01-01T00:00:00.000Z',
         updated: '2026-04-06T12:00:00.000Z',
       },
@@ -49,12 +49,17 @@ async function setup(): Promise<string> {
     })
   );
 
-  // (b) no-state-project: directory without state.json
-  await mkdir(path.join(projectsDir, 'no-state-project'));
+  // (b) NO-STATE-PROJECT: directory without state.json
+  await mkdir(path.join(projectsDir, 'NO-STATE-PROJECT'));
 
-  // (c) malformed-project: state.json with invalid JSON
-  await mkdir(path.join(projectsDir, 'malformed-project'));
-  await writeFile(path.join(projectsDir, 'malformed-project', 'state.json'), 'not valid json{{{');
+  // (c) MALFORMED-PROJECT: state.json with invalid JSON
+  await mkdir(path.join(projectsDir, 'MALFORMED-PROJECT'));
+  await writeFile(path.join(projectsDir, 'MALFORMED-PROJECT', 'state.json'), 'not valid json{{{');
+
+  // (d) non-project directories that must never surface as projects
+  await mkdir(path.join(projectsDir, '.git'));
+  await mkdir(path.join(projectsDir, '_archived'));
+  await mkdir(path.join(projectsDir, '_future'));
 
   return dir;
 }
@@ -83,40 +88,48 @@ async function run() {
     console.log('discoverProjects — lastUpdated behavior');
 
     await test('(a) initialized project — lastUpdated equals state.project.updated', async () => {
-      const p = projects.find(x => x.name === 'initialized-project');
-      assert.ok(p, 'initialized-project should be in results');
+      const p = projects.find(x => x.name === 'INITIALIZED-PROJECT');
+      assert.ok(p, 'INITIALIZED-PROJECT should be in results');
       assert.strictEqual(p!.lastUpdated, '2026-04-06T12:00:00.000Z');
     });
 
     await test('(b) not-initialized project — lastUpdated is undefined', async () => {
-      const p = projects.find(x => x.name === 'no-state-project');
-      assert.ok(p, 'no-state-project should be in results');
+      const p = projects.find(x => x.name === 'NO-STATE-PROJECT');
+      assert.ok(p, 'NO-STATE-PROJECT should be in results');
       assert.strictEqual(p!.lastUpdated, undefined);
     });
 
     await test('(c) malformed-state project — lastUpdated is undefined', async () => {
-      const p = projects.find(x => x.name === 'malformed-project');
-      assert.ok(p, 'malformed-project should be in results');
+      const p = projects.find(x => x.name === 'MALFORMED-PROJECT');
+      assert.ok(p, 'MALFORMED-PROJECT should be in results');
       assert.strictEqual(p!.lastUpdated, undefined);
     });
 
     // graphStatus assertions
     await test('(a2) v5 initialized project — graphStatus reflects graph.status', async () => {
-      const p = projects.find(x => x.name === 'initialized-project');
-      assert.ok(p, 'initialized-project should be in results');
+      const p = projects.find(x => x.name === 'INITIALIZED-PROJECT');
+      assert.ok(p, 'INITIALIZED-PROJECT should be in results');
       assert.strictEqual(p!.graphStatus, 'in_progress');
     });
 
     await test('(b2) no-state project — graphStatus is "not_initialized"', async () => {
-      const p = projects.find(x => x.name === 'no-state-project');
-      assert.ok(p, 'no-state-project should be in results');
+      const p = projects.find(x => x.name === 'NO-STATE-PROJECT');
+      assert.ok(p, 'NO-STATE-PROJECT should be in results');
       assert.strictEqual(p!.graphStatus, 'not_initialized');
     });
 
     await test('(c2) malformed-state project — graphStatus is "not_initialized"', async () => {
-      const p = projects.find(x => x.name === 'malformed-project');
-      assert.ok(p, 'malformed-project should be in results');
+      const p = projects.find(x => x.name === 'MALFORMED-PROJECT');
+      assert.ok(p, 'MALFORMED-PROJECT should be in results');
       assert.strictEqual(p!.graphStatus, 'not_initialized');
+    });
+
+    // project-name rule assertions
+    await test('(d) non-project directories are excluded from discovery', async () => {
+      const names = projects.map(x => x.name);
+      assert.ok(!names.includes('.git'), '.git should be excluded');
+      assert.ok(!names.includes('_archived'), '_archived should be excluded');
+      assert.ok(!names.includes('_future'), '_future should be excluded');
     });
 
     console.log(`\n${passed} passed, ${failed} failed`);

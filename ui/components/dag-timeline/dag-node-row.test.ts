@@ -928,3 +928,73 @@ test4("FR-6 DAGNodeRow stops calling STATUS_MAP[status].defaultLabel directly fo
 
 console.log(`\n${passed4} passed, ${failed4} failed\n`);
 if (failed4 > 0) process.exit(1);
+
+// ─── Pending Review cssVar/isSpinning threading ──────────────────────────────
+
+console.log("\nDAGNodeRow — Pending Review cssVar/isSpinning threading\n");
+
+let passed5 = 0;
+let failed5 = 0;
+
+function test5(name: string, fn: () => void) {
+  try {
+    fn();
+    console.log(`  ✓ ${name}`);
+    passed5++;
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error(`  ✗ ${name}\n    ${msg}`);
+    failed5++;
+  }
+}
+
+/**
+ * Mirrors the gate branch of DAGNodeRow's resolvedBadge computation: the
+ * derived cssVar/isSpinning override wins over the stage-resolved defaults,
+ * and isSpinning is undefined on the non-blocking path.
+ */
+function resolveGateRowBadge(
+  gate: { status: NodeStatus; label: string; cssVar?: string; isSpinning?: boolean },
+  gateStageCssVar: string,
+): { cssVar: string; isSpinning: boolean | undefined } {
+  return {
+    cssVar: gate.cssVar ?? gateStageCssVar,
+    isSpinning: gate.isSpinning,
+  };
+}
+
+test5("a blocking gate's derived cssVar wins over the stage-resolved default", () => {
+  const result = resolveGateRowBadge(
+    { status: 'in_progress', label: 'Pending Review', cssVar: '--tier-review', isSpinning: false },
+    '--status-in-progress',
+  );
+  assert.strictEqual(result.cssVar, '--tier-review');
+  assert.strictEqual(result.isSpinning, false);
+});
+
+test5("a non-blocking gate falls back to the stage-resolved cssVar and leaves isSpinning undefined", () => {
+  const result = resolveGateRowBadge(
+    { status: 'completed', label: 'Completed' },
+    '--status-complete',
+  );
+  assert.strictEqual(result.cssVar, '--status-complete');
+  assert.strictEqual(result.isSpinning, undefined);
+});
+
+test5('dag-node-row.tsx resolves cssVar as gate.cssVar ?? gateStage.cssVar', () => {
+  assert.ok(/gate\.cssVar\s*\?\?\s*gateStage\.cssVar/.test(ROW_SOURCE),
+    'dag-node-row.tsx must resolve cssVar as gate.cssVar ?? gateStage.cssVar');
+});
+
+test5('dag-node-row.tsx threads isSpinning from the derived gate badge into resolvedBadge', () => {
+  assert.ok(/isSpinning:\s*gate\.isSpinning/.test(ROW_SOURCE),
+    'dag-node-row.tsx must carry gate.isSpinning into resolvedBadge.isSpinning');
+});
+
+test5('dag-node-row.tsx threads isSpinning into NodeStatusBadge', () => {
+  assert.ok(/<NodeStatusBadge[\s\S]*?isSpinning=\{resolvedBadge\.isSpinning\}/.test(ROW_SOURCE),
+    'dag-node-row.tsx must pass isSpinning={resolvedBadge.isSpinning} to NodeStatusBadge');
+});
+
+console.log(`\n${passed5} passed, ${failed5} failed\n`);
+if (failed5 > 0) process.exit(1);

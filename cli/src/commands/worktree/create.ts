@@ -10,7 +10,9 @@ import { readProjectReposDefault } from '../../lib/project-repos.js';
 import { deriveWorktreeConvention } from '../../lib/worktree-convention.js';
 
 export type WorktreeCreateErrorType =
-  | 'already_exists_path' | 'already_exists_branch' | 'invalid_reference' | 'missing_args' | 'unknown' | null;
+  | 'already_exists_path' | 'already_exists_branch' | 'invalid_reference' | 'missing_args' | 'remote_probe_failed' | 'unknown' | null;
+
+export type BranchMode = 'created' | 'attached-local' | 'attached-remote';
 
 export interface WorktreeCreateResult {
   created: boolean;
@@ -22,6 +24,7 @@ export interface WorktreeCreateResult {
   compareUrl: string;
   error: string | null;
   errorType: WorktreeCreateErrorType;
+  branchMode: BranchMode | null;
 }
 
 type Exec = (file: string, args: string[], opts: { cwd: string; encoding: 'utf8' }) => string;
@@ -46,17 +49,72 @@ function classify(stderr: string): WorktreeCreateErrorType {
   return 'unknown';
 }
 
+// Non-throwing: exit 0 means the local ref exists; any throw means it does not.
+// Offline and reliable — needs no network.
+function branchExistsLocally(exec: Exec, repoRoot: string, branch: string): boolean {
+  try {
+    exec('git', ['show-ref', '--verify', '--quiet', `refs/heads/${branch}`], { cwd: repoRoot, encoding: 'utf8' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+type RemoteBranchProbe = 'present' | 'absent' | 'unknown';
+
+// Non-throwing: `ls-remote` exits 0 with empty stdout when the branch is absent,
+// so the output is what's tested, not the exit code. When the probe itself
+// fails to run (network unreachable, `origin` misconfigured, auth failure,
+// transient git error) this reports 'unknown' rather than silently degrading
+// to 'absent' — the caller must not treat "couldn't check" the same as
+// "confirmed absent", or it risks creating a fresh local branch over one that
+// already exists on the remote.
+function probeBranchOnRemote(exec: Exec, repoRoot: string, branch: string): RemoteBranchProbe {
+  let out: string;
+  try {
+    out = exec('git', ['ls-remote', '--heads', 'origin', branch], { cwd: repoRoot, encoding: 'utf8' });
+  } catch {
+    return 'unknown';
+  }
+  return String(out || '').trim().length > 0 ? 'present' : 'absent';
+}
+
 export function worktreeCreate(opts: WorktreeCreateOptions): WorktreeCreateResult {
   const exec = opts.exec ?? ((f, a, o) => execFileSync(f, a, { ...o, stdio: ['ignore', 'pipe', 'pipe'] }) as unknown as string);
+
+  let branchMode: BranchMode;
+  if (branchExistsLocally(exec, opts.repoRoot, opts.branch)) {
+    branchMode = 'attached-local';
+  } else {
+    const remoteState = probeBranchOnRemote(exec, opts.repoRoot, opts.branch);
+    if (remoteState === 'unknown') {
+      return {
+        created: false, worktreePath: opts.worktreePath, branch: opts.branch, baseBranch: opts.baseBranch,
+        pushed: false, remoteUrl: '', compareUrl: '',
+        error: `could not verify whether "${opts.branch}" exists on origin; not proceeding to avoid overwriting it`,
+        errorType: 'remote_probe_failed', branchMode: null,
+      };
+    }
+    branchMode = remoteState === 'present' ? 'attached-remote' : 'created';
+  }
+
   try {
-    exec('git', ['worktree', 'add', '-b', opts.branch, opts.worktreePath, opts.baseBranch],
-      { cwd: opts.repoRoot, encoding: 'utf8' });
+    if (branchMode === 'attached-remote') {
+      exec('git', ['fetch', 'origin', `${opts.branch}:refs/heads/${opts.branch}`], { cwd: opts.repoRoot, encoding: 'utf8' });
+    }
+    if (branchMode === 'created') {
+      exec('git', ['worktree', 'add', '-b', opts.branch, opts.worktreePath, opts.baseBranch],
+        { cwd: opts.repoRoot, encoding: 'utf8' });
+    } else {
+      exec('git', ['worktree', 'add', opts.worktreePath, opts.branch],
+        { cwd: opts.repoRoot, encoding: 'utf8' });
+    }
   } catch (e) {
     const err = e as { stderr?: string; message: string };
     const stderr = (err.stderr || err.message || '').trim();
     return {
       created: false, worktreePath: opts.worktreePath, branch: opts.branch, baseBranch: opts.baseBranch,
-      pushed: false, remoteUrl: '', compareUrl: '', error: stderr, errorType: classify(stderr),
+      pushed: false, remoteUrl: '', compareUrl: '', error: stderr, errorType: classify(stderr), branchMode: null,
     };
   }
 
@@ -75,7 +133,7 @@ export function worktreeCreate(opts: WorktreeCreateOptions): WorktreeCreateResul
 
   return {
     created: true, worktreePath: path.resolve(opts.worktreePath), branch: opts.branch, baseBranch: opts.baseBranch,
-    pushed, remoteUrl, compareUrl, error: null, errorType: null,
+    pushed, remoteUrl, compareUrl, error: null, errorType: null, branchMode,
   };
 }
 
@@ -89,6 +147,7 @@ export interface ProvisionRepoResult {
   branch: string | null;
   error: string | null;
   errorType: WorktreeCreateErrorType;
+  branchMode: BranchMode | null;
 }
 
 export function aggregateExitCode(repos: ReadonlyArray<{ created: boolean; pushed: boolean; error?: string | null }>): 0 | 1 | 2 {
@@ -140,12 +199,14 @@ function resolveClonePathDefault(repo: string): string {
 }
 
 // Base branch is the repo's registered default_branch — never a hardcoded 'main'.
-// Older repos use 'master'; some use something else. Fall back to 'main' only when
-// the repo is unregistered or has no recorded default. Exported for a focused
-// registry-backed unit test.
+// Older repos use 'master'; some use something else. A repo with no registered
+// default branch cannot be provisioned correctly, so this throws rather than
+// guess. Exported for a focused registry-backed unit test.
 export function defaultBranchDefault(repo: string): string {
   const reg = readRegistry({ root: userDataPaths().root });
-  return reg.repos[repo]?.default_branch ?? 'main';
+  const b = reg.repos[repo]?.default_branch;
+  if (!b) throw new UserError(`Repo "${repo}" has no registered default branch. Run \`radorch repo add\` or \`radorch repo edit\`.`);
+  return b;
 }
 
 export function provisionWorktrees(opts: ProvisionWorktreesOptions): ProvisionWorktreesResult {
@@ -172,7 +233,7 @@ export function provisionWorktrees(opts: ProvisionWorktreesOptions): ProvisionWo
   for (const { repo, base, worktreePath } of convention.repos) {
     try {
       if (exists(worktreePath)) {
-        results.push({ name: repo, created: false, pushed: true, path: worktreePath, branch, error: null, errorType: null });
+        results.push({ name: repo, created: false, pushed: true, path: worktreePath, branch, error: null, errorType: null, branchMode: null });
         continue;
       }
       const r = create({
@@ -189,10 +250,11 @@ export function provisionWorktrees(opts: ProvisionWorktreesOptions): ProvisionWo
         branch: r.branch,
         error: r.error,
         errorType: r.errorType,
+        branchMode: r.branchMode,
       });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      results.push({ name: repo, created: false, pushed: false, path: worktreePath, branch, error: msg, errorType: 'unknown' });
+      results.push({ name: repo, created: false, pushed: false, path: worktreePath, branch, error: msg, errorType: 'unknown', branchMode: null });
     }
   }
 

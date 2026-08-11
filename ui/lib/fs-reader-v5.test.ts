@@ -18,7 +18,7 @@ function makeV5State(overrides: Record<string, unknown> = {}) {
   return JSON.stringify({
     $schema: 'orchestration-state-v5',
     project: {
-      name: 'v5-project',
+      name: 'V5-PROJECT',
       created: '2026-01-01T00:00:00.000Z',
       updated: '2026-04-10T08:00:00.000Z',
     },
@@ -64,13 +64,13 @@ async function setup(): Promise<string> {
   await mkdir(projectsDir, { recursive: true });
 
   // v5-project: valid v5 state.json (execution tier, in_progress graph)
-  await mkdir(path.join(projectsDir, 'v5-project'));
-  await writeFile(path.join(projectsDir, 'v5-project', 'state.json'), makeV5State());
+  await mkdir(path.join(projectsDir, 'V5-PROJECT'));
+  await writeFile(path.join(projectsDir, 'V5-PROJECT', 'state.json'), makeV5State());
 
   // v5-completed-project: v5 state with graph.status === 'completed'
-  await mkdir(path.join(projectsDir, 'v5-completed-project'));
+  await mkdir(path.join(projectsDir, 'V5-COMPLETED-PROJECT'));
   await writeFile(
-    path.join(projectsDir, 'v5-completed-project', 'state.json'),
+    path.join(projectsDir, 'V5-COMPLETED-PROJECT', 'state.json'),
     makeV5State({
       pipeline: {
         gate_mode: null,
@@ -96,11 +96,11 @@ async function setup(): Promise<string> {
   );
 
   // no-state-project: directory without state.json
-  await mkdir(path.join(projectsDir, 'no-state-project'));
+  await mkdir(path.join(projectsDir, 'NO-STATE-PROJECT'));
 
   // malformed-project: state.json with invalid JSON
-  await mkdir(path.join(projectsDir, 'malformed-project'));
-  await writeFile(path.join(projectsDir, 'malformed-project', 'state.json'), 'not valid json{{{');
+  await mkdir(path.join(projectsDir, 'MALFORMED-PROJECT'));
+  await writeFile(path.join(projectsDir, 'MALFORMED-PROJECT', 'state.json'), 'not valid json{{{');
 
   return dir;
 }
@@ -131,82 +131,82 @@ async function run() {
     console.log('discoverProjects — v5 state support');
 
     await test('v5 project — schemaVersion is "v5"', async () => {
-      const p = projects.find(x => x.name === 'v5-project');
+      const p = projects.find(x => x.name === 'V5-PROJECT');
       assert.ok(p, 'v5-project should be in results');
       assert.strictEqual(p!.schemaVersion, 'v5');
     });
 
     await test('v5 project — tier mapped from pipeline.current_tier', async () => {
-      const p = projects.find(x => x.name === 'v5-project');
+      const p = projects.find(x => x.name === 'V5-PROJECT');
       assert.ok(p, 'v5-project should be in results');
       assert.strictEqual(p!.tier, 'execution');
     });
 
     await test('v5 project — planningStatus derived from graph nodes (all planning nodes completed → "complete")', async () => {
-      const p = projects.find(x => x.name === 'v5-project');
+      const p = projects.find(x => x.name === 'V5-PROJECT');
       assert.ok(p, 'v5-project should be in results');
       assert.strictEqual(p!.planningStatus, 'complete');
     });
 
     await test('v5 project — executionStatus derived from graph (phase_loop in_progress → "in_progress")', async () => {
-      const p = projects.find(x => x.name === 'v5-project');
+      const p = projects.find(x => x.name === 'V5-PROJECT');
       assert.ok(p, 'v5-project should be in results');
       assert.strictEqual(p!.executionStatus, 'in_progress');
     });
 
     await test('v5 project — lastUpdated from project.updated', async () => {
-      const p = projects.find(x => x.name === 'v5-project');
+      const p = projects.find(x => x.name === 'V5-PROJECT');
       assert.ok(p, 'v5-project should be in results');
       assert.strictEqual(p!.lastUpdated, '2026-04-10T08:00:00.000Z');
     });
 
     await test('v5 project — hasState: true, hasMalformedState: false', async () => {
-      const p = projects.find(x => x.name === 'v5-project');
+      const p = projects.find(x => x.name === 'V5-PROJECT');
       assert.ok(p, 'v5-project should be in results');
       assert.strictEqual(p!.hasState, true);
       assert.strictEqual(p!.hasMalformedState, false);
     });
 
     await test('v5 completed project — tier is "complete" when graph.status === "completed"', async () => {
-      const p = projects.find(x => x.name === 'v5-completed-project');
+      const p = projects.find(x => x.name === 'V5-COMPLETED-PROJECT');
       assert.ok(p, 'v5-completed-project should be in results');
       assert.strictEqual(p!.tier, 'complete');
     });
 
     await test('no-state project — hasState: false, schemaVersion undefined (no regression)', async () => {
-      const p = projects.find(x => x.name === 'no-state-project');
+      const p = projects.find(x => x.name === 'NO-STATE-PROJECT');
       assert.ok(p, 'no-state-project should be in results');
       assert.strictEqual(p!.hasState, false);
       assert.strictEqual(p!.schemaVersion, undefined);
     });
 
     await test('malformed-state project — hasMalformedState: true (no regression)', async () => {
-      const p = projects.find(x => x.name === 'malformed-project');
+      const p = projects.find(x => x.name === 'MALFORMED-PROJECT');
       assert.ok(p, 'malformed-project should be in results');
       assert.strictEqual(p!.hasMalformedState, true);
     });
 
     // graphStatus assertions
     await test('v5 project — graphStatus equals state.graph.status ("in_progress")', async () => {
-      const p = projects.find(x => x.name === 'v5-project');
+      const p = projects.find(x => x.name === 'V5-PROJECT');
       assert.ok(p, 'v5-project should be in results');
       assert.strictEqual(p!.graphStatus, 'in_progress');
     });
 
     await test('v5 completed project — graphStatus equals state.graph.status ("completed")', async () => {
-      const p = projects.find(x => x.name === 'v5-completed-project');
+      const p = projects.find(x => x.name === 'V5-COMPLETED-PROJECT');
       assert.ok(p, 'v5-completed-project should be in results');
       assert.strictEqual(p!.graphStatus, 'completed');
     });
 
     await test('no-state project — graphStatus is "not_initialized"', async () => {
-      const p = projects.find(x => x.name === 'no-state-project');
+      const p = projects.find(x => x.name === 'NO-STATE-PROJECT');
       assert.ok(p, 'no-state-project should be in results');
       assert.strictEqual(p!.graphStatus, 'not_initialized');
     });
 
     await test('malformed-state project — graphStatus is "not_initialized"', async () => {
-      const p = projects.find(x => x.name === 'malformed-project');
+      const p = projects.find(x => x.name === 'MALFORMED-PROJECT');
       assert.ok(p, 'malformed-project should be in results');
       assert.strictEqual(p!.graphStatus, 'not_initialized');
     });
@@ -215,7 +215,7 @@ async function run() {
     console.log('\nreadProjectState — v5 state support');
 
     await test('readProjectState — parses v5 state and returns $schema === "orchestration-state-v5"', async () => {
-      const projectDir = path.join(projectsDir, 'v5-project');
+      const projectDir = path.join(projectsDir, 'V5-PROJECT');
       const state = await readProjectState(projectDir);
       assert.ok(state, 'state should not be null');
       assert.strictEqual(state!.$schema, 'orchestration-state-v5');

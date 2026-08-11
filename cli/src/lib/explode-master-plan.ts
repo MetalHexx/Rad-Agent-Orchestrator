@@ -70,8 +70,6 @@ export class ParseError extends Error {
 export interface ExplodeResult {
   emittedPhaseFiles: string[];
   emittedTaskFiles: string[];
-  /** Timestamped backup dir path, or null if no pre-existing phases/ or tasks/ contents were moved. */
-  backupDir: string | null;
 }
 
 // ── Helper functions (ported from state-io.ts) ────────────────────────────────
@@ -212,6 +210,21 @@ function computeFrontmatterOffset(raw: string): number {
   // to the separator between frontmatter and body, not to a frontmatter line).
   const withoutTrailingNewline = block.replace(/\r?\n$/, '');
   return withoutTrailingNewline.split(/\r?\n/).length;
+}
+
+/**
+ * Locate the file-absolute 1-based line of a named field inside the YAML
+ * frontmatter block at the top of `raw`. Returns null when there is no
+ * frontmatter block or the field is absent.
+ */
+function findFrontmatterFieldLine(raw: string, field: string): number | null {
+  const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
+  if (match === null) return null;
+  const escapedField = field.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const fieldRe = new RegExp(`^\\s*${escapedField}\\s*:`);
+  const idx = (match[1] ?? '').split(/\r?\n/).findIndex(l => fieldRe.test(l));
+  // +1 for the opening `---` line, +1 to convert the 0-based index to 1-based.
+  return idx === -1 ? null : idx + 2;
 }
 
 /**
@@ -406,6 +419,18 @@ export function parseMasterPlan(masterPlanPath: string): ParsedMasterPlan {
   // End of file — flush whatever is open.
   flushPhase();
 
+  if (phases.length === 0) {
+    // Point at the first body line (= first file line after frontmatter). For
+    // frontmatter-less files this is line 1; for files with frontmatter it's
+    // the line where a phase heading would have naturally started.
+    throw new ParseError({
+      line: frontmatterOffset + 1,
+      expected: 'at least one "## P{NN}:" phase heading',
+      found: 'no phase headings',
+      message: 'Master Plan contains no parseable phase headings',
+    });
+  }
+
   // ── Enforce task repo shape ───────────────────────────────────────────────
   // Walk every parsed task and verify:
   //   FR-4: a "**Target repo:**" line is present
@@ -443,18 +468,28 @@ export function parseMasterPlan(masterPlanPath: string): ParsedMasterPlan {
         }
       }
     }
-  }
 
-  if (phases.length === 0) {
-    // Point at the first body line (= first file line after frontmatter). For
-    // frontmatter-less files this is line 1; for files with frontmatter it's
-    // the line where a phase heading would have naturally started.
-    throw new ParseError({
-      line: frontmatterOffset + 1,
-      expected: 'at least one "## P{NN}:" phase heading',
-      found: 'no phase headings',
-      message: 'Master Plan contains no parseable phase headings',
-    });
+    // Reverse direction: every sealed repo must be targeted by at least one
+    // task, so the seal and the task-target union are an equality, not just a
+    // one-way containment. A repo that leaked into the seal but that no task
+    // targets is indistinguishable here from a task that was never written —
+    // only the author can tell those apart, so this fails rather than
+    // silently narrowing the seal to the task union.
+    const targeted = new Set<string>();
+    for (const phase of phases) {
+      for (const task of phase.tasks) {
+        for (const r of task.targetRepos) targeted.add(r);
+      }
+    }
+    const untargeted = [...seal].filter(r => !targeted.has(r));
+    if (untargeted.length > 0) {
+      throw new ParseError({
+        line: findFrontmatterFieldLine(raw, 'repos') ?? 1,
+        expected: 'every repo in the sealed repos: to be named by at least one task',
+        found: `sealed but untargeted: ${untargeted.join(', ')}`,
+        message: `Sealed repo(s) ${untargeted.join(', ')} are not targeted by any task — remove them from the frontmatter "repos:" seal if they are reference-only, or add the task that should target them.`,
+      });
+    }
   }
 
   return {
@@ -615,42 +650,20 @@ function renderTaskBody(task: ParsedTask): string {
   return sections.join('\n');
 }
 
-// ── Backup-on-rerun helper ────────────────────────────────────────────────────
+// ── Clearing helper ───────────────────────────────────────────────────────────
 
-function hasContents(dir: string): boolean {
+/** Empty a directory's contents, leaving the directory itself in place. */
+function clearContents(dir: string): void {
+  let entries: string[];
   try {
-    const entries = fs.readdirSync(dir);
-    return entries.length > 0;
-  } catch {
-    return false;
+    entries = fs.readdirSync(dir);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return;
+    throw err;
   }
-}
-
-function moveContentsTo(srcDir: string, destDir: string): void {
-  if (!fs.existsSync(srcDir)) return;
-  fs.mkdirSync(destDir, { recursive: true });
-  for (const entry of fs.readdirSync(srcDir)) {
-    const srcPath = path.join(srcDir, entry);
-    const destPath = path.join(destDir, entry);
-    // Try rename (atomic on same filesystem); fall back to cpSync + rmSync on cross-device errors.
-    try {
-      fs.renameSync(srcPath, destPath);
-    } catch (err) {
-      const code = (err as { code?: string } | null)?.code;
-      if (code === 'EXDEV' || code === 'EPERM' || code === 'ENOTEMPTY') {
-        fs.cpSync(srcPath, destPath, { recursive: true });
-        fs.rmSync(srcPath, { recursive: true, force: true });
-      } else {
-        throw err;
-      }
-    }
+  for (const entry of entries) {
+    fs.rmSync(path.join(dir, entry), { recursive: true, force: true });
   }
-}
-
-function makeBackupDir(projectDir: string, nowIso?: string): string {
-  const iso = nowIso ?? new Date().toISOString();
-  const stamp = iso.replace(/[:.]/g, '-');
-  return path.join(projectDir, 'backups', stamp);
 }
 
 // ── Public API: explodeMasterPlan ─────────────────────────────────────────────
@@ -673,15 +686,11 @@ export function explodeMasterPlan(opts: ExplodeOptions): ExplodeResult {
   const phasesDir = path.join(projectDir, 'phases');
   const tasksDir = path.join(projectDir, 'tasks');
 
-  // 2. Backup-on-rerun.
-  let backupDir: string | null = null;
-  const phasesHas = hasContents(phasesDir);
-  const tasksHas = hasContents(tasksDir);
-  if (phasesHas || tasksHas) {
-    backupDir = makeBackupDir(projectDir, nowIso);
-    if (phasesHas) moveContentsTo(phasesDir, path.join(backupDir, 'phases'));
-    if (tasksHas) moveContentsTo(tasksDir, path.join(backupDir, 'tasks'));
-  }
+  // 2. Clear any prior phases/ and tasks/ contents. Explosion regenerates every
+  //    doc from the Master Plan, and a stale file under a retitled task's old
+  //    name would orphan alongside the fresh one.
+  clearContents(phasesDir);
+  clearContents(tasksDir);
 
   // 3. Ensure target dirs exist (they may have been removed by the move).
   fs.mkdirSync(phasesDir, { recursive: true });
@@ -736,7 +745,6 @@ export function explodeMasterPlan(opts: ExplodeOptions): ExplodeResult {
   return {
     emittedPhaseFiles,
     emittedTaskFiles,
-    backupDir,
   };
 }
 

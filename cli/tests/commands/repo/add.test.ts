@@ -108,6 +108,19 @@ describe('repo add', () => {
     expect(() => repoAdd({ root, repoPath: '/src/---', description: DESC, exec })).toThrow(/not a valid slug/i);
   });
 
+  it('fails loud naming the repo when the remote HEAD symref cannot be read, and writes nothing', () => {
+    const exec = vi.fn((_file: string, args: string[]) => {
+      if (args[0] === 'rev-parse') return args[1] === '--is-inside-work-tree' ? 'true' : (args[1] === '--show-toplevel' ? '/src/web-app' : '.git');
+      if (args[0] === 'worktree' && args[1] === 'list') return 'worktree /src/web-app\n';
+      if (args.includes('remote') && args.includes('-v'))
+        return 'origin\thttps://github.com/o/web-app.git (fetch)\norigin\thttps://github.com/o/web-app.git (push)';
+      if (args[0] === 'symbolic-ref') throw new Error('unable to read symref');
+      return '';
+    });
+    expect(() => repoAdd({ root, repoPath: '/src/web-app', description: DESC, exec })).toThrow(/web-app/i);
+    expect(fs.existsSync(path.join(root, 'repo-registry.yml'))).toBe(false);
+  });
+
   it('uses the default branch from a sole remote named other than origin', () => {
     const exec = vi.fn((_file: string, args: string[]) => {
       if (args[0] === 'rev-parse') return args[1] === '--is-inside-work-tree' ? 'true' : (args[1] === '--show-toplevel' ? '/src/lib' : '.git');
@@ -155,6 +168,10 @@ describe('repo add — real git (FR-4)', () => {
     execFileSync('git', ['init', '-b', 'main'], { cwd: tmp, encoding: 'utf8' });
     execFileSync('git', ['remote', 'add', 'origin', 'https://github.com/test/my-repo.git'], { cwd: tmp, encoding: 'utf8' });
     execFileSync('git', ['commit', '--allow-empty', '-m', 'init'], { cwd: tmp, encoding: 'utf8', env: gitEnv });
+    // No real fetch happens against this fake remote, so the origin/HEAD symref
+    // that getDefaultBranch reads must be set up by hand, mirroring what a real
+    // `git fetch` records.
+    execFileSync('git', ['symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/main'], { cwd: tmp, encoding: 'utf8' });
     expect(process.cwd()).not.toBe(tmp);
     const result = asResult(repoAdd({ root, repoPath: tmp, description: DESC }));
     expect(result.remote).toBe('https://github.com/test/my-repo');

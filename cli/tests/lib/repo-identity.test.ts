@@ -57,6 +57,11 @@ describe('getRemotes / selectRemote', () => {
     const remotes = getRemotes(exec);
     expect(selectRemote(remotes)).toEqual({ name: 'origin', url: 'https://github.com/o/r', others: [] });
   });
+  it('selects the sole remote even when it is not named origin', () => {
+    const exec = vi.fn(() => 'upstream\thttps://github.com/o/r.git (fetch)\nupstream\thttps://github.com/o/r.git (push)');
+    const remotes = getRemotes(exec);
+    expect(selectRemote(remotes)).toEqual({ name: 'upstream', url: 'https://github.com/o/r', others: [] });
+  });
   it('prefers origin and lists the others when several exist', () => {
     const remotes = new Map([['upstream', 'https://x/up'], ['origin', 'https://x/o']]);
     const sel = selectRemote(remotes);
@@ -70,11 +75,13 @@ describe('getRemotes / selectRemote', () => {
 });
 
 describe('getDefaultBranch', () => {
-  it('reads the symref and falls back to main', () => {
+  it('reads the branch from the symref', () => {
     const ok = vi.fn(() => 'refs/remotes/origin/develop\n');
     expect(getDefaultBranch(ok, 'origin')).toBe('develop');
+  });
+  it('returns null when the symref cannot be read, never a guessed value', () => {
     const bad = vi.fn(() => { throw new Error('no symref'); });
-    expect(getDefaultBranch(bad, 'origin')).toBe('main');
+    expect(getDefaultBranch(bad, 'origin')).toBeNull();
   });
 });
 

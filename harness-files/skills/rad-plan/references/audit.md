@@ -49,6 +49,10 @@ fabricated signature sends a coder down a hole before they write a line.
   waiting to surface at integration.
 - The frontmatter seal is coherent: every task's `Target repo:` names a repo inside the
   sealed `repos:` set, so no task points at a boundary the requirements never approved.
+  Additionally, every repo in the seal is named by at least one task. A sealed repo with
+  no task is either a reference-only repo that leaked into the seal or a task that should
+  exist and was never written — the second is the more dangerous case, because it means
+  planned work silently fell out of scope.
 
 **Coherent — sensible scope, order, complexity, and calibration**
 

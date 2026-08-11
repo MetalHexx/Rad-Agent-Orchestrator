@@ -50,6 +50,73 @@ describe('priceFor', () => {
   });
 });
 
+describe('family matching across generations', () => {
+  const AT = '2026-08-05';
+
+  it('prices every model id present in live telemetry', () => {
+    const models = ['claude-opus-5', 'claude-sonnet-5', 'claude-haiku-4-5-20251001'];
+    for (const model of models) {
+      for (const type of TOKEN_TYPES) {
+        expect(priceFor(model, type, AT)).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it('prices an unreleased future generation at its family rate', () => {
+    // The regression guard: pinning a family to one generation blanked Opus 5 as
+    // "price unavailable" the day the harness started reporting it.
+    const models = ['claude-opus-9', 'claude-sonnet-9', 'claude-haiku-9', 'claude-fable-9'];
+    for (const model of models) {
+      for (const type of TOKEN_TYPES) {
+        expect(priceFor(model, type, AT)).toBeGreaterThan(0);
+      }
+    }
+    expect(priceFor('claude-opus-9', 'input', AT)).toBeCloseTo(priceFor('claude-opus-5', 'input', AT)!, 12);
+  });
+
+  it('prices Opus at $5/MTok input and $25/MTok output', () => {
+    expect(priceFor('claude-opus-5', 'input', AT)).toBeCloseTo(5 / 1_000_000, 12);
+    expect(priceFor('claude-opus-5', 'output', AT)).toBeCloseTo(25 / 1_000_000, 12);
+  });
+
+  it('prices a bracketed context-window variant identically to the bare id', () => {
+    for (const type of TOKEN_TYPES) {
+      const bare = priceFor('claude-opus-5', type, AT);
+      // toBeCloseTo treats null as 0, so two unpriced models compare equal — assert
+      // priced first or this test passes under the very bug it exists to catch.
+      expect(priceFor('claude-opus-5[1m]', type, AT)).toBeGreaterThan(0);
+      expect(priceFor('claude-opus-5[1m]', type, AT)).toBeCloseTo(bare!, 12);
+    }
+  });
+
+  it('prices Mythos at Fable rates', () => {
+    for (const type of TOKEN_TYPES) {
+      expect(priceFor('claude-mythos-5', type, AT)).toBeGreaterThan(0);
+      expect(priceFor('claude-mythos-5', type, AT)).toBeCloseTo(priceFor('claude-fable-5', type, AT)!, 12);
+    }
+  });
+
+  it('leaves legacy generation-first model ids unpriced rather than guessing a rate', () => {
+    // `claude-3-opus` billed $15/$75 — a rate this table does not carry. Null is the
+    // honest answer; the naming shape (generation before family) is what excludes them.
+    expect(priceFor('claude-3-opus-20240229', 'input', AT)).toBeNull();
+    expect(priceFor('claude-3-5-sonnet-20241022', 'input', AT)).toBeNull();
+    expect(priceFor('claude-3-haiku-20240307', 'input', AT)).toBeNull();
+  });
+
+  it('still returns null for ids outside the claude-<family> shape', () => {
+    for (const model of ['claude-unknown-9', 'gpt-5-codex', 'opus', 'sonnet']) {
+      expect(priceFor(model, 'input', AT)).toBeNull();
+    }
+  });
+
+  it('leaves lookalike family-prefix names unpriced (e.g. opusplus is not opus)', () => {
+    for (const model of ['claude-opusplus-1', 'claude-sonnetmini-1', 'claude-haikuish-1', 'claude-fabled-1']) {
+      expect(priceFor(model, 'input', AT)).toBeNull();
+    }
+  });
+});
+
 describe('dollarsFor', () => {
   function row(model: string, timestamp: string): PricedRow {
     return {
@@ -99,6 +166,11 @@ describe('dollarsFor', () => {
   it('returns null (never 0) for an unknown model', () => {
     const r = row('claude-unknown-9', '2026-07-11');
     expect(dollarsFor(r)).toBeNull();
+  });
+
+  it('prices a bare current-generation id, so no live row falls through to null', () => {
+    const r = row('claude-opus-5', '2026-08-05');
+    expect(dollarsFor(r)).toBeCloseTo(5 + 25 + 0.50 + 6.25, 6);
   });
 
   it('matches effectiveTokens weighted by the input rate (cross-check, not a code dependency)', () => {

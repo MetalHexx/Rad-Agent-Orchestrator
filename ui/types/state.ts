@@ -127,6 +127,8 @@ export interface StepNodeState {
   doc_path: string | null;
   retries: number;
   verdict?: string | null;
+  corrective_tasks?: CorrectiveTaskEntry[];
+  corrective_budget_origin?: number;
 }
 
 export interface GateNodeState {

@@ -128,7 +128,10 @@ export const VALID_VERDICTS = new Set<string>(Object.values(REVIEW_VERDICTS));
 
 export const ALLOWED_NODE_TRANSITIONS: ReadonlyMap<string, ReadonlySet<string>> = new Map([
   ['not_started', new Set(['in_progress', 'skipped', 'completed'])],
-  ['in_progress', new Set(['completed', 'failed', 'halted'])],
+  // 'not_started' here: a rejection mutation (plan_rejected, final_rejected)
+  // resets a blocking human approval gate that is currently in_progress back
+  // to not_started.
+  ['in_progress', new Set(['completed', 'failed', 'halted', 'not_started'])],
   ['completed',   new Set(['not_started', 'in_progress'])],
   ['failed',      new Set(['in_progress'])],
   ['halted',      new Set([])],

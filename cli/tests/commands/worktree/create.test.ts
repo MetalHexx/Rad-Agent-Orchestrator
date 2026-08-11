@@ -19,47 +19,162 @@ function makeExecErr(stderr: string): Error & { stderr: string } {
   return e;
 }
 
+// Dispatches on the git subcommand (args[0]) rather than call order, so adding
+// the show-ref/ls-remote probes ahead of `worktree add` doesn't shift every
+// existing mockImplementationOnce chain by two calls.
+type GitSubcommand = 'worktree' | 'show-ref' | 'ls-remote' | 'fetch' | 'push' | 'remote';
+function makeExec(handlers: Partial<Record<GitSubcommand, (args: string[]) => string>>) {
+  return vi.fn((_file: string, args: string[]) => {
+    const key = args[0] as GitSubcommand;
+    const handler = handlers[key];
+    if (!handler) throw new Error(`unstubbed git subcommand in test: ${args.join(' ')}`);
+    return handler(args);
+  });
+}
+
+// Default probe stubs for tests that only care about the post-add behavior
+// (push, remote-url, error classification) — branch absent locally and
+// remotely, so worktreeCreate takes the create-new (`-b`) path.
+function newBranchProbes() {
+  return {
+    'show-ref': () => { throw makeExecErr('not a valid ref'); },
+    'ls-remote': () => '',
+  } as const;
+}
+
 describe('worktreeCreate core', () => {
   it('creates the worktree, pushes, returns compareUrl with SSH→HTTPS conversion', () => {
-    const exec = vi.fn()
-      .mockImplementationOnce(() => '') // worktree add
-      .mockImplementationOnce(() => '') // git push -u
-      .mockImplementationOnce(() => 'git@github.com:org/repo.git\n'); // remote get-url
+    const exec = makeExec({
+      ...newBranchProbes(),
+      worktree: () => '',
+      push: () => '',
+      remote: () => 'git@github.com:org/repo.git\n',
+    });
     const r = worktreeCreate({ repoRoot: '/r', branch: 'feat/x', worktreePath: '/r-wt/x', baseBranch: 'origin/main', exec });
     expect(r.created).toBe(true);
     expect(r.pushed).toBe(true);
     expect(r.remoteUrl).toBe('https://github.com/org/repo');
     expect(r.compareUrl).toBe('https://github.com/org/repo/compare/main...feat/x');
     expect(r.errorType).toBeNull();
+    expect(r.branchMode).toBe('created');
   });
 
   it('classifies "already exists" path error and returns created:false', () => {
-    const exec = vi.fn(() => { throw makeExecErr('fatal: \'/r-wt/x\' already exists'); });
+    const exec = makeExec({
+      ...newBranchProbes(),
+      worktree: () => { throw makeExecErr('fatal: \'/r-wt/x\' already exists'); },
+    });
     const r = worktreeCreate({ repoRoot: '/r', branch: 'feat/x', worktreePath: '/r-wt/x', baseBranch: 'main', exec });
     expect(r.created).toBe(false);
     expect(r.errorType).toBe('already_exists_path');
+    expect(r.branchMode).toBeNull();
   });
 
   it('classifies branch-collision error', () => {
-    const exec = vi.fn(() => { throw makeExecErr('fatal: a branch named \'feat/x\' already exists'); });
+    const exec = makeExec({
+      ...newBranchProbes(),
+      worktree: () => { throw makeExecErr('fatal: a branch named \'feat/x\' already exists'); },
+    });
     const r = worktreeCreate({ repoRoot: '/r', branch: 'feat/x', worktreePath: '/r-wt/x', baseBranch: 'main', exec });
     expect(r.errorType).toBe('already_exists_branch');
+    expect(r.branchMode).toBeNull();
   });
 
   it('classifies invalid_reference', () => {
-    const exec = vi.fn(() => { throw makeExecErr('fatal: invalid reference: bogus-ref'); });
+    const exec = makeExec({
+      ...newBranchProbes(),
+      worktree: () => { throw makeExecErr('fatal: invalid reference: bogus-ref'); },
+    });
     const r = worktreeCreate({ repoRoot: '/r', branch: 'feat/x', worktreePath: '/r-wt/x', baseBranch: 'bogus-ref', exec });
     expect(r.errorType).toBe('invalid_reference');
+    expect(r.branchMode).toBeNull();
   });
 
   it('returns pushed:false when push fails after creation', () => {
-    const exec = vi.fn()
-      .mockImplementationOnce(() => '') // create
-      .mockImplementationOnce(() => { throw makeExecErr('fatal: push failed'); })
-      .mockImplementationOnce(() => 'https://github.com/o/r.git\n');
+    const exec = makeExec({
+      ...newBranchProbes(),
+      worktree: () => '',
+      push: () => { throw makeExecErr('fatal: push failed'); },
+      remote: () => 'https://github.com/o/r.git\n',
+    });
     const r = worktreeCreate({ repoRoot: '/r', branch: 'feat/x', worktreePath: '/r-wt/x', baseBranch: 'main', exec });
     expect(r.created).toBe(true);
     expect(r.pushed).toBe(false);
+  });
+});
+
+describe('worktreeCreate — branch-state probing decides the git sequence', () => {
+  it('attaches an already-local branch: no -b, no fetch, branchMode attached-local', () => {
+    const exec = makeExec({
+      'show-ref': () => '', // exit 0: local ref exists
+      worktree: () => '',
+      push: () => '',
+      remote: () => '',
+    });
+    const r = worktreeCreate({ repoRoot: '/r', branch: 'feat/x', worktreePath: '/r-wt/x', baseBranch: 'origin/main', exec });
+    expect(r.branchMode).toBe('attached-local');
+    expect(r.created).toBe(true);
+    const worktreeCall = exec.mock.calls.find((c) => (c[1] as string[])[0] === 'worktree');
+    expect(worktreeCall?.[1]).toEqual(['worktree', 'add', '/r-wt/x', 'feat/x']);
+    expect(exec.mock.calls.some((c) => (c[1] as string[])[0] === 'fetch')).toBe(false);
+    expect(exec.mock.calls.some((c) => (c[1] as string[])[0] === 'ls-remote')).toBe(false);
+  });
+
+  it('fetches then attaches a remote-only branch: no -b, branchMode attached-remote', () => {
+    const exec = makeExec({
+      'show-ref': () => { throw makeExecErr('not a valid ref'); },
+      'ls-remote': () => 'abc123\trefs/heads/feat/x\n', // non-empty stdout: remote has it
+      fetch: () => '',
+      worktree: () => '',
+      push: () => '',
+      remote: () => '',
+    });
+    const r = worktreeCreate({ repoRoot: '/r', branch: 'feat/x', worktreePath: '/r-wt/x', baseBranch: 'origin/main', exec });
+    expect(r.branchMode).toBe('attached-remote');
+    expect(r.created).toBe(true);
+    const fetchIdx = exec.mock.calls.findIndex((c) => (c[1] as string[])[0] === 'fetch');
+    const worktreeIdx = exec.mock.calls.findIndex((c) => (c[1] as string[])[0] === 'worktree');
+    expect(fetchIdx).toBeGreaterThanOrEqual(0);
+    expect(fetchIdx).toBeLessThan(worktreeIdx);
+    expect(exec.mock.calls[fetchIdx]?.[1]).toEqual(['fetch', 'origin', 'feat/x:refs/heads/feat/x']);
+    expect(exec.mock.calls[worktreeIdx]?.[1]).toEqual(['worktree', 'add', '/r-wt/x', 'feat/x']);
+  });
+
+  it('creates a new branch when absent locally and remotely: -b and baseBranch present, no fetch', () => {
+    const exec = makeExec({
+      ...newBranchProbes(),
+      worktree: () => '',
+      push: () => '',
+      remote: () => '',
+    });
+    const r = worktreeCreate({ repoRoot: '/r', branch: 'feat/x', worktreePath: '/r-wt/x', baseBranch: 'origin/main', exec });
+    expect(r.branchMode).toBe('created');
+    const worktreeCall = exec.mock.calls.find((c) => (c[1] as string[])[0] === 'worktree');
+    expect(worktreeCall?.[1]).toEqual(['worktree', 'add', '-b', 'feat/x', '/r-wt/x', 'origin/main']);
+    expect(exec.mock.calls.some((c) => (c[1] as string[])[0] === 'fetch')).toBe(false);
+  });
+
+  it('reports branchMode: null when the worktree add fails despite a resolved branch state', () => {
+    const exec = makeExec({
+      'show-ref': () => '', // local branch exists
+      worktree: () => { throw makeExecErr('fatal: boom'); },
+    });
+    const r = worktreeCreate({ repoRoot: '/r', branch: 'feat/x', worktreePath: '/r-wt/x', baseBranch: 'main', exec });
+    expect(r.created).toBe(false);
+    expect(r.branchMode).toBeNull();
+  });
+
+  it('does not create a new branch when the remote probe fails to run (network/exec failure)', () => {
+    const exec = makeExec({
+      'show-ref': () => { throw makeExecErr('not a valid ref'); },
+      'ls-remote': () => { throw makeExecErr('fatal: unable to access origin: Could not resolve host'); },
+    });
+    const r = worktreeCreate({ repoRoot: '/r', branch: 'feat/x', worktreePath: '/r-wt/x', baseBranch: 'origin/main', exec });
+    expect(r.created).toBe(false);
+    expect(r.branchMode).toBeNull();
+    expect(r.errorType).toBe('remote_probe_failed');
+    expect(r.error).toMatch(/feat\/x/);
+    expect(exec.mock.calls.some((c) => (c[1] as string[])[0] === 'worktree')).toBe(false);
   });
 });
 
@@ -172,8 +287,8 @@ describe('defaultBranchDefault — base branch from the registry (no hardcoded m
   it('returns the registered default_branch for a known repo', () => {
     expect(defaultBranchDefault('old-repo')).toBe('develop');
   });
-  it('falls back to main for an unregistered repo', () => {
-    expect(defaultBranchDefault('unregistered-repo')).toBe('main');
+  it('throws for an unregistered repo instead of guessing main', () => {
+    expect(() => defaultBranchDefault('unregistered-repo')).toThrow(/unregistered-repo/);
   });
 });
 
@@ -184,7 +299,7 @@ describe('provisionWorktrees convention-bound (FR-3, FR-4, NFR-2, NFR-6)', () =>
     resolveClonePath: (r: string) => `/clones/${r}`,
     defaultBranch: () => 'main',
     exists: () => false,
-    create: vi.fn(() => ({ created: true, worktreePath: '/x', branch: 'radorch/p', baseBranch: 'main', pushed: true, remoteUrl: 'u', compareUrl: 'c', error: null, errorType: null })),
+    create: vi.fn(() => ({ created: true, worktreePath: '/x', branch: 'radorch/p', baseBranch: 'main', pushed: true, remoteUrl: 'u', compareUrl: 'c', error: null, errorType: null, branchMode: 'created' as const })),
     ...over,
   });
   it('provisions every repo in the set and returns a per-repo result array', () => {
@@ -199,14 +314,17 @@ describe('provisionWorktrees convention-bound (FR-3, FR-4, NFR-2, NFR-6)', () =>
     const r = provisionWorktrees({ project: 'P', ...deps({ exists: () => true, create }) });
     expect(create).not.toHaveBeenCalled();
     expect(r.repos.every((x) => x.created === false && x.error == null)).toBe(true);
+    expect(r.repos.every((x) => x.branchMode === null)).toBe(true);
   });
   it('isolates a per-repo failure without blocking the others', () => {
     const create = vi.fn()
-      .mockImplementationOnce(() => ({ created: false, error: 'boom', errorType: 'unknown', worktreePath: null, branch: null, baseBranch: null, pushed: false, remoteUrl: '', compareUrl: '' }))
-      .mockImplementationOnce(() => ({ created: true, worktreePath: '/x', branch: 'b', baseBranch: 'main', pushed: true, remoteUrl: 'u', compareUrl: 'c', error: null, errorType: null }));
+      .mockImplementationOnce(() => ({ created: false, error: 'boom', errorType: 'unknown', worktreePath: null, branch: null, baseBranch: null, pushed: false, remoteUrl: '', compareUrl: '', branchMode: null }))
+      .mockImplementationOnce(() => ({ created: true, worktreePath: '/x', branch: 'b', baseBranch: 'main', pushed: true, remoteUrl: 'u', compareUrl: 'c', error: null, errorType: null, branchMode: 'attached-local' }));
     const r = provisionWorktrees({ project: 'P', ...deps({ create }) });
     expect(r.repos[0]?.error).toBe('boom');
+    expect(r.repos[0]?.branchMode).toBeNull();
     expect(r.repos[1]?.created).toBe(true);
+    expect(r.repos[1]?.branchMode).toBe('attached-local');
   });
   it('throws naming the bad repo and listing the valid set when --repo is not in the project', () => {
     const create = vi.fn();
@@ -215,5 +333,10 @@ describe('provisionWorktrees convention-bound (FR-3, FR-4, NFR-2, NFR-6)', () =>
     expect(() => provisionWorktrees({ project: 'P', repo: 'nope', ...deps({ create }) }))
       .toThrow(/\ba\b.*\bb\b/);
     expect(create).not.toHaveBeenCalled();
+  });
+  it('passes branchMode straight through from create() on the per-repo result', () => {
+    const create = vi.fn(() => ({ created: true, worktreePath: '/x', branch: 'radorch/p', baseBranch: 'main', pushed: true, remoteUrl: 'u', compareUrl: 'c', error: null, errorType: null, branchMode: 'attached-remote' as const }));
+    const r = provisionWorktrees({ project: 'P', ...deps({ create }) });
+    expect(r.repos.every((x) => x.branchMode === 'attached-remote')).toBe(true);
   });
 });

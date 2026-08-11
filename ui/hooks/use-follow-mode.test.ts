@@ -29,6 +29,7 @@ interface StepNodeShape {
   status: NodeStatus;
   doc_path: string | null;
   retries: number;
+  corrective_tasks?: CorrectiveTaskShape[];
 }
 
 interface ParallelNodeShape {
@@ -597,6 +598,53 @@ async function run() {
       'completed corrected task iter emits no follow-mode key (FR-13)');
     assert.ok(!keys.includes('ct-iter-phase_loop.iter0.task_loop-0-1'),
       'resolved corrective emits no follow-mode key (FR-14)');
+  });
+
+  console.log("\nP04-T05 step-hosted correctives\n");
+
+  test("step node with in_progress corrective task emits ct- key (final_review scenario)", () => {
+    const nodes: NodesRecord = {
+      final_review: {
+        kind: 'step', status: 'in_progress', doc_path: 'reports/FINAL-REVIEW.md', retries: 0,
+        corrective_tasks: [
+          { index: 1, reason: 'changes requested', injected_after: 'code_review', status: 'in_progress', nodes: {} },
+        ],
+      },
+    };
+    const keys = computeSmartDefaults(toNodes(nodes));
+    assert.ok(keys.includes('ct-final_review-1'),
+      'in_progress corrective on final_review must emit ct-final_review-1 key');
+  });
+
+  test("step node with completed corrective task does NOT emit ct- key", () => {
+    const nodes: NodesRecord = {
+      final_review: {
+        kind: 'step', status: 'completed', doc_path: 'reports/FINAL-REVIEW.md', retries: 0,
+        corrective_tasks: [
+          { index: 1, reason: 'changes requested', injected_after: 'code_review', status: 'completed', nodes: {} },
+        ],
+      },
+    };
+    const keys = computeSmartDefaults(toNodes(nodes));
+    assert.ok(!keys.includes('ct-final_review-1'),
+      'completed corrective on final_review must not emit a key');
+  });
+
+  test("step node with multiple correctives emits only in_progress ones", () => {
+    const nodes: NodesRecord = {
+      final_review: {
+        kind: 'step', status: 'in_progress', doc_path: 'reports/FINAL-REVIEW.md', retries: 0,
+        corrective_tasks: [
+          { index: 1, reason: 'first', injected_after: 'code_review', status: 'completed', nodes: {} },
+          { index: 2, reason: 'second', injected_after: 'code_review', status: 'in_progress', nodes: {} },
+          { index: 3, reason: 'third', injected_after: 'code_review', status: 'in_progress', nodes: {} },
+        ],
+      },
+    };
+    const keys = computeSmartDefaults(toNodes(nodes));
+    assert.ok(!keys.includes('ct-final_review-1'), 'completed corrective 1 not emitted');
+    assert.ok(keys.includes('ct-final_review-2'), 'in_progress corrective 2 emitted');
+    assert.ok(keys.includes('ct-final_review-3'), 'in_progress corrective 3 emitted');
   });
 
   console.log(`\n${passed} passed, ${failed} failed`);

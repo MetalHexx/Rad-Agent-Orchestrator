@@ -6,7 +6,7 @@ Work happens in **worktrees**, one per repo that a project spans. A project may 
 
 ## Canonical location
 
-Worktrees live under `~/.radorc/worktrees/<worktree_name>/<repo-slug>/`. Treat this as world-knowledge and a guardrail: if you find yourself in a path that does not match this pattern, you are likely in a main clone — not the right place to work.
+Worktrees live under `~/.radorc/worktrees/<worktree_name>/<repo-slug>/`. Know this layout. Always resolve the project's location from the tool — `project worktrees` or `project show` — rather than constructing it from components. A path that does not match the workspace pattern is not by itself evidence of being in the wrong place.
 
 ## worktree_name reuse
 
@@ -22,7 +22,7 @@ Before taking any action for a project:
 2. Confirm the `exists` field is `true` for the target repo.
 3. Use the returned `path` — do not construct the path from components.
 
-If you are already in a directory, check whether it matches the returned path. If you are in a main clone and the work belongs in a worktree, switch to the worktree path before acting.
+If you are already in a directory, check whether it matches the returned path. If it does not, move to the returned path before acting.
 
 ## Ask the tool, not yourself
 
@@ -42,10 +42,10 @@ The `kind` field in the returned envelope tells you the location class of your c
 
 ## Side-projects
 
-A side-project (`type: side-project`) lives in its own local repo — it does not use the shared worktree layout. Its working directory is wherever the user's local repo lives. `project show` will surface its path if it was registered with one.
+A side-project (`type: side-project`) lives in its own local repo — it does not use the shared worktree layout. The session driving a side-project runs in the folder that rad-orc creates for it. `project show` will surface its path.
 
 ## This skill is awareness-only
 
 The `/rad-project` skill is awareness-only for location. Its job is to find and surface existing worktrees (via `project worktrees`, `project show`, and `project locate`) so you work in the right place.
 
-Worktree lifecycle — creating new worktrees and cleaning them up — now lives in the act lane under `rad-source-control`. See that skill's `working-with-worktrees.md` for the authoritative create and cleanup procedures. Do not attempt to create or delete worktrees from within `/rad-project`.
+Worktree lifecycle — creating new worktrees and cleaning them up — lives under `rad-source-control`. See that skill's `working-with-worktrees.md` for the authoritative create and cleanup procedures. Do not attempt to create or delete worktrees from within `/rad-project`.

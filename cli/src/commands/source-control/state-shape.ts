@@ -11,7 +11,7 @@
 /**
  * Coerce a raw URL-like value to a trimmed string or null.
  * Omitted or empty values are stored as null — matching the contract in
- * action-event-reference.md.
+ * the action/event catalog at runtime-config/action-events/.
  */
 export function normalizeOptionalUrl(raw: unknown): string | null {
   if (typeof raw !== 'string') return null;

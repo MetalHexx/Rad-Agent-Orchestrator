@@ -9,6 +9,7 @@ export { DAGNodeRow, formatNodeId } from './dag-node-row';
 export { DAGCorrectiveTaskGroup } from './dag-corrective-task-group';
 export { DAGIterationPanel } from './dag-iteration-panel';
 export { DAGLoopNode } from './dag-loop-node';
+export { DAGFinalReviewPanel } from './dag-final-review-panel';
 export { DAGTimeline } from './dag-timeline';
 export { getDisplayName } from './dag-timeline-helpers';
 export { DAGSectionGroup } from './dag-section-group';

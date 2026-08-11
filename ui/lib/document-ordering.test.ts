@@ -493,6 +493,77 @@ test('final_review root step node produces review category with Final Review tit
   assert.strictEqual(docs[0].path, 'reports/FINAL-REVIEW.md');
 });
 
+test('final_review with in_progress corrective child code_review aliases the final review doc path (dedup test)', () => {
+  // P04-T05: final corrective has no handoff doc (ct.doc_path is null by design).
+  // Its code_review child's doc_path is the final review report re-opened.
+  // Without seenPaths dedup, this would surface a second tile aliasing the same path.
+  const state = makeV5State({
+    final_review: {
+      kind: 'step',
+      status: 'in_progress',
+      doc_path: 'reports/PROJ-FINAL-REVIEW.md',
+      retries: 0,
+      corrective_tasks: [
+        {
+          index: 1,
+          reason: 'changes requested',
+          injected_after: 'code_review',
+          status: 'in_progress',
+          doc_path: null,
+          nodes: {
+            code_review: { kind: 'step', status: 'in_progress', doc_path: 'reports/PROJ-FINAL-REVIEW.md', retries: 0 },
+          },
+          repos: [],
+        },
+      ],
+    },
+  });
+
+  const docs = getOrderedDocsV5(state, 'PROJ');
+  // Only one entry despite the code_review aliasing the same path
+  assert.strictEqual(docs.length, 1);
+  assert.strictEqual(docs[0].title, 'Final Review');
+  assert.strictEqual(docs[0].path, 'reports/PROJ-FINAL-REVIEW.md');
+  assert.ok(
+    !docs.some((d) => d.title.includes('Final CT1')),
+    'final corrective handoff is null and its code_review aliases final_review path — no separate tile',
+  );
+});
+
+test('final_review corrective child with distinct doc path surfaces with Final CT{K} title', () => {
+  // A final corrective child step with a distinct doc path (e.g., a custom template).
+  const state = makeV5State({
+    final_review: {
+      kind: 'step',
+      status: 'in_progress',
+      doc_path: 'reports/PROJ-FINAL-REVIEW.md',
+      retries: 0,
+      corrective_tasks: [
+        {
+          index: 1,
+          reason: 'changes requested',
+          injected_after: 'code_review',
+          status: 'in_progress',
+          doc_path: null,
+          nodes: {
+            code_review: { kind: 'step', status: 'in_progress', doc_path: 'reports/PROJ-FINAL-REVIEW.md', retries: 0 },
+            custom_step: { kind: 'step', status: 'in_progress', doc_path: 'reports/CUSTOM-ANALYSIS.md', retries: 0 },
+          },
+          repos: [],
+        },
+      ],
+    },
+  });
+
+  const docs = getOrderedDocsV5(state, 'PROJ');
+  assert.strictEqual(docs.length, 2);
+  assert.strictEqual(docs[0].title, 'Final Review');
+  assert.strictEqual(docs[0].path, 'reports/PROJ-FINAL-REVIEW.md');
+  assert.strictEqual(docs[1].title, 'Final CT1 Custom Step');
+  assert.strictEqual(docs[1].category, 'other');
+  assert.strictEqual(docs[1].path, 'reports/CUSTOM-ANALYSIS.md');
+});
+
 test('error log from allFiles is appended with error-log category after graph docs', () => {
   const state = makeV5State({
     final_review: { kind: 'step', status: 'completed', doc_path: 'reports/FINAL-REVIEW.md', retries: 0 },
@@ -643,6 +714,11 @@ test('label helpers and within-iteration order constants — locked label scheme
   // FR-10 — phase-scope corrective labels (Phase {N} CT{K} / Phase {N} CT{K} Review)
   assert.strictEqual(mod.titleForPhaseCorrectiveChild('task_handoff', 1, 1), 'Phase 1 CT1');
   assert.strictEqual(mod.titleForPhaseCorrectiveChild('code_review', 1, 1), 'Phase 1 CT1 Review');
+
+  // P04-T05 — final-scope corrective labels (Final CT{K} Review / Final CT{K} ...)
+  // Note: final correctives have no handoff doc, so only child step node labels apply.
+  assert.strictEqual(mod.titleForFinalCorrectiveChild('code_review', 1), 'Final CT1 Review');
+  assert.strictEqual(mod.titleForFinalCorrectiveChild('custom_step', 2), 'Final CT2 Custom Step');
 });
 
 test('emits phase-plan from iteration.doc_path and task-handoff from taskIter.doc_path (FR-1, FR-2, FR-4, FR-7, FR-8, AD-2)', () => {

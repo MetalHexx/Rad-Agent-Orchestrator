@@ -19,9 +19,9 @@ test('emitManifest produces { version, channel, files[] } with bundlePath and de
     fs.writeFileSync(path.join(harnessOut, 'orchestration.yml'), 'x');
     const manifestDir = path.join(tmp, 'manifests/claude');
     fs.mkdirSync(manifestDir, { recursive: true });
-    await emitManifest({ harnessOutputDir: harnessOut, harness: 'claude', version: '1.0.0-alpha.12', manifestDir });
-    const written = JSON.parse(fs.readFileSync(path.join(manifestDir, 'v1.0.0-alpha.12.json'), 'utf8'));
-    assert.strictEqual(written.version, '1.0.0-alpha.12');
+    await emitManifest({ harnessOutputDir: harnessOut, harness: 'claude', version: '1.0.0-alpha.13', manifestDir });
+    const written = JSON.parse(fs.readFileSync(path.join(manifestDir, 'v1.0.0-alpha.13.json'), 'utf8'));
+    assert.strictEqual(written.version, '1.0.0-alpha.13');
     assert.strictEqual(written.channel, 'standard');
     const paths = written.files.map((f) => f.bundlePath).sort();
     // Per-harness installable tree only — no orchestration.yml, no templates/, no ui/.

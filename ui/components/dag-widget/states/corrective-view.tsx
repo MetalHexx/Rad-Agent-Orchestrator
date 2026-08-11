@@ -2,57 +2,57 @@ import { CommitChips } from '@/components/dag-timeline/commit-chips';
 import { Ring } from '../ring';
 import { RingSlot, HeadingSlot, MetaSlot, ControlsSlot } from '../card-slots';
 import { CardControlsRow, DocButton } from '../card-controls';
-import type { StateView } from '../types';
+import type { CorrectiveScope, StateView } from '../types';
 import type { AnyProjectState, CorrectiveTaskEntry, StepNodeState } from '@/types/state';
 import { deriveRingArc } from './shared';
 import { deriveCardHeading } from './heading';
+import { resolveMaxRetriesPerTask, DEFAULT_MAX_RETRIES_PER_TASK, deriveRetryBudget } from '@/lib/max-retries-resolver';
 
 const TIER_CSS_VAR = '--status-failed';
 
-/**
- * Fallback retry ceiling used when a snapshot omits
- * `config.limits.max_retries_per_task` — typed as required on both
- * `StateConfigLimits` (v5) and `V6StateConfigLimits` (v6), but not
- * guaranteed at runtime for a stale or hand-edited state file. Matches the
- * value used throughout this codebase's own fixtures/tests as the de facto
- * default retry budget.
- */
-export const DEFAULT_MAX_RETRIES_PER_TASK = 2;
+export { resolveMaxRetriesPerTask, DEFAULT_MAX_RETRIES_PER_TASK };
 
-/** Resolves the max corrective retries from the state's config snapshot, with the documented fallback above. */
-export function resolveMaxRetriesPerTask(state: AnyProjectState): number {
-  return state.config.limits.max_retries_per_task ?? DEFAULT_MAX_RETRIES_PER_TASK;
-}
+/** `{ handoff, report }` control labels for each corrective scope. `handoff: null` at `'final'` — there is no handoff at that scope. */
+const CORRECTIVE_LABELS: Record<CorrectiveScope, { handoff: string | null; report: string }> = {
+  task: { handoff: 'Task Handoff', report: 'Review Report' },
+  phase: { handoff: 'Phase Plan', report: 'Phase Report' },
+  final: { handoff: null, report: 'Final Review' },
+};
 
 /**
- * `{correctiveIndex}/{maxRetries}` retry-budget label for the ring center.
- * `null` when no corrective entry resolved (a malformed/stale `.ct{N}.`
- * path) — the ring center falls back to a neutral glyph in that case.
+ * `{attempt}/{maxRetries}` retry-budget label for the ring center. `null`
+ * when no corrective entry resolved (a malformed/stale `.ct{N}.` path) or the
+ * entry predates the current window — the ring center falls back to a
+ * neutral glyph in that case. `budgetOrigin` is the host's
+ * `corrective_budget_origin` (0 for iteration hosts, non-zero for a
+ * final-scope host after a `final_rejected` reopen).
  */
 export function deriveRetryBudgetLabel(
   correctiveEntry: CorrectiveTaskEntry | undefined,
   state: AnyProjectState,
+  budgetOrigin = 0,
 ): string | null {
-  if (!correctiveEntry) return null;
-  return `${correctiveEntry.index}/${resolveMaxRetriesPerTask(state)}`;
+  return deriveRetryBudget(correctiveEntry, state, budgetOrigin)?.label ?? null;
 }
 
 /**
- * Ring arc `{ value, max }` for the retry budget itself — `correctiveIndex`
- * over `maxRetries`, the same quantity `deriveRetryBudgetLabel` renders as
- * the ring's center text. Deliberately not task or phase progress: a
- * phase-level corrective can fire after its phase's task loop already reads
+ * Ring arc `{ value, max }` for the retry budget itself — the window-relative
+ * attempt over `maxRetries`, the same quantity `deriveRetryBudgetLabel`
+ * renders as the ring's center text. Deliberately not task or phase progress:
+ * a phase-level corrective can fire after its phase's task loop already reads
  * 100%, which would otherwise paint a full ring beside a center label
  * reading a small fraction. Shares `deriveRingArc`'s degenerate-domain
- * fallback (`{ 0, 1 }`) when no corrective entry resolved or the retry
- * ceiling is non-positive.
+ * fallback (`{ 0, 1 }`) when no corrective entry resolved, the retry ceiling
+ * is non-positive, or the entry predates the current retry window.
  */
 export function deriveRetryArc(
   correctiveEntry: CorrectiveTaskEntry | undefined,
   state: AnyProjectState,
+  budgetOrigin = 0,
 ): { value: number; max: number } {
-  if (!correctiveEntry) return deriveRingArc(null);
-  return deriveRingArc({ completed: correctiveEntry.index, total: resolveMaxRetriesPerTask(state) });
+  const budget = deriveRetryBudget(correctiveEntry, state, budgetOrigin);
+  if (!budget) return deriveRingArc(null);
+  return deriveRingArc({ completed: budget.attempt, total: budget.max });
 }
 
 /**
@@ -70,18 +70,38 @@ export function deriveRetryArc(
  * regression test"), which overran the card when folded into the visible
  * line. The full `meta — reason` string still surfaces as the meta's hover
  * title, so the detail isn't lost, just not forced onto the card face.
- * Controls surface the corrective's own task handoff, the review report that
- * triggered it, and a commit chip scoped to the corrective's own repos.
+ * Controls surface the corrective's own handoff doc (task/phase scope only —
+ * `'final'` has no handoff, so that control is omitted rather than rendered
+ * disabled), the review report that triggered it, and a commit chip scoped
+ * to the corrective's own repos.
  */
 export const correctiveView: StateView = {
   id: 'corrective',
   render(ctx) {
-    const arc = deriveRetryArc(ctx.correctiveEntry, ctx.state);
     const singleRepo = Object.keys(ctx.compareUrlByRepo).length <= 1;
-    const retryBudget = deriveRetryBudgetLabel(ctx.correctiveEntry, ctx.state);
-    const reviewReportPath = ctx.isPhaseCorrective
-      ? (ctx.iteration?.nodes['phase_review'] as StepNodeState | undefined)?.doc_path ?? null
-      : (ctx.iteration?.nodes['code_review'] as StepNodeState | undefined)?.doc_path ?? null;
+
+    let reviewReportPath: string | null;
+    let budgetOrigin = 0;
+    switch (ctx.correctiveScope) {
+      case 'phase':
+        reviewReportPath = (ctx.iteration?.nodes['phase_review'] as StepNodeState | undefined)?.doc_path ?? null;
+        break;
+      case 'final': {
+        // No enclosing iteration at this scope — read the top-level review
+        // step directly rather than `ctx.iteration`, which is undefined here.
+        const finalReviewNode = ctx.state.graph.nodes['final_review'] as StepNodeState | undefined;
+        reviewReportPath = finalReviewNode?.doc_path ?? null;
+        budgetOrigin = finalReviewNode?.corrective_budget_origin ?? 0;
+        break;
+      }
+      default:
+        reviewReportPath = (ctx.iteration?.nodes['code_review'] as StepNodeState | undefined)?.doc_path ?? null;
+    }
+
+    const arc = deriveRetryArc(ctx.correctiveEntry, ctx.state, budgetOrigin);
+    const retryBudget = deriveRetryBudgetLabel(ctx.correctiveEntry, ctx.state, budgetOrigin);
+
+    const labels = CORRECTIVE_LABELS[ctx.correctiveScope ?? 'task'];
     const { heading, meta } = deriveCardHeading(ctx);
     const reason = ctx.correctiveEntry?.reason ?? null;
     const metaWithReason =
@@ -98,15 +118,17 @@ export const correctiveView: StateView = {
         <MetaSlot meta={meta} title={metaWithReason ?? undefined} />
         <ControlsSlot>
           <CardControlsRow>
-            <DocButton
-              path={ctx.correctiveEntry?.doc_path ?? null}
-              label={ctx.isPhaseCorrective ? 'Phase Plan' : 'Task Handoff'}
-              onDocClick={ctx.onDocClick}
-              iconCssVar={TIER_CSS_VAR}
-            />
+            {labels.handoff !== null && (
+              <DocButton
+                path={ctx.correctiveEntry?.doc_path ?? null}
+                label={labels.handoff}
+                onDocClick={ctx.onDocClick}
+                iconCssVar={TIER_CSS_VAR}
+              />
+            )}
             <DocButton
               path={reviewReportPath}
-              label={ctx.isPhaseCorrective ? 'Phase Report' : 'Review Report'}
+              label={labels.report}
               onDocClick={ctx.onDocClick}
               iconCssVar={TIER_CSS_VAR}
             />

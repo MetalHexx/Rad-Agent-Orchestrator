@@ -19,6 +19,7 @@ import {
   parallelNode,
   forEachPhaseNode,
   forEachTaskNode,
+  baseProjectState,
 } from './__fixtures__';
 
 let passed = 0;
@@ -572,6 +573,7 @@ const _loopPropsContractFixture: DAGLoopNodeProps = {
   focusedRowKey: null,
   isFocused: false,
   onFocusChange: (nodeId: string) => { void nodeId; },
+  state: baseProjectState,
 };
 
 test('DAGLoopNodeProps contract fixture: focusedRowKey is string|null and onFocusChange is (nodeId: string) => void', () => {

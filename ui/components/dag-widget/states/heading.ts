@@ -41,11 +41,17 @@ function parsePhaseNumberFromName(phaseName: string | null): number | null {
 /**
  * Derives the card's `{ heading, meta }` text for the active state.
  *
- * - Phase corrective (`stateId === 'corrective'` with `ctx.isPhaseCorrective`)
+ * - Phase corrective (`stateId === 'corrective'` with `ctx.correctiveScope === 'phase'`)
  *   — `ctx.iteration` is the *phase* iteration here, not a task iteration, so
  *   this branch runs ahead of the work-state one below and reads the phase
  *   number/title directly instead of misreading it as a task. Heading is
  *   "Correcting: Phase N — <phase title>"; meta is "Phase N" only.
+ * - Final corrective (`stateId === 'corrective'` with `ctx.correctiveScope === 'final'`)
+ *   — hosted directly on the top-level `final_review` step, so there is no
+ *   enclosing iteration at all; this branch also runs ahead of the work-state
+ *   one below, which would otherwise read the absent `ctx.iteration` as the
+ *   bare "Task 1". Heading is the fixed "Correcting: Final Review"; meta is
+ *   "Final Review".
  * - Work states (Coding/Reviewing/Corrective) — heading is the task title
  *   (from the task iteration's handoff doc path) stripped of its
  *   "Task N — " prefix, falling back to the bare "Task N" when the doc path
@@ -61,7 +67,7 @@ function parsePhaseNumberFromName(phaseName: string | null): number | null {
  *   name; meta is always `null`.
  */
 export function deriveCardHeading(ctx: StateViewContext): CardHeading {
-  if (ctx.stateId === 'corrective' && ctx.isPhaseCorrective) {
+  if (ctx.stateId === 'corrective' && ctx.correctiveScope === 'phase') {
     // Phase corrective: `ctx.iteration` here is the phase iteration (not a
     // task iteration), so it is read directly for the phase number/title
     // instead of falling into the work-state branch below.
@@ -72,6 +78,13 @@ export function deriveCardHeading(ctx: StateViewContext): CardHeading {
       heading: `Correcting: Phase ${phaseNumber} — ${stripDocTitlePrefix(phaseTitle)}`,
       meta: `Phase ${phaseNumber}`,
     };
+  }
+
+  if (ctx.stateId === 'corrective' && ctx.correctiveScope === 'final') {
+    // Final corrective: no enclosing iteration exists at this scope, so the
+    // generic work-state branch below (which reads a task number off
+    // `ctx.iteration`) would otherwise misread the absent iteration as "Task 1".
+    return { heading: 'Correcting: Final Review', meta: 'Final Review' };
   }
 
   if (WORK_STATE_IDS.has(ctx.stateId)) {

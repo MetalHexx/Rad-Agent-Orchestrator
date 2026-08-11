@@ -6,6 +6,8 @@ import type {
   PipelineTemplate,
   IterationEntry,
   SourceControlState,
+  StepNodeState,
+  EventContext,
 } from '../../../src/lib/pipeline-engine/types.js';
 
 describe('source_control_init retirement (FR-6, AD-2)', () => {
@@ -392,5 +394,145 @@ describe('pr_created per-repo pr_url by-name mutation (FR-9, FR-10, AD-4)', () =
     expect(sc.repos.find((r: SourceControlState['repos'][number]) => r.name === 'fake-api')!.pr_url).toBe('https://x/api/1');
     expect(sc.repos.find((r: SourceControlState['repos'][number]) => r.name === 'fake-ui')!.pr_url).toBe('https://x/ui/2');
     expect(sc).not.toHaveProperty('pr_url');
+  });
+});
+
+// ── final_review_completed: current_tier promotion per verdict outcome ────────
+//
+// Only the running exits of the verdict routing promote pipeline.current_tier
+// to 'review' — approved always does; changes_requested does only when the
+// corrective is actually born (the two halting exits inside it must not).
+// rejected and the unrecognized-verdict halt leave current_tier untouched.
+
+// Extends the shared phase_loop/task_loop `tmpl` (task_gate, task_executor,
+// code_review body) with a top-level final_review step, so a birthed
+// corrective's body can be scaffolded via findTaskLoopBodyDefs.
+function withFinalReview(hostsCorrectives: boolean): PipelineTemplate {
+  const base = tmpl as unknown as { id: string; version: string; description: string; nodes: unknown[] };
+  return {
+    ...base,
+    nodes: [
+      ...base.nodes,
+      {
+        id: 'final_review', kind: 'step', label: 'Final Review', action: 'spawn_final_reviewer',
+        events: { completed: 'final_review_completed' },
+        ...(hostsCorrectives ? { hosts_correctives: true } : {}),
+        depends_on: [],
+      },
+    ],
+  } as unknown as PipelineTemplate;
+}
+
+const tmplFinalReview = withFinalReview(true);
+const tmplFinalReviewNoHost = withFinalReview(false);
+
+/**
+ * Builds a minimal PipelineState with `final_review` as a top-level step node,
+ * `pipeline.current_tier` pinned to a non-'review' sentinel ('execution') so a
+ * promotion (or the lack of one) is observable, and `final_approval_gate`
+ * scaffolded not_started as the template requires downstream of final_review.
+ */
+function buildFinalReviewState(overrides: Record<string, unknown> = {}): PipelineState {
+  return {
+    $schema: 'orchestration-state-v6',
+    project: { name: 'test', created: '2026-01-01T00:00:00.000Z', updated: '2026-01-01T00:00:00.000Z' },
+    config: {
+      gate_mode: 'autonomous',
+      limits: { max_retries_per_task: 3 },
+      source_control: { auto_commit: 'never', auto_pr: 'never' },
+    },
+    pipeline: {
+      gate_mode: 'autonomous',
+      source_control: null,
+      current_tier: 'execution',
+      halt_reason: null,
+    },
+    graph: {
+      template_id: 't',
+      status: 'in_progress',
+      current_node_path: 'final_review',
+      nodes: {
+        final_review: {
+          kind: 'step', status: 'in_progress', doc_path: null, retries: 0, verdict: null,
+          corrective_tasks: [],
+          ...overrides,
+        },
+        final_approval_gate: gate('not_started'),
+      },
+    },
+  } as unknown as PipelineState;
+}
+
+function applyFinalReviewCompleted(
+  state: PipelineState,
+  ctx: Record<string, unknown>,
+  template: PipelineTemplate = tmplFinalReview,
+  config: OrchestrationConfig = cfg,
+): PipelineState {
+  const fn = getMutation('final_review_completed');
+  if (!fn) throw new Error('final_review_completed mutation not registered');
+  const { state: next } = fn(state, ctx as unknown as Partial<EventContext>, config, template);
+  return next;
+}
+
+describe('final_review_completed current_tier promotion (running outcomes only)', () => {
+  it('approved promotes current_tier to review', () => {
+    const next = applyFinalReviewCompleted(buildFinalReviewState(), {
+      verdict: 'approved', doc_path: 'reports/final-review.md',
+    });
+    expect(next.pipeline.current_tier).toBe('review');
+  });
+
+  it('changes_requested that successfully births a corrective promotes current_tier to review', () => {
+    const next = applyFinalReviewCompleted(buildFinalReviewState(), {
+      verdict: 'changes_requested', doc_path: 'reports/final-review.md', reason: 'Final review requested changes',
+    });
+    const node = next.graph.nodes.final_review as unknown as StepNodeState;
+    expect(node.corrective_tasks).toHaveLength(1);
+    expect(next.pipeline.current_tier).toBe('review');
+  });
+
+  it('rejected halts and does not promote current_tier', () => {
+    const next = applyFinalReviewCompleted(buildFinalReviewState(), {
+      verdict: 'rejected', doc_path: 'reports/final-review.md',
+    });
+    expect(next.graph.status).toBe('halted');
+    expect(next.pipeline.current_tier).toBe('execution');
+  });
+
+  it('an unrecognized verdict halts and does not promote current_tier', () => {
+    const next = applyFinalReviewCompleted(buildFinalReviewState(), {
+      verdict: 'not-a-real-verdict', doc_path: 'reports/final-review.md',
+    });
+    expect(next.graph.status).toBe('halted');
+    expect(next.pipeline.current_tier).toBe('execution');
+  });
+
+  it('changes_requested against a template snapshot with no hosts_correctives halts before promoting', () => {
+    const next = applyFinalReviewCompleted(
+      buildFinalReviewState(),
+      { verdict: 'changes_requested', doc_path: 'reports/final-review.md' },
+      tmplFinalReviewNoHost,
+    );
+    expect(next.graph.status).toBe('halted');
+    expect(next.pipeline.halt_reason ?? '').toMatch(/hosts_correctives/);
+    expect(next.pipeline.current_tier).toBe('execution');
+  });
+
+  it('changes_requested with the corrective budget exhausted halts before promoting', () => {
+    const exhaustedCfg = { limits: { max_retries_per_task: 1 } } as unknown as OrchestrationConfig;
+    const priorEntry = {
+      index: 1, status: 'completed', reason: 'r', injected_after: 'final_review',
+      doc_path: null, review_report_path: null, repos: [], nodes: {},
+    };
+    const next = applyFinalReviewCompleted(
+      buildFinalReviewState({ corrective_tasks: [priorEntry] }),
+      { verdict: 'changes_requested', doc_path: 'reports/final-review.md' },
+      tmplFinalReview,
+      exhaustedCfg,
+    );
+    expect(next.graph.status).toBe('halted');
+    expect(next.pipeline.halt_reason ?? '').toMatch(/budget|retries/i);
+    expect(next.pipeline.current_tier).toBe('execution');
   });
 });

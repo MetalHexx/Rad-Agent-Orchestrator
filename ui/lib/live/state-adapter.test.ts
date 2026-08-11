@@ -56,3 +56,14 @@ test('the projects root itself and nested dirs never classify as lifecycle (FR-4
   assert.equal(classifyLifecycleEvent({ type: 'addDir', filePath: '/projects' }, ROOT), null);
   assert.equal(classifyLifecycleEvent({ type: 'addDir', filePath: '/projects/DEMO/tasks' }, ROOT), null);
 });
+
+test('a state.json add/unlink under a non-project directory name yields no lifecycle event', () => {
+  assert.equal(classifyLifecycleEvent({ type: 'add', filePath: '/projects/.git/state.json' }, ROOT), null);
+  assert.equal(classifyLifecycleEvent({ type: 'unlink', filePath: '/projects/_archived/state.json' }, ROOT), null);
+});
+
+test('a first-level directory add/remove for a non-project directory name yields no lifecycle event', () => {
+  assert.equal(classifyLifecycleEvent({ type: 'addDir', filePath: '/projects/.git' }, ROOT), null);
+  assert.equal(classifyLifecycleEvent({ type: 'addDir', filePath: '/projects/_future' }, ROOT), null);
+  assert.equal(classifyLifecycleEvent({ type: 'unlinkDir', filePath: '/projects/_archived' }, ROOT), null);
+});

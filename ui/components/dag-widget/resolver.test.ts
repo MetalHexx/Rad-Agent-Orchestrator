@@ -70,7 +70,25 @@ const RICH_NODES: NodesRecord = {
       },
     ],
   },
-  final_review: { kind: 'step', status: 'not_started', doc_path: null, retries: 0 },
+  final_review: {
+    kind: 'step',
+    status: 'not_started',
+    doc_path: null,
+    retries: 0,
+    corrective_tasks: [
+      {
+        index: 3,
+        reason: 'final review found issues',
+        injected_after: 'final_review',
+        status: 'in_progress',
+        repos: [{ name: 'api', commit_hash: 'finalcthash' }],
+        nodes: {
+          task_executor: { kind: 'step', status: 'in_progress', doc_path: null, retries: 0 },
+          code_review: { kind: 'step', status: 'not_started', doc_path: null, retries: 0 },
+        },
+      },
+    ],
+  },
   final_approval_gate: { kind: 'gate', status: 'not_started', gate_active: false },
   pr_gate: { kind: 'conditional', status: 'not_started', branch_taken: null },
   final_pr: { kind: 'step', status: 'not_started', doc_path: null, retries: 0 },
@@ -175,23 +193,20 @@ test('plan_approval_gate maps to plan-approval', () => {
   assert.equal(resolveStateId(makeState('plan_approval_gate')), 'plan-approval');
 });
 
-// ─── planning → plan-approval advancement when the gate is active ──────────
+// ─── regression guard: planning leaf is unaffected by gate state ──────────────
 
-test('a planning leaf advances to plan-approval when the plan_approval_gate is active', () => {
-  const nodes: NodesRecord = {
-    ...RICH_NODES,
-    plan_approval_gate: { kind: 'gate', status: 'in_progress', gate_active: true },
-  };
-  const state = { ...makeState('master_plan'), graph: { ...makeState('master_plan').graph, nodes } };
-  assert.equal(resolveStateId(state), 'plan-approval');
-});
-
-test('a planning leaf stays planning when the plan_approval_gate is inactive', () => {
-  // RICH_NODES already carries plan_approval_gate as gate_active: false.
+test('a planning leaf stays planning regardless of gate_active', () => {
+  // With the inference removed, plan_approval_gate now routes through NODE_ID_TO_STATE
+  // like any other node. A planning leaf stays planning even if the gate is active —
+  // the cursor must land ON the gate itself for it to show plan-approval.
+  // RICH_NODES carries plan_approval_gate as gate_active: false.
   assert.equal(resolveStateId(makeState('master_plan')), 'planning');
 });
 
-test('a planning leaf stays planning when the plan_approval_gate is active but already completed', () => {
+test('a planning leaf always maps through NODE_ID_TO_STATE, not via gate state inference', () => {
+  // Verify that gate completion status is not consulted for planning leaves anymore.
+  // Even with gate_active: true and status: completed, the cursor at a planning leaf
+  // maps directly to 'planning' via NODE_ID_TO_STATE.
   const nodes: NodesRecord = {
     ...RICH_NODES,
     plan_approval_gate: { kind: 'gate', status: 'completed', gate_active: true },
@@ -272,26 +287,33 @@ test('resolveStateView surfaces the corrective node object and flags on the cont
   assert.deepEqual(ctx.repos, [{ name: 'api', commit_hash: 'cthash' }]);
 });
 
-// ─── isPhaseCorrective — phase-level vs. task-level corrective ──────────────
+// ─── correctiveScope — task / phase / final / null ──────────────────────────
 
-test('a phase_loop.iterN.ctM path resolves isPhaseCorrective: true', () => {
+test('a phase_loop.iterN.ctM path resolves correctiveScope: "phase"', () => {
   const { ctx } = resolveStateView(makeState('phase_loop.iter0.ct2.code_review'), undefined, noopDeps);
   assert.equal(ctx.stateId, 'corrective');
   assert.equal(ctx.isCorrective, true);
-  assert.equal(ctx.isPhaseCorrective, true);
+  assert.equal(ctx.correctiveScope, 'phase');
 });
 
-test('a phase_loop.iterN.task_loop.iterK.ctM path resolves isPhaseCorrective: false', () => {
+test('a phase_loop.iterN.task_loop.iterK.ctM path resolves correctiveScope: "task"', () => {
   const { ctx } = resolveStateView(makeState(`${TASK_PATH}.ct1.code_review`), undefined, noopDeps);
   assert.equal(ctx.stateId, 'corrective');
   assert.equal(ctx.isCorrective, true);
-  assert.equal(ctx.isPhaseCorrective, false);
+  assert.equal(ctx.correctiveScope, 'task');
 });
 
-test('a plain coding path resolves isPhaseCorrective: false', () => {
+test('a step-hosted final_review.ctM path resolves correctiveScope: "final"', () => {
+  const { ctx } = resolveStateView(makeState('final_review.ct3.task_executor'), undefined, noopDeps);
+  assert.equal(ctx.stateId, 'corrective');
+  assert.equal(ctx.isCorrective, true);
+  assert.equal(ctx.correctiveScope, 'final');
+});
+
+test('a plain coding path resolves correctiveScope: null', () => {
   const { ctx } = resolveStateView(makeState(`${TASK_PATH}.task_executor`), undefined, noopDeps);
   assert.equal(ctx.isCorrective, false);
-  assert.equal(ctx.isPhaseCorrective, false);
+  assert.equal(ctx.correctiveScope, null);
 });
 
 // ─── skip-set resolves away ──────────────────────────────────────────────────

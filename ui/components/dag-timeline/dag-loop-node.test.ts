@@ -10,6 +10,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { isLoopNode, getDisplayName } from './dag-timeline-helpers';
+import { baseProjectState } from './__fixtures__';
 import type {
   ForEachPhaseNodeState,
   ForEachTaskNodeState,
@@ -182,6 +183,7 @@ const _propsContractFixture: DAGLoopNodeProps = {
   focusedRowKey: null,
   isFocused: false,
   onFocusChange: () => {},
+  state: baseProjectState,
 };
 
 test('DAGLoopNodeProps contract still compiles (props shape preserved so DAGTimeline / DAGIterationPanel call sites do not change)', () => {

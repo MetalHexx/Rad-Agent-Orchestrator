@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { executePrepare, executePrepareCommand } from '../../../src/commands/execute/prepare.js';
 import type { ExecutePrepareOptions, ExecutePrepareResult } from '../../../src/commands/execute/prepare.js';
 import { runCommand } from '../../../src/framework/command.js';
+import { validateEnvelope } from '../../../src/framework/output.js';
 import type { ProvisionWorktreesResult } from '../../../src/commands/worktree/create.js';
 import type { SideProjectInitResult } from '../../../src/commands/side-project/init.js';
 import type { PipelineResult } from '../../../src/lib/pipeline-engine/types.js';
@@ -123,6 +124,29 @@ describe('executePrepare — provision then seal', () => {
     await executePrepare(deps({ autoCommit: 'never', autoPr: 'always', seal }));
     expect(received).toEqual({ autoCommit: 'never', autoPr: 'always' });
   });
+
+  it('in-place: skips provisioning entirely and seals with inPlace + baseBranch', async () => {
+    const provision = vi.fn(() => provisioned());
+    const seal = vi.fn(() => ({ ok: true as const, projectDir: '/projects/P' }));
+    const r = await executePrepare(deps({ inPlace: true, baseBranch: 'main', provision, seal }));
+    expect(provision).not.toHaveBeenCalled();
+    expect(seal).toHaveBeenCalledWith(expect.objectContaining({ inPlace: true, baseBranch: 'main' }));
+    expect(r.provisioned).toBeNull();
+    expect(r.sealed?.ok).toBe(true);
+  });
+
+  it('in-place: passes the confirmed branch through to the seal', async () => {
+    const seal = vi.fn(() => ({ ok: true as const, projectDir: '/projects/P' }));
+    await executePrepare(deps({ inPlace: true, baseBranch: 'main', branch: 'feature-x', seal }));
+    expect(seal).toHaveBeenCalledWith(expect.objectContaining({ branch: 'feature-x' }));
+  });
+
+  it('in-place: re-running the same invocation re-derives identical seal args (idempotent)', async () => {
+    const seal = vi.fn(() => ({ ok: true as const, projectDir: '/projects/P' }));
+    await executePrepare(deps({ inPlace: true, baseBranch: 'main', seal }));
+    await executePrepare(deps({ inPlace: true, baseBranch: 'main', seal }));
+    expect(seal.mock.calls[0]).toEqual(seal.mock.calls[1]);
+  });
 });
 
 // ── Plan approval (running /rad-execute confers approval) ─────────────────────
@@ -181,6 +205,8 @@ describe('executePrepareCommand.mapResult — exit-code precedence', () => {
     const env = mr(r);
     expect(env.ok).toBe(false);
     expect(env.error?.type).toBe('system_error');
+    expect(env).not.toHaveProperty('data');
+    expect(() => validateEnvelope(env)).not.toThrow();
   });
 
   it('side-project init hard error → ok:false system_error (exit 2)', () => {
@@ -189,6 +215,8 @@ describe('executePrepareCommand.mapResult — exit-code precedence', () => {
     expect(env.ok).toBe(false);
     expect(env.error?.type).toBe('system_error');
     expect(env.error?.message).toMatch(/init failed/i);
+    expect(env).not.toHaveProperty('data');
+    expect(() => validateEnvelope(env)).not.toThrow();
   });
 
   it('seal failure → ok:false user_error (exit 1)', () => {
@@ -197,6 +225,8 @@ describe('executePrepareCommand.mapResult — exit-code precedence', () => {
     expect(env.ok).toBe(false);
     expect(env.error?.type).toBe('user_error');
     expect(env.error?.message).toMatch(/state\.json/);
+    expect(env).not.toHaveProperty('data');
+    expect(() => validateEnvelope(env)).not.toThrow();
   });
 
   it('success → ok:true exit_code 0', () => {
@@ -230,9 +260,9 @@ describe('executePrepareCommand.mapResult — exit-code precedence', () => {
 // ── CLI passthrough (runCommand argv → handler args) ─────────────────────────
 
 describe('executePrepareCommand CLI path', () => {
-  it('passes --project, --worktree-name, --repo, --auto-commit, --auto-pr through runCommand', async () => {
+  it('passes --project, --worktree-name, --repo, --auto-commit, --auto-pr, --in-place, --base-branch, --branch through runCommand', async () => {
     type PrepArgs = { project?: string; 'worktree-name'?: string; repo?: string };
-    type PrepFlags = { 'auto-commit'?: string; 'auto-pr'?: string };
+    type PrepFlags = { 'auto-commit'?: string; 'auto-pr'?: string; 'in-place'?: boolean; 'base-branch'?: string; branch?: string };
     let received: { args: PrepArgs; flags: PrepFlags } = { args: {}, flags: {} };
     const probeDef = {
       ...executePrepareCommand,
@@ -245,7 +275,7 @@ describe('executePrepareCommand CLI path', () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     const exit = vi.spyOn(process, 'exit').mockImplementation((() => undefined as never) as never);
     await runCommand(probeDef, {
-      argv: ['--project', 'MY-PROJECT', '--worktree-name', 'MY-WT', '--repo', 'my-repo', '--auto-commit', 'always', '--auto-pr', 'never'],
+      argv: ['--project', 'MY-PROJECT', '--worktree-name', 'MY-WT', '--repo', 'my-repo', '--auto-commit', 'always', '--auto-pr', 'never', '--in-place', '--base-branch', 'main', '--branch', 'feature-x'],
       env: { RADORCH_NO_LOG: '1' },
       isTTY: false,
       stderr: process.stderr,
@@ -255,6 +285,9 @@ describe('executePrepareCommand CLI path', () => {
     expect(received.args.repo).toBe('my-repo');
     expect(received.flags['auto-commit']).toBe('always');
     expect(received.flags['auto-pr']).toBe('never');
+    expect(received.flags['in-place']).toBe(true);
+    expect(received.flags['base-branch']).toBe('main');
+    expect(received.flags.branch).toBe('feature-x');
     expect(exit).toHaveBeenCalledWith(0);
     log.mockRestore(); exit.mockRestore();
   });

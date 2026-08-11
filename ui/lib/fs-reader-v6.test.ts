@@ -19,7 +19,7 @@ function makeV6State(overrides: Record<string, unknown> = {}) {
   return JSON.stringify({
     $schema: 'orchestration-state-v6',
     project: {
-      name: 'v6-project',
+      name: 'V6-PROJECT',
       created: '2026-01-01T00:00:00.000Z',
       updated: '2026-05-01T09:00:00.000Z',
     },
@@ -63,13 +63,13 @@ async function setup(): Promise<string> {
   await mkdir(projectsDir, { recursive: true });
 
   // v6-project: valid v6 state.json (execution tier, in_progress graph)
-  await mkdir(path.join(projectsDir, 'v6-project'));
-  await writeFile(path.join(projectsDir, 'v6-project', 'state.json'), makeV6State());
+  await mkdir(path.join(projectsDir, 'V6-PROJECT'));
+  await writeFile(path.join(projectsDir, 'V6-PROJECT', 'state.json'), makeV6State());
 
   // v6-completed-project: v6 state with graph.status === 'completed'
-  await mkdir(path.join(projectsDir, 'v6-completed-project'));
+  await mkdir(path.join(projectsDir, 'V6-COMPLETED-PROJECT'));
   await writeFile(
-    path.join(projectsDir, 'v6-completed-project', 'state.json'),
+    path.join(projectsDir, 'V6-COMPLETED-PROJECT', 'state.json'),
     makeV6State({
       pipeline: {
         gate_mode: null,
@@ -123,50 +123,50 @@ async function run() {
     console.log('discoverProjects — v6 state support');
 
     await test('v6 state.json is recognized on the current render path (FR-22, AD-8) — schemaVersion is "v6"', async () => {
-      const p = projects.find(x => x.name === 'v6-project');
+      const p = projects.find(x => x.name === 'V6-PROJECT');
       assert.ok(p, 'v6-project should be in results');
       assert.strictEqual(p!.schemaVersion, 'v6');
     });
 
     await test('v6 project — tier mapped from pipeline.current_tier (not v4 path)', async () => {
-      const p = projects.find(x => x.name === 'v6-project');
+      const p = projects.find(x => x.name === 'V6-PROJECT');
       assert.ok(p, 'v6-project should be in results');
       assert.strictEqual(p!.tier, 'execution');
     });
 
     await test('v6 project — planningStatus derived from graph nodes (all planning nodes completed → "complete")', async () => {
-      const p = projects.find(x => x.name === 'v6-project');
+      const p = projects.find(x => x.name === 'V6-PROJECT');
       assert.ok(p, 'v6-project should be in results');
       assert.strictEqual(p!.planningStatus, 'complete');
     });
 
     await test('v6 project — executionStatus derived from graph (phase_loop in_progress → "in_progress")', async () => {
-      const p = projects.find(x => x.name === 'v6-project');
+      const p = projects.find(x => x.name === 'V6-PROJECT');
       assert.ok(p, 'v6-project should be in results');
       assert.strictEqual(p!.executionStatus, 'in_progress');
     });
 
     await test('v6 project — graphStatus equals state.graph.status ("in_progress")', async () => {
-      const p = projects.find(x => x.name === 'v6-project');
+      const p = projects.find(x => x.name === 'V6-PROJECT');
       assert.ok(p, 'v6-project should be in results');
       assert.strictEqual(p!.graphStatus, 'in_progress');
     });
 
     await test('v6 project — hasState: true, hasMalformedState: false', async () => {
-      const p = projects.find(x => x.name === 'v6-project');
+      const p = projects.find(x => x.name === 'V6-PROJECT');
       assert.ok(p, 'v6-project should be in results');
       assert.strictEqual(p!.hasState, true);
       assert.strictEqual(p!.hasMalformedState, false);
     });
 
     await test('v6 completed project — tier is "complete" when graph.status === "completed"', async () => {
-      const p = projects.find(x => x.name === 'v6-completed-project');
+      const p = projects.find(x => x.name === 'V6-COMPLETED-PROJECT');
       assert.ok(p, 'v6-completed-project should be in results');
       assert.strictEqual(p!.tier, 'complete');
     });
 
     await test('v6 completed project — graphStatus equals state.graph.status ("completed")', async () => {
-      const p = projects.find(x => x.name === 'v6-completed-project');
+      const p = projects.find(x => x.name === 'V6-COMPLETED-PROJECT');
       assert.ok(p, 'v6-completed-project should be in results');
       assert.strictEqual(p!.graphStatus, 'completed');
     });
@@ -175,13 +175,13 @@ async function run() {
     console.log('\nreadProjectState — v6 state support');
 
     await test('v6 state.json is recognized on the current render path (FR-22, AD-8) — isV6State guard passes', async () => {
-      const dir = path.join(projectsDir, 'v6-project');
+      const dir = path.join(projectsDir, 'V6-PROJECT');
       const state = await readProjectState(dir);
       assert.ok(state && isV6State(state), 'state should be non-null and pass isV6State guard');
     });
 
     await test('readProjectState — parses v6 state and returns $schema === "orchestration-state-v6"', async () => {
-      const projectDir = path.join(projectsDir, 'v6-project');
+      const projectDir = path.join(projectsDir, 'V6-PROJECT');
       const state = await readProjectState(projectDir);
       assert.ok(state, 'state should not be null');
       assert.strictEqual(state!.$schema, 'orchestration-state-v6');

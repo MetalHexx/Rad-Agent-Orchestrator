@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import type { NodesRecord, NodeState, NodeStatus } from '@/types/state';
+import type { AnyProjectState, NodesRecord, NodeState, NodeStatus, StepNodeState } from '@/types/state';
 import { DAGNodeRow } from './dag-node-row';
 import { DAGLoopNode } from './dag-loop-node';
+import { DAGFinalReviewPanel } from './dag-final-review-panel';
 import { isLoopNode, groupNodesBySection, NODE_SECTION_MAP, RETIRED_PLANNING_NODE_IDS, shouldRenderTimelineRow, buildIterationItemValue } from './dag-timeline-helpers';
 import type { CompatibleNodeState } from './dag-timeline-helpers';
 import { DAGSectionGroup } from './dag-section-group';
@@ -29,6 +30,10 @@ interface DAGTimelineProps {
    *  Planning now lives in its own card above DAGTimeline, so this slot
    *  anchors at the very top of the timeline (immediately before Execution). */
   afterPlanningSlot?: React.ReactNode;
+  /** Project state — threaded to every corrective-hosting descendant (loop
+   *  iterations and the final-review panel) so retry badges resolve their
+   *  ceiling through the shared resolver. */
+  state: AnyProjectState;
 }
 
 /**
@@ -105,7 +110,7 @@ function derivePrefixAccordionKeys(compoundKey: string): string[] {
   return result.reverse();
 }
 
-export function DAGTimeline({ nodes, currentNodePath, onDocClick, expandedLoopIds, onAccordionChange, compareUrlByRepo, projectName, phaseLoopStatus, prUrl, afterPlanningSlot }: DAGTimelineProps) {
+export function DAGTimeline({ nodes, currentNodePath, onDocClick, expandedLoopIds, onAccordionChange, compareUrlByRepo, projectName, phaseLoopStatus, prUrl, afterPlanningSlot, state }: DAGTimelineProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const groups = groupNodesBySection(nodes);
   const unmatchedEntries = Object.entries(nodes).filter(
@@ -221,7 +226,21 @@ export function DAGTimeline({ nodes, currentNodePath, onDocClick, expandedLoopId
 
   const renderNodeEntry = ([nodeId, node]: [string, NodeState]): ReactNode => (
     <div key={nodeId} role="presentation">
-      {isLoopNode(node) ? (
+      {nodeId === 'final_review' ? (
+        <DAGFinalReviewPanel
+          nodeId={nodeId}
+          node={node as StepNodeState}
+          currentNodePath={currentNodePath}
+          onDocClick={onDocClick}
+          compareUrlByRepo={compareUrlByRepo}
+          isFocused={focusedRowKey === nodeId}
+          onFocusChange={handleFocusChange}
+          focusedRowKey={focusedRowKey}
+          expandedLoopIds={expandedLoopIds}
+          onAccordionChange={onAccordionChange}
+          state={state}
+        />
+      ) : isLoopNode(node) ? (
         <DAGLoopNode
           nodeId={nodeId}
           node={node}
@@ -234,6 +253,7 @@ export function DAGTimeline({ nodes, currentNodePath, onDocClick, expandedLoopId
           focusedRowKey={focusedRowKey}
           isFocused={focusedRowKey === nodeId}
           onFocusChange={handleFocusChange}
+          state={state}
         />
       ) : (
         <DAGNodeRow

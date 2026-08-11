@@ -93,7 +93,6 @@ export function repoAdd(opts: RepoAddOptions): RepoAddResult | RepoAddDryRunResu
 
   // 2. Identity from git (fail-loud on no/ambiguous remote).
   const remote = selectRemote(getRemotes(exec));
-  const defaultBranch = getDefaultBranch(exec, remote.name);
 
   // 3. Resolve the canonical home — the MAIN worktree toplevel — even when run
   //    from a linked worktree or a subdirectory. Deterministic git facts, with a
@@ -107,6 +106,14 @@ export function repoAdd(opts: RepoAddOptions): RepoAddResult | RepoAddDryRunResu
   // 4. Slug: --name override > remote-derived > folder basename (last resort).
   let proposedName = nameOverride?.trim() || deriveSlugFromRemote(remote.url);
   if (!proposedName) proposedName = slugify(path.basename(canonicalPath));
+
+  // 4b. Default branch — read from the remote's HEAD symref; fail loud rather
+  // than fabricate one. Registration is an interactive, operator-present
+  // moment, so stopping here is cheap and correct; nothing is written yet.
+  const defaultBranch = getDefaultBranch(exec, remote.name);
+  if (defaultBranch == null) {
+    throw new UserError(`could not determine the default branch for repo "${proposedName}" from remote "${remote.name}" (${remote.url})`);
+  }
 
   // 5. Registry awareness for the rail + the dry-run report.
   const reg = readRegistry({ root });

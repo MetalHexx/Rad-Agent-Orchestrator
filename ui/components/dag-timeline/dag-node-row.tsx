@@ -43,21 +43,25 @@ export function DAGNodeRow({ nodeId, node, currentNodePath, onDocClick, depth = 
   const hasActionButton = descriptor.kind === 'execute';
   const isFinalPrRow = nodeId === 'final_pr' && prUrl != null && prUrl !== '';
 
-  // FR-1, FR-2, FR-4, FR-6, AD-2, AD-4, DD-1, DD-2 — resolve stage-aware
-  // {status, cssVar, label} for the row. Gate rows still flow through
-  // deriveGateBadgeStatusAndLabel (which can flip status to 'not_started'
-  // when gate_active is true). Non-gate rows resolve via resolveStageBadge,
-  // which folds the legacy planning-step path into the same lookup so
-  // planning steps now read --tier-planning + "Planning" (DD-1) instead of
-  // the legacy "Executing" label.
+  // Resolve stage-aware {status, cssVar, label, isSpinning} for the row.
+  // Gate rows flow through deriveGateBadgeStatusAndLabel, which overrides
+  // label/cssVar/isSpinning to the resting Pending Review badge while the
+  // gate blocks on a person, leaving status untouched. Non-gate rows resolve
+  // via resolveStageBadge, which folds the legacy planning-step path into
+  // the same lookup so planning steps read --tier-planning + "Planning".
   const stageBadge = resolveStageBadge(nodeId, node.status);
   const resolvedBadge = node.kind === 'gate'
     ? (() => {
         const gate = deriveGateBadgeStatusAndLabel(node);
         const gateStage = resolveStageBadge(nodeId, gate.status);
-        return { status: gate.status, label: gate.label, cssVar: gateStage.cssVar };
+        return {
+          status: gate.status,
+          label: gate.label,
+          cssVar: gate.cssVar ?? gateStage.cssVar,
+          isSpinning: gate.isSpinning,           // undefined on the non-blocking path
+        };
       })()
-    : { status: node.status, label: stageBadge.label, cssVar: stageBadge.cssVar };
+    : { status: node.status, label: stageBadge.label, cssVar: stageBadge.cssVar, isSpinning: undefined };
 
   const actionButtonRef = useRef<HTMLButtonElement | null>(null);
 
@@ -99,6 +103,7 @@ export function DAGNodeRow({ nodeId, node, currentNodePath, onDocClick, depth = 
         status={resolvedBadge.status}
         label={resolvedBadge.label}
         cssVar={resolvedBadge.cssVar}
+        isSpinning={resolvedBadge.isSpinning}
         iconOnly={resolvedBadge.status === 'completed'}
       />
       <span className="text-sm font-medium min-w-0 shrink truncate max-w-[55%]">{getDisplayName(nodeId)}</span>

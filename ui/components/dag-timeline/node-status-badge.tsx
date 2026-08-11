@@ -29,10 +29,15 @@ interface NodeStatusBadgeProps {
    * check/x/spinner behavior.
    */
   icon?: React.ReactNode;
+  /** Optional isSpinning override. When supplied, wins over
+   *  STATUS_MAP[status].isSpinning — used by resting states that are in flight
+   *  but not active work (a gate awaiting a person). Omitting it preserves
+   *  the STATUS_MAP-driven default. */
+  isSpinning?: boolean;
 }
 
 export const NodeStatusBadge = React.forwardRef<HTMLSpanElement, NodeStatusBadgeProps>(
-  function NodeStatusBadge({ status, label, cssVar, iconOnly, icon }, ref) {
+  function NodeStatusBadge({ status, label, cssVar, iconOnly, icon, isSpinning }, ref) {
     const entry = STATUS_MAP[status];
     const resolvedLabel = label ?? entry.defaultLabel;
     const resolvedCssVar = cssVar ?? entry.cssVar;
@@ -41,7 +46,7 @@ export const NodeStatusBadge = React.forwardRef<HTMLSpanElement, NodeStatusBadge
         ref={ref}
         label={resolvedLabel}
         cssVar={resolvedCssVar}
-        isSpinning={entry.isSpinning}
+        isSpinning={isSpinning ?? entry.isSpinning}
         isComplete={entry.isComplete}
         isRejected={entry.isRejected}
         icon={icon}

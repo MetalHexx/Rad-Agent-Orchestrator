@@ -19,20 +19,13 @@ Covers all documents produced during pipeline execution. Planning documents (Mas
 
 ### Review Report Path (`review_report_path`)
 
-Code Review and Phase Review documents are **stable, single files per scope**. The reviewer creates the file once; on a `changes_requested` verdict, the same path (carried as `review_report_path` in the pipeline's event context) is reopened by the coder to write dispositions, and by the next reviewer to re-adjudicate them. `corrective_index` (see Frontmatter Field Reference) tracks which adjudication cycle the file is currently on.
+**One running report per scope instance.** Code Review, Phase Review, and Final Review documents are **stable, single files per scope**. The reviewer creates the file once; on a `changes_requested` verdict, the same path (carried as `review_report_path` in the pipeline's event context) is reopened by the coder to write dispositions, and by the next reviewer to re-adjudicate them. `corrective_index` (see Frontmatter Field Reference) tracks which adjudication cycle the file is currently on.
 
-A phase-scope corrective is carried by a task-level code review of the phase's sentinel task (`task_id: "P{NN}-PHASE"`), hosted under the phase iteration's `corrective_tasks[]`. Its review report path is `{NAME}-CODE-REVIEW-P{NN}-PHASE.md` — stable across that phase's corrective cycles, same convention as any task-scope review.
+- Task scope: the task code review report — `{NAME}-CODE-REVIEW-P{NN}-T{NN}-{TITLE}.md`.
+- Phase scope: the phase review report — `{NAME}-PHASE-REVIEW-P{NN}-{TITLE}.md`. A phase-scope corrective is carried by a task-level code review of the phase's sentinel task (`task_id: "P{NN}-PHASE"`), hosted under the phase iteration's `corrective_tasks[]`; the engine seeds that corrective with the phase review report as the running report, so the child reviewer is handed an existing report on its first spawn and takes the re-open-in-place branch — it never creates a new `CODE-REVIEW` document.
+- Final scope: the final review report — `{NAME}-FINAL-REVIEW.md`, re-opened in place across adjudication cycles. It is **not** a new code-review document, even though the corrective's child node is a code review.
 
 Task Handoffs are never re-authored for a review-stage corrective. The same handoff a task started with is reused, unchanged, across all of that task's corrective cycles — the coder reads it alongside the current `review_report_path`.
-
-- Normal (first-time): `{NAME}-PHASE-{NN}-{TITLE}.md`
-- Corrective: `{NAME}-PHASE-{NN}-{TITLE}-C{corrective_index}.md`
-
-| Scenario | Filename |
-|----------|----------|
-| Original plan | `MYPROJ-PHASE-02-SETUP.md` |
-| First correction | `MYPROJ-PHASE-02-SETUP-C1.md` |
-| Second correction | `MYPROJ-PHASE-02-SETUP-C2.md` |
 
 ## Frontmatter Field Reference
 
@@ -55,8 +48,8 @@ Task Handoffs are never re-authored for a review-stage corrective. The same hand
 | verdict | string | `"approved"` \| `"changes_requested"` \| `"rejected"` | Code Review, Phase Review, Final Review |
 | severity | string | `"none"` \| `"low"` \| `"medium"` \| `"high"` | Code Review, Phase Review |
 | exit_criteria_met | boolean | `true` \| `false` | Phase Review |
-| corrective_index | integer | 1-based corrective attempt/adjudication-cycle index (e.g., `1`) | Code Review, Phase Review |
-| corrective_scope | string | `"task"` \| `"phase"` | Code Review, Phase Review |
+| corrective_index | integer | 1-based corrective attempt/adjudication-cycle index (e.g., `1`) | Code Review, Phase Review, Final Review |
+| corrective_scope | string | `"task"` \| `"phase"` \| `"final"` | Code Review, Phase Review, Final Review |
 
 **`status` field values by document type:**
 

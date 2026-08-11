@@ -15,4 +15,4 @@ Inline `data.context.requirements_doc` (the project requirements) and `data.cont
 
 Extract the review doc path from the agent's final message.
 
-Final-review corrective cycles are out of scope — the verdict is strict-and-final. The reviewer signals `final_review_completed` with its verdict; do not perform any mediation.
+The final reviewer is single-dispatch per review round. When the verdict is `changes_requested`, that verdict births a corrective on the review step; the corrective's coder re-adjudicates the running review report and produces updated dispositions, but the final reviewer is not re-dispatched within that round. If the operator instead rejects the work at the final-approval gate (`final_rejected`), that opens a fresh review round and legitimately re-fires this action. The orchestrator signals the verdict and performs no mediation.

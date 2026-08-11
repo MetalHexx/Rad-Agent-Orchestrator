@@ -50,7 +50,7 @@ test('the not-started and skeleton branches are preserved untouched', () => {
   assert.ok(pageSrc.includes('LaunchScreen'), 'the not-started LaunchScreen branch remains');
   assert.ok(pageSrc.includes('<DAGTimelineSkeleton'), 'the loading skeleton branch remains');
   assert.ok(
-    /tier === ['"]not_initialized['"]/.test(pageSrc),
-    'the not_initialized branch condition is intact',
+    /case 'launch'/.test(pageSrc),
+    'the not-started case is still reachable, now as the launch view',
   );
 });

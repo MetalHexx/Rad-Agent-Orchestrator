@@ -1,10 +1,10 @@
-import { readdir } from 'node:fs/promises';
 import path from 'node:path';
 
 import type { SSEEvent, SSEEventType, SSEPayloadMap } from '@/types/events';
 import type { AnyProjectState } from '@/types/state';
 import { getProjectsRoot, getRegistryRoot, getTelemetryRoot } from '@/lib/path-resolver';
 import { getLiveRuntime } from '@/lib/live/live-hub-runtime';
+import { discoverConnectedProjectNames } from './discover-connected-projects';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -48,11 +48,8 @@ export async function GET(request: Request) {
       }
 
       // ── 1. Discover existing projects & send connected event ────────
-      readdir(absoluteProjectsDir, { withFileTypes: true })
-        .then((entries) => {
-          const projects = entries
-            .filter((e) => e.isDirectory())
-            .map((e) => e.name);
+      discoverConnectedProjectNames(absoluteProjectsDir)
+        .then((projects) => {
           enqueue(createSSEEvent('connected', { projects }));
         })
         .catch((err) => {

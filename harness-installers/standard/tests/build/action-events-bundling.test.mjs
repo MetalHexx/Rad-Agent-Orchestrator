@@ -50,7 +50,7 @@ test('manifest entries for action-events all destinate under ${RAD_HOME}/action-
   const { outRoot, cleanup } = await runBuild();
   try {
     for (const h of HARNESSES) {
-      const manifestPath = path.join(outRoot, h, 'manifests', 'v1.0.0-alpha.12.json');
+      const manifestPath = path.join(outRoot, h, 'manifests', 'v1.0.0-alpha.13.json');
       assert.ok(fs.existsSync(manifestPath), `${h}: manifest written`);
       const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
       const aeFiles = manifest.files.filter((f) => f.bundlePath.startsWith('action-events/'));

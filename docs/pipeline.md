@@ -61,7 +61,15 @@ Execution-mode behavior:
 
 ## Corrective Cycles
 
-When a code review or phase review flags problems, the pipeline engine births a corrective task automatically and re-runs the affected work. Corrective passes count against `max_retries_per_task`; if a task exhausts its retry budget without a clean review, the pipeline halts and waits for the operator to step in.
+Corrective cycles operate at three scopes: task-level (when code review flags problems), phase-level (when phase review flags problems), and final-scope (when final review requests changes). In each case, the pipeline engine births a corrective task automatically, driven solely by the review report, with no separate handoff authored. The corrective is closed by that corrective's own review.
+
+When a corrective is submitted for review, it is subject to the same review-tier behavior as any other task or phase. In tiers with per-task code review (`extra-high`, `high`), the corrective is reviewed and must pass. In tiers without per-task code review (`medium`, `low`), correctives close after a single implementation pass with no re-review — a final-scope corrective in either tier therefore receives one attempt to fix the flagged issues, with nothing re-adjudicating it afterward.
+
+The key difference is that `medium` already observes this pattern for phase correctives (no code review between execution and closure); `low` declares no phase review at all, so a final-scope corrective is the first corrective tier that has ever encountered a review step capable of re-adjudication.
+
+Corrective passes count against `max_retries_per_task`. The pipeline halts in three cases: when a final review verdict is `rejected` rather than `changes_requested`, when a task exhausts its retry budget without a clean review, or when a project runs a template snapshot that predates final-scope corrective capability. The remedy for the template-snapshot case is to accept that no final-scope corrective path exists for that project run, or — if retaining the project context is critical — to add the final-scope corrective declaration to the project's snapshot copy (a purely additive change to the template that alters no node identity and is therefore safe mid-run).
+
+The three halting outcomes halt with an explicit reason and await operator intervention.
 
 ## Process Templates
 

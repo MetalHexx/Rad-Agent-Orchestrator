@@ -48,7 +48,7 @@ const unpricedRows: ObservabilityUsageRow[] = [
 test('cost trio + operational grid render from spendReceipt(rows), not the transcript (FR-2, DD-2, AD-2)', () => {
   const html = renderToStaticMarkup(createElement(OverviewFacet, { transcript, rows }));
   assert.ok(html.includes('Total Spend (weighted)') && html.includes('5.10M'), 'weighted trio card from receipt.costWeighted');
-  assert.ok(html.includes('Cost (USD)') && html.includes('$10.20'), 'dollar trio card from receipt.dollars');
+  assert.ok(html.includes('Cost (USD)') && html.includes('$15.30'), 'dollar trio card from receipt.dollars');
   assert.ok(html.includes('New tokens') && html.includes('800.0K'), 'new-tokens trio card from receipt.newTokens');
   assert.ok(html.includes('sm:grid-cols-3'), 'cost trio is a three-up grid');
   assert.ok(html.includes('Duration') && html.includes('3m'), 'duration tile via house formatter');
@@ -62,8 +62,8 @@ test('cost trio + operational grid render from spendReceipt(rows), not the trans
 test('trio parity: rendered weighted/new-tokens/dollars equal spendReceipt(rows) directly (row == modal guard, dollar axis)', () => {
   const html = renderToStaticMarkup(createElement(OverviewFacet, { transcript, rows }));
   assert.equal(receipt.costWeighted, 5_100_000, 'weighted total matches the fixture math');
-  assert.equal(receipt.dollars, 10.2, 'dollar total matches the fixture math');
-  assert.ok(html.includes('5.10M') && html.includes('$10.20') && html.includes('800.0K'), 'rendered figures equal the receipt built from the same rows');
+  assert.equal(receipt.dollars, 15.3, 'dollar total matches the fixture math');
+  assert.ok(html.includes('5.10M') && html.includes('$15.30') && html.includes('800.0K'), 'rendered figures equal the receipt built from the same rows');
 });
 
 test('unpriced model renders "price unavailable" in the Cost (USD) trio card, never $0', () => {

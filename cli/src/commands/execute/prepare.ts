@@ -38,6 +38,12 @@ export interface ExecutePrepareOptions {
   project: string;
   worktreeName?: string;
   repo?: string;
+  /** Bind to the operator's existing clone instead of provisioning a workspace. */
+  inPlace?: boolean;
+  /** Branch the project's pull request targets; defaults to the repo's registered default. */
+  baseBranch?: string;
+  /** The branch the operator confirmed at offer time (in-place mode); re-verified live at seal. */
+  branch?: string;
   autoCommit: 'always' | 'never';
   autoPr: 'always' | 'never';
   readProjectRepos: (project: string) => { repos: string[]; projectType: 'standard' | 'side-project' };
@@ -49,6 +55,9 @@ export interface ExecutePrepareOptions {
   seal: (args: {
     project: string;
     worktreeName?: string;
+    inPlace?: boolean;
+    baseBranch?: string;
+    branch?: string;
     autoCommit: 'always' | 'never';
     autoPr: 'always' | 'never';
   }) => SourceControlInitResult;
@@ -86,6 +95,8 @@ export async function executePrepare(opts: ExecutePrepareOptions): Promise<Execu
         return { provisioned: null, sideProjectInit: sideInit, sealed: null };
       }
     }
+  } else if (opts.inPlace) {
+    // In-place: the clone already exists on disk — no provisioning at all, just seal.
   } else {
     provisioned = opts.provision({ project: opts.project, worktreeName: opts.worktreeName, repo: opts.repo });
     // A hard provisioning failure must stop before sealing — the seal reads each
@@ -98,6 +109,9 @@ export async function executePrepare(opts: ExecutePrepareOptions): Promise<Execu
   const sealed = opts.seal({
     project: opts.project,
     worktreeName: opts.worktreeName,
+    inPlace: opts.inPlace,
+    baseBranch: opts.baseBranch,
+    branch: opts.branch,
     autoCommit: opts.autoCommit,
     autoPr: opts.autoPr,
   });
@@ -117,7 +131,7 @@ export async function executePrepare(opts: ExecutePrepareOptions): Promise<Execu
 // ── Command definition ──────────────────────────────────────────────────────
 
 interface PrepareArgs { project?: string; 'worktree-name'?: string; repo?: string }
-interface PrepareFlags { 'auto-commit'?: string; 'auto-pr'?: string }
+interface PrepareFlags { 'auto-commit'?: string; 'auto-pr'?: string; 'in-place'?: boolean; 'base-branch'?: string; branch?: string }
 
 export const executePrepareCommand = defineCommand({
   name: 'execute-prepare',
@@ -130,6 +144,9 @@ export const executePrepareCommand = defineCommand({
   flags: {
     'auto-commit': { description: 'Resolved auto-commit preference (always|never)', type: 'string' },
     'auto-pr': { description: 'Resolved auto-PR preference (always|never)', type: 'string' },
+    'in-place': { description: 'Bind the project to the operator\'s existing clone instead of provisioning a workspace' },
+    'base-branch': { description: 'Branch the project\'s pull request targets; defaults to the repo\'s registered default', type: 'string' },
+    branch: { description: 'The branch confirmed at offer time (in-place mode); the clone\'s live branch must still match, or nothing is sealed', type: 'string' },
   },
   handler: async ({ args, flags }: { args: PrepareArgs; flags: PrepareFlags; ctx: CommandContext }) => {
     if (!args.project) throw new UserError('--project is required');
@@ -141,6 +158,9 @@ export const executePrepareCommand = defineCommand({
       project: args.project,
       worktreeName: args['worktree-name'],
       repo: args.repo,
+      inPlace: flags['in-place'],
+      baseBranch: flags['base-branch'],
+      branch: flags.branch,
       autoCommit: resolveAutoCommit(flags['auto-commit']),
       autoPr: resolveAutoPr(flags['auto-pr']),
       readProjectRepos: readProjectReposDefault,
@@ -156,15 +176,15 @@ export const executePrepareCommand = defineCommand({
   // could not push).
   mapResult: (r: ExecutePrepareResult) => {
     if (r.sideProjectInit && !r.sideProjectInit.created) {
-      return { ok: false as const, data: r, error: { type: 'system_error' as const, message: `Side-project init failed: ${r.sideProjectInit.error ?? 'unknown error'}` } };
+      return { ok: false as const, error: { type: 'system_error' as const, message: `Side-project init failed: ${r.sideProjectInit.error ?? 'unknown error'}` } };
     }
     if (r.provisioned && r.provisioned.repos.some((x) => x.error != null)) {
       const firstErr = r.provisioned.repos.find((x) => x.error != null)?.error ?? 'worktree provisioning failed';
-      return { ok: false as const, data: r, error: { type: 'system_error' as const, message: `Worktree provisioning failed: ${firstErr}` } };
+      return { ok: false as const, error: { type: 'system_error' as const, message: `Worktree provisioning failed: ${firstErr}` } };
     }
     if (!r.sealed || !r.sealed.ok) {
       const message = r.sealed && !r.sealed.ok ? r.sealed.error : 'source-control seal did not run';
-      return { ok: false as const, data: r, error: { type: 'user_error' as const, message } };
+      return { ok: false as const, error: { type: 'user_error' as const, message } };
     }
     const warnings: string[] = [];
     const notPushed = r.provisioned ? r.provisioned.repos.some((x) => x.created && !x.pushed) : false;

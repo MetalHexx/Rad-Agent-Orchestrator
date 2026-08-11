@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This folder is the `radorch` CLI — a single Node/TypeScript binary that provides every user-facing helper invoked by the canonical skills. Subcommands live under noun groups (`radorch ui ...`, `radorch git ...`, `radorch gate ...`, `radorch project ...`, `radorch worktree ...`, `radorch plan ...`, `radorch skill ...`, `radorch pipeline ...`, plus the top-level `radorch doctor`). Every subcommand emits a single JSON envelope of the shape `{ ok, data, error }` on stdout, accepts the same UX flags (`--non-interactive`, `--json`, `--no-color`, `--log-level`), and routes through the same logger and prompter surface.
+This folder is the `radorch` CLI — a single Node/TypeScript binary that provides every user-facing helper invoked by the canonical skills. Subcommands live under noun groups (`radorch action-events ...`, `radorch config ...`, `radorch doctor ...`, `radorch execute ...`, `radorch gate ...`, `radorch graph ...`, `radorch migrate ...`, `radorch pipeline ...`, `radorch plan ...`, `radorch project ...`, `radorch project-group ...`, `radorch repo ...`, `radorch repo-group ...`, `radorch session-context ...`, `radorch side-project ...`, `radorch skill ...`, `radorch source-control ...`, `radorch telemetry ...`, `radorch ui ...`, `radorch worktree ...`). Every subcommand emits a single JSON envelope of the shape `{ ok, data, error }` on stdout, accepts the same UX flags (`--non-interactive`, `--json`, `--no-color`, `--log-level`), and routes through the same logger and prompter surface.
 
 The CLI bundle is built once per harness by `emitCliBundle` in `harness-installers/shared/build-helpers/` and shipped to `${HARNESS_ROOT}/skills/rad-orchestration/scripts/radorch.mjs`. Skills invoke it via the `${PLUGIN_ROOT}` token, which expands at install time to the harness root.
 
@@ -11,9 +11,9 @@ The CLI bundle is built once per harness by `emitCliBundle` in `harness-installe
 Layered structure:
 
 - `cli/src/bin/radorch.ts` — process entry point. Reads argv, builds the commander program via `buildProgram`, and invokes it.
-- `cli/src/cli.ts` — the commander program builder. Wires every top-level noun (`doctor`, `ui`, `git`, `gate`) and delegates to per-subcommand modules.
+- `cli/src/cli.ts` — the commander program builder. Wires every top-level noun and delegates to per-subcommand modules.
 - `cli/src/framework/` — framework primitives: `defineCommand`/`runCommand`, the envelope `emit`/`validateEnvelope` surface, the logger, prompter, theme, and exit-code map.
-- `cli/src/commands/<noun>/` — one folder per noun. Each subcommand exports a `defineCommand({ ... })` value and a pure core function (test-injectable) that does the actual work. Existing nouns: `ui`, `git`, `gate`, `project`, `worktree`, `plan`, `skill`, `pipeline`, plus the top-level `doctor`.
+- `cli/src/commands/<noun>/` — one folder per noun. Each subcommand exports a `defineCommand({ ... })` value and a pure core function (test-injectable) that does the actual work. Existing nouns: `action-events`, `config`, `doctor`, `execute`, `gate`, `graph`, `migrate`, `pipeline`, `plan`, `project`, `project-group`, `repo`, `repo-group`, `session-context`, `side-project`, `skill`, `source-control`, `telemetry`, `ui`, `worktree`.
 - `cli/src/lib/` — small, cross-command utilities (paths, install.json shape, fs helpers, yaml).
 - `cli/tests/` — vitest suite. Mirrors the `src/` tree (`tests/commands/<noun>/<name>.test.ts`).
 
@@ -24,7 +24,7 @@ Every subcommand follows the same flow inside `runCommand`: commander parses arg
 - **Envelope on stdout is non-negotiable.** Every code path emits exactly one envelope via `framework/output.ts#emit`. No subcommand uses `console.log` directly; no path emits multiple JSON objects; no path emits a flat JSON object outside the envelope. The response payload lives inside `data`.
 - **Default exit-code map.** `ok: true → 0`, `ok: false` with `user_error → 1`, `ok: false` with `system_error → 2`. Only `doctor` overrides via `mapResult` + `exit_code` to express "envelope is `ok: true` but findings exist; exit 1". Do not invent new exit codes for partial-success states — surface partial success through `data` fields.
 - **Three-level help text.** Every noun group declares a one-line `description` on the `program.command(<noun>)` call. Every subcommand declares a present-tense action-verb `description` on its `defineCommand` (under 90 columns, no trailing period unless the description is two sentences). Every `--flag` declares its `description` field in the `ArgSpec` / `FlagSpec` shape — describe what the flag accepts and any defaults, not just restate the flag name. Verify by running the help at all three depths: `radorch --help`, `radorch <noun> --help`, `radorch <noun> <subcommand> --help`.
-- **Test-injectable shell-out.** Subcommands that shell out (e.g., `radorch git commit` runs `git`; `radorch git pr` runs `gh`) export a pure core function (`gitCommit({ exec })`, `ghPr({ exec })`) that accepts an injectable `exec` parameter defaulting to `execFileSync`. The `defineCommand` handler is a thin shell around the core function. Unit tests pass a stub `exec` and never depend on the host having the binary installed.
+- **Test-injectable shell-out.** Subcommands that shell out (e.g., `radorch source-control init` runs `git` internally) export a pure core function (`sourceControlInit({ readWorktreeFacts, ... })`) that accepts injectable dependencies. The `defineCommand` handler is a thin shell around the core function. Unit tests pass stub implementations of those dependencies and never depend on the host having external binaries installed.
 - **No new runtime dependencies without a strong reason.** The CLI is bundled into `radorch.mjs` by `esbuild`; every new entry in `cli/package.json#dependencies` grows the bundle. Prefer `node:*` builtins (`child_process`, `fs`, `path`, etc.) over npm packages.
 - **No test-only methods in production code.** Test utilities live under `cli/tests/`. Dependency injection (the `exec` parameter pattern above) is how the test/production gap stays honest; do not add `if (process.env.NODE_ENV === 'test')` branches to skip work.
 - **Registry writes go through the `@rad-orchestration/repo-registry` mutations only (hard rule).** A command must never import `writeIdentity` / `writeLocal` / `ensureLocalGitignored`, nor mutate `reg.repos` / `reg.repoGroups` / `reg.localPaths` and persist inline. Commands read (`readRegistry` / `resolveRepoPath`), do their domain work (git detection, validation, prompting), then call exactly one named mutation: `addRepo`, `editRepo`, `removeRepo`, `bindRepo`, `createGroup`, `editGroup`, `addGroupMember`, `removeGroupMember`, `deleteGroup`. This keeps the write surface reusable (the UI calls the same library) and the registry's invariants in one place. Enforced by `cli/tests/lib/registry-mutation-seam.test.ts`.
@@ -57,48 +57,63 @@ dist/
 
 The `radorch.mjs` single-file bundle (produced by `emit-cli-bundle` via esbuild) is the shipping artifact — it is NOT the same as `dist/bin/radorch.js`. The `dist/` tree is used locally (via `npm start` / `npm run build-and-start`) and during the standard-installer build to verify that the library's workspace package resolves before bundling. The bundle itself inlines all dependencies (including the repo-registry dist) into a single `.mjs` file shipped to `output/<harness>/skills/rad-orchestration/scripts/radorch.mjs`.
 
-## Adding a new subcommand — worked walkthrough using `radorch git commit`
+## Adding a new subcommand — worked walkthrough using `radorch source-control init`
 
-1. **Pick the noun.** Group by user concept (the operation the user thinks they're doing), not by the implementation tool. `git` covers both `git`-driven and `gh`-driven source-control operations because the user concept is "source control"; `gh` is an implementation tool. Existing nouns: `ui`, `git`, `gate`, `project`, `worktree`, `plan`, `skill`, `pipeline`. Reuse before you invent.
+1. **Pick the noun.** Group by user concept (the operation the user thinks they're doing), not by the implementation tool. `source-control` covers initialization of worktree source-control state; `git` is an implementation tool. Existing nouns: `action-events`, `config`, `doctor`, `execute`, `gate`, `graph`, `migrate`, `pipeline`, `plan`, `project`, `project-group`, `repo`, `repo-group`, `session-context`, `side-project`, `skill`, `source-control`, `telemetry`, `ui`, `worktree`. Reuse before you invent.
 
-2. **Author the core function.** Create `cli/src/commands/<noun>/<name>.ts`. Export a pure function with an injectable `exec` parameter:
+2. **Author the core function.** Create `cli/src/commands/<noun>/<name>.ts`. Export a pure function with injectable dependencies:
     ```ts
-    export function gitCommit(opts: { worktreePath: string; message: string; exec?: Exec }): GitCommitResult { ... }
+    export interface SourceControlInitOptions {
+      project: string;
+      readProjectRepos: (project: string) => { repos: string[] };
+      readWorktreeFacts: (worktreePath: string, baseBranch: string) => WorktreeFacts;
+      // ... other dependencies
+    }
+    export function sourceControlInit(opts: SourceControlInitOptions): SourceControlInitResult { ... }
     ```
    The core function returns the response shape; the framework wraps it in `data` automatically. No `console.log` inside the core function.
 
-3. **Author the `defineCommand` shell.** In the same file, export a thin commander wrapper:
+3. **Author the `defineCommand` shell.** In the same file, export a thin commander wrapper with a separate `*WithDefaults` variant that wires the real implementations:
     ```ts
-    export const gitCommitCommand = defineCommand({
-      name: 'git-commit',
-      description: 'Commit changes in the worktree and push to origin',
+    export const sourceControlInitCommand = defineCommand({
+      name: 'source-control-init',
+      description: 'Validate worktrees and record source-control state for a project',
       args: {
-        'worktree-path': { description: 'Absolute path to the worktree to commit from', required: true },
-        message: { description: 'Commit message body (used as the -m argument to git commit)', required: true },
+        project: { description: 'Project name; selects the master plan whose repos: list is validated', required: true },
       },
-      flags: {},
-      handler: async ({ args }) => gitCommit({ worktreePath: args['worktree-path']!, message: args.message! }),
+      flags: {
+        'in-place': { description: 'Record a single in-place (main clone) binding for a single-repo project' },
+      },
+      handler: async ({ args, flags }) => sourceControlInitWithDefaults({
+        project: args.project!,
+        inPlace: flags['in-place'] ?? false,
+      }),
     });
     ```
    Description style: present-tense action verb, under 90 columns, no trailing period. Each arg/flag description names what the flag accepts and any defaults.
 
 4. **Re-export from the noun index.** Add `cli/src/commands/<noun>/index.ts`:
     ```ts
-    export { gitCommitCommand, gitCommit } from './commit.js';
+    export { sourceControlInitCommand, sourceControlInit, sourceControlInitWithDefaults } from './init.js';
     ```
 
-5. **Wire into the commander program.** In `cli/src/cli.ts`, import the command and register it under the noun group (mirror the existing `ui` block exactly):
+5. **Wire into the commander program.** In `cli/src/cli.ts`, import the command and register it under the noun group (mirror the existing `source-control` block exactly):
     ```ts
-    const git = program.command('git').description('Source control operations');
-    git.command('commit').description(gitCommitCommand.description).allowUnknownOption().allowExcessArguments(true).action(async () => {
-      const argv = process.argv.slice(4);
-      await runCommand(gitCommitCommand, { argv, env: process.env, isTTY: Boolean(process.stdin.isTTY), stderr: process.stderr });
-    });
+    const sourceControl = program.command('source-control').description('Source-control lifecycle operations');
+    sourceControl.command('init')
+      .description(sourceControlInitCommand.description)
+      .helpOption(false)
+      .allowUnknownOption()
+      .allowExcessArguments(true)
+      .action(async () => {
+        const argv = process.argv.slice(4);
+        await runCommand(sourceControlInitCommand, { argv, env: process.env, isTTY: Boolean(process.stdin.isTTY), stderr: process.stderr });
+      });
     ```
 
-6. **Add a tooling check (only if introducing a new external runtime dependency).** If the subcommand shells out to a binary the doctor's `Tooling` category does not already probe, extend `cli/src/commands/doctor/checks.ts#runToolingChecks` with a probe (presence + any version/auth precheck). Use the existing injectable `exec` pattern so the unit test is deterministic. Existing probes: `git`, `gh`.
+6. **Add a tooling check (only if introducing a new external runtime dependency).** If the subcommand shells out to a binary the doctor's `Tooling` category does not already probe, extend `cli/src/commands/doctor/checks.ts#runToolingChecks` with a probe (presence + any version/auth precheck). Use the existing injectable dependency pattern so the unit test is deterministic. Existing probes: `git`, `gh`.
 
-7. **Test the core function.** Create `cli/tests/commands/<noun>/<name>.test.ts`. Use vitest's `vi.fn()` to stub `exec`. Cover every documented outcome the subcommand can produce. Do not spawn real child processes in unit tests.
+7. **Test the core function.** Create `cli/tests/commands/<noun>/<name>.test.ts`. Use vitest's `vi.fn()` to stub the injected dependencies. Cover every documented outcome the subcommand can produce. Do not shell out to real binaries in unit tests.
 
 8. **Test the help shape.** Extend `cli/tests/bin/help.test.ts` with assertions that the new subcommand surfaces at all three help depths. The test compiles via `npx tsc` and runs `node dist/cli/src/bin/radorch.js --help` (and the deeper levels).
 
@@ -106,7 +121,7 @@ The `radorch.mjs` single-file bundle (produced by `emit-cli-bundle` via esbuild)
     ```
     node "${PLUGIN_ROOT}/skills/rad-orchestration/scripts/radorch.mjs" <noun> <subcommand> ...
     ```
-   Read result fields from inside the envelope's `data` block (e.g., `data.committed`, `data.pr_url`). The regression guard at `harness-files/tests/test-skill-call-form.test.mjs` catches malformed rewrites (wrong token, wrong path, missing/malformed subcommand chain, unquoted `${PLUGIN_ROOT}`).
+   Read result fields from inside the envelope's `data` block (e.g., `data.projectDir`). The regression guard at `harness-files/tests/test-skill-call-form.test.mjs` catches malformed rewrites (wrong token, wrong path, missing/malformed subcommand chain, unquoted `${PLUGIN_ROOT}`).
 
 10. **Regenerate manifests.** After any file added or deleted under `cli/src/` or `harness-files/skills/`, run `cd harness-installers/standard && npm run build` to refresh the three checked-in `v1.0.0-alpha.N.json` manifests in place. Commit the manifest diff alongside the code change in the same PR (no coexistence window — the manifest snapshot must reflect the source tree at every commit on `main`).
 

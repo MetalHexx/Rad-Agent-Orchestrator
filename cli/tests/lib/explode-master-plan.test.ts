@@ -22,7 +22,7 @@ describe('explodeMasterPlan core', () => {
     });
     expect(result.emittedPhaseFiles).toHaveLength(1);
     expect(result.emittedTaskFiles).toHaveLength(1);
-    expect(result.backupDir).toBeNull();
+    expect(fs.existsSync(path.join(projectDir, 'backups'))).toBe(false);
     expect(fs.existsSync(path.join(projectDir, 'phases'))).toBe(true);
     expect(fs.existsSync(path.join(projectDir, 'tasks'))).toBe(true);
   });
@@ -44,14 +44,36 @@ describe('explodeMasterPlan core', () => {
     throw new Error('expected ParseError');
   });
 
-  it('backs up populated phases/ on rerun', () => {
+  it('clears populated phases/ and tasks/ on rerun rather than archiving them', () => {
     const { projectDir, masterPlanPath } = makeProject();
     fs.writeFileSync(masterPlanPath,
       '## P01: A\n\n### P01-T01: T\nb\n', 'utf8');
     explodeMasterPlan({ projectDir, masterPlanPath, projectName: 'X', nowIso: '2026-05-22T00:00:00.000Z' });
     const second = explodeMasterPlan({ projectDir, masterPlanPath, projectName: 'X', nowIso: '2026-05-22T01:00:00.000Z' });
-    expect(second.backupDir).not.toBeNull();
-    expect(fs.existsSync(second.backupDir!)).toBe(true);
+
+    const phasesOnDisk = fs.readdirSync(path.join(projectDir, 'phases'));
+    const tasksOnDisk = fs.readdirSync(path.join(projectDir, 'tasks'));
+    expect(phasesOnDisk.sort()).toEqual(second.emittedPhaseFiles.map(f => path.basename(f)).sort());
+    expect(tasksOnDisk.sort()).toEqual(second.emittedTaskFiles.map(f => path.basename(f)).sort());
+    expect(fs.existsSync(path.join(projectDir, 'backups'))).toBe(false);
+  });
+
+  it('leaves no file under a retitled task\'s old name after a rerun', () => {
+    const { projectDir, masterPlanPath } = makeProject();
+    fs.writeFileSync(masterPlanPath,
+      '## P01: A\n\n### P01-T01: Original Title\nb\n', 'utf8');
+    const first = explodeMasterPlan({ projectDir, masterPlanPath, projectName: 'X', nowIso: '2026-05-22T00:00:00.000Z' });
+    const oldTaskFile = first.emittedTaskFiles[0]!;
+    expect(fs.existsSync(oldTaskFile)).toBe(true);
+
+    fs.writeFileSync(masterPlanPath,
+      '## P01: A\n\n### P01-T01: Renamed Title\nb\n', 'utf8');
+    const second = explodeMasterPlan({ projectDir, masterPlanPath, projectName: 'X', nowIso: '2026-05-22T01:00:00.000Z' });
+    const newTaskFile = second.emittedTaskFiles[0]!;
+
+    expect(newTaskFile).not.toBe(oldTaskFile);
+    expect(fs.existsSync(oldTaskFile)).toBe(false);
+    expect(fs.existsSync(newTaskFile)).toBe(true);
   });
 });
 
@@ -129,6 +151,116 @@ describe('explosion enforces task repo shape (FR-4, FR-5, FR-6)', () => {
   });
   it('fails on a repo outside the sealed repos (FR-6)', () => {
     expectParseError(seal + '## P01: P\n\n### P01-T01: A\n**Complexity:** simple\n**Target repo:** payments\n**Files for payments:**\n- Create: `a.ts`\n');
+  });
+});
+
+describe('explosion enforces the reverse seal check', () => {
+  function expectedRepoLine(plan: string): number {
+    return plan.split('\n').findIndex(l => /^\s*repos\s*:/.test(l)) + 1;
+  }
+
+  it('fires when the sealed repos: carries a repo no task targets', () => {
+    const plan =
+      '---\nrepos: [backend, frontend]\n---\n\n' +
+      '## P01: P\n\n### P01-T01: A\n**Complexity:** simple\n**Target repo:** backend\n**Files for backend:**\n- Create: `a.ts`\n';
+    const { projectDir, masterPlanPath } = makeProject();
+    fs.writeFileSync(masterPlanPath, plan, 'utf8');
+    const expectedLine = expectedRepoLine(plan);
+    try {
+      explodeMasterPlan({ projectDir, masterPlanPath, projectName: 'X', nowIso: '2026-05-22T00:00:00.000Z' });
+    } catch (err) {
+      expect(err).toBeInstanceOf(ParseError);
+      const detail = (err as ParseError).toDetail();
+      expect(Object.keys(detail).sort()).toEqual(['expected', 'found', 'line', 'message']);
+      expect(detail.line).toBe(expectedLine);
+      expect(String(detail.message)).toContain('frontend');
+      expect(String(detail.message)).toMatch(/remove/i);
+      expect(String(detail.message)).toMatch(/add/i);
+      return;
+    }
+    throw new Error('expected a ParseError for the untargeted sealed repo');
+  });
+
+  it('names every untargeted repo together rather than one at a time', () => {
+    const plan =
+      '---\nrepos: [backend, frontend, payments]\n---\n\n' +
+      '## P01: P\n\n### P01-T01: A\n**Complexity:** simple\n**Target repo:** backend\n**Files for backend:**\n- Create: `a.ts`\n';
+    const { projectDir, masterPlanPath } = makeProject();
+    fs.writeFileSync(masterPlanPath, plan, 'utf8');
+    try {
+      explodeMasterPlan({ projectDir, masterPlanPath, projectName: 'X', nowIso: '2026-05-22T00:00:00.000Z' });
+    } catch (err) {
+      const detail = (err as ParseError).toDetail();
+      expect(String(detail.message)).toContain('frontend');
+      expect(String(detail.message)).toContain('payments');
+      return;
+    }
+    throw new Error('expected a ParseError naming both untargeted repos');
+  });
+
+  it('explodes cleanly when the seal exactly equals the task union', () => {
+    const { projectDir, masterPlanPath } = makeProject();
+    fs.writeFileSync(masterPlanPath,
+      '---\nrepos: [backend, frontend]\n---\n\n' +
+      '## P01: P\n\n' +
+      '### P01-T01: A\n**Complexity:** simple\n**Target repo:** backend\n**Files for backend:**\n- Create: `a.ts`\n\n' +
+      '### P01-T02: B\n**Complexity:** simple\n**Target repo:** frontend\n**Files for frontend:**\n- Create: `b.ts`\n', 'utf8');
+    const result = explodeMasterPlan({ projectDir, masterPlanPath, projectName: 'X', nowIso: '2026-05-22T00:00:00.000Z' });
+    expect(result.emittedTaskFiles).toHaveLength(2);
+  });
+
+  it('still fires the forward check for a task naming an unsealed repo', () => {
+    const { projectDir, masterPlanPath } = makeProject();
+    fs.writeFileSync(masterPlanPath,
+      '---\nrepos: [backend, frontend]\n---\n\n' +
+      '## P01: P\n\n### P01-T01: A\n**Complexity:** simple\n**Target repo:** payments\n**Files for payments:**\n- Create: `a.ts`\n', 'utf8');
+    try {
+      explodeMasterPlan({ projectDir, masterPlanPath, projectName: 'X', nowIso: '2026-05-22T00:00:00.000Z' });
+    } catch (err) {
+      const detail = (err as ParseError).toDetail();
+      expect(String(detail.message)).toMatch(/not in the Master Plan's sealed repos/);
+      return;
+    }
+    throw new Error('expected the forward FR-6 ParseError');
+  });
+
+  it('explodes cleanly for a side-project plan whose seal is the project name', () => {
+    const { projectDir, masterPlanPath } = makeProject();
+    fs.writeFileSync(masterPlanPath,
+      '---\nrepos: [SOME-PROJECT]\n---\n\n' +
+      '## P01: P\n\n### P01-T01: A\n**Complexity:** simple\n**Target repo:** SOME-PROJECT\n**Files for SOME-PROJECT:**\n- Create: `a.ts`\n', 'utf8');
+    const result = explodeMasterPlan({ projectDir, masterPlanPath, projectName: 'X', nowIso: '2026-05-22T00:00:00.000Z' });
+    expect(result.emittedTaskFiles).toHaveLength(1);
+  });
+
+  it('raises nothing new when repos: is absent', () => {
+    const { projectDir, masterPlanPath } = makeProject();
+    fs.writeFileSync(masterPlanPath,
+      '## P01: P\n\n### P01-T01: A\n**Complexity:** simple\nno target repo needed here\n', 'utf8');
+    const result = explodeMasterPlan({ projectDir, masterPlanPath, projectName: 'X', nowIso: '2026-05-22T00:00:00.000Z' });
+    expect(result.emittedTaskFiles).toHaveLength(1);
+  });
+
+  it('raises nothing new when repos: is an empty array', () => {
+    const { projectDir, masterPlanPath } = makeProject();
+    fs.writeFileSync(masterPlanPath,
+      '---\nrepos: []\n---\n\n' +
+      '## P01: P\n\n### P01-T01: A\n**Complexity:** simple\nno target repo needed here\n', 'utf8');
+    const result = explodeMasterPlan({ projectDir, masterPlanPath, projectName: 'X', nowIso: '2026-05-22T00:00:00.000Z' });
+    expect(result.emittedTaskFiles).toHaveLength(1);
+  });
+
+  it('reports the no-phase-headings error, not the reverse-check error, for a seal-bearing plan with no phases', () => {
+    const { projectDir, masterPlanPath } = makeProject();
+    fs.writeFileSync(masterPlanPath, '---\nrepos: [backend, frontend]\n---\n\nJust prose, no phase headings.\n', 'utf8');
+    try {
+      explodeMasterPlan({ projectDir, masterPlanPath, projectName: 'X', nowIso: '2026-05-22T00:00:00.000Z' });
+    } catch (err) {
+      const detail = (err as ParseError).toDetail();
+      expect(String(detail.message)).toMatch(/no parseable phase headings/);
+      return;
+    }
+    throw new Error('expected the no-phase-headings ParseError');
   });
 });
 

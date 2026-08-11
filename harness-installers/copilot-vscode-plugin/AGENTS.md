@@ -76,13 +76,13 @@ The Claude and Copilot CLI sibling installers don't need this and remain unchang
 
 Empirically verified May 2026 and undocumented in VS Code's agent-plugins reference: VS Code's agent-plugin loader derives the chat namespace (`/<namespace>:<skill-name>`) from the **basename of the catalog entry's `source.path`** — the folder the payload gets cloned into under `~/.vscode/agent-plugins/github.com/<org>/<repo>/<basename>/`. It does NOT read this installer's `.claude-plugin/plugin.json` `name` field, and it does NOT use the catalog entry's `plugins[].name` (that's only the install identifier passed to `/plugin install <name>@<marketplace>`).
 
-The gap is invisible in practice because every entry in `github/copilot-plugins` and `github/awesome-copilot` happens to keep `plugins[].name == basename(source.path)`. `rad-orc-marketplace` was the first observed catalog where the two diverged, and that's the only reason this surfaced.
+The gap is invisible in practice because every entry in `github/copilot-plugins` and `github/awesome-copilot` happens to keep `plugins[].name == basename(source.path)`. `rai-ops-plugin-marketplace` was the first observed catalog where the two diverged, and that's the only reason this surfaced.
 
 This is a VS-Code-only quirk. Claude Code reads namespace from `.claude-plugin/plugin.json` `name`, and Copilot CLI reads it from the top-level `plugin.json` `name` — both correctly resolve `/rad-orc:…` regardless of where the payload lives on disk.
 
 **Implication for renames.** Every one of these has to move together; missing any one of them leaves a stale path or a duplicate entry in the VS Code Agent Plugins panel:
 
-- Satellite payload folder (e.g., `rad-orc-marketplace/rad-orc-vscode/`)
+- Satellite payload folder (e.g., `rai-ops-plugin-marketplace/rad-orc-vscode/`)
 - Catalog entry `plugins[].name` and `source.path` in `.github/plugin/marketplace.json`
 - Canonical `.claude-plugin/plugin.json` `name` (this installer)
 - Hook error-prefix strings in `hooks/hooks.json`

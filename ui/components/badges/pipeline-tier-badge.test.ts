@@ -2,10 +2,18 @@
  * Tests for PipelineTierBadge component logic.
  * Run with: npx tsx ui/components/badges/pipeline-tier-badge.test.ts
  *
- * Tests the 8-state decision table that maps tier × sub-status to
- * label, ariaLabel, and isSpinning values.
+ * Tests the decision table that maps tier × sub-status to
+ * label, ariaLabel, cssVar, and isSpinning values.
  */
 import assert from "node:assert";
+import React, { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { PENDING_REVIEW_LABEL, PENDING_REVIEW_CSS_VAR } from "./pending-review";
+import { PipelineTierBadge } from "./pipeline-tier-badge";
+import { deriveGateBadgeStatusAndLabel } from "../dag-timeline/dag-timeline-helpers";
+import type { GateNodeState } from "@/types/state";
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+(globalThis as any).React = React;
 
 let passed = 0;
 let failed = 0;
@@ -29,12 +37,15 @@ type PlanningStatus = "not_started" | "in_progress" | "complete";
 type ExecutionStatus = "not_started" | "in_progress" | "complete" | "halted";
 
 // ─── Simulation (mirrors pipeline-tier-badge.tsx logic) ──────────────────────
+// Kept in lockstep with the source's decision table — a stale mirror here
+// would let this suite go on passing while asserting labels the component no
+// longer produces.
 
 const TIER_CONFIG = {
   planning: { label: "Planning", cssVar: "--tier-planning" },
   // label is never used directly for execution — resolveBadgeState() sets it explicitly per sub-status
   execution: { label: "Approved", cssVar: "--tier-execution" },
-  review: { label: "Final Review", cssVar: "--tier-review" },
+  review: { label: "Pending Review", cssVar: "--tier-review" },
   complete: { label: "Complete", cssVar: "--tier-complete" },
   halted: { label: "Halted", cssVar: "--tier-halted" },
   not_initialized: { label: "Not Initialized", cssVar: "--tier-not-initialized" },
@@ -74,9 +85,23 @@ function resolveBadgeState(
       label = "Executing";
       isSpinning = true;
     } else {
-      // not_started, complete, or undefined → queued/approved state
-      label = "Approved";
+      // not_started, complete, or undefined → queued state awaiting a person
+      label = "Pending Review";
+      cssVar = "--tier-review";
       isSpinning = false;
+    }
+  } else if (tier === "review") {
+    if (executionStatus === "halted") {
+      label = "Halted";
+      cssVar = "--tier-halted";
+      isSpinning = false;
+    } else if (executionStatus === "in_progress") {
+      label = "Executing";
+      cssVar = "--tier-execution";
+      isSpinning = true; // corrective in flight
+    } else {
+      label = "Pending Review";
+      isSpinning = false; // parked at the gate
     }
   } else {
     label = base.label;
@@ -92,7 +117,7 @@ function resolveBadgeState(
 
 // ─── Decision Table Tests ─────────────────────────────────────────────────────
 
-console.log("\nPipelineTierBadge — 8-state decision table\n");
+console.log("\nPipelineTierBadge — decision table\n");
 
 // Row 1: not_initialized
 console.log("Row 1: not_initialized");
@@ -200,12 +225,12 @@ test('execution + in_progress → ariaLabel "Pipeline status: Executing, active"
   assert.strictEqual(result.ariaLabel, "Pipeline status: Executing, active");
 });
 
-// Row 6: execution + absent/other executionStatus → "Approved"
-console.log("\nRow 6: execution + no/other executionStatus (backward compat fallback)");
+// Row 6: execution + absent/other executionStatus → "Pending Review"
+console.log('\nRow 6: execution + no/other executionStatus → "Pending Review" (idle, awaiting a person)');
 
-test('execution + undefined executionStatus → label "Approved"', () => {
+test('execution + undefined executionStatus → label "Pending Review"', () => {
   const result = resolveBadgeState("execution", undefined, undefined);
-  assert.strictEqual(result.label, "Approved");
+  assert.strictEqual(result.label, "Pending Review");
 });
 
 test("execution + undefined executionStatus → no spinner", () => {
@@ -213,29 +238,34 @@ test("execution + undefined executionStatus → no spinner", () => {
   assert.strictEqual(result.isSpinning, false);
 });
 
-test('execution + undefined executionStatus → ariaLabel "Pipeline status: Approved"', () => {
+test('execution + undefined executionStatus → ariaLabel "Pipeline status: Pending Review"', () => {
   const result = resolveBadgeState("execution", undefined, undefined);
-  assert.strictEqual(result.ariaLabel, "Pipeline status: Approved");
+  assert.strictEqual(result.ariaLabel, "Pipeline status: Pending Review");
 });
 
-test('execution + complete executionStatus → label "Approved" (other fallback)', () => {
+test('execution + undefined executionStatus → cssVar "--tier-review"', () => {
+  const result = resolveBadgeState("execution", undefined, undefined);
+  assert.strictEqual(result.cssVar, "--tier-review");
+});
+
+test('execution + complete executionStatus → label "Pending Review" (other fallback)', () => {
   const result = resolveBadgeState("execution", undefined, "complete");
-  assert.strictEqual(result.label, "Approved");
+  assert.strictEqual(result.label, "Pending Review");
   assert.strictEqual(result.isSpinning, false);
 });
 
-// Row 6a: execution + not_started → "Approved"
-console.log('\nRow 6a: execution + executionStatus=not_started → "Approved"');
+// Row 6a: execution + not_started → "Pending Review"
+console.log('\nRow 6a: execution + executionStatus=not_started → "Pending Review"');
 
-test('execution + not_started → label "Approved"', () => {
+test('execution + not_started → label "Pending Review"', () => {
   const result = resolveBadgeState("execution", undefined, "not_started");
-  assert.strictEqual(result.label, "Approved");
+  assert.strictEqual(result.label, "Pending Review");
   assert.strictEqual(result.isSpinning, false);
-  assert.strictEqual(result.cssVar, "--tier-execution");
+  assert.strictEqual(result.cssVar, "--tier-review");
 });
-test('execution + not_started → ariaLabel "Pipeline status: Approved"', () => {
+test('execution + not_started → ariaLabel "Pipeline status: Pending Review"', () => {
   const result = resolveBadgeState("execution", undefined, "not_started");
-  assert.strictEqual(result.ariaLabel, "Pipeline status: Approved");
+  assert.strictEqual(result.ariaLabel, "Pipeline status: Pending Review");
 });
 
 // Row 6b: execution + halted → "Halted" with --tier-halted
@@ -255,22 +285,39 @@ test('execution + halted → ariaLabel "Pipeline status: Halted"', () => {
   assert.strictEqual(result.ariaLabel, "Pipeline status: Halted");
 });
 
-// Row 7: review
-console.log("\nRow 7: review");
+// Row 7: review — the gate / corrective-in-flight / halted split
+console.log("\nRow 7: review — not_started (gate) / in_progress (corrective) / halted");
 
-test('review → label "Final Review"', () => {
-  const result = resolveBadgeState("review", undefined, undefined);
-  assert.strictEqual(result.label, "Final Review");
+test('review + not_started executionStatus → label "Pending Review" (parked at the gate)', () => {
+  const result = resolveBadgeState("review", undefined, "not_started");
+  assert.strictEqual(result.label, "Pending Review");
+  assert.strictEqual(result.isSpinning, false);
+  assert.strictEqual(result.cssVar, "--tier-review");
 });
 
-test("review → no spinner", () => {
+test('review + undefined executionStatus → label "Pending Review" (backward-compat default)', () => {
   const result = resolveBadgeState("review", undefined, undefined);
+  assert.strictEqual(result.label, "Pending Review");
   assert.strictEqual(result.isSpinning, false);
 });
 
-test('review → ariaLabel "Pipeline status: Final Review"', () => {
+test('review + in_progress executionStatus → label "Executing", spinning, --tier-execution (corrective in flight)', () => {
+  const result = resolveBadgeState("review", undefined, "in_progress");
+  assert.strictEqual(result.label, "Executing");
+  assert.strictEqual(result.isSpinning, true);
+  assert.strictEqual(result.cssVar, "--tier-execution");
+});
+
+test('review + halted executionStatus → label "Halted", cssVar "--tier-halted"', () => {
+  const result = resolveBadgeState("review", undefined, "halted");
+  assert.strictEqual(result.label, "Halted");
+  assert.strictEqual(result.isSpinning, false);
+  assert.strictEqual(result.cssVar, "--tier-halted");
+});
+
+test('review → ariaLabel "Pipeline status: Pending Review"', () => {
   const result = resolveBadgeState("review", undefined, undefined);
-  assert.strictEqual(result.ariaLabel, "Pipeline status: Final Review");
+  assert.strictEqual(result.ariaLabel, "Pipeline status: Pending Review");
 });
 
 // Row 8: complete
@@ -320,11 +367,11 @@ test('planning tier only → same as before: "Planning", no spinner', () => {
   assert.strictEqual(result.ariaLabel, "Pipeline status: Planning");
 });
 
-test('execution tier only → same as before: "Approved", no spinner', () => {
+test('execution tier only → label is "Pending Review" (idle queued state, no longer "Approved"), no spinner', () => {
   const result = resolveBadgeState("execution", undefined, undefined);
-  assert.strictEqual(result.label, "Approved");
+  assert.strictEqual(result.label, "Pending Review");
   assert.strictEqual(result.isSpinning, false);
-  assert.strictEqual(result.ariaLabel, "Pipeline status: Approved");
+  assert.strictEqual(result.ariaLabel, "Pipeline status: Pending Review");
 });
 
 // ─── aria-label format: must use "Pipeline status:" not "Pipeline tier:" ──────
@@ -352,8 +399,10 @@ test('only spinner states include ", active" suffix', () => {
   // Spinner states
   const spinning1 = resolveBadgeState("planning", "in_progress", undefined);
   const spinning2 = resolveBadgeState("execution", undefined, "in_progress");
+  const spinning3 = resolveBadgeState("review", undefined, "in_progress");
   assert.ok(spinning1.ariaLabel.endsWith(", active"), "planning+in_progress should end with ', active'");
   assert.ok(spinning2.ariaLabel.endsWith(", active"), "execution+in_progress should end with ', active'");
+  assert.ok(spinning3.ariaLabel.endsWith(", active"), "review+in_progress should end with ', active'");
 
   // Non-spinner states must NOT include ", active"
   const nonSpinners: Array<Parameters<typeof resolveBadgeState>> = [
@@ -362,6 +411,7 @@ test('only spinner states include ", active" suffix', () => {
     ["planning", undefined, undefined],
     ["execution", undefined, undefined],
     ["review", undefined, undefined],
+    ["review", undefined, "halted"],
     ["complete", undefined, undefined],
     ["halted", undefined, undefined],
   ];
@@ -388,7 +438,7 @@ test("execution tier → --tier-execution CSS variable", () => {
   assert.strictEqual(result.cssVar, "--tier-execution");
 });
 
-test("review tier → --tier-review CSS variable", () => {
+test("review tier (parked at the gate) → --tier-review CSS variable", () => {
   assert.strictEqual(resolveBadgeState("review", undefined, undefined).cssVar, "--tier-review");
 });
 
@@ -398,6 +448,36 @@ test("complete tier → --tier-complete CSS variable", () => {
 
 test("halted tier → --tier-halted CSS variable", () => {
   assert.strictEqual(resolveBadgeState("halted", undefined, undefined).cssVar, "--tier-halted");
+});
+
+// ─── Badge parity: the project-stage badge and the timeline gate badge ───────
+// must emit the exact same label and token for a run parked on a person, so
+// they cannot drift apart later.
+
+console.log("\nPending Review badge parity");
+
+test("the project-stage badge (idle execution) and the timeline gate badge (blocking gate) emit the same label and token", () => {
+  const gateNode: GateNodeState = { kind: "gate", status: "in_progress", gate_active: true };
+  const gate = deriveGateBadgeStatusAndLabel(gateNode);
+  assert.strictEqual(gate.label, PENDING_REVIEW_LABEL);
+  assert.strictEqual(gate.cssVar, PENDING_REVIEW_CSS_VAR);
+
+  const html = renderToStaticMarkup(
+    createElement(PipelineTierBadge, { tier: "execution", executionStatus: "not_started" }),
+  );
+  assert.ok(html.includes(PENDING_REVIEW_LABEL), "project stage badge renders the shared label");
+  assert.ok(html.includes(`var(${PENDING_REVIEW_CSS_VAR})`), "project stage badge renders the shared token");
+});
+
+test("no literal hex or Tailwind color string in the rendered project-stage badge", () => {
+  const html = renderToStaticMarkup(
+    createElement(PipelineTierBadge, { tier: "execution", executionStatus: "not_started" }),
+  );
+  assert.ok(!/#[0-9a-fA-F]{3,6}/.test(html), "no literal hex color");
+  assert.ok(
+    !/\bbg-(red|amber|green|blue|purple|gray|grey|yellow|orange|slate|zinc)-\d{2,3}\b/.test(html),
+    "no Tailwind color class",
+  );
 });
 
 // ─── Summary ─────────────────────────────────────────────────────────────────

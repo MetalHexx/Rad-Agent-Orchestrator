@@ -3,17 +3,17 @@
 import { Badge } from "@/components/ui/badge";
 
 interface RetryBadgeProps {
-  retries: number;
+  attempt: number;
   max: number;
 }
 
-export function RetryBadge({ retries, max }: RetryBadgeProps) {
+export function RetryBadge({ attempt, max }: RetryBadgeProps) {
   return (
     <Badge
       variant="secondary"
-      aria-label={`Retry count: ${retries} of ${max}`}
+      aria-label={`Retry attempt ${attempt} of ${max}`}
     >
-      Retries: {retries}/{max}
+      Retry {attempt}/{max}
     </Badge>
   );
 }

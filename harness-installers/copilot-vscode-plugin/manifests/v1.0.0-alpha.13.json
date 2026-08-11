@@ -1,0 +1,201 @@
+{
+  "version": "1.0.0-alpha.13",
+  "channel": "copilot-vscode-plugin",
+  "files": [
+    {
+      "destinationPath": "${RAD_HOME}/orchestration.yml",
+      "sourcePath": "_install-source/orchestration.yml",
+      "ownership": "user-config"
+    },
+    {
+      "destinationPath": "${RAD_HOME}/templates/extra-high.yml",
+      "sourcePath": "_install-source/templates/extra-high.yml",
+      "ownership": "installer-owned"
+    },
+    {
+      "destinationPath": "${RAD_HOME}/templates/high.yml",
+      "sourcePath": "_install-source/templates/high.yml",
+      "ownership": "installer-owned"
+    },
+    {
+      "destinationPath": "${RAD_HOME}/templates/medium.yml",
+      "sourcePath": "_install-source/templates/medium.yml",
+      "ownership": "installer-owned"
+    },
+    {
+      "destinationPath": "${RAD_HOME}/templates/low.yml",
+      "sourcePath": "_install-source/templates/low.yml",
+      "ownership": "installer-owned"
+    },
+    {
+      "destinationPath": "${RAD_HOME}/action-events/README.md",
+      "sourcePath": "_install-source/action-events/README.md",
+      "ownership": "installer-owned"
+    },
+    {
+      "destinationPath": "${RAD_HOME}/action-events/action.ask_gate_mode.md",
+      "sourcePath": "_install-source/action-events/action.ask_gate_mode.md",
+      "ownership": "installer-owned"
+    },
+    {
+      "destinationPath": "${RAD_HOME}/action-events/action.display_complete.md",
+      "sourcePath": "_install-source/action-events/action.display_complete.md",
+      "ownership": "installer-owned"
+    },
+    {
+      "destinationPath": "${RAD_HOME}/action-events/action.display_halted.md",
+      "sourcePath": "_install-source/action-events/action.display_halted.md",
+      "ownership": "installer-owned"
+    },
+    {
+      "destinationPath": "${RAD_HOME}/action-events/action.execute_task.md",
+      "sourcePath": "_install-source/action-events/action.execute_task.md",
+      "ownership": "installer-owned"
+    },
+    {
+      "destinationPath": "${RAD_HOME}/action-events/action.explode_master_plan.md",
+      "sourcePath": "_install-source/action-events/action.explode_master_plan.md",
+      "ownership": "installer-owned"
+    },
+    {
+      "destinationPath": "${RAD_HOME}/action-events/action.gate_phase.md",
+      "sourcePath": "_install-source/action-events/action.gate_phase.md",
+      "ownership": "installer-owned"
+    },
+    {
+      "destinationPath": "${RAD_HOME}/action-events/action.gate_task.md",
+      "sourcePath": "_install-source/action-events/action.gate_task.md",
+      "ownership": "installer-owned"
+    },
+    {
+      "destinationPath": "${RAD_HOME}/action-events/action.invoke_source_control_pr.md",
+      "sourcePath": "_install-source/action-events/action.invoke_source_control_pr.md",
+      "ownership": "installer-owned"
+    },
+    {
+      "destinationPath": "${RAD_HOME}/action-events/action.request_final_approval.md",
+      "sourcePath": "_install-source/action-events/action.request_final_approval.md",
+      "ownership": "installer-owned"
+    },
+    {
+      "destinationPath": "${RAD_HOME}/action-events/action.request_plan_approval.md",
+      "sourcePath": "_install-source/action-events/action.request_plan_approval.md",
+      "ownership": "installer-owned"
+    },
+    {
+      "destinationPath": "${RAD_HOME}/action-events/action.spawn_code_reviewer.md",
+      "sourcePath": "_install-source/action-events/action.spawn_code_reviewer.md",
+      "ownership": "installer-owned"
+    },
+    {
+      "destinationPath": "${RAD_HOME}/action-events/action.spawn_final_reviewer.md",
+      "sourcePath": "_install-source/action-events/action.spawn_final_reviewer.md",
+      "ownership": "installer-owned"
+    },
+    {
+      "destinationPath": "${RAD_HOME}/action-events/action.spawn_master_plan.md",
+      "sourcePath": "_install-source/action-events/action.spawn_master_plan.md",
+      "ownership": "installer-owned"
+    },
+    {
+      "destinationPath": "${RAD_HOME}/action-events/action.spawn_phase_reviewer.md",
+      "sourcePath": "_install-source/action-events/action.spawn_phase_reviewer.md",
+      "ownership": "installer-owned"
+    },
+    {
+      "destinationPath": "${RAD_HOME}/action-events/event.code_review_completed.md",
+      "sourcePath": "_install-source/action-events/event.code_review_completed.md",
+      "ownership": "installer-owned"
+    },
+    {
+      "destinationPath": "${RAD_HOME}/action-events/event.explosion_completed.md",
+      "sourcePath": "_install-source/action-events/event.explosion_completed.md",
+      "ownership": "installer-owned"
+    },
+    {
+      "destinationPath": "${RAD_HOME}/action-events/event.explosion_failed.md",
+      "sourcePath": "_install-source/action-events/event.explosion_failed.md",
+      "ownership": "installer-owned"
+    },
+    {
+      "destinationPath": "${RAD_HOME}/action-events/event.final_approved.md",
+      "sourcePath": "_install-source/action-events/event.final_approved.md",
+      "ownership": "installer-owned"
+    },
+    {
+      "destinationPath": "${RAD_HOME}/action-events/event.final_rejected.md",
+      "sourcePath": "_install-source/action-events/event.final_rejected.md",
+      "ownership": "installer-owned"
+    },
+    {
+      "destinationPath": "${RAD_HOME}/action-events/event.final_review_completed.md",
+      "sourcePath": "_install-source/action-events/event.final_review_completed.md",
+      "ownership": "installer-owned"
+    },
+    {
+      "destinationPath": "${RAD_HOME}/action-events/event.gate_mode_set.md",
+      "sourcePath": "_install-source/action-events/event.gate_mode_set.md",
+      "ownership": "installer-owned"
+    },
+    {
+      "destinationPath": "${RAD_HOME}/action-events/event.gate_rejected.md",
+      "sourcePath": "_install-source/action-events/event.gate_rejected.md",
+      "ownership": "installer-owned"
+    },
+    {
+      "destinationPath": "${RAD_HOME}/action-events/event.halt.md",
+      "sourcePath": "_install-source/action-events/event.halt.md",
+      "ownership": "installer-owned"
+    },
+    {
+      "destinationPath": "${RAD_HOME}/action-events/event.master_plan_completed.md",
+      "sourcePath": "_install-source/action-events/event.master_plan_completed.md",
+      "ownership": "installer-owned"
+    },
+    {
+      "destinationPath": "${RAD_HOME}/action-events/event.phase_gate_approved.md",
+      "sourcePath": "_install-source/action-events/event.phase_gate_approved.md",
+      "ownership": "installer-owned"
+    },
+    {
+      "destinationPath": "${RAD_HOME}/action-events/event.phase_review_completed.md",
+      "sourcePath": "_install-source/action-events/event.phase_review_completed.md",
+      "ownership": "installer-owned"
+    },
+    {
+      "destinationPath": "${RAD_HOME}/action-events/event.plan_approved.md",
+      "sourcePath": "_install-source/action-events/event.plan_approved.md",
+      "ownership": "installer-owned"
+    },
+    {
+      "destinationPath": "${RAD_HOME}/action-events/event.plan_rejected.md",
+      "sourcePath": "_install-source/action-events/event.plan_rejected.md",
+      "ownership": "installer-owned"
+    },
+    {
+      "destinationPath": "${RAD_HOME}/action-events/event.pr_created.md",
+      "sourcePath": "_install-source/action-events/event.pr_created.md",
+      "ownership": "installer-owned"
+    },
+    {
+      "destinationPath": "${RAD_HOME}/action-events/event.pr_requested.md",
+      "sourcePath": "_install-source/action-events/event.pr_requested.md",
+      "ownership": "installer-owned"
+    },
+    {
+      "destinationPath": "${RAD_HOME}/action-events/event.start.md",
+      "sourcePath": "_install-source/action-events/event.start.md",
+      "ownership": "installer-owned"
+    },
+    {
+      "destinationPath": "${RAD_HOME}/action-events/event.task_completed.md",
+      "sourcePath": "_install-source/action-events/event.task_completed.md",
+      "ownership": "installer-owned"
+    },
+    {
+      "destinationPath": "${RAD_HOME}/action-events/event.task_gate_approved.md",
+      "sourcePath": "_install-source/action-events/event.task_gate_approved.md",
+      "ownership": "installer-owned"
+    }
+  ]
+}

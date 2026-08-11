@@ -13,6 +13,9 @@ async function run() {
   const src = await readFile(
     path.resolve(__dirname, '[[...slug]]', 'page.tsx'), 'utf-8',
   );
+  const viewSrc = await readFile(
+    path.resolve(__dirname, '..', '..', 'lib', 'project-view.ts'), 'utf-8',
+  );
 
   assert.ok(
     /LaunchScreen/.test(src),
@@ -23,8 +26,12 @@ async function run() {
     'page.tsx uses useStartAction for the spawn endpoint',
   );
   assert.ok(
-    /tier === ['\"]not_initialized['\"]/.test(src),
-    'page.tsx branches on tier === "not_initialized" to mount the pane',
+    /case 'launch'/.test(src),
+    'page.tsx mounts the pane from the launch view returned by selectProjectView',
+  );
+  assert.ok(
+    /tier === ['\"]not_initialized['\"]/.test(viewSrc),
+    'the not_initialized gate now lives in the pure view decision, not in the page',
   );
   assert.ok(
     /Select a project to begin/.test(src),

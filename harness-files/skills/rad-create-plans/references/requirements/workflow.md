@@ -71,8 +71,10 @@ right:
 - `project-type`: `standard` (maps to one or more registered repos) |
   `side-project` (no registered repo — a standalone script/experiment). For a
   side-project, seal `repos: [<project-name>]` and `repo-group: null`.
-- `repos`: the **authoritative** set the Master Plan and the rest of the chain
-  inherit. Requirement bodies stay repo-agnostic; the repo set lives in
+- `repos`: holds the repos the project expects to **write to**. Repos only consulted for
+  reference are excluded from it entirely and belong in the body's `## Reference`
+  section. The Master Plan finalizes the set, narrowing anything carried here as a
+  candidate. Requirement bodies stay repo-agnostic; the repo set lives in
   frontmatter and the Affected Repositories table.
 - Do **not** add `approved_at`, `requirement_count`, or `author` — git carries
   provenance and pipeline state carries approval.

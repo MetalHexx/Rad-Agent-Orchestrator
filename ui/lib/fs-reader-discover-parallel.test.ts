@@ -46,16 +46,16 @@ async function setupIsolation(): Promise<string> {
   await mkdir(projectsDir, { recursive: true });
 
   // Interleave good + malformed entries to prove isolation.
-  await mkdir(path.join(projectsDir, 'good-1'));
-  await writeFile(path.join(projectsDir, 'good-1', 'state.json'), makeV5State('good-1'));
+  await mkdir(path.join(projectsDir, 'GOOD-1'));
+  await writeFile(path.join(projectsDir, 'GOOD-1', 'state.json'), makeV5State('GOOD-1'));
 
-  await mkdir(path.join(projectsDir, 'malformed-1'));
-  await writeFile(path.join(projectsDir, 'malformed-1', 'state.json'), 'not json{');
+  await mkdir(path.join(projectsDir, 'MALFORMED-1'));
+  await writeFile(path.join(projectsDir, 'MALFORMED-1', 'state.json'), 'not json{');
 
-  await mkdir(path.join(projectsDir, 'good-2'));
-  await writeFile(path.join(projectsDir, 'good-2', 'state.json'), makeV5State('good-2'));
+  await mkdir(path.join(projectsDir, 'GOOD-2'));
+  await writeFile(path.join(projectsDir, 'GOOD-2', 'state.json'), makeV5State('GOOD-2'));
 
-  await mkdir(path.join(projectsDir, 'no-state'));
+  await mkdir(path.join(projectsDir, 'NO-STATE'));
 
   return dir;
 }
@@ -67,7 +67,7 @@ async function setupLargeFixture(count: number): Promise<string> {
   // Zero-pad to keep readdir's lexical order deterministic for assertions.
   const pad = String(count).length;
   for (let i = 0; i < count; i++) {
-    const name = `project-${String(i).padStart(pad, '0')}`;
+    const name = `PROJECT-${String(i).padStart(pad, '0')}`;
     await mkdir(path.join(projectsDir, name));
     await writeFile(path.join(projectsDir, name, 'state.json'), makeV5State(name));
   }
@@ -106,15 +106,15 @@ async function run() {
       const projects = await withFakeHome(tmpDir, () => discoverProjects());
       const byName = new Map(projects.map((p) => [p.name, p]));
 
-      const good1 = byName.get('good-1');
-      const good2 = byName.get('good-2');
-      const mal = byName.get('malformed-1');
-      const none = byName.get('no-state');
+      const good1 = byName.get('GOOD-1');
+      const good2 = byName.get('GOOD-2');
+      const mal = byName.get('MALFORMED-1');
+      const none = byName.get('NO-STATE');
 
-      assert.ok(good1, 'good-1 present');
-      assert.ok(good2, 'good-2 present');
-      assert.ok(mal, 'malformed-1 present');
-      assert.ok(none, 'no-state present');
+      assert.ok(good1, 'GOOD-1 present');
+      assert.ok(good2, 'GOOD-2 present');
+      assert.ok(mal, 'MALFORMED-1 present');
+      assert.ok(none, 'NO-STATE present');
 
       assert.strictEqual(good1!.hasState, true);
       assert.strictEqual(good1!.hasMalformedState, false);

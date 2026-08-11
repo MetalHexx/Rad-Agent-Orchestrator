@@ -78,7 +78,7 @@ describe('explosion events (FR-3, FR-7, DD-2, DD-4)', () => {
         graph: {
           nodes: {
             explode_master_plan: { status: 'completed' },
-            plan_approval_gate: { status: 'not_started', gate_active: true },
+            plan_approval_gate: { status: 'in_progress', gate_active: true },
           },
         },
       },

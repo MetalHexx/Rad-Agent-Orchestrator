@@ -2,7 +2,7 @@
 
 import { Fragment } from 'react';
 import { DAGIterationPanel } from './dag-iteration-panel';
-import type { ForEachPhaseNodeState, ForEachTaskNodeState } from '@/types/state';
+import type { AnyProjectState, ForEachPhaseNodeState, ForEachTaskNodeState } from '@/types/state';
 
 export interface DAGLoopNodeProps {
   nodeId: string;
@@ -19,6 +19,8 @@ export interface DAGLoopNodeProps {
   focusedRowKey: string | null;
   isFocused: boolean;
   onFocusChange: (nodeId: string) => void;
+  /** Project state — threaded to each DAGIterationPanel so its corrective groups can resolve retry badges through the shared resolver. */
+  state: AnyProjectState;
 }
 
 /**
@@ -46,6 +48,7 @@ export function DAGLoopNode({
   projectName,
   focusedRowKey,
   onFocusChange,
+  state,
 }: DAGLoopNodeProps) {
   const sortedIterations = [...node.iterations].sort((a, b) => a.index - b.index);
   return (
@@ -65,6 +68,7 @@ export function DAGLoopNode({
           onAccordionChange={onAccordionChange}
           focusedRowKey={focusedRowKey}
           onFocusChange={onFocusChange}
+          state={state}
         />
       ))}
     </Fragment>

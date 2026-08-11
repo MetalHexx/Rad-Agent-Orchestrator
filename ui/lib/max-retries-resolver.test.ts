@@ -1,80 +1,96 @@
-/**
- * Tests for maxRetries derivation logic in page.tsx.
- * Run with: npx tsx ui/lib/max-retries-resolver.test.ts
- *
- * The maxRetries value shown in RetryBadge should come from the per-project
- * state.json config snapshot when available, falling back to the global
- * /api/config value. This prevents WORKSPACE_ROOT mismatches from causing
- * the wrong "max" denominator in the retry badge.
- *
- * Simulates: projectState?.config?.limits?.max_retries_per_task ?? globalMaxRetries
- */
-import assert from "node:assert";
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  resolveMaxRetriesPerTask,
+  deriveRetryBudget,
+  DEFAULT_MAX_RETRIES_PER_TASK,
+} from './max-retries-resolver';
+import type { AnyProjectState, CorrectiveTaskEntry } from '@/types/state';
 
-let passed = 0;
-let failed = 0;
-
-function test(name: string, fn: () => void) {
-  try {
-    fn();
-    console.log(`  ✓ ${name}`);
-    passed++;
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.error(`  ✗ ${name}\n    ${msg}`);
-    failed++;
-  }
+function makeState(maxRetriesPerTask: number | undefined): AnyProjectState {
+  return {
+    $schema: 'orchestration-state-v5',
+    project: { name: 'demo', created: '2026-01-01', updated: '2026-01-01' },
+    config: {
+      gate_mode: 'task',
+      limits: {
+        max_phases: 3,
+        max_tasks_per_phase: 3,
+        // A stale/hand-edited snapshot can omit this despite the required type —
+        // simulate that here to exercise the documented fallback.
+        max_retries_per_task: maxRetriesPerTask as unknown as number,
+      },
+      source_control: { auto_commit: 'never', auto_pr: 'never' },
+    },
+    pipeline: { gate_mode: 'task', source_control: null, current_tier: 'execution', halt_reason: null },
+    graph: { template_id: 'std', status: 'in_progress', current_node_path: null, nodes: {} },
+  };
 }
 
-interface StateConfigLimits {
-  max_retries_per_task?: number;
+function makeCorrectiveEntry(overrides: Partial<CorrectiveTaskEntry> = {}): CorrectiveTaskEntry {
+  return {
+    index: 1,
+    reason: 'code review found issues',
+    injected_after: 'code_review',
+    status: 'in_progress',
+    doc_path: 'tasks/CORRECTIVE-1.md',
+    repos: [{ name: 'api', commit_hash: 'cthash' }],
+    nodes: {},
+    ...overrides,
+  };
 }
-interface StateConfig {
-  limits: StateConfigLimits;
-}
-interface MockProjectState {
-  config?: StateConfig;
-}
 
-function resolveMaxRetries(projectState: MockProjectState | null, globalMaxRetries: number): number {
-  return projectState?.config?.limits?.max_retries_per_task ?? globalMaxRetries;
-}
+// ─── resolveMaxRetriesPerTask ─────────────────────────────────────────────────
 
-console.log("maxRetries resolution logic");
-
-test("project state config wins over global (5 vs 2)", () => {
-  const state: MockProjectState = { config: { limits: { max_retries_per_task: 5 } } };
-  assert.strictEqual(resolveMaxRetries(state, 2), 5);
+test('reads config.limits.max_retries_per_task when present', () => {
+  assert.equal(resolveMaxRetriesPerTask(makeState(5)), 5);
 });
 
-test("project state config used when matching global (5 vs 5)", () => {
-  const state: MockProjectState = { config: { limits: { max_retries_per_task: 5 } } };
-  assert.strictEqual(resolveMaxRetries(state, 5), 5);
+test('DEFAULT_MAX_RETRIES_PER_TASK matches the engine/config default of 5', () => {
+  assert.equal(DEFAULT_MAX_RETRIES_PER_TASK, 5);
 });
 
-test("null projectState falls back to global", () => {
-  assert.strictEqual(resolveMaxRetries(null, 3), 3);
+test('falls back to the documented default when the snapshot omits it', () => {
+  assert.equal(resolveMaxRetriesPerTask(makeState(undefined)), DEFAULT_MAX_RETRIES_PER_TASK);
 });
 
-test("projectState with undefined config falls back to global", () => {
-  const state: MockProjectState = {};
-  assert.strictEqual(resolveMaxRetries(state, 3), 3);
+test('treats a configured zero as valid, not missing (?? not ||)', () => {
+  assert.equal(resolveMaxRetriesPerTask(makeState(0)), 0);
 });
 
-test("projectState config with missing max_retries_per_task falls back to global", () => {
-  const state: MockProjectState = { config: { limits: {} } };
-  assert.strictEqual(resolveMaxRetries(state, 4), 4);
+// ─── deriveRetryBudget — window-relative attempt derivation ───────────────────
+
+test('entry index 1 with origin 0 and ceiling 2 resolves attempt 1/2', () => {
+  const budget = deriveRetryBudget(makeCorrectiveEntry({ index: 1 }), makeState(2), 0);
+  assert.deepEqual(budget, { attempt: 1, max: 2, label: '1/2' });
 });
 
-test("zero is a valid value — not treated as falsy (uses ?? not ||)", () => {
-  const state: MockProjectState = { config: { limits: { max_retries_per_task: 0 } } };
-  assert.strictEqual(resolveMaxRetries(state, 3), 0);
+test('entry index 3 with origin 2 resolves to the first attempt of the new window', () => {
+  const budget = deriveRetryBudget(makeCorrectiveEntry({ index: 3 }), makeState(2), 2);
+  assert.equal(budget?.attempt, 1);
+  assert.equal(budget?.label, '1/2');
 });
 
-test("large project value wins over smaller global", () => {
-  const state: MockProjectState = { config: { limits: { max_retries_per_task: 10 } } };
-  assert.strictEqual(resolveMaxRetries(state, 3), 10);
+test('entry index 1 with origin 2 predates the current window and returns null', () => {
+  assert.equal(deriveRetryBudget(makeCorrectiveEntry({ index: 1 }), makeState(2), 2), null);
 });
 
-console.log(`\n${passed} passed, ${failed} failed\n`);
-if (failed > 0) process.exit(1);
+test('budgetOrigin defaults to 0 when omitted', () => {
+  const budget = deriveRetryBudget(makeCorrectiveEntry({ index: 1 }), makeState(2));
+  assert.deepEqual(budget, { attempt: 1, max: 2, label: '1/2' });
+});
+
+test('returns null when no corrective entry resolved', () => {
+  assert.equal(deriveRetryBudget(undefined, makeState(2)), null);
+});
+
+test('uses the fallback ceiling in the label when the snapshot omits max_retries_per_task', () => {
+  const budget = deriveRetryBudget(makeCorrectiveEntry({ index: 1 }), makeState(undefined));
+  assert.equal(budget?.max, DEFAULT_MAX_RETRIES_PER_TASK);
+  assert.equal(budget?.label, `1/${DEFAULT_MAX_RETRIES_PER_TASK}`);
+});
+
+test('a configured ceiling of zero survives into the budget (not treated as missing)', () => {
+  const budget = deriveRetryBudget(makeCorrectiveEntry({ index: 1 }), makeState(0));
+  assert.deepEqual(budget, { attempt: 1, max: 0, label: '1/0' });
+});

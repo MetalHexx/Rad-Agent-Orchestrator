@@ -111,6 +111,7 @@ nodes:
     action: spawn_final_reviewer
     events: { completed: final_review_completed }
     doc_output_field: doc_path
+    hosts_correctives: true
     depends_on: [phase_loop]
 
   - id: pr_gate

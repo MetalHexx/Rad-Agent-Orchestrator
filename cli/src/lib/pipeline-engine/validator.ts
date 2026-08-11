@@ -3,6 +3,7 @@ import type {
   PipelineTemplate,
   OrchestrationConfig,
   NodeState,
+  StepNodeState,
   ForEachPhaseNodeState,
   ForEachTaskNodeState,
   ParallelNodeState,
@@ -16,6 +17,13 @@ import { deriveCurrentNodePathFromMarkers } from './dag-walker.js';
 
 const validNodeStatuses = new Set<string>(Object.values(NODE_STATUSES));
 const validGraphStatuses = new Set<string>(Object.values(GRAPH_STATUSES));
+
+/** Corrective entries hosted directly by a step node (empty when it hosts none). */
+function stepCorrectives(node: NodeState): CorrectiveTaskEntry[] {
+  return node.kind === 'step'
+    ? ((node as StepNodeState).corrective_tasks ?? [])
+    : [];
+}
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
@@ -89,6 +97,12 @@ function checkNodeStatuses(nodes: Record<string, NodeState>, path: string): stri
     if (node.kind === 'parallel') {
       errors.push(...checkNodeStatuses(node.nodes, `${nodePath}.nodes`));
     }
+    for (const ct of stepCorrectives(node)) {
+      if (!validNodeStatuses.has(ct.status)) {
+        errors.push(`Invalid corrective status '${ct.status}' at ${nodePath}.corrective_tasks[${ct.index}]`);
+      }
+      errors.push(...checkNodeStatuses(ct.nodes, `${nodePath}.corrective_tasks[${ct.index}].nodes`));
+    }
   }
   return errors;
 }
@@ -117,6 +131,16 @@ function checkIterationIndices(nodes: Record<string, NodeState>, path: string): 
     }
     if (node.kind === 'parallel') {
       errors.push(...checkIterationIndices(node.nodes, `${nodePath}.nodes`));
+    }
+    // Step-hosted corrective entries: 1-based and contiguous across the WHOLE
+    // array — the budget window (corrective_budget_origin) does not renumber.
+    const cts = stepCorrectives(node);
+    for (let j = 0; j < cts.length; j++) {
+      const ct = cts[j];
+      if (ct.index !== j + 1) {
+        errors.push(`Corrective task index mismatch at ${nodePath}.corrective_tasks[${j}]: expected ${j + 1}, got ${ct.index}`);
+      }
+      errors.push(...checkIterationIndices(ct.nodes, `${nodePath}.corrective_tasks[${ct.index}].nodes`));
     }
   }
   return errors;
@@ -152,6 +176,17 @@ function checkCompletedParentChildren(nodes: Record<string, NodeState>, path: st
       // Recurse
       errors.push(...checkCompletedParentChildren(node.nodes, `${nodePath}.nodes`));
     }
+    // A completed step host may hold no in_progress descendant inside its
+    // corrective entries.
+    if (node.status === 'completed') {
+      for (const ct of stepCorrectives(node)) {
+        errors.push(...findInProgressNodes(ct.nodes, `${nodePath}.corrective_tasks[${ct.index}].nodes`, nodePath));
+      }
+    }
+    // Recurse even when not completed to check nested for_each / parallel nodes
+    for (const ct of stepCorrectives(node)) {
+      errors.push(...checkCompletedParentChildren(ct.nodes, `${nodePath}.corrective_tasks[${ct.index}].nodes`));
+    }
   }
   return errors;
 }
@@ -173,6 +208,9 @@ function findInProgressNodes(nodes: Record<string, NodeState>, path: string, par
     }
     if (node.kind === 'parallel') {
       errors.push(...findInProgressNodes(node.nodes, `${path}.${id}.nodes`, parentPath));
+    }
+    for (const ct of stepCorrectives(node)) {
+      errors.push(...findInProgressNodes(ct.nodes, `${path}.${id}.corrective_tasks[${ct.index}].nodes`, parentPath));
     }
   }
   return errors;
@@ -217,6 +255,24 @@ function checkCorrectiveEntriesTerminal(nodes: Record<string, NodeState>, path: 
     if (node.kind === 'parallel') {
       errors.push(...checkCorrectiveEntriesTerminal(node.nodes, `${nodePath}.nodes`));
     }
+    // Gate on the STEP's own status (not the iteration/for-each): a completed
+    // step host (e.g. final_review) may hold only terminal corrective entries.
+    // A host reset to not_started (final_rejected re-opening a fresh round)
+    // is not gated here and must pass even while holding completed entries.
+    if (node.status === 'completed') {
+      for (const ct of stepCorrectives(node)) {
+        if (ct.status !== 'completed' && ct.status !== 'skipped') {
+          errors.push(
+            `Corrective entry '${nodePath}.corrective_tasks[${ct.index}]' ` +
+            `has status '${ct.status}' but the step host is completed ` +
+            `(all corrective entries under a completed step host must be terminal: completed or skipped)`,
+          );
+        }
+      }
+    }
+    for (const ct of stepCorrectives(node)) {
+      errors.push(...checkCorrectiveEntriesTerminal(ct.nodes, `${nodePath}.corrective_tasks[${ct.index}].nodes`));
+    }
   }
   return errors;
 }
@@ -237,6 +293,23 @@ function checkCorrectiveTaskStructure(nodes: Record<string, NodeState>, path: st
     }
     if (node.kind === 'parallel') {
       errors.push(...checkCorrectiveTaskStructure(node.nodes, `${nodePath}.nodes`));
+    }
+    if (node.kind === 'step') {
+      // Bound check runs unconditionally here (unlike the mirrored check in
+      // compareNodes, which only fires when previousState is non-null) so a
+      // hand-edited or stale snapshot loaded via validateState(null, ...) at
+      // engine start/resume can't silently carry an out-of-range origin.
+      const cts = stepCorrectives(node);
+      const origin = node.corrective_budget_origin ?? 0;
+      if (origin > cts.length) {
+        errors.push(
+          `corrective_budget_origin at ${nodePath} (${origin}) exceeds corrective_tasks.length (${cts.length})`,
+        );
+      }
+    }
+    for (const ct of stepCorrectives(node)) {
+      errors.push(...validateCorrectiveEntry(ct, `${nodePath}.corrective_tasks[${ct.index}]`));
+      errors.push(...checkCorrectiveTaskStructure(ct.nodes, `${nodePath}.corrective_tasks[${ct.index}].nodes`));
     }
   }
   return errors;
@@ -308,6 +381,9 @@ function checkNodeKindMatchesTemplate(state: PipelineState, template: PipelineTe
       if (node.kind === 'parallel') {
         walkStateNodes(node.nodes, `${nodePath}.nodes`);
       }
+      for (const ct of stepCorrectives(node)) {
+        walkStateNodes(ct.nodes, `${nodePath}.corrective_tasks[${ct.index}].nodes`);
+      }
     }
   }
 
@@ -341,8 +417,26 @@ function checkImmutableCommitHash(
   if (!previousState) return [];
   const errors: string[] = [];
 
-  function repoHash(entry: { repos?: Array<{ commit_hash: string | null }> } | undefined): string | null {
-    return entry?.repos && entry.repos.length > 0 ? entry.repos[0].commit_hash : null;
+  // Compares every repo (matched by `name`, not just index 0) between a prior
+  // and proposed repos[] array, pushing an error for each repo whose recorded
+  // commit_hash changed. A multi-repo corrective can commit repos[1] while
+  // repos[0] stays null — checking only index 0 would miss that mutation.
+  function compareRepoHashes(
+    prevEntry: { repos?: Array<{ name: string; commit_hash: string | null }> } | undefined,
+    currEntry: { repos?: Array<{ name: string; commit_hash: string | null }> } | undefined,
+    label: string,
+  ): void {
+    const prevRepos = prevEntry?.repos ?? [];
+    const currRepos = currEntry?.repos ?? [];
+    for (const currRepo of currRepos) {
+      const prevRepo = prevRepos.find(r => r.name === currRepo.name);
+      if (!prevRepo) continue;
+      const before = prevRepo.commit_hash;
+      const after = currRepo.commit_hash;
+      if (before != null && after != null && before !== after) {
+        errors.push(`Immutable commit_hash violation at ${label} (repo '${currRepo.name}'): '${before}' → '${after}'`);
+      }
+    }
   }
 
   function compare(prev: Record<string, NodeState>, curr: Record<string, NodeState>, path: string): void {
@@ -357,19 +451,19 @@ function checkImmutableCommitHash(
         for (const currIter of currNode.iterations) {
           const prevIter = prevIters[currIter.index];
           if (!prevIter) continue;
-          const before = repoHash(prevIter as unknown as { repos?: Array<{ commit_hash: string | null }> });
-          const after = repoHash(currIter as unknown as { repos?: Array<{ commit_hash: string | null }> });
-          if (before != null && after != null && before !== after) {
-            errors.push(`Immutable commit_hash violation at ${path}.${id}.iterations[${currIter.index}]: '${before}' → '${after}'`);
-          }
+          compareRepoHashes(
+            prevIter as unknown as { repos?: Array<{ name: string; commit_hash: string | null }> },
+            currIter as unknown as { repos?: Array<{ name: string; commit_hash: string | null }> },
+            `${path}.${id}.iterations[${currIter.index}]`,
+          );
           for (const currCt of currIter.corrective_tasks) {
             const prevCt = prevIter.corrective_tasks.find(ct => ct.index === currCt.index);
             if (!prevCt) continue;
-            const ctBefore = repoHash(prevCt as unknown as { repos?: Array<{ commit_hash: string | null }> });
-            const ctAfter = repoHash(currCt as unknown as { repos?: Array<{ commit_hash: string | null }> });
-            if (ctBefore != null && ctAfter != null && ctBefore !== ctAfter) {
-              errors.push(`Immutable commit_hash violation at ${path}.${id}.iterations[${currIter.index}].corrective_tasks[${currCt.index}]: '${ctBefore}' → '${ctAfter}'`);
-            }
+            compareRepoHashes(
+              prevCt as unknown as { repos?: Array<{ name: string; commit_hash: string | null }> },
+              currCt as unknown as { repos?: Array<{ name: string; commit_hash: string | null }> },
+              `${path}.${id}.iterations[${currIter.index}].corrective_tasks[${currCt.index}]`,
+            );
             compare(prevCt.nodes, currCt.nodes, `${path}.${id}.iterations[${currIter.index}].corrective_tasks[${currCt.index}].nodes`);
           }
           compare(prevIter.nodes, currIter.nodes, `${path}.${id}.iterations[${currIter.index}].nodes`);
@@ -377,6 +471,19 @@ function checkImmutableCommitHash(
       }
       if (currNode.kind === 'parallel' && prevNode.kind === 'parallel') {
         compare(prevNode.nodes, currNode.nodes, `${path}.${id}.nodes`);
+      }
+      if (currNode.kind === 'step' && prevNode.kind === 'step') {
+        const prevCts = stepCorrectives(prevNode);
+        for (const currCt of stepCorrectives(currNode)) {
+          const prevCt = prevCts.find(ct => ct.index === currCt.index);
+          if (!prevCt) continue;
+          compareRepoHashes(
+            prevCt as unknown as { repos?: Array<{ name: string; commit_hash: string | null }> },
+            currCt as unknown as { repos?: Array<{ name: string; commit_hash: string | null }> },
+            `${path}.${id}.corrective_tasks[${currCt.index}]`,
+          );
+          compare(prevCt.nodes, currCt.nodes, `${path}.${id}.corrective_tasks[${currCt.index}].nodes`);
+        }
       }
     }
   }
@@ -432,6 +539,34 @@ function compareNodes(
     // Recurse into parallel branches
     if (currNode.kind === 'parallel' && prevNode.kind === 'parallel') {
       compareNodes(prevNode.nodes, currNode.nodes, `${path}.${id}.nodes`, errors);
+    }
+
+    // Recurse into step-hosted corrective entries, matched by index
+    if (currNode.kind === 'step' && prevNode.kind === 'step') {
+      const prevCts = stepCorrectives(prevNode);
+      const currCts = stepCorrectives(currNode);
+      for (const currCt of currCts) {
+        const prevCt = prevCts.find(ct => ct.index === currCt.index);
+        if (!prevCt) continue;
+        compareNodes(prevCt.nodes, currCt.nodes, `${path}.${id}.corrective_tasks[${currCt.index}].nodes`, errors);
+      }
+
+      // corrective_budget_origin is monotonic: it may only stay equal or
+      // increase, and may never exceed the current entry count. A decrease
+      // would silently re-open a spent budget window.
+      const prevOrigin = prevNode.corrective_budget_origin ?? 0;
+      const currOrigin = currNode.corrective_budget_origin ?? 0;
+      if (currOrigin < prevOrigin) {
+        errors.push(
+          `corrective_budget_origin decreased at ${path}.${id}: ${prevOrigin} → ${currOrigin} ` +
+          `(would silently re-open a spent budget window)`,
+        );
+      }
+      if (currOrigin > currCts.length) {
+        errors.push(
+          `corrective_budget_origin at ${path}.${id} (${currOrigin}) exceeds corrective_tasks.length (${currCts.length})`,
+        );
+      }
     }
   }
 }

@@ -2,7 +2,13 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { scanUserLevelHarnesses } from '../../src/lib/cross-harness-scan.js';
+import {
+  scanUserLevelHarnesses,
+  detectCopilotCliPlugin,
+  COPILOT_CLI_PLUGIN_NAME,
+  COPILOT_CLI_PLUGIN_MARKETPLACE,
+  COPILOT_CLI_PLUGIN_MARKETPLACE_RADANCY,
+} from '../../src/lib/cross-harness-scan.js';
 import { INSTALL_KEYS } from '../../src/lib/install-json.js';
 
 describe('scanUserLevelHarnesses (single-shape registry reader)', () => {
@@ -81,5 +87,43 @@ describe('scanUserLevelHarnesses (single-shape registry reader)', () => {
     fs.writeFileSync(path.join(dir, 'install.json'), 'not-valid-json{');
     const r = scanUserLevelHarnesses();
     for (const row of r) expect(row.installed).toBe(false);
+  });
+});
+
+describe('detectCopilotCliPlugin (new-marketplace + legacy union probe)', () => {
+  let home: string;
+  beforeEach(() => {
+    home = fs.mkdtempSync(path.join(os.tmpdir(), 'rad-copilot-cli-'));
+  });
+  afterEach(() => {
+    fs.rmSync(home, { recursive: true, force: true });
+  });
+
+  function pluginDir(marketplace: string): string {
+    return path.join(home, '.copilot', 'installed-plugins', marketplace, COPILOT_CLI_PLUGIN_NAME);
+  }
+
+  it('detects an install under the current (Radancy) marketplace location', () => {
+    fs.mkdirSync(pluginDir(COPILOT_CLI_PLUGIN_MARKETPLACE_RADANCY), { recursive: true });
+    expect(detectCopilotCliPlugin({ home })).toBe(true);
+  });
+
+  it('detects an install under the legacy marketplace location', () => {
+    fs.mkdirSync(pluginDir(COPILOT_CLI_PLUGIN_MARKETPLACE), { recursive: true });
+    expect(detectCopilotCliPlugin({ home })).toBe(true);
+  });
+
+  it('returns false when neither location has an install', () => {
+    expect(detectCopilotCliPlugin({ home })).toBe(false);
+  });
+
+  it('probes only the explicit override, ignoring a default location that exists', () => {
+    fs.mkdirSync(pluginDir(COPILOT_CLI_PLUGIN_MARKETPLACE_RADANCY), { recursive: true });
+    expect(detectCopilotCliPlugin({ home, marketplace: 'some-other-marketplace' })).toBe(false);
+  });
+
+  it('does not throw when the install-plugins path is unreadable', () => {
+    expect(() => detectCopilotCliPlugin({ home: path.join(home, 'does-not-exist') })).not.toThrow();
+    expect(detectCopilotCliPlugin({ home: path.join(home, 'does-not-exist') })).toBe(false);
   });
 });

@@ -8,17 +8,20 @@ import type {
   IterationEntry,
   CorrectiveTaskEntry,
   RepoCommitEntry,
-  NodeDef,
   StepNodeDef,
+  NodeDef,
   ForEachPhaseNodeState,
-  ForEachPhaseNodeDef,
-  ForEachTaskNodeDef,
   ParseErrorDetail,
   PipelineTemplate,
 } from './types.js';
 import { EVENTS, VALID_VERDICTS, REVIEW_VERDICTS } from './constants.js';
-import { scaffoldNodeState } from './scaffold.js';
-import { resolveActivePhaseIndex, resolveActiveTaskIndex } from './context-enrichment.js';
+import { scaffoldNodeState, findTaskLoopBodyDefs } from './scaffold.js';
+import {
+  resolveActivePhaseIndex,
+  resolveActiveTaskIndex,
+  resolveActiveFinalCorrective,
+  type ActiveFinalCorrective,
+} from './context-enrichment.js';
 
 // ── Per-repo commit signal shape ──────────────────────────────────────────────
 
@@ -133,7 +136,7 @@ function assertReposOnBranch(
 
 // ── Resolution scope ──────────────────────────────────────────────────────────
 
-type ResolveScope = 'top' | 'phase' | 'task';
+type ResolveScope = 'top' | 'phase' | 'task' | 'final';
 
 // ── resolveNodeState ──────────────────────────────────────────────────────────
 
@@ -146,6 +149,16 @@ export function resolveNodeState(
 ): NodeState {
   if (scope === 'top') {
     return state.graph.nodes[nodeId];
+  }
+
+  if (scope === 'final') {
+    const active = resolveActiveFinalCorrective(state);
+    if (!active) {
+      throw new Error(
+        `resolveNodeState: scope is 'final' but no active final corrective exists on state.`
+      );
+    }
+    return active.entry.nodes[nodeId];
   }
 
   if (phase === undefined) {
@@ -494,6 +507,56 @@ mutationRegistry.set(EVENTS.TASK_COMPLETED, (state, context, _config, _template)
   const cloned = structuredClone(state);
   const mutations_applied: string[] = [];
 
+  // Final-scope guard — checked first, before any phase resolution. During an
+  // active final corrective every phase iteration has already completed and no
+  // phase carries an active corrective, so resolveActivePhaseIndex would hit
+  // its deliberate "refusing to guess" throw; short-circuiting here (outside
+  // the try/catch below) keeps that resolver's honesty intact and keeps any
+  // `task_completed refused:` guard thrown in this branch from being masked by
+  // the generic phase/task disambiguation message (see P01-T03).
+  const activeFinal: ActiveFinalCorrective | null = resolveActiveFinalCorrective(cloned);
+  if (activeFinal) {
+    const { entry } = activeFinal;
+
+    const node = resolveNodeState(cloned, 'task_executor', 'final') as StepNodeState;
+    node.status = 'completed';
+    mutations_applied.push('set task_executor.status = completed (scope=final)');
+
+    const signalRepos = (context.repos as SignalRepoRow[] | undefined) ?? [];
+    const sc = cloned.pipeline.source_control;
+    const commitExpected = sc != null && sc.auto_commit !== 'never';
+
+    if (commitExpected && signalRepos.length === 0) {
+      throw new Error(
+        `task_completed refused: commit is enabled (auto_commit != never) but no per-repo ` +
+        `result payload was relayed (repos[] is missing or empty). The signal must carry the ` +
+        `coder's commit result array via --repos '<json>'; advancing without it would record ` +
+        `zero commit hashes.`
+      );
+    }
+
+    if (!commitExpected && signalRepos.length > 0) {
+      throw new Error(
+        `task_completed refused: commit is disabled (source_control is unset or ` +
+        `auto_commit=never) but a per-repo result payload was relayed (repos[] is non-empty). ` +
+        `In no-commit mode the signal must carry no --repos payload; refusing to record commit ` +
+        `hashes for a task that was not directed to commit.`
+      );
+    }
+
+    if (signalRepos.length > 0) {
+      assertReposOnBranch(cloned, signalRepos, context.branch as string | undefined);
+      applyPerRepoCommitHashes(
+        entry.repos,
+        signalRepos,
+        mutations_applied,
+        `final_corrective_task[${entry.index}].repos`,
+      );
+    }
+
+    return { state: cloned, mutations_applied };
+  }
+
   let phase = context.phase;
   if (phase === undefined) {
     try {
@@ -664,19 +727,6 @@ function resolveTaskIteration(state: PipelineState, phase: number, task: number)
   return taskLoopNode.iterations[task - 1];
 }
 
-function findTaskLoopBodyDefs(template: PipelineTemplate): NodeDef[] {
-  for (const nodeDef of template.nodes) {
-    if (nodeDef.kind === 'for_each_phase') {
-      for (const bodyNode of (nodeDef as ForEachPhaseNodeDef).body) {
-        if (bodyNode.kind === 'for_each_task') {
-          return (bodyNode as ForEachTaskNodeDef).body;
-        }
-      }
-    }
-  }
-  return [];
-}
-
 interface CorrectiveBirthParams {
   /** The hosting iteration's corrective_tasks array (read-only here; caller pushes the entry). */
   correctiveTasks: CorrectiveTaskEntry[];
@@ -692,6 +742,10 @@ interface CorrectiveBirthParams {
   reason: string;
   /** Template, for scaffolding the corrective's task-loop-body nodes. */
   template: PipelineTemplate;
+  /** Entries preceding the budget window; the gate measures within it. Default 0. */
+  budgetOrigin?: number;
+  /** When false, an absent scopeDocPath yields doc_path: null instead of throwing. Default true. */
+  scopeDocRequired?: boolean;
 }
 
 type CorrectiveBirthResult =
@@ -699,33 +753,49 @@ type CorrectiveBirthResult =
   | { ok: false; haltReason: string };
 
 /**
- * Scope-agnostic corrective birth. Enforces the sole budget gate
- * (`correctiveTasks.length >= maxRetries` → halt) and, when within budget,
- * scaffolds a fresh corrective entry carrying the ORIGINAL scope doc, the
- * requesting review report, and a 1-based index.
+ * Scope-agnostic corrective birth. Enforces the sole budget gate — measured
+ * within the caller's budget window (`correctiveTasks.length - budgetOrigin >=
+ * maxRetries` → halt; `budgetOrigin` defaults to 0, the whole-array gate every
+ * pre-existing caller keeps) — and, when within budget, scaffolds a fresh
+ * corrective entry carrying the ORIGINAL scope doc, the requesting review
+ * report, and a 1-based index (globally contiguous across the budget window,
+ * so the validator's existing index check is unaffected).
  *
- * An empty `scopeDocPath` is an engine invariant violation (every iteration is
- * seeded with a doc_path at explosion), so it throws rather than halting —
- * `processEvent`'s catch turns the throw into a clean `{ error }` envelope with
- * no state written, which is the correct outcome for a programmer bug.
+ * An empty `scopeDocPath` is an engine invariant violation for a scope that
+ * requires one (every task/phase iteration is seeded with a doc_path at
+ * explosion), so it throws rather than halting — `processEvent`'s catch turns
+ * the throw into a clean `{ error }` envelope with no state written, which is
+ * the correct outcome for a programmer bug. A step-hosted corrective (e.g.
+ * final_review) carries no iteration doc, so its caller passes
+ * `scopeDocRequired: false` and an absent scope doc yields `doc_path: null`.
  */
 function buildCorrectiveBirth(params: CorrectiveBirthParams): CorrectiveBirthResult {
-  const { correctiveTasks, maxRetries, scopeDocPath, reviewReportPath, injectedAfter, reason, template } = params;
+  const {
+    correctiveTasks, maxRetries, scopeDocPath, reviewReportPath, injectedAfter, reason, template,
+    budgetOrigin = 0, scopeDocRequired = true,
+  } = params;
 
+  let resolvedScopeDocPath: string | null;
   if (typeof scopeDocPath !== 'string' || scopeDocPath.trim().length === 0) {
-    throw new Error(
-      `buildCorrectiveBirth: scopeDocPath is empty — every iteration is seeded with a doc_path at ` +
-      `explosion, so an empty scope doc is an engine bug (not operator-recoverable). ` +
-      `injected_after=${injectedAfter}.`
-    );
+    if (scopeDocRequired) {
+      throw new Error(
+        `buildCorrectiveBirth: scopeDocPath is empty — every iteration is seeded with a doc_path at ` +
+        `explosion, so an empty scope doc is an engine bug (not operator-recoverable). ` +
+        `injected_after=${injectedAfter}.`
+      );
+    }
+    resolvedScopeDocPath = null;
+  } else {
+    resolvedScopeDocPath = scopeDocPath;
   }
 
   const correctiveCount = correctiveTasks.length;
-  if (correctiveCount >= maxRetries) {
+  const windowedCount = correctiveCount - budgetOrigin;
+  if (windowedCount >= maxRetries) {
     return {
       ok: false,
       haltReason:
-        `Corrective retry budget exhausted (corrective_tasks.length=${correctiveCount}, ` +
+        `Corrective retry budget exhausted (windowed_corrective_count=${windowedCount}, ` +
         `max_retries_per_task=${maxRetries}). No further corrective task will be injected — ` +
         `the pipeline halts for manual intervention.`,
     };
@@ -746,7 +816,7 @@ function buildCorrectiveBirth(params: CorrectiveBirthParams): CorrectiveBirthRes
     injected_after: injectedAfter,
     status: 'not_started',
     nodes,
-    doc_path: scopeDocPath,
+    doc_path: resolvedScopeDocPath,
     review_report_path:
       typeof reviewReportPath === 'string' && reviewReportPath.trim().length > 0
         ? reviewReportPath
@@ -796,6 +866,107 @@ function resolveHostingIteration(
 mutationRegistry.set(EVENTS.CODE_REVIEW_COMPLETED, (state, context, config, template): MutationResult => {
   const cloned = structuredClone(state);
   const mutations_applied: string[] = [];
+
+  // Final-scope branch — checked before phase/task resolution below, since a
+  // final-review-hosted corrective lives outside phase_loop entirely and
+  // resolveActivePhaseIndex must never be attempted against it (see P01-T03).
+  const activeFinal: ActiveFinalCorrective | null = resolveActiveFinalCorrective(cloned);
+  if (activeFinal) {
+    const { host, entry, budgetOrigin } = activeFinal;
+
+    const node = resolveNodeState(cloned, 'code_review', 'final') as StepNodeState;
+    node.status = 'completed';
+    mutations_applied.push('set code_review.status = completed (scope=final)');
+
+    const docPath = context.doc_path ?? null;
+    node.doc_path = docPath;
+    mutations_applied.push(`set code_review.doc_path = ${docPath ?? 'null'} (scope=final)`);
+
+    const rawVerdict = context.verdict ?? null;
+    node.verdict = rawVerdict;
+    mutations_applied.push(`set code_review.verdict = ${rawVerdict ?? 'null'} (scope=final)`);
+
+    if (rawVerdict !== null && !VALID_VERDICTS.has(rawVerdict as string)) {
+      cloned.graph.status = 'halted';
+      cloned.pipeline.halt_reason = `Unrecognized verdict '${rawVerdict}' in code_review_completed`;
+      return {
+        state: cloned,
+        mutations_applied: [
+          ...mutations_applied,
+          `set graph.status = halted (unrecognized verdict '${rawVerdict}')`,
+        ],
+      };
+    }
+
+    if (rawVerdict === REVIEW_VERDICTS.APPROVED) {
+      // The cycle's outcome is written onto the host; the walker (P01-T04) is
+      // what flips host.status to completed.
+      host.verdict = 'approved';
+      mutations_applied.push('set final_review.verdict = approved');
+      cloned.pipeline.current_tier = 'review';
+      mutations_applied.push('set pipeline.current_tier = review');
+      return { state: cloned, mutations_applied };
+    }
+
+    if (rawVerdict === REVIEW_VERDICTS.CHANGES_REQUESTED) {
+      // Corrective-of-a-corrective: same guard as the task/phase-scope branch
+      // below — finalize the superseded predecessor entry before birthing its
+      // successor as a flat sibling on the same host.
+      if (entry.status !== 'completed' && entry.nodes['code_review']?.status === 'completed') {
+        entry.status = 'completed';
+        mutations_applied.push(
+          `finalized superseded corrective_task[${entry.index}].status = completed (corrective-of-corrective, scope=final)`
+        );
+      }
+
+      host.corrective_tasks ??= [];
+      const birth = buildCorrectiveBirth({
+        correctiveTasks: host.corrective_tasks,
+        maxRetries: config.limits.max_retries_per_task,
+        budgetOrigin,
+        scopeDocPath: null,
+        scopeDocRequired: false,
+        reviewReportPath: context.doc_path ?? null,
+        injectedAfter: 'code_review',
+        reason: context.reason ?? 'Code review requested changes',
+        template,
+      });
+
+      if (!birth.ok) {
+        host.status = 'halted';
+        cloned.graph.status = 'halted';
+        cloned.pipeline.halt_reason = birth.haltReason;
+        mutations_applied.push('set final_review.status = halted (corrective budget exhausted, scope=final)');
+        mutations_applied.push('set graph.status = halted');
+        mutations_applied.push('set pipeline.halt_reason (corrective budget exhausted)');
+        return { state: cloned, mutations_applied };
+      }
+
+      const newEntry = birth.entry;
+      host.corrective_tasks.push(newEntry);
+      mutations_applied.push(`injected corrective task ${newEntry.index} (changes_requested, scope=final)`);
+      mutations_applied.push(`set corrective_task[${newEntry.index}].doc_path = ${newEntry.doc_path ?? 'null'}`);
+      mutations_applied.push(`set corrective_task[${newEntry.index}].review_report_path = ${newEntry.review_report_path ?? 'null'}`);
+      mutations_applied.push(`corrective_tasks.length = ${host.corrective_tasks.length} (scope=final)`);
+      return { state: cloned, mutations_applied };
+    }
+
+    if (rawVerdict === REVIEW_VERDICTS.REJECTED) {
+      host.status = 'halted';
+      cloned.graph.status = 'halted';
+      cloned.pipeline.halt_reason =
+        `Code review rejected (scope=final): reviewer issued a 'rejected' verdict. ` +
+        `Rejected verdicts halt the pipeline with no corrective cycle — no retry is attempted.`;
+      mutations_applied.push('set final_review.status = halted (rejected verdict, scope=final)');
+      mutations_applied.push('set graph.status = halted');
+      mutations_applied.push('set pipeline.halt_reason (reviewer rejected verdict)');
+      return { state: cloned, mutations_applied };
+    }
+
+    // rawVerdict === null: no recognized route — fall through with the record
+    // already written and no status change.
+    return { state: cloned, mutations_applied };
+  }
 
   let phase = context.phase;
   if (phase === undefined) {
@@ -940,39 +1111,143 @@ mutationRegistry.set(EVENTS.CODE_REVIEW_COMPLETED, (state, context, config, temp
 
 // ── Final review mutations ────────────────────────────────────────────────────
 
-mutationRegistry.set(EVENTS.FINAL_REVIEW_COMPLETED, (state, context, _config, _template): MutationResult => {
+/**
+ * Finds a step node's def anywhere in the template tree (top level or nested
+ * under a for_each/conditional/parallel body), by id. Used to read
+ * `hosts_correctives` off the running template snapshot rather than assuming
+ * it's declared (a per-project snapshot may predate the declaration).
+ */
+function findStepNodeDef(nodes: NodeDef[], id: string): StepNodeDef | undefined {
+  for (const nodeDef of nodes) {
+    if (nodeDef.id === id) {
+      return nodeDef.kind === 'step' ? nodeDef : undefined;
+    }
+    if (nodeDef.kind === 'for_each_phase' || nodeDef.kind === 'for_each_task') {
+      const found = findStepNodeDef(nodeDef.body, id);
+      if (found) return found;
+    }
+    if (nodeDef.kind === 'conditional') {
+      const found = findStepNodeDef(nodeDef.branches.true, id) ?? findStepNodeDef(nodeDef.branches.false, id);
+      if (found) return found;
+    }
+    if (nodeDef.kind === 'parallel') {
+      const found = findStepNodeDef(nodeDef.children, id);
+      if (found) return found;
+    }
+  }
+  return undefined;
+}
+
+mutationRegistry.set(EVENTS.FINAL_REVIEW_COMPLETED, (state, context, config, template): MutationResult => {
   const cloned = structuredClone(state);
   const mutations_applied: string[] = [];
 
-  const node = resolveNodeState(cloned, 'final_review', 'top');
-  node.status = 'completed';
-  mutations_applied.push('set final_review.status = completed');
+  // Record first, then route — doc_path is written before any branch so the
+  // report is reachable from the dashboard while correction is underway.
+  const node = resolveNodeState(cloned, 'final_review', 'top') as StepNodeState;
 
   const docPath = context.doc_path ?? null;
-  (node as StepNodeState).doc_path = docPath;
+  node.doc_path = docPath;
   mutations_applied.push(`set final_review.doc_path = ${docPath ?? 'null'}`);
 
-  const verdict = context.verdict ?? null;
-  (node as StepNodeState).verdict = verdict;
-  mutations_applied.push(`set final_review.verdict = ${verdict ?? 'null'}`);
+  const rawVerdict = context.verdict ?? null;
+  node.verdict = rawVerdict;
+  mutations_applied.push(`set final_review.verdict = ${rawVerdict ?? 'null'}`);
 
-  if (verdict !== null && !VALID_VERDICTS.has(verdict as string)) {
+  if (rawVerdict !== null && !VALID_VERDICTS.has(rawVerdict as string)) {
     cloned.graph.status = 'halted';
-    cloned.pipeline.halt_reason = `Unrecognized verdict '${verdict}' in final_review_completed`;
+    cloned.pipeline.halt_reason = `Unrecognized verdict '${rawVerdict}' in final_review_completed`;
     return {
       state: cloned,
       mutations_applied: [
         ...mutations_applied,
-        `set graph.status = halted (unrecognized verdict '${verdict}')`,
+        `set graph.status = halted (unrecognized verdict '${rawVerdict}')`,
       ],
     };
   }
 
-  if (verdict === REVIEW_VERDICTS.APPROVED) {
+  if (rawVerdict === REVIEW_VERDICTS.APPROVED) {
+    node.status = 'completed';
+    mutations_applied.push('set final_review.status = completed');
     cloned.pipeline.current_tier = 'review';
     mutations_applied.push('set pipeline.current_tier = review');
+    return { state: cloned, mutations_applied };
   }
 
+  if (rawVerdict === REVIEW_VERDICTS.CHANGES_REQUESTED) {
+    // Do not complete the node — a corrective cycle is opening, not closing.
+    node.status = 'in_progress';
+    mutations_applied.push('set final_review.status = in_progress');
+
+    const stepDef = findStepNodeDef(template.nodes, 'final_review');
+    if (stepDef?.hosts_correctives !== true) {
+      node.status = 'halted';
+      cloned.graph.status = 'halted';
+      cloned.pipeline.halt_reason =
+        `Final review requested changes but the running template's 'final_review' node declares no ` +
+        `corrective host (hosts_correctives is not true). This project is running a per-project ` +
+        `template snapshot that predates final-scope corrective support; the snapshot does not ` +
+        `self-heal. Add 'hosts_correctives: true' to that project's own template snapshot, or accept ` +
+        `that this project has no final-scope corrective path.`;
+      mutations_applied.push('set final_review.status = halted (stale template snapshot: no hosts_correctives)');
+      mutations_applied.push('set graph.status = halted');
+      mutations_applied.push('set pipeline.halt_reason (stale template snapshot)');
+      return { state: cloned, mutations_applied };
+    }
+
+    node.corrective_tasks ??= [];
+    const budgetOrigin = node.corrective_budget_origin ?? 0;
+    const birth = buildCorrectiveBirth({
+      correctiveTasks: node.corrective_tasks,
+      maxRetries: config.limits.max_retries_per_task,
+      budgetOrigin,
+      scopeDocPath: null,
+      scopeDocRequired: false,
+      reviewReportPath: context.doc_path ?? null,
+      injectedAfter: 'final_review',
+      reason: context.reason ?? 'Final review requested changes',
+      template,
+    });
+
+    if (!birth.ok) {
+      node.status = 'halted';
+      cloned.graph.status = 'halted';
+      cloned.pipeline.halt_reason = birth.haltReason;
+      mutations_applied.push('set final_review.status = halted (corrective budget exhausted)');
+      mutations_applied.push('set graph.status = halted');
+      mutations_applied.push('set pipeline.halt_reason (corrective budget exhausted)');
+      return { state: cloned, mutations_applied };
+    }
+
+    const entry = birth.entry;
+    node.corrective_tasks.push(entry);
+    mutations_applied.push(`injected final corrective task ${entry.index} (changes_requested)`);
+    mutations_applied.push(`set final_corrective_task[${entry.index}].doc_path = ${entry.doc_path ?? 'null'}`);
+    mutations_applied.push(`set final_corrective_task[${entry.index}].review_report_path = ${entry.review_report_path ?? 'null'}`);
+    mutations_applied.push(`final corrective_tasks.length = ${node.corrective_tasks.length}`);
+
+    // The corrective was born successfully and the pipeline keeps running — it
+    // is still in the review stage, not execution. Only this success exit
+    // promotes; both halting exits above leave current_tier untouched.
+    cloned.pipeline.current_tier = 'review';
+    mutations_applied.push('set pipeline.current_tier = review');
+    return { state: cloned, mutations_applied };
+  }
+
+  if (rawVerdict === REVIEW_VERDICTS.REJECTED) {
+    node.status = 'halted';
+    cloned.graph.status = 'halted';
+    cloned.pipeline.halt_reason =
+      `Final review rejected: reviewer issued a 'rejected' verdict. ` +
+      `Rejected verdicts halt the pipeline with no corrective cycle — no retry is attempted.`;
+    mutations_applied.push('set final_review.status = halted (rejected verdict)');
+    mutations_applied.push('set graph.status = halted');
+    mutations_applied.push('set pipeline.halt_reason (reviewer rejected verdict)');
+    return { state: cloned, mutations_applied };
+  }
+
+  // rawVerdict === null: no recognized route — fall through with the record
+  // already written and no status change.
   return { state: cloned, mutations_applied };
 });
 
@@ -1103,11 +1378,22 @@ mutationRegistry.set(EVENTS.FINAL_REJECTED, (state, _context, _config, _template
   const cloned = structuredClone(state);
   const mutations_applied: string[] = [];
 
-  const finalReviewNode = resolveNodeState(cloned, 'final_review', 'top');
+  const finalReviewNode = resolveNodeState(cloned, 'final_review', 'top') as StepNodeState;
   finalReviewNode.status = 'not_started';
   mutations_applied.push('set final_review.status = not_started');
-  (finalReviewNode as StepNodeState).doc_path = null;
+  finalReviewNode.doc_path = null;
   mutations_applied.push('set final_review.doc_path = null');
+  // A node reset to not_started must not keep tinting the card with a stale verdict.
+  finalReviewNode.verdict = null;
+  mutations_applied.push('set final_review.verdict = null');
+
+  // Entries are preserved untouched (audit history), but the budget window is
+  // emptied by advancing the origin to the current length — the seam that
+  // makes the walker's windowed corrective check see a clean slate on
+  // re-review instead of a stale completed corrective (see P01-T04).
+  const origin = (finalReviewNode.corrective_tasks ?? []).length;
+  finalReviewNode.corrective_budget_origin = origin;
+  mutations_applied.push(`set final_review.corrective_budget_origin = ${origin}`);
 
   const finalGateNode = resolveNodeState(cloned, 'final_approval_gate', 'top');
   finalGateNode.status = 'not_started';

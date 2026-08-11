@@ -132,6 +132,16 @@ export function titleForPhaseCorrectiveChild(childId: string, phaseNum: number, 
   return `Phase ${phaseNum} CT${ctIndex} ${capitalize(childId)}`;
 }
 
+// Final-review-scope correctives mirror the phase-corrective structure.
+// A final corrective has no handoff doc (ct.doc_path is null), so emit nothing
+// for it. Its child `code_review` node's `doc_path` is the final review report
+// re-opened in place — the same path already emitted for `final_review`.
+// The seenPaths dedup guard collapses it to a single tile.
+export function titleForFinalCorrectiveChild(childId: string, ctIndex: number): string {
+  if (childId === 'code_review') return `Final CT${ctIndex} Review`;
+  return `Final CT${ctIndex} ${capitalize(childId)}`;
+}
+
 /**
  * Derive the canonical document navigation order from a v5 or v6 project state.
  * Recursively walks graph.nodes, iteration entries, and corrective task entries
@@ -313,10 +323,39 @@ export function getOrderedDocsV5(
     // gate, conditional, parallel, for_each_task: skip
   }
 
-  // Emit final_review after all phase/task nodes
-  const finalReviewNode = state.graph.nodes[NODE_ID_FINAL_REVIEW];
-  if (finalReviewNode && finalReviewNode.kind === 'step' && finalReviewNode.doc_path != null) {
-    push(finalReviewNode.doc_path, 'Final Review', 'review');
+  // Emit final_review and any other top-level step nodes with corrective tasks.
+  // Step nodes were skipped in the main loop above, so emit them here after phase/task iterations.
+  // The seenPaths dedup guard already handles the final corrective child's code_review which
+  // aliases final_review's doc_path — it will surface only once.
+  const planningStepIds = new Set(PLANNING_STEP_ORDER);
+  for (const [stepId, stepNode] of Object.entries(state.graph.nodes)) {
+    if (stepNode.kind !== 'step' || planningStepIds.has(stepId as PlanningStepName)) {
+      continue;
+    }
+    // Emit the step node's own doc
+    if (stepNode.doc_path != null) {
+      const category: OrderedDoc['category'] = stepId === NODE_ID_FINAL_REVIEW ? 'review' : 'other';
+      const title = stepId === NODE_ID_FINAL_REVIEW ? 'Final Review' : capitalize(stepId);
+      push(stepNode.doc_path, title, category);
+    }
+    // Emit corrective task child step docs if present
+    if (stepNode.corrective_tasks) {
+      const sortedCTs = [...stepNode.corrective_tasks].sort((a, b) => a.index - b.index);
+      for (const ct of sortedCTs) {
+        // Final correctives have no handoff doc (ct.doc_path is null by design).
+        // Their child code_review node's doc_path is the final review report re-opened —
+        // the same path already emitted, so seenPaths dedup is correct.
+        for (const [ctChildId, ctNode] of Object.entries(ct.nodes)) {
+          if (ctNode.kind === 'step' && ctNode.doc_path != null) {
+            const ctTitle = stepId === NODE_ID_FINAL_REVIEW
+              ? titleForFinalCorrectiveChild(ctChildId, ct.index)
+              : `${capitalize(stepId)} CT${ct.index} ${capitalize(ctChildId)}`;
+            const ctCategory: OrderedDoc['category'] = ctChildId.includes('review') ? 'review' : 'other';
+            push(ctNode.doc_path, ctTitle, ctCategory);
+          }
+        }
+      }
+    }
   }
 
   if (allFiles) {

@@ -67,6 +67,8 @@ export interface StepNodeDef extends BaseNodeDef {
   context?: Record<string, unknown>;
   doc_output_field?: string;
   retries_ref?: string;
+  /** When true, this step may host corrective task entries (see StepNodeState.corrective_tasks). */
+  hosts_correctives?: boolean;
 }
 
 export interface GateNodeDef extends BaseNodeDef {
@@ -157,6 +159,10 @@ export interface StepNodeState extends BaseNodeState {
   // Populated on explosion_failed, cleared on explosion_completed. Specific to master_plan.
   last_parse_error?: ParseErrorDetail | null;
   parse_retry_count?: number | null;
+  /** Ordered corrective entries hosted by this step. Absent reads as "no correctives". */
+  corrective_tasks?: CorrectiveTaskEntry[];
+  /** Count of entries preceding the current budget window. Absent reads as 0. */
+  corrective_budget_origin?: number;
 }
 
 export interface GateNodeState extends BaseNodeState {

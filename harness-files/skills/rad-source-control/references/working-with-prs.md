@@ -15,17 +15,23 @@ A retry must not open a duplicate. Before creating, check for an open PR from th
 
 ## 2. Compose the body from the final review
 
-The PR description comes from the final-review document at `state.final_review.doc_path`. Summarize the delivered work — do not paste the whole review, summarize the body of work elegantly for a reviewer to clearly understand the changes and their impact.
+The PR description comes from the final-review document at `state.final_review.doc_path`. Summarize the delivered work — do not paste the whole review, summarize the body of work elegantly for a reviewer to clearly understand the changes and their impact. Write that summary as literal prose into its own file. `<path>` in step 3 means *that file* — its content is the PR body. Never let `<path>` resolve to a path, link, or "see doc X" reference standing in for the summary; it must be the summary itself.
 
-## 3. Create the PR
+## 3. Create the DRAFT PR
 
-    gh pr create --head "<branch>" --base "<base_branch>" --title "<project-name>" --body-file "<path>"
+Every PR opens as a **draft** — draft mode signals to human reviewers that the change may still need work before it's ready to merge, so never omit `--draft`.
 
-Use `--body-file` when you have a body; otherwise `--body ""`. Capture the returned PR URL.
+**Always pass `--body-file "<path>"`. Never pass `--body`, and never `--body ""`.** `<path>` is the file you wrote in step 2 — its content, verbatim, is the entire PR body.
+
+    gh pr create --head "<branch>" --base "<base_branch>" --title "<project-name>" --body-file "<path>" --draft
+
+Capture the returned PR URL.
 
 ## 4. Cross-link sibling PRs (multi-repo projects)
 
-When a project spans more than one repo, open every repo's PR first, then edit each PR body to link the others so a reviewer can navigate the full change set:
+When a project spans more than one repo, open every repo's PR first, then edit each PR body to link the others so a reviewer can navigate the full change set. Write the updated body — the original summary plus sibling links — as literal prose into its own file; `<updated-body-with-sibling-links>` below means *that file*, never a path or link standing in for its content.
+
+**Always pass `--body-file "<updated-body-with-sibling-links>"`. Never pass `--body`.**
 
     gh pr edit "<pr-url>" --body-file "<updated-body-with-sibling-links>"
 

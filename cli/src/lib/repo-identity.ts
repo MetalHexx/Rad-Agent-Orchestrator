@@ -119,16 +119,16 @@ export function selectRemote(remotes: Map<string, string>): SelectedRemote {
   throw new UserError('more than one remote found and none is named "origin" — cannot infer remote');
 }
 
-/** Resolve the default branch from the selected remote's HEAD symref ('main' fallback). */
-export function getDefaultBranch(exec: Exec, remoteName: string): string {
+/** Resolve the default branch from the selected remote's HEAD symref; null when it cannot be read. */
+export function getDefaultBranch(exec: Exec, remoteName: string): string | null {
   try {
     const symref = exec('git', ['symbolic-ref', `refs/remotes/${remoteName}/HEAD`]);
     const m = symref.trim().match(new RegExp(`refs/remotes/${remoteName}/(.+)$`));
     if (m) return m[1];
   } catch {
-    // fall through to the default
+    // fall through to null
   }
-  return 'main';
+  return null;
 }
 
 /**

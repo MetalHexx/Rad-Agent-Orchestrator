@@ -205,6 +205,18 @@
             { "type": "integer", "minimum": 0 },
             { "type": "null" }
           ]
+        },
+        "corrective_tasks": {
+          "title": "Corrective Tasks",
+          "description": "Ordered list of corrective task entries hosted by this step node. Absent on step nodes that host none.",
+          "type": "array",
+          "items": { "$ref": "#/definitions/CorrectiveTaskEntry" }
+        },
+        "corrective_budget_origin": {
+          "title": "Corrective Budget Window Origin",
+          "description": "Number of corrective entries that precede the current retry-budget window. Absent reads as 0. Advanced when a human rejects at the final approval gate so a fresh round starts at attempt one.",
+          "type": "integer",
+          "minimum": 0
         }
       }
     },

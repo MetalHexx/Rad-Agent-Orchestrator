@@ -9,6 +9,8 @@ const base = (over = {}) => ({
   readState: () => ({ pipeline: {} }),
   writeState: vi.fn(),
   resolveClonePath: (_repo: string) => `/clones/${_repo}`,
+  defaultBranch: (_repo: string) => 'main',
+  remoteBranchExists: vi.fn(() => 'present' as const),
   ...over,
 });
 
@@ -25,6 +27,21 @@ describe('sourceControlInit check + record (FR-7, FR-8, FR-9, FR-10, NFR-2)', ()
     expect(r.ok).toBe(false);
     expect(r.error).toMatch(/rad-orc-source/);
     expect(r.error).toMatch(/worktree create --repo/);
+  });
+  it('records a non-main base_branch and matching compare_url for a repo whose registered default branch is master', () => {
+    const writeState = vi.fn();
+    const readWorktreeFacts = vi.fn((_worktreePath: string, baseBranch: string) => ({
+      exists: true,
+      branch: 'radorch/p',
+      baseBranch,
+      remoteUrl: 'https://github.com/o/r',
+      compareUrl: `https://github.com/o/r/compare/${baseBranch}...radorch/p`,
+    }));
+    const r = sourceControlInit({ project: 'P', ...base({ writeState, readWorktreeFacts, defaultBranch: () => 'master' }) });
+    expect(r.ok).toBe(true);
+    const sc = (writeState.mock.calls[0]?.[1] as { pipeline: { source_control: { repos: Array<{ base_branch: string; compare_url: string | null }> } } }).pipeline.source_control;
+    expect(sc.repos[0]?.base_branch).toBe('master');
+    expect(sc.repos[0]?.compare_url).toBe('https://github.com/o/r/compare/master...radorch/p');
   });
   it('re-derives identical state as an idempotent no-op', () => {
     const w1 = vi.fn(); sourceControlInit({ project: 'P', ...base({ writeState: w1 }) });
@@ -57,14 +74,124 @@ describe('sourceControlInit check + record (FR-7, FR-8, FR-9, FR-10, NFR-2)', ()
     expect(r.ok).toBe(true);
     // resolveClonePath must be called with the repo name
     expect(resolveClonePath).toHaveBeenCalledWith('rad-orc-source');
-    // readWorktreeFacts must be called with the registry-resolved clone path (not a worktree-convention path)
-    expect(readWorktreeFacts).toHaveBeenCalledWith('/clones/rad-orc-source');
+    // readWorktreeFacts must be called with the registry-resolved clone path (not a worktree-convention path) and the resolved default branch
+    expect(readWorktreeFacts).toHaveBeenCalledWith('/clones/rad-orc-source', 'main');
     const sc = (writeState.mock.calls[0]?.[1] as { pipeline: { source_control: { repos: Array<{ name: string; branch: string; in_place?: boolean }> } } }).pipeline.source_control;
     expect(sc.repos[0]?.name).toBe('rad-orc-source');
     expect(sc.repos[0]?.branch).toBe('feature-x');
     expect(sc.repos[0]?.in_place).toBe(true);
     // path-free invariant: no 'path' key on the repo entry
     expect('path' in (sc.repos[0] as object)).toBe(false);
+  });
+
+  it('fails naming the repo and clone path when the in-place clone is missing', () => {
+    const resolveClonePath = vi.fn(() => '/clones/rad-orc-source');
+    const r = sourceControlInit({
+      project: 'P',
+      inPlace: true,
+      ...base({ resolveClonePath, readWorktreeFacts: () => ({ exists: false }) }),
+    });
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/rad-orc-source/);
+    expect(r.error).toMatch(/\/clones\/rad-orc-source/);
+  });
+
+  it('fails naming the repo and clone path when the in-place clone has no readable branch', () => {
+    const r = sourceControlInit({
+      project: 'P',
+      inPlace: true,
+      ...base({ readWorktreeFacts: () => ({ exists: true, branch: '' }) }),
+    });
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/rad-orc-source/);
+    expect(r.error).toMatch(/\/clones\/rad-orc-source/);
+  });
+
+  it('rejects an in-place seal when the clone has moved off the branch confirmed at offer time', () => {
+    const writeState = vi.fn();
+    const r = sourceControlInit({
+      project: 'P',
+      inPlace: true,
+      branch: 'feature-x',
+      ...base({ writeState, readWorktreeFacts: () => ({ exists: true, branch: 'main', baseBranch: 'main' }) }),
+    });
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/feature-x/);
+    expect(r.error).toMatch(/main/);
+    expect(writeState).not.toHaveBeenCalled();
+  });
+
+  it('seals an in-place binding when the live branch still matches the one confirmed at offer time', () => {
+    const writeState = vi.fn();
+    const r = sourceControlInit({
+      project: 'P',
+      inPlace: true,
+      branch: 'feature-x',
+      ...base({ writeState, readWorktreeFacts: () => ({ exists: true, branch: 'feature-x', baseBranch: 'main' }) }),
+    });
+    expect(r.ok).toBe(true);
+    expect(writeState).toHaveBeenCalledTimes(1);
+  });
+
+  it('records a supplied base branch equal to the registered default without probing the remote', () => {
+    const writeState = vi.fn();
+    const remoteBranchExists = vi.fn(() => 'present' as const);
+    const r = sourceControlInit({
+      project: 'P',
+      inPlace: true,
+      baseBranch: 'main',
+      ...base({ writeState, remoteBranchExists, defaultBranch: () => 'main' }),
+    });
+    expect(r.ok).toBe(true);
+    expect(remoteBranchExists).not.toHaveBeenCalled();
+    const sc = (writeState.mock.calls[0]?.[1] as { pipeline: { source_control: { repos: Array<{ base_branch: string }> } } }).pipeline.source_control;
+    expect(sc.repos[0]?.base_branch).toBe('main');
+  });
+
+  it('probes the remote and records a supplied base branch that differs from the default when present', () => {
+    const writeState = vi.fn();
+    const remoteBranchExists = vi.fn(() => 'present' as const);
+    const r = sourceControlInit({
+      project: 'P',
+      inPlace: true,
+      baseBranch: 'release',
+      ...base({ writeState, remoteBranchExists, defaultBranch: () => 'main' }),
+    });
+    expect(r.ok).toBe(true);
+    expect(remoteBranchExists).toHaveBeenCalledWith('rad-orc-source', 'release');
+    const sc = (writeState.mock.calls[0]?.[1] as { pipeline: { source_control: { repos: Array<{ base_branch: string; compare_url: string | null }> } } }).pipeline.source_control;
+    expect(sc.repos[0]?.base_branch).toBe('release');
+    expect(sc.repos[0]?.compare_url).toMatch(/compare\/release\.\.\./);
+  });
+
+  it('rejects a supplied base branch confirmed absent on the remote, naming the branch and repo, without writing state', () => {
+    const writeState = vi.fn();
+    const remoteBranchExists = vi.fn(() => 'absent' as const);
+    const r = sourceControlInit({
+      project: 'P',
+      inPlace: true,
+      baseBranch: 'release',
+      ...base({ writeState, remoteBranchExists, defaultBranch: () => 'main' }),
+    });
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/release/);
+    expect(r.error).toMatch(/rad-orc-source/);
+    expect(writeState).not.toHaveBeenCalled();
+  });
+
+  it('rejects a supplied base branch whose remote probe could not run — distinct from confirmed-absent — without writing state', () => {
+    const writeState = vi.fn();
+    const remoteBranchExists = vi.fn(() => 'unknown' as const);
+    const r = sourceControlInit({
+      project: 'P',
+      inPlace: true,
+      baseBranch: 'release',
+      ...base({ writeState, remoteBranchExists, defaultBranch: () => 'main' }),
+    });
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/release/);
+    expect(r.error).not.toMatch(/not found|missing|absent/i);
+    expect(writeState).not.toHaveBeenCalled();
   });
 });
 

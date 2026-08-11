@@ -76,19 +76,15 @@ A loose flow, not a checklist — let it breathe.
 
 ## Repo Targets
 Every brainstorm establishes a proposed working repo set. **Invoke the `/rad-repo` skill
-for the map** — it owns reach (repo descriptions), focus (repo-groups), and registering
-anything missing. Don't re-derive that here: **use `/rad-repo`**, and scope yourself to the
-relevant repo-group rather than hunting the whole registry.
+to discover registered repos**. Don't re-derive that here: **use `/rad-repo`**, to scope yourself to the
+relevant repos.
 
-Your part is the brainstorm-side judgment:
-- **Confirm the set at convergence** with the user.
-- **Stamp the kind.** Touches no registered repo and depends on no team-shared code →
-  `project-type: side-project`; otherwise `project-type: standard`. The kind travels
-  downstream so planning can skip registry steps that don't apply. Docs always land in
-  `~/.radorc/projects/<name>/` regardless.
-
-The confirmed repo set and kind land in the REQUIREMENTS frontmatter (`repos`, `repo-group`,
-`project-type`) when `/rad-create-plans` scribes — you confirm them here; the scribe records them.
+Verify the repos with the user:
+- **Confirm the repo set at convergence** with the user, split into two lists — the user should
+  validate the repos in scope, not you.  The user knows which repos should change and which
+  are being read for context:
+  - **Repos we'll be changing** — these are the repos that will actually change in the project.
+  - **Repos we'll only read for reference** — repos consulted for grounding. 
 
 ## Offer Visuals — Hand Off to /rad-visual-docs
 A brainstorm doesn't have to be words on a page. When the conversation surfaces

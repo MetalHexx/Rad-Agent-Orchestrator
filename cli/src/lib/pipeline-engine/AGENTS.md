@@ -17,8 +17,7 @@ and `gate approve-final`. Both surfaces project the result into the canonical en
 
 A change inside this folder can ripple to several surfaces. Verify each before merging:
 
-- **Markdown surfaces.** The action routing table in
-  `harness-files/skills/rad-orchestration/references/action-event-reference.md` and the
+- **Markdown surfaces.** The action/event catalog at `runtime-config/action-events/` and the
   parse-instruction prose in
   `harness-files/skills/rad-orchestration/references/pipeline-guide.md` both
   describe the envelope shape and the action-to-event routing this engine emits. A new
@@ -26,7 +25,7 @@ A change inside this folder can ripple to several surfaces. Verify each before m
 - **UI dashboard.** `ui/app/api/projects/[name]/gate/route.ts` (and its test) parses
   the envelope from the gate subcommands. Any change to the gate-path envelope fields
   flows through this route's `data.*` reads.
-- **Schema artifact.** `cli/src/lib/pipeline-engine/schemas/orchestration-state-v5.schema.json`
+- **Schema artifact.** `cli/src/lib/pipeline-engine/schemas/orchestration-state-v6.schema.json`
   is the JSON Schema the validator runs every write against. Any state-shape change
   requires a matching schema update or the validator rejects the write.
 - **Behavioral and unit tests.** `cli/tests/lib/pipeline-engine/` carries unit tests,
@@ -46,15 +45,18 @@ state object in `MutationResult.state`. Mutations must not touch the live state 
 passed in. The `mutations_applied` field on `MutationResult` is an internal observability
 field — it is never surfaced on the envelope returned to callers.
 
-On `code_review_completed` or `phase_review_completed` with `verdict: changes_requested`,
-the current node pointer advances only after the corrective cycle completes. The mutation
-marks the corrective task as active and leaves the pointer on the review node until the
-corrective's own completion event fires. Mutations branching on this deferral pattern
-must consult the corrective-task entry in state, not assume the pointer has moved.
+On `code_review_completed`, `phase_review_completed`, or `final_review_completed` with
+`verdict: changes_requested`, the current node pointer advances only after the corrective
+cycle completes. The mutation marks the corrective task as active and leaves the pointer
+on the review node until the corrective's own completion event fires — including the
+step-host case, where a `final_review_completed` corrective is appended to the review
+step's own `corrective_tasks[]` rather than a phase or task iteration. Mutations branching
+on this deferral pattern must consult the corrective-task entry in state, not assume the
+pointer has moved.
 
 ## Cross-reference
 
 For the complete event-to-action routing table and signaling reference, see the
-rad-orchestration skill's
-[`references/action-event-reference.md`](~/.claude/skills/rad-orchestration/references/action-event-reference.md).
-That document is the authoritative lookup during pipeline operation.
+action/event catalog at
+[`runtime-config/action-events/`](../../../../runtime-config/action-events/).
+That catalog is the authoritative lookup during pipeline operation.

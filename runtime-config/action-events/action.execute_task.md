@@ -9,11 +9,13 @@ completion_event: task_completed
 
 Spawn the right-sized coder agent for this task — choose the tier from the task's complexity, carried on the envelope as `data.context.complexity` (`simple` | `standard` | `complex`). The handoff document path is carried on the envelope as `handoff_doc`, an absolute path that the coder inlines verbatim; it is the coder's sole doc-path input.
 
-The envelope also carries `data.context.repos[]` — an array where each entry has `name`, `path`, and `branch`. Inline the `repos[]` array verbatim into the coder spawn prompt. The coder joins each handoff's `**Files for <repo>:**` section against the matching `repos[N].path` to resolve absolute file targets.
+The envelope also carries `data.context.repos[]` — an array where each entry has `name`, `path`, and `branch`. Inline the `repos[]` array verbatim into the coder spawn prompt. The coder resolves its working repo from the handoff's `**Target repo:**` line, matched against `repos[]` by `name` — or, when working directly off a review report, from each finding's `**Repo:**` field, matched the same way — and works from that entry's `path`.
 
 The envelope carries `data.context.should_commit`. When `true`, instruct the coder to commit its work after implementation — and push when the repo has a remote. When `false`, the coder leaves its changes uncommitted (the reviewer diffs the working tree). Pass the directive into the coder's spawn prompt; do not commit yourself.
 
 When `data.context.corrective_index` is present this spawn is a correction. Pass the same `handoff_doc` (the original scope doc — corrections re-run against the original contract) plus `data.context.review_report_path` so the coder reads the review that requested the change. Escalate the coder tier by `corrective_index` (budget-relative: higher index → escalate toward `coder` / `coder-senior` - break-glass), per the pipeline guide's coder-tier policy. A dispute-only correction — where the coder rebuts the review rather than changing code — commits nothing.
+
+When the spawn carries no `handoff_doc` (a final-scope corrective), the review report at `data.context.review_report_path` is the coder's whole contract; relay it as the sole doc input. Note that `data.context.phase_number` / `phase_id` are `null` and `task_id` is `FINAL` at this scope, so the orchestrator must not synthesize a phase. Requirements reach the coder inlined in the report, never as a document.
 
 Do not surface Requirements, Master Plan, or any other upstream doc to the coder. The handoff is self-contained.
 

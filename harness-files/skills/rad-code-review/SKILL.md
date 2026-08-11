@@ -10,9 +10,12 @@ You review a **diff** against the contract it was meant to satisfy. Three scopes
 
 | Your context carries…                                     | Scope | Contract you review against | Delta                                |
 |-----------------------------------------------------------|-------|-----------------------------|--------------------------------------|
-| `task_id` / `task_number` (+ `repos[]` with `head_sha`)   | Task  | the Task Handoff            | [task-review.md](./task-review.md)   |
+| `task_id` / `task_number` (+ `repos[]` with `head_sha`)   | Task  | the Task Handoff — or, when no `handoff_doc` is present, the review report itself | [task-review.md](./task-review.md) |
 | `phase_first_sha` (+ `phase_head_sha`, `repos[]`)         | Phase | the Phase Plan              | [phase-review.md](./phase-review.md) |
+| `task_id: FINAL`, no `handoff_doc`, `review_report_path` present | Task (final corrective) | the running final review report | [task-review.md](./task-review.md) |
 | `project_base_sha` (+ `project_head_sha`); no task / phase | Final | the Requirements doc        | [final-review.md](./final-review.md) |
+
+A final corrective's child review is a task-scope review node carrying the `FINAL` sentinel, so routing it to task scope is correct — it is the same rule with the sentinel named, not a special case to infer from the absence of `handoff_doc` and `head_sha`.
 
 One review document per scope, covering every repo the scope touched — one `## Scope` sub-block per repo. Judge the change holistically across repos.
 
@@ -64,11 +67,11 @@ One verdict per review, driven by the highest-severity finding:
 
 There is **one review report per scope instance**, and it lives across corrective cycles. Both the reviewer and the coder write to it:
 
-- **First review** — no `review_report_path` in your context → create the report (path is in your delta). Write the **Verdict**, **Summary**, **Scope/tests**, and numbered **Findings**, and leave an empty `## Coder Dispositions` heading for the coder. (Final review has no corrective cycle, so it omits that heading — see its delta.)
+- **First review** — no `review_report_path` in your context → create the report (path is in your delta). Write the **Verdict**, **Summary**, **Scope/tests**, and numbered **Findings**, and leave an empty `## Coder Dispositions` heading for the coder.
 - **The coder answers** — for each finding it either **fixes** the code or **disputes** the finding with an evidenced justification, recorded under `## Coder Dispositions` in this same file.
 - **Re-review** — `review_report_path` IS in your context → **re-open that file.** For each open finding: if the coder fixed it, verify the fix in the new diff and close it; if the coder disputed it, weigh the justification against the code — drop the finding if the dispute holds, keep it if it does not. Update the **Verdict** in place and note what changed. Do not start a fresh report.
 
-This is why review is **not stateless**: on a corrective cycle you adjudicate the coder's response — you do not re-review from scratch. (Final review has no corrective cycle in this iteration, so it never re-opens a report.)
+This is why review is **not stateless**: on a corrective cycle you adjudicate the coder's response — you do not re-review from scratch. This holds at every scope, final included: a corrective never authors a document — it reuses its hosting scope's document when one exists, and the review report is always the work driver. Final scope simply has no hosting-scope document to hand the coder; that is an empty slot in the rule above, not an exception to it.
 
 ## Report shape
 
@@ -83,6 +86,8 @@ author: "reviewer-agent"
 created: "{ISO-DATE}"
 ---
 ```
+
+On a corrective cycle only, also write `corrective_index` (1-based adjudication-cycle number) and `corrective_scope: "task" | "phase" | "final"` (the reviewing scope's own value). A first-time review at any scope omits both fields.
 
 Body:
 
@@ -113,6 +118,7 @@ Body:
 ## Findings
 <!-- Numbered; conformance and quality findings share one sequence. "No findings above low severity." when clean. -->
 ### Finding 1 — {short title} · {low | medium | high}
+- **Repo:** `{repo-name}`
 - **Where:** `file:line`
 - **Evidence:** {quoted code / diff excerpt / test output — never paraphrase}
 - **Problem:** {what is wrong}

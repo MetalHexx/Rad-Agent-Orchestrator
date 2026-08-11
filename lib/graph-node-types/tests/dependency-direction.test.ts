@@ -21,7 +21,7 @@ describe('dependency-direction: lib/graph-node-types depends only on graph-engin
     };
 
     expect(manifest.dependencies).toEqual({
-      [ALLOWED_PACKAGE]: '1.0.0-alpha.12',
+      [ALLOWED_PACKAGE]: '1.0.0-alpha.13',
     });
   });
 

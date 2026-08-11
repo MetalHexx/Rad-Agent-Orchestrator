@@ -8,10 +8,10 @@ import { DAGLoopNode } from './dag-loop-node';
 import { DocumentLink } from '@/components/documents';
 import { ProgressBar } from '@/components/execution/progress-bar';
 import { NodeStatusBadge } from './node-status-badge';
-import { isLoopNode, parsePhaseNameFromDocPath, parseTaskNameFromDocPath, buildIterationItemValue, deriveIterationTaskProgress, deriveIterationBadgeLabel, shouldRenderTimelineRow, resolveStageBadge } from './dag-timeline-helpers';
+import { isLoopNode, parsePhaseNameFromDocPath, parseTaskNameFromDocPath, buildIterationItemValue, deriveIterationTaskProgress, deriveIterationBadgeLabel, shouldRenderTimelineRow, resolveStageBadge, resolveTaskCardClasses } from './dag-timeline-helpers';
 import type { CompatibleNodeState } from './dag-timeline-helpers';
 import { CommitChips } from './commit-chips';
-import type { IterationEntry, StepNodeState } from '@/types/state';
+import type { AnyProjectState, IterationEntry, StepNodeState } from '@/types/state';
 
 interface DAGIterationPanelProps {
   iteration: IterationEntry;
@@ -29,6 +29,8 @@ interface DAGIterationPanelProps {
   ) => void;
   focusedRowKey: string | null;
   onFocusChange: (nodeId: string) => void;
+  /** Project state — threaded to `DAGCorrectiveTaskGroup` so its retry badges resolve through the shared resolver. */
+  state: AnyProjectState;
 }
 
 export const ITERATION_CHILD_DEPTH = 1;
@@ -58,6 +60,7 @@ export function DAGIterationPanel({
   onAccordionChange,
   focusedRowKey,
   onFocusChange,
+  state,
 }: DAGIterationPanelProps) {
   const correctiveGroupParentId = buildCorrectiveGroupParentId(parentNodeId, iterationIndex);
 
@@ -109,20 +112,7 @@ export function DAGIterationPanel({
         cardClasses = 'border border-border bg-card rounded-md mb-2';
     }
   } else {
-    switch (iteration.status) {
-      case 'in_progress':
-        cardClasses = 'border border-border/70 bg-card rounded-md mb-1.5';
-        break;
-      case 'completed':
-        cardClasses = 'border border-border/50 bg-muted/30 rounded-md mb-1.5';
-        break;
-      case 'failed':
-      case 'halted':
-        cardClasses = 'border border-[var(--status-failed)] bg-card rounded-md mb-1.5';
-        break;
-      default:
-        cardClasses = 'border border-border/40 bg-card rounded-md mb-1.5';
-    }
+    cardClasses = resolveTaskCardClasses(iteration.status);
   }
 
   if (parentKind === 'for_each_phase') {
@@ -230,6 +220,7 @@ export function DAGIterationPanel({
                   focusedRowKey={focusedRowKey}
                   isFocused={focusedRowKey === childKey}
                   onFocusChange={onFocusChange}
+                  state={state}
                 />
               ) : (
                 <DAGNodeRow
@@ -263,6 +254,7 @@ export function DAGIterationPanel({
                       focusedRowKey={focusedRowKey}
                       isFocused={focusedRowKey === childKey}
                       onFocusChange={onFocusChange}
+                      state={state}
                     />
                   ) : (
                     <DAGNodeRow
@@ -290,10 +282,12 @@ export function DAGIterationPanel({
               onFocusChange={onFocusChange}
               expandedLoopIds={expandedLoopIds}
               onAccordionChange={onAccordionChange}
-              isPhaseCorrective={parentKind === 'for_each_phase'}
+              correctiveScope={parentKind === 'for_each_phase' ? 'phase' : 'task'}
               phaseReviewDocPath={parentKind === 'for_each_phase'
                 ? ((iteration.nodes['phase_review'] as StepNodeState | undefined)?.doc_path ?? null)
                 : null}
+              state={state}
+              budgetOrigin={0}
             />
             {postLoopEntries.map(([childNodeId, childNode]) => {
               const childKey = buildIterationChildNodeId(parentNodeId, iterationIndex, childNodeId);
@@ -311,6 +305,7 @@ export function DAGIterationPanel({
                   focusedRowKey={focusedRowKey}
                   isFocused={focusedRowKey === childKey}
                   onFocusChange={onFocusChange}
+                  state={state}
                 />
               ) : (
                 <DAGNodeRow
@@ -454,8 +449,10 @@ export function DAGIterationPanel({
               onFocusChange={onFocusChange}
               expandedLoopIds={expandedLoopIds}
               onAccordionChange={onAccordionChange}
-              isPhaseCorrective={false}
+              correctiveScope="task"
               phaseReviewDocPath={null}
+              state={state}
+              budgetOrigin={0}
             />
           </AccordionContent>
         </AccordionItem>

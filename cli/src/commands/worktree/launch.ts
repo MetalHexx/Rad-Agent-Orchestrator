@@ -63,7 +63,8 @@ export function repairMsysPrompt(prompt: string | undefined): string | undefined
   return prompt;
 }
 
-type SpawnFn = (file: string, args: readonly string[], opts: { detached: boolean; stdio: 'ignore'; env?: NodeJS.ProcessEnv }) => { unref: () => void };
+type SpawnedChild = { unref: () => void; on?: (event: 'error', listener: (err: Error) => void) => unknown };
+type SpawnFn = (file: string, args: readonly string[], opts: { detached: boolean; stdio: 'ignore'; env?: NodeJS.ProcessEnv }) => SpawnedChild;
 
 /**
  * Build the env for a launched agent so the new Claude session comes up TOP-LEVEL,
@@ -124,12 +125,76 @@ export function quoteSinglePwsh(s: string): string { return `'${s.replace(/'/g, 
 
 /** Build the inner command arg list for claude. Returns an array of literal args. */
 function buildClaudeArgs(prompt: string, permissionMode: PermissionMode, addDir: string): string[] {
-  return ['claude', '--permission-mode', permissionMode, prompt, '--add-dir', addDir];
+  return ['claude', '--permission-mode', permissionMode, '--model', 'sonnet', prompt, '--add-dir', addDir];
 }
 
 /** Build the inner command arg list for copilot. Returns an array of literal args. */
 function buildCopilotArgs(prompt: string, addDir: string): string[] {
   return ['copilot', '--add-dir', addDir, '--allow-tool=shell', '-i', prompt];
+}
+
+interface SpawnAttempt { file: string; args: string[] }
+
+/**
+ * Per-platform ordered spawn attempts: attempts[0] is the tab form on
+ * platforms that have one; the LAST entry is always the window form that
+ * shipped before this change, byte for byte. macOS has no scriptable
+ * new-tab verb (driving one requires synthetic keystrokes through System
+ * Events, out of scope), so it keeps its single window-opening attempt.
+ */
+function buildSpawnAttempts(
+  platform: NodeJS.Platform,
+  payload: { worktreePath: string; encoded: string; shell: string; script: string },
+): SpawnAttempt[] {
+  if (platform === 'win32') {
+    const windowArgs = ['--startingDirectory', payload.worktreePath, 'powershell', '-NoExit', '-EncodedCommand', payload.encoded];
+    return [
+      { file: 'wt', args: ['-w', '0', 'new-tab', ...windowArgs] },
+      { file: 'wt', args: windowArgs },
+    ];
+  }
+  if (platform === 'darwin') {
+    return [{ file: 'osascript', args: ['-e', payload.script] }];
+  }
+  const windowArgs = ['--', 'bash', '-c', payload.shell];
+  return [
+    { file: 'gnome-terminal', args: ['--tab', ...windowArgs] },
+    { file: 'gnome-terminal', args: windowArgs },
+  ];
+}
+
+/**
+ * Fire spawn attempts in order, advancing to the next attempt on either
+ * failure mode: a synchronous throw from `spawn`, or an asynchronous
+ * `error` event on the returned child — the path a real missing binary
+ * takes, since `ENOENT` from `spawn` surfaces asynchronously rather than as
+ * a throw. Each attempt advances at most once. The last attempt still has
+ * nowhere to fall back to: a synchronous throw propagates to the caller, and
+ * its `error` listener has no next attempt to fire — it exists purely to
+ * swallow the event so it can't become an uncaught exception. The winning
+ * attempt is never reported back — `worktreeLaunch` returns synchronously
+ * once the first attempt is fired, before any asynchronous fallback could
+ * resolve.
+ */
+function fireSpawnAttempts(spawn: SpawnFn, attempts: readonly SpawnAttempt[], env: NodeJS.ProcessEnv): void {
+  const fire = (index: number): void => {
+    const attempt = attempts[index]!;
+    const isLast = index === attempts.length - 1;
+    try {
+      const child = spawn(attempt.file, attempt.args, { detached: true, stdio: 'ignore', env });
+      let advanced = false;
+      child.on?.('error', () => {
+        if (advanced) return;
+        advanced = true;
+        if (!isLast) fire(index + 1);
+      });
+      child.unref();
+    } catch (e) {
+      if (isLast) throw e;
+      fire(index + 1);
+    }
+  };
+  fire(0);
 }
 
 export function worktreeLaunch(opts: WorktreeLaunchOptions): WorktreeLaunchResult {
@@ -154,6 +219,10 @@ export function worktreeLaunch(opts: WorktreeLaunchOptions): WorktreeLaunchResul
       ? `${agentArgs[0]} ${agentArgs.slice(1).map(quoteSingle).join(' ')}`
       : '';
 
+    let encoded = '';
+    let shell = '';
+    let script = '';
+
     if (platform === 'win32') {
       // PowerShell single-quoted literals use '' (doubled) to escape an
       // embedded single quote, NOT the POSIX '\'' form. Build the win32
@@ -166,37 +235,23 @@ export function worktreeLaunch(opts: WorktreeLaunchOptions): WorktreeLaunchResul
       const psCmd = shellQuotedAgentPwsh
         ? `${CLEAR_ENV_PWSH} ${cdPartPwsh}; ${shellQuotedAgentPwsh}`
         : `${CLEAR_ENV_PWSH} ${cdPartPwsh}`;
-      const encoded = Buffer.from(psCmd, 'utf16le').toString('base64');
-      const child = spawn(
-        'wt',
-        ['--startingDirectory', opts.worktreePath, 'powershell', '-NoExit', '-EncodedCommand', encoded],
-        { detached: true, stdio: 'ignore', env: launchEnv },
-      );
-      child.unref();
+      encoded = Buffer.from(psCmd, 'utf16le').toString('base64');
     } else if (platform === 'darwin') {
       const bashCd = `cd ${quoteSingle(opts.worktreePath)}`;
-      const shell = shellQuotedAgent
+      const shellCmd = shellQuotedAgent
         ? `${bashCd} && ${shellQuotedAgent}`
         : bashCd;
-      const escaped = shell.replace(/"/g, '\\"');
-      const child = spawn(
-        'osascript',
-        ['-e', `tell application "Terminal" to do script "${escaped}"`],
-        { detached: true, stdio: 'ignore', env: launchEnv },
-      );
-      child.unref();
+      const appleScriptEscaped = shellCmd.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+      script = `tell application "Terminal" to do script "${appleScriptEscaped}"`;
     } else {
       const bashCd = `cd ${quoteSingle(opts.worktreePath)}`;
-      const shell = shellQuotedAgent
+      shell = shellQuotedAgent
         ? `${bashCd} && ${shellQuotedAgent}; exec bash`
         : `${bashCd}; exec bash`;
-      const child = spawn(
-        'gnome-terminal',
-        ['--', 'bash', '-c', shell],
-        { detached: true, stdio: 'ignore', env: launchEnv },
-      );
-      child.unref();
     }
+
+    const attempts = buildSpawnAttempts(platform, { worktreePath: opts.worktreePath, encoded, shell, script });
+    fireSpawnAttempts(spawn, attempts, launchEnv);
   } catch (e) {
     return { ok: false, platform, agent: opts.agent, error: (e as Error).message };
   }

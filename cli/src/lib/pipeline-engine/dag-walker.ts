@@ -20,10 +20,11 @@ import type {
   ForEachTaskNodeState,
   GraphState,
   IterationEntry,
+  CorrectiveTaskEntry,
 } from './types.js';
 import { NODE_STATUSES, NEXT_ACTIONS, GRAPH_STATUSES } from './constants.js';
 import { evaluateCondition } from './condition-evaluator.js';
-import { scaffoldNodeState } from './scaffold.js';
+import { findTaskLoopBodyDefs, scaffoldNodeState } from './scaffold.js';
 
 /**
  * Resolves a template path to a state path by substituting iteration indices.
@@ -157,6 +158,7 @@ function walkForEachIterations(
   fepState: ForEachPhaseNodeState | ForEachTaskNodeState,
   config: OrchestrationConfig,
   state: PipelineState,
+  correctiveBodyDefs: NodeDef[],
   readDocument?: (docPath: string) => { frontmatter: Record<string, unknown> } | null,
 ): WalkerResult | null | 'all_completed' {
   for (const iteration of fepState.iterations) {
@@ -214,19 +216,19 @@ function walkForEachIterations(
       }
 
       // Derive correct body defs for corrective walking
-      let correctiveBodyDefs: NodeDef[];
+      let iterationCorrectiveBodyDefs: NodeDef[];
       if (fepDef.kind === 'for_each_phase') {
         const fetDef = fepDef.body.find((n) => n.kind === 'for_each_task') as ForEachTaskNodeDef | undefined;
-        correctiveBodyDefs = fetDef ? fetDef.body : fepDef.body;
+        iterationCorrectiveBodyDefs = fetDef ? fetDef.body : fepDef.body;
       } else {
-        correctiveBodyDefs = fepDef.body;
+        iterationCorrectiveBodyDefs = fepDef.body;
       }
 
-      const correctiveResult = walkNodes(correctiveBodyDefs, latestCorrective.nodes, config, state, readDocument, iteration);
+      const correctiveResult = walkNodes(iterationCorrectiveBodyDefs, latestCorrective.nodes, config, state, correctiveBodyDefs, readDocument, iteration);
       if (correctiveResult !== null) {
         return correctiveResult;
       }
-      const allCorrectiveDone = correctiveBodyDefs.every((bn) => {
+      const allCorrectiveDone = iterationCorrectiveBodyDefs.every((bn) => {
         const bnState = latestCorrective.nodes[bn.id];
         return (
           bnState !== undefined &&
@@ -243,7 +245,7 @@ function walkForEachIterations(
       return null;
     }
 
-    const bodyResult = walkNodes(fepDef.body, iteration.nodes, config, state, readDocument, iteration);
+    const bodyResult = walkNodes(fepDef.body, iteration.nodes, config, state, correctiveBodyDefs, readDocument, iteration);
     if (bodyResult !== null) {
       return bodyResult;
     }
@@ -264,6 +266,75 @@ function walkForEachIterations(
   return 'all_completed';
 }
 
+type StepHostOutcome =
+  | { kind: 'none' }                    // no corrective in the window — fall through to the step's own action
+  | { kind: 'result'; result: WalkerResult }
+  | { kind: 'closed' }                  // corrective finished — caller marks the step completed and continues
+  | { kind: 'pending' };                // corrective in flight with nothing actionable — caller returns null
+
+/**
+ * Walks a step node's own in-flight corrective, mirroring the iteration
+ * corrective block's status ladder (see walkForEachIterations above) against
+ * a step host instead of an iteration. A step only hosts correctives when its
+ * template def declares `hosts_correctives: true` (e.g. `final_review`); the
+ * windowed slice (`corrective_budget_origin` onward) is what the ladder
+ * compares against, so a spent budget window from a prior approval-gate
+ * rejection is invisible to traversal.
+ */
+function walkStepHostedCorrectives(
+  stepDef: StepNodeDef,
+  stepState: StepNodeState,
+  correctiveBodyDefs: NodeDef[],
+  config: OrchestrationConfig,
+  state: PipelineState,
+  readDocument?: (docPath: string) => { frontmatter: Record<string, unknown> } | null,
+): StepHostOutcome {
+  if (stepDef.hosts_correctives !== true || correctiveBodyDefs.length === 0) {
+    return { kind: 'none' };
+  }
+
+  const windowed = (stepState.corrective_tasks ?? []).slice(stepState.corrective_budget_origin ?? 0);
+  if (windowed.length === 0) {
+    return { kind: 'none' };
+  }
+
+  const entry: CorrectiveTaskEntry = windowed[windowed.length - 1]!;
+
+  if (entry.status === NODE_STATUSES.HALTED) {
+    return {
+      kind: 'result',
+      result: { action: NEXT_ACTIONS.DISPLAY_HALTED, context: { details: state.pipeline.halt_reason ?? 'Pipeline is halted' } },
+    };
+  }
+
+  if (entry.status === NODE_STATUSES.COMPLETED) {
+    return { kind: 'closed' };
+  }
+
+  if (entry.status === NODE_STATUSES.NOT_STARTED) {
+    entry.status = NODE_STATUSES.IN_PROGRESS;
+  }
+
+  const correctiveResult = walkNodes(correctiveBodyDefs, entry.nodes, config, state, correctiveBodyDefs, readDocument);
+  if (correctiveResult !== null) {
+    return { kind: 'result', result: correctiveResult };
+  }
+
+  const allBodyDone = correctiveBodyDefs.every((bn) => {
+    const bnState = entry.nodes[bn.id];
+    return (
+      bnState !== undefined &&
+      (bnState.status === NODE_STATUSES.COMPLETED || bnState.status === NODE_STATUSES.SKIPPED)
+    );
+  });
+  if (allBodyDone) {
+    entry.status = NODE_STATUSES.COMPLETED;
+    return { kind: 'closed' };
+  }
+
+  return { kind: 'pending' };
+}
+
 /**
  * Recursive helper that walks an array of node definitions against their
  * corresponding state entries. Returns the first actionable WalkerResult,
@@ -274,6 +345,7 @@ function walkNodes(
   nodes: Record<string, NodeState>,
   config: OrchestrationConfig,
   state: PipelineState,
+  correctiveBodyDefs: NodeDef[],
   readDocument?: (docPath: string) => { frontmatter: Record<string, unknown> } | null,
   currentIteration?: IterationEntry,
 ): WalkerResult | null {
@@ -324,7 +396,7 @@ function walkNodes(
           condState.status = NODE_STATUSES.COMPLETED;
           continue;
         }
-        return walkNodes(branchNodes, nodes, config, state, readDocument, currentIteration);
+        return walkNodes(branchNodes, nodes, config, state, correctiveBodyDefs, readDocument, currentIteration);
       }
 
       // Parallel in_progress: walk children sequentially
@@ -343,7 +415,7 @@ function walkNodes(
           parallelState.status = NODE_STATUSES.COMPLETED;
           continue;
         }
-        return walkNodes(parallelDef.children, parallelState.nodes, config, state, readDocument, currentIteration);
+        return walkNodes(parallelDef.children, parallelState.nodes, config, state, correctiveBodyDefs, readDocument, currentIteration);
       }
 
       // for_each_phase in_progress: walk iterations sequentially
@@ -351,7 +423,7 @@ function walkNodes(
         const fepDef = nodeDef as ForEachPhaseNodeDef;
         const fepState = nodeState as ForEachPhaseNodeState;
 
-        const iterResult = walkForEachIterations(fepDef, fepState, config, state, readDocument);
+        const iterResult = walkForEachIterations(fepDef, fepState, config, state, correctiveBodyDefs, readDocument);
         if (iterResult === 'all_completed') {
           fepState.status = NODE_STATUSES.COMPLETED;
           continue;
@@ -364,7 +436,7 @@ function walkNodes(
         const fetDef = nodeDef as ForEachTaskNodeDef;
         const fetState = nodeState as ForEachTaskNodeState;
 
-        const iterResult = walkForEachIterations(fetDef, fetState, config, state, readDocument);
+        const iterResult = walkForEachIterations(fetDef, fetState, config, state, correctiveBodyDefs, readDocument);
         if (iterResult === 'all_completed') {
           fetState.status = NODE_STATUSES.COMPLETED;
           continue;
@@ -374,9 +446,24 @@ function walkNodes(
 
       // Optimistic in_progress at action-return: keep the in_progress flag set
       // when re-emitting a step's action. Single source of truth for step
-      // status writes (carries FR-10 / AD-2 from ACTION-EVENT-DATA-1).
+      // status writes (carries FR-10 / AD-2 from ACTION-EVENT-DATA-1). An
+      // open step-hosted corrective wins over the step's own re-emit — the
+      // reviewer is single-dispatch, so an in-flight corrective must be
+      // walked (or closed) before spawn_final_reviewer goes out again.
       if (nodeDef.kind === 'step') {
         const stepDef = nodeDef as StepNodeDef;
+        const stepState = nodeState as StepNodeState;
+        const hostOutcome = walkStepHostedCorrectives(stepDef, stepState, correctiveBodyDefs, config, state, readDocument);
+        if (hostOutcome.kind === 'result') {
+          return hostOutcome.result;
+        }
+        if (hostOutcome.kind === 'closed') {
+          stepState.status = NODE_STATUSES.COMPLETED;
+          continue;
+        }
+        if (hostOutcome.kind === 'pending') {
+          return null;
+        }
         nodeState.status = NODE_STATUSES.IN_PROGRESS;
         return {
           action: stepDef.action,
@@ -384,10 +471,11 @@ function walkNodes(
         };
       }
 
-      // Gate in_progress → re-emit action_if_needed. Included for symmetry;
-      // no current state-machine path transitions a gate to in_progress
-      // (gates stay not_started until the *_approved event flips them to
-      // completed), so this branch is defensive dead code today.
+      // Gate in_progress → re-emit action_if_needed. A blocking boolean human
+      // approval gate (plan_approval_gate, final_approval_gate) writes
+      // in_progress while it waits on a person (see the not_started arm
+      // below); a re-walk while it still blocks re-emits the same action
+      // rather than falling through.
       if (nodeDef.kind === 'gate') {
         const gateDef = nodeDef as GateNodeDef;
         return {
@@ -404,9 +492,23 @@ function walkNodes(
       // Optimistic in_progress at action-return: flip a resolved step node
       // to in_progress on the same walk that returns its action (carries
       // FR-10 / AD-2 from ACTION-EVENT-DATA-1; previously written by the
-      // post-walk helper in engine.ts, now walker-owned per AD-1).
+      // post-walk helper in engine.ts, now walker-owned per AD-1). An open
+      // step-hosted corrective wins over the step's own re-emit here too —
+      // see the in_progress arm above for the rationale.
       if (nodeDef.kind === 'step') {
         const stepDef = nodeDef as StepNodeDef;
+        const stepState = nodeState as StepNodeState;
+        const hostOutcome = walkStepHostedCorrectives(stepDef, stepState, correctiveBodyDefs, config, state, readDocument);
+        if (hostOutcome.kind === 'result') {
+          return hostOutcome.result;
+        }
+        if (hostOutcome.kind === 'closed') {
+          stepState.status = NODE_STATUSES.COMPLETED;
+          continue;
+        }
+        if (hostOutcome.kind === 'pending') {
+          return null;
+        }
         nodeState.status = NODE_STATUSES.IN_PROGRESS;
         return {
           action: stepDef.action,
@@ -427,6 +529,9 @@ function walkNodes(
             gateState.gate_active = false;
             continue;
           }
+          // Gate enabled: it is now blocking on a person, not merely
+          // pending — report in_progress so the dashboard cursor can land on it.
+          gateState.status = NODE_STATUSES.IN_PROGRESS;
           gateState.gate_active = true;
           return {
             action: gateDef.action_if_needed,
@@ -501,7 +606,7 @@ function walkNodes(
             nodes[branchNode.id] = scaffoldNodeState(branchNode);
           }
         }
-        return walkNodes(branchNodes, nodes, config, state, readDocument, currentIteration);
+        return walkNodes(branchNodes, nodes, config, state, correctiveBodyDefs, readDocument, currentIteration);
       }
 
       // Parallel node
@@ -514,7 +619,7 @@ function walkNodes(
             parallelState.nodes[child.id] = scaffoldNodeState(child);
           }
         }
-        return walkNodes(parallelDef.children, parallelState.nodes, config, state, readDocument, currentIteration);
+        return walkNodes(parallelDef.children, parallelState.nodes, config, state, correctiveBodyDefs, readDocument, currentIteration);
       }
 
       // for_each_phase node
@@ -572,7 +677,7 @@ function walkNodes(
         fepState.status = NODE_STATUSES.IN_PROGRESS;
 
         // Walk into first iteration (fall through to in_progress logic)
-        const iterResult = walkForEachIterations(fepDef, fepState, config, state, readDocument);
+        const iterResult = walkForEachIterations(fepDef, fepState, config, state, correctiveBodyDefs, readDocument);
         if (iterResult === 'all_completed') {
           fepState.status = NODE_STATUSES.COMPLETED;
           continue;
@@ -639,7 +744,7 @@ function walkNodes(
         fetState.status = NODE_STATUSES.IN_PROGRESS;
 
         // Walk into iterations
-        const iterResult = walkForEachIterations(fetDef, fetState, config, state, readDocument);
+        const iterResult = walkForEachIterations(fetDef, fetState, config, state, correctiveBodyDefs, readDocument);
         if (iterResult === 'all_completed') {
           fetState.status = NODE_STATUSES.COMPLETED;
           continue;
@@ -671,11 +776,59 @@ function walkNodes(
  * a transitional state (mid-walker advancement) and treating them as active
  * would produce false-positive tripwire errors.
  *
+ * A step node hosting an in-flight corrective (e.g. `final_review`) descends
+ * into its windowed corrective entry rather than reporting the step itself,
+ * matching the bracket grammar of an iteration-hosted corrective:
+ * "final_review.corrective_tasks[1].task_executor" when a deeper leaf is
+ * found, or "final_review.corrective_tasks[1]" when the entry itself has no
+ * in_progress child.
+ *
+ * The `phase_loop`-emptiness guard below predates step-hosted correctives:
+ * before explosion (or in a graph with no phase loop at all) it tolerates a
+ * bare in-progress top-level step (e.g. `master_plan`) whose cursor the
+ * engine has not yet echoed, rather than raise a false tripwire. It is
+ * bypassed when a step-hosted corrective is actually in flight, or when a
+ * top-level boolean human approval gate (plan_approval_gate,
+ * final_approval_gate) is blocking on a person — both are concrete active
+ * nodes even before the phase loop is seeded, so that cursor still resolves.
+ *
  * FR-8, FR-9, AD-1
  */
 export function deriveCurrentNodePathFromMarkers(state: PipelineState): string | null {
+  function hasActiveStepHostedCorrective(nodes: Record<string, NodeState>): boolean {
+    for (const node of Object.values(nodes)) {
+      if (node.kind === 'step') {
+        const windowed = (node.corrective_tasks ?? []).slice(node.corrective_budget_origin ?? 0);
+        if (windowed.some((ct) => ct.status === NODE_STATUSES.IN_PROGRESS)) {
+          return true;
+        }
+      } else if (node.kind === 'parallel') {
+        if (hasActiveStepHostedCorrective(node.nodes)) return true;
+      } else if (node.kind === 'for_each_phase' || node.kind === 'for_each_task') {
+        for (const iter of node.iterations) {
+          if (hasActiveStepHostedCorrective(iter.nodes)) return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  // A top-level human approval gate blocking on a person is a legitimate cursor
+  // destination even before the phase loop is seeded (the plan-approval gate case).
+  function hasBlockingHumanGate(nodes: Record<string, NodeState>): boolean {
+    return Object.values(nodes).some(
+      (n) => n.kind === 'gate' && n.status === NODE_STATUSES.IN_PROGRESS,
+    );
+  }
+
   const phaseLoop = state.graph.nodes['phase_loop'] as ForEachPhaseNodeState | undefined;
-  if (!phaseLoop?.iterations?.length) return null;
+  if (
+    !phaseLoop?.iterations?.length &&
+    !hasActiveStepHostedCorrective(state.graph.nodes) &&
+    !hasBlockingHumanGate(state.graph.nodes)
+  ) {
+    return null;
+  }
 
   function findLeaf(nodes: Record<string, NodeState>, prefix: string): string | null {
     for (const [id, node] of Object.entries(nodes)) {
@@ -710,6 +863,18 @@ export function deriveCurrentNodePathFromMarkers(state: PipelineState): string |
           if (deeper) return deeper;
           continue;
         }
+        // A step hosting an in-flight corrective: descend into the windowed
+        // entry rather than reporting the step itself.
+        if (node.kind === 'step') {
+          const windowed = (node.corrective_tasks ?? []).slice(node.corrective_budget_origin ?? 0);
+          const activeEntry = windowed.find((ct) => ct.status === 'in_progress');
+          if (activeEntry) {
+            const entryPath = `${here}.corrective_tasks[${activeEntry.index}]`;
+            const deeper = findLeaf(activeEntry.nodes, `${entryPath}.`);
+            if (deeper) return deeper;
+            return entryPath;
+          }
+        }
         // Leaf node (step or gate) — this is the concrete active node
         return here;
       }
@@ -740,7 +905,8 @@ export function walkDAG(
     };
   }
 
-  const result = walkNodes(template.nodes, state.graph.nodes, config, state, readDocument);
+  const correctiveBodyDefs = findTaskLoopBodyDefs(template);
+  const result = walkNodes(template.nodes, state.graph.nodes, config, state, correctiveBodyDefs, readDocument);
   if (result !== null) {
     return result;
   }

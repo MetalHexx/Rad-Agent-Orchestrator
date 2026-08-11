@@ -27,10 +27,11 @@ export class WorkGraphService {
   private projectsDir(): string { return path.join(this.opts.root, 'projects'); }
   private worktreesDir(): string { return this.opts.worktreesDir ?? path.join(this.opts.root, 'worktrees'); }
   private sideProjectsDir(): string { return this.opts.sideProjectsDir ?? path.join(this.opts.root, 'side-projects'); }
+  private registryLocalPaths(): Record<string, string> { return readRegistry({ root: this.opts.root }).localPaths; }
 
   private compose(): { graph: WorkGraph } {
     const stored = this.index.read();
-    const deps = { projectsDir: this.projectsDir(), worktreesDir: this.worktreesDir(), sideProjectsDir: this.sideProjectsDir(), exec: this.opts.exec };
+    const deps = { projectsDir: this.projectsDir(), worktreesDir: this.worktreesDir(), sideProjectsDir: this.sideProjectsDir(), registryLocalPaths: this.registryLocalPaths(), exec: this.opts.exec };
     const projects = listProjectNames(this.projectsDir())
       .map((n) => deriveProject(n, deps)).filter((p): p is Project => !!p);
     const groups: Group[] = Object.entries(stored.groups)
@@ -73,7 +74,7 @@ export class WorkGraphService {
     return this.compose().graph.allNodes().filter((n): n is Group => n.kind === 'group');
   }
   resolveWorktrees(projectId: NodeId): WorktreeRef[] {
-    return deriveWorktrees(projectId, { projectsDir: this.projectsDir(), worktreesDir: this.worktreesDir(), sideProjectsDir: this.sideProjectsDir(), exec: this.opts.exec });
+    return deriveWorktrees(projectId, { projectsDir: this.projectsDir(), worktreesDir: this.worktreesDir(), sideProjectsDir: this.sideProjectsDir(), registryLocalPaths: this.registryLocalPaths(), exec: this.opts.exec });
   }
 
   locate(cwd: string): LocateResult {

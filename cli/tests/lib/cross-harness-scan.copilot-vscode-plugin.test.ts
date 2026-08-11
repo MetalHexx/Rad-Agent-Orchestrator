@@ -4,41 +4,55 @@ import os from 'node:os';
 import path from 'node:path';
 import { detectCopilotVscodePlugin } from '../../src/lib/cross-harness-scan.js';
 
+function currentPlatform(): 'darwin' | 'linux' | 'win32' {
+  return process.platform === 'darwin' ? 'darwin' : process.platform === 'linux' ? 'linux' : 'win32';
+}
+
+function appDataRootFor(home: string, platform: 'darwin' | 'linux' | 'win32'): string {
+  if (platform === 'darwin') return path.join(home, 'Library', 'Application Support', 'Code');
+  if (platform === 'linux') return path.join(home, '.config', 'Code');
+  return path.join(home, 'AppData', 'Roaming', 'Code');
+}
+
 function makeFakeHome(platform: 'darwin' | 'linux' | 'win32', layout: 'present' | 'absent'): { home: string; expectedPath: string; cleanup: () => void } {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-detect-'));
   const seg = path.join('agentPlugins', 'github.com', 'MetalHexx', 'RadOrchestration');
-  let appData: string;
-  if (platform === 'darwin') appData = path.join(home, 'Library', 'Application Support', 'Code');
-  else if (platform === 'linux') appData = path.join(home, '.config', 'Code');
-  else appData = path.join(home, 'AppData', 'Roaming', 'Code');
+  const appData = appDataRootFor(home, platform);
   const expectedPath = path.join(appData, seg);
   if (layout === 'present') fs.mkdirSync(expectedPath, { recursive: true });
   return { home, expectedPath, cleanup: () => fs.rmSync(home, { recursive: true, force: true }) };
 }
 
-describe('detectCopilotVscodePlugin — OS-specific agentPlugins path probe (DD-15, FR-42)', () => {
-  it('returns true when the plugin directory exists under the platform-matched path', () => {
-    const { home, cleanup } = makeFakeHome(process.platform === 'darwin' ? 'darwin' : process.platform === 'linux' ? 'linux' : 'win32', 'present');
+describe('detectCopilotVscodePlugin — OS-specific agentPlugins path probe', () => {
+  it('returns true when the legacy-org plugin directory exists under the platform-matched path', () => {
+    const { home, cleanup } = makeFakeHome(currentPlatform(), 'present');
     try {
       expect(detectCopilotVscodePlugin({ home })).toBe(true);
     } finally { cleanup(); }
   });
 
+  it('returns true when the new-marketplace org/repo directory exists under the platform-matched path', () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-detect-new-'));
+    try {
+      const base = appDataRootFor(home, currentPlatform());
+      fs.mkdirSync(path.join(base, 'agentPlugins', 'github.com', 'radancy-pe', 'rai-ops-plugin-marketplace'), { recursive: true });
+      expect(detectCopilotVscodePlugin({ home })).toBe(true);
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true });
+    }
+  });
+
   it('returns false when no agentPlugins/github.com/.../ path exists', () => {
-    const { home, cleanup } = makeFakeHome(process.platform === 'darwin' ? 'darwin' : process.platform === 'linux' ? 'linux' : 'win32', 'absent');
+    const { home, cleanup } = makeFakeHome(currentPlatform(), 'absent');
     try {
       expect(detectCopilotVscodePlugin({ home })).toBe(false);
     } finally { cleanup(); }
   });
 
-  it('honors the override parameters so tests can swap org/repo segments (DD-15)', () => {
+  it('honors the override parameters so tests can swap org/repo segments, ignoring defaults that exist', () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-detect-ovr-'));
     try {
-      const platform = process.platform;
-      let base: string;
-      if (platform === 'darwin') base = path.join(home, 'Library', 'Application Support', 'Code');
-      else if (platform === 'linux') base = path.join(home, '.config', 'Code');
-      else base = path.join(home, 'AppData', 'Roaming', 'Code');
+      const base = appDataRootFor(home, currentPlatform());
       fs.mkdirSync(path.join(base, 'agentPlugins', 'github.com', 'OtherOrg', 'OtherRepo'), { recursive: true });
       expect(detectCopilotVscodePlugin({ home, org: 'OtherOrg', repo: 'OtherRepo' })).toBe(true);
       expect(detectCopilotVscodePlugin({ home })).toBe(false);

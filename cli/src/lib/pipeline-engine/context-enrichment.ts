@@ -139,6 +139,40 @@ export function resolveActiveTaskIndex(state: PipelineState, phaseIndex: number)
   );
 }
 
+export interface ActiveFinalCorrective {
+  hostId: string;
+  host: StepNodeState;
+  entry: CorrectiveTaskEntry;
+  budgetOrigin: number;
+}
+
+/**
+ * Scans top-level graph nodes for a step host whose windowed corrective list
+ * ends in a `not_started` | `in_progress` entry. Null when none is active.
+ *
+ * The window is the engine's view of the list: entries before
+ * `corrective_budget_origin` are audit history a re-review must not see as
+ * still active (see `final_rejected`, which advances the origin).
+ */
+export function resolveActiveFinalCorrective(state: PipelineState): ActiveFinalCorrective | null {
+  for (const [hostId, node] of Object.entries(state.graph.nodes)) {
+    if (node.kind !== 'step') continue;
+    const host = node as StepNodeState;
+    const correctiveTasks = host.corrective_tasks;
+    if (!correctiveTasks || correctiveTasks.length === 0) continue;
+
+    const budgetOrigin = host.corrective_budget_origin ?? 0;
+    const windowed = correctiveTasks.slice(budgetOrigin);
+    if (windowed.length === 0) continue;
+
+    const last = windowed[windowed.length - 1];
+    if (last.status === 'not_started' || last.status === 'in_progress') {
+      return { hostId, host, entry: last, budgetOrigin };
+    }
+  }
+  return null;
+}
+
 const PLANNING_SPAWN_STEPS: Record<string, string> = {
   spawn_master_plan: 'master_plan',
 };
@@ -161,13 +195,17 @@ const EMPTY_CONTEXT_ACTIONS = new Set([
 ]);
 
 /**
- * Report-fields subset for a corrective-active spawn: always the corrective's
- * 1-based `corrective_index`, plus `review_report_path` when the entry carries a
- * non-empty one (omitted otherwise). Spread into the coder/reviewer spawn
- * context so a correction sees the review report that requested it.
+ * Report-fields subset for a corrective-active spawn: the corrective's
+ * window-relative `corrective_index` (1-based within the current budget
+ * window — `entry.index - budgetOrigin`, so a `final_rejected` reopen doesn't
+ * leak the raw ever-growing index into a fresh window), plus
+ * `review_report_path` when the entry carries a non-empty one (omitted
+ * otherwise). Spread into the coder/reviewer spawn context so a correction
+ * sees the review report that requested it. `budgetOrigin` defaults to 0 —
+ * task/phase hosts never carry a budget origin, so their callers omit it.
  */
-function correctiveReportFields(entry: CorrectiveTaskEntry): Record<string, unknown> {
-  const fields: Record<string, unknown> = { corrective_index: entry.index };
+function correctiveReportFields(entry: CorrectiveTaskEntry, budgetOrigin = 0): Record<string, unknown> {
+  const fields: Record<string, unknown> = { corrective_index: entry.index - budgetOrigin };
   const reportPath = entry.review_report_path;
   if (typeof reportPath === 'string' && reportPath.trim().length > 0) {
     fields.review_report_path = reportPath;
@@ -271,17 +309,38 @@ export function enrichActionContext(input: EnrichmentInput): Record<string, unkn
 
       const taskLoop = phaseIter?.nodes['task_loop'] as ForEachTaskNodeState | undefined;
       const taskIters = taskLoop?.iterations ?? [];
-      const firstTask = taskIters[0];
-      const lastTask = taskIters[taskIters.length - 1];
 
-      // Build per-repo arrays for first/last SHA lookup.
-      const firstTaskRepos = firstTask?.repos ?? [];
-      // For the last task, prefer the final corrective's repos (if any commit exists), then the task's own repos.
-      const lastTaskFinalCorrective = lastTask?.corrective_tasks
-        .slice()
-        .reverse()
-        .find(ct => ct.repos.some(r => r.commit_hash != null));
-      const lastTaskRepos = lastTaskFinalCorrective?.repos ?? lastTask?.repos ?? [];
+      // Accumulate every commit per repo across the whole phase, in
+      // traversal order (task order, each task's own commit then its
+      // correctives, then the phase's own correctives last — correctives
+      // fire only after all task iterations complete, so they are always
+      // chronologically last within the phase). A task only ever targets
+      // one repo (Master Plan "one repo per task" policy), so looking only
+      // at the first/last task iteration silently drops any other repo the
+      // phase touched — this must scan every iteration, mirroring
+      // spawn_final_reviewer's per-repo accumulation below.
+      const commitsByRepo = new Map<string, string[]>();
+      const pushCommit = (repoName: string, commitHash: string | null) => {
+        if (commitHash == null) return;
+        const bucket = commitsByRepo.get(repoName) ?? [];
+        bucket.push(commitHash);
+        commitsByRepo.set(repoName, bucket);
+      };
+      for (const taskIter of taskIters) {
+        for (const r of taskIter.repos ?? []) {
+          pushCommit(r.name, r.commit_hash);
+        }
+        for (const ct of taskIter.corrective_tasks ?? []) {
+          for (const r of ct.repos ?? []) {
+            pushCommit(r.name, r.commit_hash);
+          }
+        }
+      }
+      for (const ct of phaseIter?.corrective_tasks ?? []) {
+        for (const r of ct.repos ?? []) {
+          pushCommit(r.name, r.commit_hash);
+        }
+      }
 
       // Canonical corrective_index: the latest corrective's own `.index`, not
       // the array length (reconciled to CorrectiveTaskEntry.index — the same
@@ -296,13 +355,14 @@ export function enrichActionContext(input: EnrichmentInput): Record<string, unkn
         : {};
 
       // Build repos[] with path/branch from buildReposArray, then attach per-repo phase SHAs.
-      const repos = buildReposArray(state).map(entry => ({
-        ...entry,
-        phase_first_sha: firstTaskRepos.find(fr => fr.name === entry.name)?.commit_hash ?? null,
-        phase_head_sha: (
-          lastTaskRepos.slice().reverse().find(lr => lr.name === entry.name && lr.commit_hash != null)?.commit_hash ?? null
-        ),
-      }));
+      const repos = buildReposArray(state).map(entry => {
+        const commits = commitsByRepo.get(entry.name as string) ?? [];
+        return {
+          ...entry,
+          phase_first_sha: commits.length > 0 ? commits[0] : null,
+          phase_head_sha: commits.length > 0 ? commits[commits.length - 1] : null,
+        };
+      });
 
       return { ...base, repos, phase_plan_doc: phaseIter?.doc_path ?? null, ...correctiveFields };
     }
@@ -312,6 +372,64 @@ export function enrichActionContext(input: EnrichmentInput): Record<string, unkn
 
   // Task-level enrichment
   if (TASK_LEVEL_ACTIONS.has(action)) {
+    // Final-scope-first: a step-hosted corrective (e.g. on `final_review`) owns
+    // no phase/task iteration at all, so it must be resolved before — and
+    // instead of — the phase_loop-anchored resolution below (which would throw
+    // once every phase has completed, exactly the state a final corrective
+    // runs in). Mirrors the phase-scope-first / task-scope sentinel pattern
+    // that follows, but for a corrective with no owning iteration.
+    const activeFinal = resolveActiveFinalCorrective(state);
+    if (activeFinal) {
+      const { entry, budgetOrigin } = activeFinal;
+      // Phase identity is genuinely absent for a final corrective — nothing
+      // here belongs to a phase iteration. Both nulls must survive to the
+      // envelope untouched; do not substitute a placeholder phase number.
+      const base: Record<string, unknown> = {
+        ...walkerContext,
+        phase_number: null,
+        phase_id: null,
+        task_number: null,
+        task_id: 'FINAL',
+      };
+
+      if (action === 'execute_task') {
+        const repos = buildReposArray(state);
+        if (repos.length === 0) {
+          throw new Error(
+            `Cannot enrich execute_task for the active final corrective: no repos resolved ` +
+            `(pipeline.source_control is not initialized). Run source-control init ` +
+            `(rad-execute Step 3 — 'radorch source-control init --project <name>') ` +
+            `before executing tasks.`
+          );
+        }
+        const scForCommit = state.pipeline.source_control;
+        const should_commit = scForCommit != null && scForCommit.auto_commit !== 'never';
+        // handoff_doc is omitted entirely (not set to null) — its absence is
+        // what the reviewer's and coder's contracts key off.
+        return {
+          ...base,
+          repos,
+          complexity: 'standard',
+          should_commit,
+          ...correctiveReportFields(entry, budgetOrigin),
+        };
+      }
+
+      if (action === 'spawn_code_reviewer') {
+        const sourceRepos = entry.repos;
+        // handoff_doc omitted — same rationale as execute_task above.
+        return {
+          ...base,
+          repos: buildReposArray(state, r => sourceRepos.find(sr => sr.name === r.name)?.commit_hash ?? null),
+          complexity: 'standard',
+          is_correction: true,
+          ...correctiveReportFields(entry, budgetOrigin),
+        };
+      }
+
+      return base; // gate_task
+    }
+
     const phaseNumber = resolveActivePhaseIndex(state);
     const taskNumber = resolveActiveTaskIndex(state, phaseNumber);
     const phase_id = formatPhaseId(phaseNumber);
@@ -328,8 +446,9 @@ export function enrichActionContext(input: EnrichmentInput): Record<string, unkn
     // is active (last entry on phaseIter.corrective_tasks with status
     // `not_started` or `in_progress`), override `task_number` to null and
     // `task_id` to `${phase_id}-PHASE`. This propagates through to the
-    // coder/reviewer spawn contexts so the correct filename sentinel
-    // (`-PHASE-C{N}.md`) is derivable and the value is self-describing in logs.
+    // coder/reviewer spawn contexts so the scope identity is self-describing
+    // in logs and to downstream consumers, without a task number that doesn't
+    // exist for this corrective.
     const phaseLoopForSentinel = state.graph.nodes['phase_loop'] as ForEachPhaseNodeState | undefined;
     const phaseIterForSentinel = phaseLoopForSentinel?.iterations[phaseNumber - 1];
     const phaseCorrectives = phaseIterForSentinel?.corrective_tasks ?? [];
@@ -538,6 +657,24 @@ export function enrichActionContext(input: EnrichmentInput): Record<string, unkn
       // fires only after all task iterations complete, making phase correctives
       // chronologically last within a phase.
       for (const ct of phaseIter.corrective_tasks ?? []) {
+        for (const r of ct.repos ?? []) {
+          if (r.commit_hash != null) {
+            const bucket = commitsByRepo.get(r.name) ?? [];
+            bucket.push(r.commit_hash);
+            commitsByRepo.set(r.name, bucket);
+          }
+        }
+      }
+    }
+
+    // Step-hosted corrective commits (e.g. a final corrective on `final_review`)
+    // are appended last: a final corrective is chronologically after every phase
+    // and task in the run. Accumulate the whole array, not the spent window —
+    // a re-review after an approval-gate rejection must still see the corrective
+    // work the rejection was meant to re-examine.
+    for (const node of Object.values(state.graph.nodes)) {
+      if (node.kind !== 'step') continue;
+      for (const ct of (node as StepNodeState).corrective_tasks ?? []) {
         for (const r of ct.repos ?? []) {
           if (r.commit_hash != null) {
             const bucket = commitsByRepo.get(r.name) ?? [];

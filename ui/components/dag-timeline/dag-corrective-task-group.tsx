@@ -4,9 +4,19 @@ import { useCallback } from 'react';
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from '@/components/ui/accordion';
 import { NodeStatusBadge } from './node-status-badge';
 import { DocumentLink } from '@/components/documents';
-import { deriveIterationBadgeLabel, buildCorrectiveItemValue, resolveStageBadge } from './dag-timeline-helpers';
+import { RetryBadge } from '@/components/badges';
+import { deriveIterationBadgeLabel, buildCorrectiveItemValue, resolveStageBadge, resolveTaskCardClasses } from './dag-timeline-helpers';
 import { CommitChips } from './commit-chips';
-import type { CorrectiveTaskEntry } from '@/types/state';
+import { deriveRetryBudget } from '@/lib/max-retries-resolver';
+import type { AnyProjectState, CorrectiveTaskEntry } from '@/types/state';
+import type { CorrectiveScope } from '@/components/dag-widget/types';
+
+/** `{ handoff, report }` control labels for each corrective scope. `handoff: null` at `'final'` — there is no handoff at that scope. */
+const CORRECTIVE_LABELS: Record<CorrectiveScope, { handoff: string | null; report: string }> = {
+  task: { handoff: 'Task Handoff', report: 'Code Review' },
+  phase: { handoff: 'Phase Plan', report: 'Phase Report' },
+  final: { handoff: null, report: 'Final Review' },
+};
 
 interface DAGCorrectiveTaskGroupProps {
   correctiveTasks: CorrectiveTaskEntry[];
@@ -20,10 +30,14 @@ interface DAGCorrectiveTaskGroupProps {
   onFocusChange: (nodeId: string) => void;
   expandedLoopIds: string[];
   onAccordionChange: (value: string[], eventDetails: { reason: string }) => void;
-  /** True when this group belongs to a phase-level corrective (parentKind === 'for_each_phase'). */
-  isPhaseCorrective: boolean;
-  /** Resolved phase_review doc for a phase corrective; null for task correctives. */
+  /** The scope this group's correctives belong to — the loop kind (or step host) that hosts them. */
+  correctiveScope: CorrectiveScope;
+  /** Resolved phase_review doc for a phase corrective, or final_review doc for a final corrective; null for task correctives. */
   phaseReviewDocPath: string | null;
+  /** Project state — threaded to `deriveRetryBudget` so the retry ceiling always comes from the shared resolver, never a local `config.limits` read. */
+  state: AnyProjectState;
+  /** The host's `corrective_budget_origin` (0 for iteration hosts). Defaults to 0. */
+  budgetOrigin?: number;
 }
 
 export const GROUP_ARIA_LABEL = "Corrective tasks";
@@ -49,8 +63,10 @@ function CorrectiveRow({
   focusedRowKey,
   expandedLoopIds,
   onAccordionChange,
-  isPhaseCorrective,
+  correctiveScope,
   phaseReviewDocPath,
+  state,
+  budgetOrigin,
 }: {
   entry: CorrectiveTaskEntry;
   parentIterationKey: string;
@@ -63,8 +79,10 @@ function CorrectiveRow({
   focusedRowKey: string | null;
   expandedLoopIds: string[];
   onAccordionChange: (value: string[], eventDetails: { reason: string }) => void;
-  isPhaseCorrective: boolean;
+  correctiveScope: CorrectiveScope;
   phaseReviewDocPath: string | null;
+  state: AnyProjectState;
+  budgetOrigin: number;
 }) {
   const itemValue = buildCorrectiveItemValue(parentIterationKey, entry.index);
   const handleFocus = useCallback(() => onFocusChange(itemValue), [itemValue, onFocusChange]);
@@ -104,12 +122,14 @@ function CorrectiveRow({
   const hasHandoff = entry.doc_path != null && entry.doc_path !== '';
   const codeReviewNode = entry.nodes['code_review'];
   const codeReviewDocPath = (codeReviewNode && 'doc_path' in codeReviewNode) ? codeReviewNode.doc_path : null;
-  const reportDocPath = isPhaseCorrective ? phaseReviewDocPath : codeReviewDocPath;
+  const reportDocPath = (correctiveScope === 'phase' || correctiveScope === 'final') ? phaseReviewDocPath : codeReviewDocPath;
   const hasReport = reportDocPath != null && reportDocPath !== '';
-  const handoffLabel = isPhaseCorrective ? 'Phase Plan' : 'Task Handoff';
-  const reportLabel = isPhaseCorrective ? 'Phase Report' : 'Code Review';
+  const { handoff: handoffLabel, report: reportLabel } = CORRECTIVE_LABELS[correctiveScope];
+  // Window-relative retry budget for this entry, sourced from the shared
+  // resolver — null for a spent-window entry (predates budgetOrigin).
+  const retryBudget = deriveRetryBudget(entry, state, budgetOrigin);
   // FR-15: commit rendering is now solely CommitChips; hasAnyTrailing includes repos presence.
-  const hasAnyTrailing = hasHandoff || hasReport || (entry.repos != null && entry.repos.length > 0);
+  const hasAnyTrailing = hasHandoff || hasReport || retryBudget !== null || (entry.repos != null && entry.repos.length > 0);
   // FR-9 / FR-10 / DD-8 — chevron is gated on entry.corrective_tasks.length > 0.
   const hasNested = nestedCorrectives.length > 0;
   const isCorrected = entry.status === 'completed' &&
@@ -157,9 +177,12 @@ function CorrectiveRow({
           Corrected
         </span>
       )}
+      {retryBudget !== null && (
+        <RetryBadge attempt={retryBudget.attempt} max={retryBudget.max} />
+      )}
       <CommitChips repos={entry.repos} compareUrlByRepo={compareUrlByRepo} singleRepo={Object.keys(compareUrlByRepo).length <= 1} />
       {hasHandoff && (
-        <DocumentLink path={entry.doc_path!} label={handoffLabel} onDocClick={onDocClick} />
+        <DocumentLink path={entry.doc_path!} label={handoffLabel!} onDocClick={onDocClick} />
       )}
       {hasReport && (
         <DocumentLink path={reportDocPath!} label={reportLabel} onDocClick={onDocClick} />
@@ -169,7 +192,7 @@ function CorrectiveRow({
 
   if (hasNested) {
     return (
-      <AccordionItem value={buildCorrectiveItemValue(parentIterationKey, entry.index)}>
+      <AccordionItem value={buildCorrectiveItemValue(parentIterationKey, entry.index)} className={resolveTaskCardClasses(entry.status)}>
         <div className="relative flex items-center gap-2 rounded-md hover:bg-accent/50 pr-3">
           <div className="flex-1 [&>h3]:flex-1 [&>h3]:min-w-0">
             <AccordionTrigger
@@ -199,8 +222,9 @@ function CorrectiveRow({
             onFocusChange={onFocusChange}
             expandedLoopIds={expandedLoopIds}
             onAccordionChange={onAccordionChange}
-            isPhaseCorrective={false}
+            correctiveScope="task"
             phaseReviewDocPath={null}
+            state={state}
           />
         </AccordionContent>
       </AccordionItem>
@@ -209,18 +233,20 @@ function CorrectiveRow({
 
   // Flat-row branch (FR-9 / FR-10 / DD-8)
   return (
-    <div
-      role="option"
-      aria-selected={false}
-      aria-label={`${buildTriggerText(entry.index)} — ${derivedBadge.label}`}
-      className="relative flex items-center gap-2 rounded-md hover:bg-accent/50 pr-3 py-2 px-3"
-      data-timeline-row
-      data-row-key={itemValue}
-      tabIndex={isFocused ? 0 : -1}
-      onFocus={handleFocus}
-    >
-      {headerInner}
-      {(hasAnyTrailing || isCorrected) && trailingLinks}
+    <div className={resolveTaskCardClasses(entry.status)}>
+      <div
+        role="option"
+        aria-selected={false}
+        aria-label={`${buildTriggerText(entry.index)} — ${derivedBadge.label}`}
+        className="relative flex items-center gap-2 rounded-md hover:bg-accent/50 pr-3 py-2 px-3"
+        data-timeline-row
+        data-row-key={itemValue}
+        tabIndex={isFocused ? 0 : -1}
+        onFocus={handleFocus}
+      >
+        {headerInner}
+        {(hasAnyTrailing || isCorrected) && trailingLinks}
+      </div>
     </div>
   );
 }
@@ -236,8 +262,10 @@ export function DAGCorrectiveTaskGroup({
   onFocusChange,
   expandedLoopIds,
   onAccordionChange,
-  isPhaseCorrective,
+  correctiveScope,
   phaseReviewDocPath,
+  state,
+  budgetOrigin = 0,
 }: DAGCorrectiveTaskGroupProps) {
   if (correctiveTasks.length === 0) return null;
   return (
@@ -262,8 +290,10 @@ export function DAGCorrectiveTaskGroup({
             focusedRowKey={focusedRowKey}
             expandedLoopIds={expandedLoopIds}
             onAccordionChange={onAccordionChange}
-            isPhaseCorrective={isPhaseCorrective}
+            correctiveScope={correctiveScope}
             phaseReviewDocPath={phaseReviewDocPath}
+            state={state}
+            budgetOrigin={budgetOrigin}
           />
         ))}
       </Accordion>

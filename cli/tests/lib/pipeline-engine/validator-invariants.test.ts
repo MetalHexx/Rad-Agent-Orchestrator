@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { validateState } from '../../../src/lib/pipeline-engine/validator.js';
 import { deriveCurrentNodePathFromMarkers } from '../../../src/lib/pipeline-engine/dag-walker.js';
 import { makeV6State } from '../../helpers/state-factory.js';
+import { finalApprovalGateAfterCorrectiveState } from './fixtures/final-approval-gate-after-corrective.js';
 import type { OrchestrationConfig, PipelineTemplate, PipelineState } from '../../../src/lib/pipeline-engine/types.js';
 
 const cfg = { limits: { max_retries_per_task: 3 } } as unknown as OrchestrationConfig;
@@ -220,5 +221,213 @@ describe('checkCorrectiveEntriesTerminal (corrective-of-a-corrective stranding)'
     const next = phaseWithCorrectives('in_progress', 'completed', ['in_progress', 'completed']);
     const errors = validateState(null, next, cfg, tmpl);
     expect(errors.some(e => /corrective.*completed|terminal/i.test(e))).toBe(true);
+  });
+});
+
+// ── Step-hosted correctives (final_review) ────────────────────────────────────
+// final_review is a top-level step node, not an iteration — its corrective
+// entries live at `graph.nodes.final_review.corrective_tasks[N]`. These cover
+// the same invariants exercised above for the iteration form, reached through
+// the step-node accessor instead of iteration descent.
+
+function finalCorrective(index: number, status: string, hash: string | null = null) {
+  return {
+    index,
+    status,
+    reason: 'Final review requested changes',
+    injected_after: 'final_review',
+    doc_path: null,
+    review_report_path: null,
+    repos: [{ name: 'backend', commit_hash: hash }],
+    nodes: {
+      task_executor: { kind: 'step', status: 'completed', doc_path: null, retries: 0 },
+    },
+  };
+}
+
+function finalReviewState(
+  status: string,
+  correctiveTasks: unknown[],
+  correctiveBudgetOrigin = 0,
+): PipelineState {
+  return {
+    graph: {
+      status: 'in_progress',
+      current_node_path: 'final_review',
+      nodes: {
+        final_review: {
+          kind: 'step',
+          status,
+          doc_path: null,
+          retries: 0,
+          verdict: null,
+          corrective_budget_origin: correctiveBudgetOrigin,
+          corrective_tasks: correctiveTasks,
+        },
+      },
+    },
+  } as unknown as PipelineState;
+}
+
+describe('step-hosted corrective checks (final_review)', () => {
+  it('rejects a completed final_review holding an in_progress corrective entry, naming the path', () => {
+    const next = finalReviewState('completed', [finalCorrective(1, 'in_progress')]);
+    const errors = validateState(null, next, cfg, tmpl);
+    expect(errors.some(e => e.includes('graph.nodes.final_review.corrective_tasks[1]'))).toBe(true);
+  });
+
+  it('validates clean when final_review is not_started (post-rejection audit shape) holding completed entries', () => {
+    const next = finalReviewState('not_started', [finalCorrective(1, 'completed'), finalCorrective(2, 'completed')]);
+    const errors = validateState(null, next, cfg, tmpl);
+    expect(errors.some(e => /corrective.*terminal|corrective_tasks/i.test(e))).toBe(false);
+  });
+
+  it('rejects an already-recorded commit_hash changing on a step-hosted corrective entry', () => {
+    const prev = finalReviewState('in_progress', [finalCorrective(1, 'completed', 'abc123')]);
+    const next = finalReviewState('in_progress', [finalCorrective(1, 'completed', 'def456')]);
+    const errors = validateState(prev, next, cfg, tmpl);
+    expect(errors.some(e => /commit_hash|immutable/i.test(e))).toBe(true);
+  });
+
+  it('rejects a non-contiguous corrective entry index on a step host', () => {
+    const next = finalReviewState('in_progress', [finalCorrective(1, 'completed'), finalCorrective(3, 'in_progress')]);
+    const errors = validateState(null, next, cfg, tmpl);
+    expect(errors.some(e => /index mismatch/i.test(e))).toBe(true);
+  });
+
+  it('rejects a decrease in corrective_budget_origin between previous and proposed state', () => {
+    const entries = [finalCorrective(1, 'completed'), finalCorrective(2, 'completed')];
+    const prev = finalReviewState('in_progress', entries, 2);
+    const next = finalReviewState('in_progress', entries, 1);
+    const errors = validateState(prev, next, cfg, tmpl);
+    expect(errors.some(e => /corrective_budget_origin/i.test(e))).toBe(true);
+  });
+
+  function finalCorrectiveMultiRepo(index: number, status: string, repos: Array<{ name: string; commit_hash: string | null }>) {
+    return {
+      index,
+      status,
+      reason: 'Final review requested changes',
+      injected_after: 'final_review',
+      doc_path: null,
+      review_report_path: null,
+      repos,
+      nodes: {
+        task_executor: { kind: 'step', status: 'completed', doc_path: null, retries: 0 },
+      },
+    };
+  }
+
+  it('rejects an immutable commit_hash violation on a non-first repo in a multi-repo corrective (AD-2, all repos checked)', () => {
+    const prev = finalReviewState('in_progress', [
+      finalCorrectiveMultiRepo(1, 'completed', [
+        { name: 'backend', commit_hash: 'abc123' },
+        { name: 'frontend', commit_hash: 'def456' },
+      ]),
+    ]);
+    const next = finalReviewState('in_progress', [
+      finalCorrectiveMultiRepo(1, 'completed', [
+        { name: 'backend', commit_hash: 'abc123' },
+        { name: 'frontend', commit_hash: 'CHANGED' },
+      ]),
+    ]);
+    const errors = validateState(prev, next, cfg, tmpl);
+    expect(errors.some(e => /commit_hash|immutable/i.test(e) && e.includes('frontend'))).toBe(true);
+  });
+
+  it('allows unchanged commit hashes across all repos in a multi-repo corrective', () => {
+    const entries = [
+      finalCorrectiveMultiRepo(1, 'completed', [
+        { name: 'backend', commit_hash: 'abc123' },
+        { name: 'frontend', commit_hash: 'def456' },
+      ]),
+    ];
+    const prev = finalReviewState('in_progress', entries);
+    const next = finalReviewState('in_progress', entries);
+    const errors = validateState(prev, next, cfg, tmpl);
+    expect(errors.some(e => /commit_hash|immutable/i.test(e))).toBe(false);
+  });
+
+  it('rejects corrective_budget_origin exceeding corrective_tasks.length even with no previousState (validateState(null, ...) at engine start/resume)', () => {
+    const next = finalReviewState('in_progress', [finalCorrective(1, 'in_progress')], 5);
+    const errors = validateState(null, next, cfg, tmpl);
+    expect(errors.some(e => /corrective_budget_origin/i.test(e) && /exceeds/i.test(e))).toBe(true);
+  });
+});
+
+// ── Blocking human approval gate cursor (post-final-corrective regression) ───
+// The exact state shape that surfaced the defect in a live run: final_review
+// completed with a windowed corrective entry completed beneath it, and
+// final_approval_gate now blocking (in_progress). Before this task,
+// deriveCurrentNodePathFromMarkers returned null here (no in_progress leaf
+// existed anywhere) and the cursor tripwire was silently tolerated instead of
+// resolving to the gate.
+
+describe('blocking human approval gate cursor (P01-T01 regression)', () => {
+  it('resolves the cursor to final_approval_gate after a completed final corrective, with no validation errors', () => {
+    const state = finalApprovalGateAfterCorrectiveState();
+    expect(deriveCurrentNodePathFromMarkers(state)).toBe('final_approval_gate');
+    const errors = validateState(null, state, cfg, tmpl);
+    expect(errors).toEqual([]);
+  });
+
+  it('resolves the cursor to plan_approval_gate before the phase loop is seeded', () => {
+    const state = {
+      $schema: 'orchestration-state-v6',
+      project: { name: 'p', created: '2026-01-01T00:00:00.000Z', updated: '2026-01-01T00:00:00.000Z' },
+      config: {
+        gate_mode: 'autonomous',
+        limits: { max_retries_per_task: 3 },
+        source_control: { auto_commit: 'never', auto_pr: 'never' },
+      },
+      pipeline: { gate_mode: 'autonomous', source_control: null, current_tier: 'planning', halt_reason: null },
+      graph: {
+        template_id: 'medium',
+        status: 'in_progress',
+        current_node_path: 'plan_approval_gate',
+        nodes: {
+          master_plan: { kind: 'step', status: 'completed', doc_path: 'master_plan.md', retries: 0 },
+          explode_master_plan: { kind: 'step', status: 'completed', doc_path: null, retries: 0 },
+          plan_approval_gate: { kind: 'gate', status: 'in_progress', gate_active: true },
+        },
+      },
+    } as unknown as PipelineState;
+    expect(deriveCurrentNodePathFromMarkers(state)).toBe('plan_approval_gate');
+    const errors = validateState(null, state, cfg, tmpl);
+    expect(errors).toEqual([]);
+  });
+
+  it('a clean approve-first-time run at final_approval_gate (no corrective ever born) resolves the same way — the untouched path stays untouched', () => {
+    const state = {
+      $schema: 'orchestration-state-v6',
+      project: { name: 'p', created: '2026-01-01T00:00:00.000Z', updated: '2026-01-01T00:00:00.000Z' },
+      config: {
+        gate_mode: 'autonomous',
+        limits: { max_retries_per_task: 3 },
+        source_control: { auto_commit: 'never', auto_pr: 'never' },
+      },
+      pipeline: { gate_mode: 'autonomous', source_control: null, current_tier: 'review', halt_reason: null },
+      graph: {
+        template_id: 'medium',
+        status: 'in_progress',
+        current_node_path: 'final_approval_gate',
+        nodes: {
+          phase_loop: {
+            kind: 'for_each_phase',
+            status: 'completed',
+            iterations: [
+              { index: 0, status: 'completed', doc_path: 'phases/phase-1.md', repos: [], corrective_tasks: [], nodes: {} },
+            ],
+          },
+          final_review: {
+            kind: 'step', status: 'completed', doc_path: 'final-review.md', retries: 0, verdict: 'approved',
+          },
+          final_approval_gate: { kind: 'gate', status: 'in_progress', gate_active: true },
+        },
+      },
+    } as unknown as PipelineState;
+    expect(deriveCurrentNodePathFromMarkers(state)).toBe('final_approval_gate');
+    const errors = validateState(null, state, cfg, tmpl);
+    expect(errors).toEqual([]);
   });
 });

@@ -16,14 +16,12 @@ Only Groups and Edges are persisted. Everything else is derived live at read tim
 
 ### Worktree resolution
 
-`resolveWorktrees` derives a project's worktrees live and never persists them. The `worktree_name`
-defaults to the project's own folder name; under the multi-repo `source_control.repos[]` convention
-each repo resolves to `worktrees/<worktree_name>/<repo>/` and reports `resolvedVia: 'convention'`.
-**Reuse** — a child project running inside a parent's worktree — is derived from a shared
-`worktree_name` read from `state.pipeline.source_control` (never stored); when that shared name is a
-non-empty string that differs from the project's own folder name the refs resolve under the shared
-path and report `resolvedVia: 'shared-worktree-name'`. A legacy single `worktree_path` resolves via
-git metadata and reports `resolvedVia: 'git'`.
+`resolveWorktrees` derives a project's worktrees live and never persists them. Four resolution kinds are supported:
+
+- **`convention`**: The `worktree_name` defaults to the project's own folder name; under the multi-repo `source_control.repos[]` convention each repo resolves to `worktrees/<worktree_name>/<repo>/`.
+- **`shared-worktree-name`**: A child project running inside a parent's worktree derives a shared `worktree_name` read from `state.pipeline.source_control` (never stored). When that shared name is a non-empty string that differs from the project's own folder name, the refs resolve under the shared path.
+- **`git`**: A legacy single `worktree_path` resolves via git metadata.
+- **`registry-clone`**: A binding to a main-clone repo registered in the repository registry, resolved via the registry's configured path.
 
 ## Seam rules
 
@@ -42,7 +40,7 @@ git metadata and reports `resolvedVia: 'git'`.
 | `getNode` | `(id: NodeId) => Node \| null` | Looks up a single node (project or group) by id |
 | `listProjects` | `(filter?: { groupId?: NodeId; status?: NodeStatus }) => Project[]` | Lists all derived projects, with optional status or group membership filter |
 | `listGroups` | `() => Group[]` | Lists all stored groups |
-| `resolveWorktrees` | `(projectId: NodeId) => WorktreeRef[]` | Resolves worktree paths for a project via convention, shared-worktree-name, or git |
+| `resolveWorktrees` | `(projectId: NodeId) => WorktreeRef[]` | Resolves worktree paths for a project via convention, shared-worktree-name, git, or registry-clone |
 
 ### Structure write
 

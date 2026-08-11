@@ -3,13 +3,10 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import type { SSEEvent, SSEEventType, SSEConnectionStatus } from "@/types/events";
 import { EVENT_TYPES } from "@/types/events";
+import { nextReconnectDelay } from "@/lib/sse-reconnect";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
-const BACKOFF_INITIAL_MS = 1000;
-const BACKOFF_MULTIPLIER = 2;
-const BACKOFF_MAX_MS = 30000;
-const MAX_RECONNECT_ATTEMPTS = 10;
 const DEFAULT_MAX_EVENTS = 50;
 
 // ─── Interfaces ─────────────────────────────────────────────────────────────
@@ -56,8 +53,8 @@ export function useSSE(options: UseSSEOptions): UseSSEReturn {
   const mountedRef = useRef(true);
   const esRef = useRef<EventSource | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const backoffDelayRef = useRef(BACKOFF_INITIAL_MS);
-  const attemptCountRef = useRef(0);
+  // null before the first retry, per nextReconnectDelay's contract.
+  const backoffDelayRef = useRef<number | null>(null);
 
   // Store callbacks in refs to avoid re-creating the connection on callback changes
   const onEventRef = useRef(onEvent);
@@ -101,35 +98,30 @@ export function useSSE(options: UseSSEOptions): UseSSEReturn {
     es.onopen = () => {
       if (!mountedRef.current) return;
       setStatus("connected");
-      backoffDelayRef.current = BACKOFF_INITIAL_MS;
-      attemptCountRef.current = 0;
+      backoffDelayRef.current = null;
       onOpenRef.current?.();
     };
 
     // ── onerror ───────────────────────────────────────────────────────
+    // Reconnection is indefinite by design: every path below either schedules
+    // another attempt or is running during unmount teardown (the mountedRef
+    // early-return above). A server outage costs one request per backoff
+    // interval, capped at 30s — the price of not requiring a manual reconnect.
     es.onerror = (error: Event) => {
       if (!mountedRef.current) return;
 
       onErrorRef.current?.(error);
       closeEventSource();
 
-      attemptCountRef.current += 1;
-
-      if (attemptCountRef.current >= MAX_RECONNECT_ATTEMPTS) {
-        setStatus("disconnected");
-        return;
-      }
-
       setStatus("reconnecting");
+
+      const delay = nextReconnectDelay(backoffDelayRef.current);
+      backoffDelayRef.current = delay;
 
       reconnectTimeoutRef.current = setTimeout(() => {
         if (!mountedRef.current) return;
-        backoffDelayRef.current = Math.min(
-          backoffDelayRef.current * BACKOFF_MULTIPLIER,
-          BACKOFF_MAX_MS,
-        );
         createConnection();
-      }, backoffDelayRef.current);
+      }, delay);
     };
 
     // ── Named event listeners ─────────────────────────────────────────
@@ -166,8 +158,7 @@ export function useSSE(options: UseSSEOptions): UseSSEReturn {
   const reconnect = useCallback(() => {
     clearReconnectTimeout();
     closeEventSource();
-    backoffDelayRef.current = BACKOFF_INITIAL_MS;
-    attemptCountRef.current = 0;
+    backoffDelayRef.current = null;
     createConnection();
   }, [clearReconnectTimeout, closeEventSource, createConnection]);
 

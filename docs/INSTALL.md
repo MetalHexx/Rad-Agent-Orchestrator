@@ -23,8 +23,8 @@ rad-orc is a document-driven, multi-agent SDLC orchestration system: skills (`/r
 Run in Claude Code:
 
 ```
-/plugin marketplace add MetalHexx/rad-orc-marketplace
-/plugin install rad-orc@rad-orc-marketplace
+/plugin marketplace add radancy-pe/rai-ops-plugin-marketplace
+/plugin install rad-orc@radancy
 ```
 
 Restart your session. After restart, `/rad-orc:rad-brainstorm`, `/rad-orc:rad-plan`, `/rad-orc:rad-ui-start`, etc. are available — type `/` to see the full namespaced list.
@@ -44,8 +44,8 @@ This writes agents and skills into `~/.claude` (your home directory, not the cur
 Run in the Copilot CLI:
 
 ```
-/plugin marketplace add MetalHexx/rad-orc-marketplace
-/plugin install rad-orc@rad-orc-marketplace
+/plugin marketplace add radancy-pe/rai-ops-plugin-marketplace
+/plugin install rad-orc@radancy
 ```
 
 ### Option B: Standard Installer
@@ -65,8 +65,8 @@ Install the GitHub Copilot extension and enable **agent mode** in VS Code settin
 Run in Copilot Chat (agent mode):
 
 ```
-/plugin marketplace add MetalHexx/rad-orc-marketplace
-/plugin install rad-orc-vscode@rad-orc-marketplace
+/plugin marketplace add radancy-pe/rai-ops-plugin-marketplace
+/plugin install rad-orc-vscode@radancy
 ```
 
 ### Option B: Standard Installer
@@ -99,12 +99,12 @@ After installing, in a fresh session in your repo:
 
 ## Updating
 
-- **Plugin install:** `/plugin marketplace update rad-orc-marketplace` — this refreshes every plugin sourced from that marketplace (there is no per-plugin update command; Claude Code updates at the marketplace level).
+- **Plugin install:** `/plugin marketplace update radancy` — this refreshes every plugin sourced from that marketplace (there is no per-plugin update command; Claude Code updates at the marketplace level).
 - **Standard installer:** re-run `npx rad-orc --harness <name>`. This upgrades in place as an uninstall-of-old + install-of-new; locally-modified files trigger a confirmation prompt before being touched.
 
 ## Uninstalling
 
-- **Plugin install:** `/plugin uninstall rad-orc@rad-orc-marketplace` (or `rad-orc-vscode@rad-orc-marketplace`).
+- **Plugin install:** `/plugin uninstall rad-orc@radancy` (or `rad-orc-vscode@radancy`).
 - **Standard installer:**
 
   ```

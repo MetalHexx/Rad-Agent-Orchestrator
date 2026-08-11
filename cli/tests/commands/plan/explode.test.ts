@@ -20,8 +20,7 @@ describe('planExplode core + mapResult', () => {
     const env = planExplodeCommand.mapResult!(r);
     expect(env.ok).toBe(true);
     expect(env.exit_code).toBe(0);
-    expect((env.data as { emittedPhases: number }).emittedPhases).toBe(1);
-    expect((env.data as { emittedTasks: number }).emittedTasks).toBe(1);
+    expect(env.data).toEqual({ emittedPhases: 1, emittedTasks: 1 });
   });
 
   it('parse_error branch returns ok:true envelope with exit_code 2 and structured data.error', () => {

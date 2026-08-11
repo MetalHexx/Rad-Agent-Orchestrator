@@ -104,8 +104,8 @@ When running the audit:
              --master-plan <master-plan-path> \
              --project-name <project-name>
 
-       The subcommand auto-backs-up the pre-correction `phases/` and `tasks/` into `backups/{ISO-timestamp}/` and resets `state.graph.nodes.phase_loop` before re-seeding — nothing is overwritten destructively. The envelope is `{ ok, data, error }`; on success read `data.emittedPhases`, `data.emittedTasks`, and `data.backupDir`. On exit code `2` with `data.error` populated (parse failure in the corrected Master Plan), halt and surface the structured `data.error` payload (`{ line, expected, found, message }`) to the user — do not retry in-skill.
-- Show the user the concise audit report, a summary of the corrections you applied, and (when re-exploded) the backup directory path.
+       The subcommand clears `phases/` and `tasks/` by deleting their contents and resets `state.graph.nodes.phase_loop` before re-seeding. The envelope is `{ ok, data, error }`; on success read `data.emittedPhases` and `data.emittedTasks`. On exit code `2` with `data.error` populated (parse failure in the corrected Master Plan), halt and surface the structured `data.error` payload (`{ line, expected, found, message }`) to the user — do not retry in-skill.
+- Show the user the concise audit report and a summary of the corrections you applied.
 - Single pass, no re-audit after corrections.
 
 ## Step 6: Tail

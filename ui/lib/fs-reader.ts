@@ -10,6 +10,7 @@ import type { ProjectSummary } from '@/types/components';
 import { getOrchestrationYmlPath, getProjectsRoot, resolveProjectDir } from '@/lib/path-resolver';
 import { parseYaml } from '@/lib/yaml-parser';
 import { derivePlanningStatus, deriveExecutionStatus } from '@/lib/status-derivation';
+import { isProjectDirName } from '@/lib/project-name';
 
 /**
  * Resolve the absolute path to orchestration.yml.
@@ -92,7 +93,7 @@ export function resolveOrchRoot(_config: OrchestrationConfig): string {
 
 /**
  * Discover all projects under ~/.radorc/projects/. Returns summaries with tier info.
- * Each subdirectory is treated as a project.
+ * Each subdirectory whose name matches `isProjectDirName` is treated as a project.
  * If state.json exists and is parseable, extract the pipeline tier.
  * If state.json is missing, mark hasState: false.
  * If state.json is malformed, mark hasMalformedState: true with errorMessage.
@@ -111,7 +112,7 @@ export async function discoverProjects(): Promise<ProjectSummary[]> {
 
   const summaries = await Promise.all(
     entries
-      .filter((entry) => entry.isDirectory())
+      .filter((entry) => entry.isDirectory() && isProjectDirName(entry.name))
       .map(async (entry): Promise<ProjectSummary> => {
         const projectName = entry.name;
         const projectDir = resolveProjectDir(projectName);

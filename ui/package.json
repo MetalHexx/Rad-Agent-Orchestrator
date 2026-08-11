@@ -1,6 +1,6 @@
 {
   "name": "ui",
-  "version": "1.0.0-alpha.12",
+  "version": "1.0.0-alpha.13",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -17,8 +17,8 @@
   "dependencies": {
     "@base-ui/react": "^1.2.0",
     "@dagrejs/dagre": "^1.1.8",
-    "@rad-orchestration/repo-registry": "1.0.0-alpha.12",
-    "@rad-orchestration/telemetry": "1.0.0-alpha.12",
+    "@rad-orchestration/repo-registry": "1.0.0-alpha.13",
+    "@rad-orchestration/telemetry": "1.0.0-alpha.13",
     "@shikijs/rehype": "^3.23.0",
     "@tailwindcss/typography": "^0.5.19",
     "@xyflow/react": "^12.10.2",

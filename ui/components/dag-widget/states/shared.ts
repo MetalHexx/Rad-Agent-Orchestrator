@@ -63,6 +63,10 @@ export function deriveWholeGraphProgress(
         case 'step':
           total += 1;
           if (node.status === 'completed' || node.status === 'in_progress') completed += 1;
+          // A step can host its own `corrective_tasks` directly (e.g. a final
+          // corrective hosted on `final_review`, with no enclosing loop
+          // iteration) — recurse so those steps are tallied too.
+          visitEntries(node.corrective_tasks ?? []);
           break;
         case 'parallel':
           visitNodes(node.nodes);

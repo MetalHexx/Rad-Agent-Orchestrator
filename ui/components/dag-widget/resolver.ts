@@ -12,7 +12,7 @@ import {
   deriveIterationTaskProgress,
 } from '@/components/dag-timeline/dag-timeline-helpers';
 import { deriveWholeGraphProgress } from './states/shared';
-import type { StateId, StateView, StateViewContext } from './types';
+import type { CorrectiveScope, StateId, StateView, StateViewContext } from './types';
 import { fallbackView } from './states/fallback-view';
 import { planningView } from './states/planning-view';
 import { planApprovalView } from './states/plan-approval-view';
@@ -69,7 +69,7 @@ interface PathWalkResult {
   node: NodeState | undefined;
   leaf: string;
   isCorrective: boolean;
-  isPhaseCorrective: boolean;
+  correctiveScope: CorrectiveScope | null;
   iteration: IterationEntry | undefined;
   correctiveEntry: CorrectiveTaskEntry | undefined;
 }
@@ -86,15 +86,24 @@ interface PathWalkResult {
  *    `index === N` (1-based, matching `CorrectiveTaskEntry.index`); its `nodes`
  *    become the active record. Sets `isCorrective` — this is the ONLY signal
  *    that identifies the corrective state, so a walk that skips it silently
- *    drops corrective to the fallback.
- *  - anything else — a node key looked up in the active record.
+ *    drops corrective to the fallback. The container searched is
+ *    `correctiveEntry ?? iteration ?? stepHost` — a nested corrective reads
+ *    off its enclosing corrective entry, an iteration-hosted corrective off
+ *    its iteration, and a corrective hosted directly on a standalone
+ *    `kind: 'step'` node (no enclosing loop) off that step.
+ *  - anything else — a node key looked up in the active record; when it
+ *    resolves to a `kind: 'step'` node, that node becomes `stepHost` — the
+ *    last-resort container a following `ct{N}` reads from.
  *
  * A malformed / stale path returns `node: undefined`; `isCorrective` still
  * reflects any `ct{N}` segment seen so a partially-walked corrective path is
- * not misclassified. `isPhaseCorrective` is derived alongside it: true only
- * when `isCorrective` is set AND the innermost `iter{N}` selected before that
- * `ct{N}` came from a `for_each_phase` node (a `phase_loop.iterN.ctM` path,
- * as opposed to a task-level `phase_loop.iterN.task_loop.iterK.ctM` one).
+ * not misclassified. `correctiveScope` is derived from `hostKind` and frozen
+ * the first time a `ct{N}` segment is seen — a `for_each_task` loop →
+ * `'task'`, a `for_each_phase` loop → `'phase'`, a standalone step host →
+ * `'final'`; `null` when `isCorrective` is false. Frozen rather than
+ * re-derived at the end so a segment walked AFTER the corrective (e.g. the
+ * corrective's own `task_executor` leaf, itself a `kind: 'step'` node) can't
+ * overwrite `hostKind` and misclassify the scope.
  */
 function walkPath(rootNodes: NodesRecord, path: string): PathWalkResult {
   const segments = path.split('.');
@@ -105,13 +114,26 @@ function walkPath(rootNodes: NodesRecord, path: string): PathWalkResult {
   let iteration: IterationEntry | undefined;
   let correctiveEntry: CorrectiveTaskEntry | undefined;
   let isCorrective = false;
-  let enclosingLoopKind: 'for_each_phase' | 'for_each_task' | undefined;
+  let hostKind: 'for_each_phase' | 'for_each_task' | 'step' | undefined;
+  let stepHost: NodeState | undefined;
+  // Frozen the first time a `ct{N}` segment is seen, from `hostKind` at that
+  // instant — a later plain segment resolving to a `kind: 'step'` node (e.g.
+  // the corrective's own `task_executor` leaf) would otherwise overwrite
+  // `hostKind` to `'step'` and misclassify every corrective as `'final'`.
+  let correctiveScope: CorrectiveScope | null = null;
+
+  const scopeFor = (kind: typeof hostKind): CorrectiveScope | null => {
+    if (kind === 'for_each_phase') return 'phase';
+    if (kind === 'for_each_task') return 'task';
+    if (kind === 'step') return 'final';
+    return null;
+  };
 
   const result = (node: NodeState | undefined): PathWalkResult => ({
     node,
     leaf,
     isCorrective,
-    isPhaseCorrective: isCorrective && enclosingLoopKind === 'for_each_phase',
+    correctiveScope,
     iteration,
     correctiveEntry,
   });
@@ -129,7 +151,7 @@ function walkPath(rootNodes: NodesRecord, path: string): PathWalkResult {
       if (!entry) {
         return result(undefined);
       }
-      enclosingLoopKind = currentNode.kind;
+      hostKind = currentNode.kind;
       iteration = entry;
       currentNodes = entry.nodes;
       currentNode = undefined;
@@ -137,15 +159,19 @@ function walkPath(rootNodes: NodesRecord, path: string): PathWalkResult {
     }
 
     if (ctMatch) {
+      if (!isCorrective) {
+        correctiveScope = scopeFor(hostKind);
+      }
       isCorrective = true;
-      const container = correctiveEntry ?? iteration;
+      const container = correctiveEntry ?? iteration ?? stepHost;
       if (!container) {
         return result(undefined);
       }
       const index = Number(ctMatch[1]);
       // A nested corrective's `corrective_tasks` is carried at runtime but not
-      // typed on `CorrectiveTaskEntry` (only `IterationEntry` declares it), so
-      // read it defensively — the same access the timeline's corrective group uses.
+      // typed on `CorrectiveTaskEntry` (only `IterationEntry` and
+      // `StepNodeState` declare it), so read it defensively — the same
+      // access the timeline's corrective group uses.
       const correctiveTasks: CorrectiveTaskEntry[] =
         (container as { corrective_tasks?: CorrectiveTaskEntry[] }).corrective_tasks ?? [];
       const entry = correctiveTasks.find((ct) => ct.index === index);
@@ -162,6 +188,12 @@ function walkPath(rootNodes: NodesRecord, path: string): PathWalkResult {
       return result(undefined);
     }
     currentNode = currentNodes[segment];
+    if (currentNode && currentNode.kind === 'step') {
+      hostKind = 'step';
+      stepHost = currentNode;
+    } else {
+      stepHost = undefined;
+    }
     // A parallel node nests a further record; descend so a following plain
     // segment resolves. for_each_* children are reached via the next iter
     // segment instead, so leave `currentNodes` alone for them.
@@ -207,10 +239,7 @@ function normalizeFocus(focus: string | undefined, currentNodePath: string | nul
  *  1. A completed graph is `complete` regardless of node.
  *  2. A `.ct{N}.` path is `corrective` (wins over the leaf's own mapping).
  *  3. Skip-set leaves and unknown/unresolvable nodes are `fallback`.
- *  4. A mapped leaf id yields its state — except a `planning` leaf advances to
- *     `plan-approval` once the plan-approval gate is active, so the widget
- *     stops showing "Building Execution Plan" while the plan sits parked at
- *     the gate.
+ *  4. A mapped leaf id yields its state.
  */
 export function resolveStateId(state: AnyProjectState, focus?: string): StateId {
   if (state.graph.status === 'completed') return 'complete';
@@ -223,14 +252,7 @@ export function resolveStateId(state: AnyProjectState, focus?: string): StateId 
   if (node === undefined) return 'fallback';
   if (SKIP_STATE_NODE_IDS.has(leaf)) return 'fallback';
 
-  const mapped = NODE_ID_TO_STATE[leaf] ?? 'fallback';
-  if (mapped === 'planning') {
-    const planGate = state.graph.nodes['plan_approval_gate'];
-    if (planGate?.kind === 'gate' && planGate.gate_active && planGate.status !== 'completed') {
-      return 'plan-approval';
-    }
-  }
-  return mapped;
+  return NODE_ID_TO_STATE[leaf] ?? 'fallback';
 }
 
 /**
@@ -286,7 +308,7 @@ export function resolveStateView(
         node: undefined,
         leaf: '',
         isCorrective: false,
-        isPhaseCorrective: false,
+        correctiveScope: null,
         iteration: undefined,
         correctiveEntry: undefined,
       };
@@ -304,7 +326,7 @@ export function resolveStateView(
     nodeId: walk.leaf,
     node: walk.node,
     isCorrective: walk.isCorrective,
-    isPhaseCorrective: walk.isPhaseCorrective,
+    correctiveScope: walk.correctiveScope,
     iteration: walk.iteration,
     correctiveEntry: walk.correctiveEntry,
     phaseName: deriveCurrentPhase(phaseLoop),

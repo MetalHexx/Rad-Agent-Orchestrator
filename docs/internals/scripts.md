@@ -54,4 +54,5 @@ and documented in the action routing table.
 ## Cross-reference
 
 For the complete event-to-action routing table and signaling reference, see
-[`harness-files/skills/rad-orchestration/references/action-event-reference.md`](../../harness-files/skills/rad-orchestration/references/action-event-reference.md).
+the action/event catalog at
+[`runtime-config/action-events/`](../../runtime-config/action-events/).

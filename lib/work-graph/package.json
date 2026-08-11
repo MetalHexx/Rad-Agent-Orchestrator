@@ -1,6 +1,6 @@
 {
   "name": "@rad-orchestration/work-graph",
-  "version": "1.0.0-alpha.12",
+  "version": "1.0.0-alpha.13",
   "private": true,
   "type": "module",
   "main": "dist/index.js",
@@ -21,7 +21,7 @@
   },
   "dependencies": {
     "js-yaml": "^4.1.0",
-    "@rad-orchestration/repo-registry": "1.0.0-alpha.12"
+    "@rad-orchestration/repo-registry": "1.0.0-alpha.13"
   },
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",

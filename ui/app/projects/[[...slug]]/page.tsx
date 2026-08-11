@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useProjects } from "@/hooks/use-projects";
 import { useFollowMode } from "@/hooks/use-follow-mode";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
+import { Alert, AlertTitle, AlertDescription, AlertAction } from "@/components/ui/alert";
 import { ProjectSidebar } from "@/components/sidebar";
 import { LaunchScreen } from "@/components/layout";
 import { useStartAction } from "@/hooks/use-start-action";
@@ -24,13 +25,23 @@ import { ArtifactViewerModal } from "@/components/artifacts";
 import { useArtifactModal, markdownPathForActive, deleteTargetForActive } from "@/hooks/use-artifact-modal";
 import { ArtifactLiveProvider, useArtifactLive } from "@/hooks/use-artifact-live";
 import { buildModalDocs, type ModalDoc } from "@/lib/modal-doc-model";
+import { selectProjectView, type ProjectView } from "@/lib/project-view";
+import { nextHoldState, type HoldState } from "@/lib/hold-floor";
+
+/** Minimum time the state placeholder stays on screen once it appears. */
+const PLACEHOLDER_FLOOR_MS = 300;
 
 // ─── Inner component — runs under ArtifactLiveProvider ────────────────────────
 
 interface ProjectsPageContentProps {
   selectedProject: string | null;
-  selected: ProjectSummary | undefined;
+  selected: ProjectSummary;
   v5State: ProjectStateV5 | ProjectStateV6 | null;
+  /** Decided once by the outer component — this component never re-derives it. */
+  view: ProjectView;
+  /** Already non-null whenever `view` is 'error'. */
+  stateErrorMessage: string | null;
+  onRetryState: () => void;
   v5Derivations: {
     graphStatus: GraphStatus | undefined;
     gateMode: GateMode | null | undefined;
@@ -57,6 +68,9 @@ function ProjectsPageContent({
   selectedProject,
   selected,
   v5State,
+  view,
+  stateErrorMessage,
+  onRetryState,
   v5Derivations,
   followMode,
   toggleFollowMode,
@@ -74,6 +88,14 @@ function ProjectsPageContent({
   const live = useArtifactLive();
   const artifacts = live.artifacts;
   const requirementsStatus = live.requirementsStatus;
+
+  // Tracks the latest selectedProject so the modal-doc fetch below can tell,
+  // at the point its response resolves, whether it's still current. The
+  // closure it was issued under only sees the value at issue time, which
+  // can't observe the user leaving this project and returning to it before
+  // the response lands.
+  const selectedProjectRef = React.useRef<string | null>(selectedProject);
+  selectedProjectRef.current = selectedProject;
 
   const { store: registryStore } = useRegistryStore();
   const bindByName = React.useMemo(() => buildBindLookup(registryStore.repos), [registryStore.repos]);
@@ -144,25 +166,29 @@ function ProjectsPageContent({
     // is in flight. The stage gates markdown by path, so the previously-shown
     // (front) doc keeps rendering its own content while the incoming layer waits on
     // its matching fetch — no stale flash, no front spinner during navigation (BUG 1).
+    const project = selectedProject;
+    // The stale-project guard below (in addition to `cancelled`): a response
+    // for a project the user returned to and left again can still land while
+    // `cancelled` is false for the run current at issue time, so ownership is
+    // re-checked against the live ref at the point of writing, not relying on
+    // effect-cleanup ordering alone.
     let cancelled = false;
-    fetch(`/api/projects/${encodeURIComponent(selectedProject)}/document?path=${encodeURIComponent(mdPath)}`)
+    fetch(`/api/projects/${encodeURIComponent(project)}/document?path=${encodeURIComponent(mdPath)}`)
       .then((res) => {
         if (!res.ok) throw new Error("Failed to fetch markdown");
         return res.json();
       })
       .then((data: { content: string; frontmatter: DocumentFrontmatter }) => {
-        if (!cancelled) {
-          setModalMarkdown(data.content);
-          setModalFrontmatter(data.frontmatter);
-          setModalMarkdownFileName(mdPath);
-        }
+        if (cancelled || project !== selectedProjectRef.current) return;
+        setModalMarkdown(data.content);
+        setModalFrontmatter(data.frontmatter);
+        setModalMarkdownFileName(mdPath);
       })
       .catch(() => {
-        if (!cancelled) {
-          setModalMarkdown('');
-          setModalFrontmatter({});
-          setModalMarkdownFileName(mdPath);
-        }
+        if (cancelled || project !== selectedProjectRef.current) return;
+        setModalMarkdown('');
+        setModalFrontmatter({});
+        setModalMarkdownFileName(mdPath);
       });
     return () => { cancelled = true; };
   }, [modal.open, modal.activePath, modalDocs, selectedProject]);
@@ -181,118 +207,183 @@ function ProjectsPageContent({
 
   const startAction = useStartAction(selectedProject);
 
+  // `view` is the only thing consulted here — the ownership comparisons that
+  // decided it live in selectProjectView, so no local condition can second-guess
+  // them and let one project's state render under another's name.
+  function renderView() {
+    switch (view) {
+      case 'loading':
+        return (
+          <div className="overflow-auto">
+            <ProjectHeader
+              projectName={selected.name}
+              tier={selected.tier}
+              planningStatus={selected.planningStatus}
+              executionStatus={selected.executionStatus}
+              followMode={false}
+              onToggleFollowMode={() => {}}
+              projectType={selected.project_type}
+            />
+            <div className="flex flex-col">
+              <HaltReasonBanner
+                graphStatus={v5Derivations.graphStatus}
+                haltReason={null}
+              />
+              <SSEStatusBanner
+                status={sseStatus}
+                degraded={live.degraded}
+                onReconnect={reconnect}
+              />
+            </div>
+            <div className="px-6 py-4" role="status" aria-label="Loading project state">
+              <DAGTimelineSkeleton />
+            </div>
+          </div>
+        );
+
+      case 'error':
+        return (
+          <div className="overflow-auto">
+            <ProjectHeader
+              projectName={selected.name}
+              tier={selected.tier}
+              planningStatus={selected.planningStatus}
+              executionStatus={selected.executionStatus}
+              followMode={false}
+              onToggleFollowMode={() => {}}
+              projectType={selected.project_type}
+            />
+            <div className="flex flex-col">
+              <SSEStatusBanner
+                status={sseStatus}
+                degraded={live.degraded}
+                onReconnect={reconnect}
+              />
+            </div>
+            <div className="px-6 py-4">
+              <Alert variant="destructive">
+                <AlertTitle>Couldn&rsquo;t load this project&rsquo;s state</AlertTitle>
+                <AlertDescription>{stateErrorMessage}</AlertDescription>
+                <AlertAction>
+                  <button
+                    type="button"
+                    onClick={onRetryState}
+                    className="cursor-pointer rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted"
+                  >
+                    Retry
+                  </button>
+                </AlertAction>
+              </Alert>
+            </div>
+          </div>
+        );
+
+      // The null check is a type narrowing, not a view decision: it can only
+      // withhold the plan, never route around `view`.
+      case 'plan':
+        return v5State === null ? null : (
+          <div className="overflow-auto">
+            <ProjectHeader
+              projectName={selected.name}
+              tier={selected.tier}
+              planningStatus={selected.planningStatus}
+              executionStatus={selected.executionStatus}
+              graphStatus={v5Derivations.graphStatus}
+              gateMode={v5Derivations.gateMode}
+              currentPhaseName={v5Derivations.currentPhaseName}
+              progress={v5Derivations.progress}
+              followMode={followMode}
+              onToggleFollowMode={toggleFollowMode}
+              projectType={selected.project_type}
+            />
+            <div className="flex flex-col">
+              <HaltReasonBanner
+                graphStatus={v5Derivations.graphStatus}
+                haltReason={v5State.pipeline.halt_reason}
+              />
+              <SSEStatusBanner
+                status={sseStatus}
+                degraded={live.degraded}
+                onReconnect={reconnect}
+              />
+            </div>
+            <div className="px-6 py-4 flex flex-col gap-3">
+              {filesLoaded ? (
+                <>
+                  <PlanningSection
+                    artifacts={artifacts}
+                    requirementsStatus={requirementsStatus}
+                    onOpen={(index) => openArtifactModal(artifacts[index].fileName)}
+                    onDelete={(a) => setPendingDelete(a)}
+                    unseen={live.unseen}
+                    activePulse={live.activePulse}
+                    state={v5State}
+                    onDocClick={openArtifactModal}
+                    compareUrlByRepo={v5Derivations.compareUrlByRepo}
+                    projectName={selected.name}
+                  />
+                  <DAGTimeline
+                    nodes={v5State.graph.nodes}
+                    state={v5State}
+                    currentNodePath={v5State.graph.current_node_path}
+                    onDocClick={openArtifactModal}
+                    expandedLoopIds={expandedLoopIds}
+                    onAccordionChange={onAccordionChange}
+                    compareUrlByRepo={v5Derivations.compareUrlByRepo}
+                    projectName={selected.name}
+                    phaseLoopStatus={v5Derivations.phaseLoopStatus}
+                    prUrl={v5State.pipeline.source_control?.repos?.[0]?.pr_url ?? null}
+                    afterPlanningSlot={
+                      hasSourceControlRepos(v5State.pipeline.source_control) && (
+                        <SourceControlPanel
+                          repos={v5State.pipeline.source_control!.repos}
+                          projectName={selected.name}
+                          projectType={selected.project_type}
+                          autoCommit={v5State.pipeline.source_control!.auto_commit}
+                          autoPr={v5State.pipeline.source_control!.auto_pr}
+                          bindByName={bindByName}
+                        />
+                      )
+                    }
+                  />
+                </>
+              ) : (
+                <DAGTimelineSkeleton />
+              )}
+            </div>
+          </div>
+        );
+
+      case 'launch':
+        return (
+          <div className="flex h-full flex-col">
+            <SSEStatusBanner
+              status={sseStatus}
+              degraded={live.degraded}
+              onReconnect={reconnect}
+            />
+            <div className="min-h-0 flex-1">
+              <LaunchScreen
+                projectName={selected.name}
+                artifacts={artifacts}
+                onOpenArtifact={(index) => openArtifactModal(artifacts[index].fileName)}
+                onDeleteArtifact={(a) => setPendingDelete(a)}
+                onStartPlanning={() => startAction.start('start-planning')}
+                onStartBrainstorming={() => startAction.start('start-brainstorming')}
+                pendingAction={startAction.pendingAction}
+                errorMessage={startAction.errorMessage}
+                unseen={live.unseen}
+                activePulse={live.activePulse}
+              />
+            </div>
+          </div>
+        );
+    }
+  }
+
   return (
     <>
-      {selected && (selected.schemaVersion === 'v5' || selected.schemaVersion === 'v6') && !v5State ? (
-        <div className="overflow-auto">
-          <ProjectHeader
-            projectName={selected.name}
-            tier={selected.tier}
-            planningStatus={selected.planningStatus}
-            executionStatus={selected.executionStatus}
-            followMode={false}
-            onToggleFollowMode={() => {}}
-            projectType={selected.project_type}
-          />
-          <div className="flex flex-col">
-            <HaltReasonBanner
-              graphStatus={v5Derivations.graphStatus}
-              haltReason={null}
-            />
-            <SSEStatusBanner
-              status={sseStatus}
-              degraded={live.degraded}
-              onReconnect={reconnect}
-            />
-          </div>
-          <div className="px-6 py-4">
-            <DAGTimelineSkeleton />
-          </div>
-        </div>
-      ) : selected && v5State ? (
-        <div className="overflow-auto">
-          <ProjectHeader
-            projectName={selected.name}
-            tier={selected.tier}
-            planningStatus={selected.planningStatus}
-            executionStatus={selected.executionStatus}
-            graphStatus={v5Derivations.graphStatus}
-            gateMode={v5Derivations.gateMode}
-            currentPhaseName={v5Derivations.currentPhaseName}
-            progress={v5Derivations.progress}
-            followMode={followMode}
-            onToggleFollowMode={toggleFollowMode}
-            projectType={selected.project_type}
-          />
-          <div className="flex flex-col">
-            <HaltReasonBanner
-              graphStatus={v5Derivations.graphStatus}
-              haltReason={v5State.pipeline.halt_reason}
-            />
-            <SSEStatusBanner
-              status={sseStatus}
-              degraded={live.degraded}
-              onReconnect={reconnect}
-            />
-          </div>
-          <div className="px-6 py-4 flex flex-col gap-3">
-            {filesLoaded ? (
-              <>
-                <PlanningSection
-                  artifacts={artifacts}
-                  requirementsStatus={requirementsStatus}
-                  onOpen={(index) => openArtifactModal(artifacts[index].fileName)}
-                  onDelete={(a) => setPendingDelete(a)}
-                  unseen={live.unseen}
-                  activePulse={live.activePulse}
-                  state={v5State}
-                  onDocClick={openArtifactModal}
-                  compareUrlByRepo={v5Derivations.compareUrlByRepo}
-                  projectName={selected.name}
-                />
-                <DAGTimeline
-                  nodes={v5State.graph.nodes}
-                  currentNodePath={v5State.graph.current_node_path}
-                  onDocClick={openArtifactModal}
-                  expandedLoopIds={expandedLoopIds}
-                  onAccordionChange={onAccordionChange}
-                  compareUrlByRepo={v5Derivations.compareUrlByRepo}
-                  projectName={selected.name}
-                  phaseLoopStatus={v5Derivations.phaseLoopStatus}
-                  prUrl={v5State.pipeline.source_control?.repos?.[0]?.pr_url ?? null}
-                  afterPlanningSlot={
-                    hasSourceControlRepos(v5State.pipeline.source_control) && (
-                      <SourceControlPanel
-                        repos={v5State.pipeline.source_control!.repos}
-                        projectName={selected.name}
-                        projectType={selected.project_type}
-                        autoCommit={v5State.pipeline.source_control!.auto_commit}
-                        autoPr={v5State.pipeline.source_control!.auto_pr}
-                        bindByName={bindByName}
-                      />
-                    )
-                  }
-                />
-              </>
-            ) : (
-              <DAGTimelineSkeleton />
-            )}
-          </div>
-        </div>
-      ) : selected && selected.tier === 'not_initialized' && !v5State && !selected.hasMalformedState ? (
-        <LaunchScreen
-          projectName={selected.name}
-          artifacts={artifacts}
-          onOpenArtifact={(index) => openArtifactModal(artifacts[index].fileName)}
-          onDeleteArtifact={(a) => setPendingDelete(a)}
-          onStartPlanning={() => startAction.start('start-planning')}
-          onStartBrainstorming={() => startAction.start('start-brainstorming')}
-          pendingAction={startAction.pendingAction}
-          errorMessage={startAction.errorMessage}
-          unseen={live.unseen}
-          activePulse={live.activePulse}
-        />
-      ) : null}
+      {renderView()}
 
       {modal.open && modalDocs.some((d) => d.path === modal.activePath) && (
         <ArtifactViewerModal
@@ -365,6 +456,7 @@ export default function ProjectsPage() {
     selectProject,
     isLoading,
     error,
+    stateSettledFor,
     sseStatus,
     reconnect,
   } = useProjects(urlProject);
@@ -385,14 +477,29 @@ export default function ProjectsPage() {
     }
   }, [urlProject, isLoading, projects, router]);
 
-  const [fileList, setFileList] = useState<string[]>([]);
+  // Paired with its owning project, exactly like `projectState` (T01): a
+  // `/files` response that resolves for a project no longer selected must
+  // never surface as that project's file list.
+  const [ownedFiles, setOwnedFiles] = useState<{ owner: string; files: string[] } | null>(null);
+  const fileList = ownedFiles?.owner === selectedProject ? ownedFiles.files : [];
   const [filesLoaded, setFilesLoaded] = useState(false);
 
+  // Tracks the latest selectedProject so the /files fetch below can tell, at
+  // the point its response resolves, whether it's still current — the
+  // closure it was issued under only sees the value at issue time.
+  const selectedProjectRef = React.useRef<string | null>(selectedProject);
+  selectedProjectRef.current = selectedProject;
+
+  // The single ownership gate for state: everything derived below inherits it,
+  // so v5Derivations, useFollowMode and buildModalDocs cannot see state that was
+  // fetched for a different project.
+  const usableState = projectState && projectState.owner === selectedProject ? projectState.state : null;
+
   const v6State: ProjectStateV6 | null =
-    projectState && isV6State(projectState) ? projectState : null;
+    usableState && isV6State(usableState) ? usableState : null;
 
   const v5State: ProjectStateV5 | ProjectStateV6 | null =
-    projectState && isV5State(projectState) ? projectState : v6State;
+    usableState && isV5State(usableState) ? usableState : v6State;
 
   const nodesForFollowMode = v5State ? v5State.graph.nodes : null;
   const { followMode, expandedLoopIds, onAccordionChange, toggleFollowMode } = useFollowMode(nodesForFollowMode, selectedProject);
@@ -444,28 +551,32 @@ export default function ProjectsPage() {
 
   useEffect(() => {
     if (!selectedProject) {
-      setFileList([]);
+      setOwnedFiles(null);
       return;
     }
+    const project = selectedProject;
+    // The owner comparison below (in addition to `cancelled`): a response for
+    // a project the user returned to and left again can still land while
+    // `cancelled` is false for the run current at issue time, so ownership is
+    // re-checked against the live ref at the point of writing rather than
+    // relying on effect-cleanup ordering alone.
     let cancelled = false;
-    fetch(`/api/projects/${encodeURIComponent(selectedProject)}/files`)
+    fetch(`/api/projects/${encodeURIComponent(project)}/files`)
       .then((res) => {
         if (!res.ok) throw new Error("Failed to fetch files");
         return res.json();
       })
       .then((data: { files: string[] }) => {
-        if (!cancelled) {
-          setFileList(data.files);
-          setFilesLoaded(true);
-        }
+        if (cancelled || project !== selectedProjectRef.current) return;
+        setOwnedFiles({ owner: project, files: data.files });
+        setFilesLoaded(true);
       })
       .catch(() => {
-        if (!cancelled) {
-          setFileList([]);
-          // Mark loaded even on failure so the DAG still reveals (the Planning
-          // docs just stay empty) rather than hanging on the skeleton forever.
-          setFilesLoaded(true);
-        }
+        if (cancelled || project !== selectedProjectRef.current) return;
+        setOwnedFiles({ owner: project, files: [] });
+        // Mark loaded even on failure so the DAG still reveals (the Planning
+        // docs just stay empty) rather than hanging on the skeleton forever.
+        setFilesLoaded(true);
       });
     return () => { cancelled = true; };
   }, [selectedProject, fileRefetch]);
@@ -473,6 +584,57 @@ export default function ProjectsPage() {
   // Active path for the provider — derived from modal state inside the
   // inner component and surfaced here via state so the provider prop stays live.
   const [activePath, setActivePath] = useState<string | null>(null);
+
+  // Minimum-visible floor for the state placeholder. Without it a fast fetch
+  // flashes the skeleton for a couple of frames on every project switch; the
+  // floor never outlasts a slower fetch, which resolves the condition itself.
+  const placeholderActive = selectedProject !== null && stateSettledFor !== selectedProject;
+  const holdRef = React.useRef<HoldState>({ shownAt: null });
+  const holdTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [placeholderHeld, setPlaceholderHeld] = useState(false);
+  const [holdWake, setHoldWake] = useState(0);
+
+  useEffect(() => {
+    if (holdTimerRef.current) { clearTimeout(holdTimerRef.current); holdTimerRef.current = null; }
+    const { held, state, wakeInMs } = nextHoldState(
+      holdRef.current, placeholderActive, Date.now(), PLACEHOLDER_FLOOR_MS,
+    );
+    holdRef.current = state;
+    setPlaceholderHeld(held);
+    if (wakeInMs !== null) {
+      holdTimerRef.current = setTimeout(() => {
+        holdTimerRef.current = null;
+        setHoldWake((n) => n + 1);
+      }, wakeInMs);
+    }
+  }, [placeholderActive, holdWake]);
+
+  useEffect(() => () => { if (holdTimerRef.current) clearTimeout(holdTimerRef.current); }, []);
+
+  // Resolved here because the malformed-state and unreadable-state paths reach
+  // the error view with no owned error to read a message off.
+  const ownedErrorMessage = error && error.owner === selectedProject ? error.message : null;
+  const stateErrorMessage =
+    ownedErrorMessage ?? selected?.errorMessage ?? 'This project’s state could not be read.';
+
+  const view: ProjectView = selected
+    ? selectProjectView({
+        selectedName: selected.name,
+        tier: selected.tier,
+        schemaVersion: selected.schemaVersion,
+        hasMalformedState: selected.hasMalformedState,
+        ownedState: projectState,
+        ownedError: error,
+        stateSettledFor,
+        placeholderHeld,
+      })
+    : 'loading';
+
+  // `pathname` already names the selected project, so this re-runs the state
+  // fetch without a history push — the whole retry path, no extra plumbing.
+  const handleRetryState = useCallback(() => {
+    if (selected) selectProject(selected.name);
+  }, [selected, selectProject]);
 
   return (
     <div className="flex h-[calc(100vh-3.5rem)] flex-col bg-background">
@@ -494,10 +656,10 @@ export default function ProjectsPage() {
                 </p>
               </div>
             </div>
-          ) : error && !selected ? (
+          ) : error && error.owner === null && !selected ? (
             <div className="flex h-full items-center justify-center p-6">
               <div className="max-w-md text-center">
-                <p className="text-sm text-destructive" role="alert">{error}</p>
+                <p className="text-sm text-destructive" role="alert">{error.message}</p>
               </div>
             </div>
           ) : notFoundName && !selected ? (
@@ -512,6 +674,9 @@ export default function ProjectsPage() {
                 selectedProject={selectedProject}
                 selected={selected}
                 v5State={v5State}
+                view={view}
+                stateErrorMessage={stateErrorMessage}
+                onRetryState={handleRetryState}
                 v5Derivations={v5Derivations}
                 followMode={followMode}
                 toggleFollowMode={toggleFollowMode}
@@ -528,10 +693,17 @@ export default function ProjectsPage() {
               />
             </ArtifactLiveProvider>
           ) : (
-            <div className="flex h-full items-center justify-center p-6">
-              <p className="text-sm text-muted-foreground">
-                Select a project to begin
-              </p>
+            <div className="flex h-full flex-col">
+              <SSEStatusBanner
+                status={sseStatus}
+                degraded={false}
+                onReconnect={reconnect}
+              />
+              <div className="flex flex-1 items-center justify-center p-6">
+                <p className="text-sm text-muted-foreground">
+                  Select a project to begin
+                </p>
+              </div>
             </div>
           )}
         </SidebarInset>

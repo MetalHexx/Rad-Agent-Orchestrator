@@ -10,6 +10,97 @@ _(none)_
 
 ---
 
+## v1.0.0-alpha.13 — 2026-08-10
+
+### What's New
+
+**Final review can now spawn corrective tasks**
+- Final reviews now create corrective tasks, just like phase and task reviews.
+- If a final review is "rejected" (as opposed to changes requested), the run stops and agent asks for help.
+- The UI timeline now displays the corrective # on the timeline.
+- Special Note: Only high or extra-high review intensity levels will re-review corrective tasks at this time.
+
+**Run a project on a branch you've already started**
+- You can now execute a Rad Orc project from a non-main (non-default) branch from your main repo clone.
+  - Running a project in this scenario will also halt and assist if you had uncommitted changes.
+  - By design and for safety, multi-repo projects will refuse to start in this scenario.
+
+**Pull requests**
+- Pull requests now open in draft mode.
+- This will be a better communication signal to team members to ensure PR reviews are not enacted prematurely.
+- The description is a written summary of the work, not a link or a pointer to another document.
+
+**Repo Registration is now required**
+- Projects will now require the repo to be registered and will direct the user to `/rad-repo` if it is not.
+
+### What's Fixed
+
+**UI Dashboard**
+- When switching from a planned project to an unplanned project, the previous project will no longer leak UI state and properly render the unplanned project.
+- SSE updates will now keep retrying after a network drop instead of going dead until you reload the browser.
+- Reconnecting refreshes the project you're looking at, not just the project list.
+- Projects added or removed while the dashboard is open now appear and disappear from the project list automatically without requiring a browser refresh.
+- Supporting folders like `.git`, `_archived` and `_future`, no longer show up in the project list.
+  - Only SCREAMING-CASE projects will display.
+- A project that fails to load offers a retry instead of spinning forever.
+- A run waiting on you now consistently reads "Pending Review" everywhere, instead of three different labels.
+- A gate waiting on you reads as in progress rather than not started.
+
+**Observability: Cost Tracking**
+- Costs showed as "price unavailable" whenever a new model shipped (Opus 4.8 -> Opus 5)
+  - Observability session or detail views will no longer display "price unavailable" for sessions that used Opus agents.
+  - Pricing now follows the model family, so a new release prices correctly on its own.
+
+**Resuming Projects**
+- Resuming a project with `/rad-execute <PROJECT-NAME>` from somewhere other than `~/.radorc/worktrees/<PROJECT-NAME>` will no longer re-ask questions.
+  - Instead, `/rad-execute <PROJECT-NAME>` is quiet and simply relaunches a new terminal to the appropriate worktree workspace in `~/.radorc/worktrees/<PROJECT-NAME>`
+- A project whose workspace folder is missing is re-created from remote instead of outright failing or creating a duplicate.
+  - This is an edge case where perhaps a user resumes the work from another machine where the in-progress worktree is missing.
+
+**Only repos you actually change are included in a project run**
+- Repos you only read for reference are no longer pulled into the run.
+  - They get no workspace, no branch, and no pull request.
+- Planning is now hardened and will stop if a repo is listed as changing but no task actually changes it.
+- Brainstorming will now confirm if a repo is only for reference as a front gate.
+- Thank you [@jackie-lowry_radancy](https://github.com/jackie-lowry_radancy) for the tremendous help and feedback which helped identify this scenario.
+
+**Multi-repo reviews**
+- Repos are now included in project code reviews to reinforce that corrective tasks write to the correct repo.
+- Findings say which repo they're in, so fixes land in the right one.
+- Special Note: This was not an actual issue, but is a preventative change to reinforce safe coding operations.
+
+**Reinforced Pull Request Descriptions**
+- Reinforced instructions to make sure PR descriptions are a written summary of the work, not a link or a pointer to another document.
+  - Not a common issue, but it happened once. This should prevent that.
+
+### Changes
+
+**The plugin marketplace moved to Radancy**
+- Plugins are now available from our new [Radancy Marketplace](https://github.com/radancy-pe/rai-ops-plugin-marketplace)
+- Instructions can be found in the repo's README.md.
+
+**Launching sessions**
+- All launched Claude Code sessions now default to Sonnet to ensure cost efficiency.
+  - Previously, sessions would launch with the last agent you chose (e.g., Opus or Haiku)
+  - Sonnet has been tested and is very capable (and cheaper) as an orchestration agent.
+- On Windows and Linux a new session opens as a tab in your current terminal window instead of a new window.
+  - If a terminal is not supported, fallback will open a new terminal window instead of tab.
+  - macOS still opens a new window for now.
+- If you're already in Claude Code, you're not asked which tool to launch -- it launches Claude Code CLI automatically.
+- You're no longer asked to pick a permission mode. Terminal launches default to Auto-Mode.
+  - bypassPermissions is no longer an option. Auto-mode is safer.
+- Side-projects open their own terminal instead of running wherever you happened to be standing for consistency.
+- A project spanning several repos can't run inside a single checkout — it stops and explains why, and `/rad-repo` has a new guide to how multi-repo projects are laid out.
+
+**Upgrade notes**
+- Projects already underway keep the workflow they started with, so "Final Review" corrective tasks only work going forward on new projects.
+- Changes to agent instructions take effect after you reinstall or upgrade.
+- Be sure to enable auto-updates in Claude Code to receive new Rad Orc plug-in updates automatically.
+
+### Special Thanks
+
+- [@jackie-lowry_radancy](https://github.com/jackie-lowry_radancy) — for comprehensive testing of Rad Orc across this release. Several of the fixes above were surfaced by that testing, and the feedback made them sharper.
+
 ## v1.0.0-alpha.12 — 2026-07-29
 
 ### What's New

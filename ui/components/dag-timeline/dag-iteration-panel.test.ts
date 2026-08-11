@@ -628,7 +628,7 @@ test('dag-iteration-panel.tsx renders <DAGCorrectiveTaskGroup> in BOTH the for_e
   );
 });
 
-test('dag-iteration-panel.tsx (P01-T04) threads isPhaseCorrective and phaseReviewDocPath into BOTH <DAGCorrectiveTaskGroup> call sites', () => {
+test('dag-iteration-panel.tsx threads correctiveScope and phaseReviewDocPath into BOTH <DAGCorrectiveTaskGroup> call sites', () => {
   const src = readFileSync(
     join(__dirname, 'dag-iteration-panel.tsx'),
     'utf-8'
@@ -636,24 +636,23 @@ test('dag-iteration-panel.tsx (P01-T04) threads isPhaseCorrective and phaseRevie
   // The phase-branch call site (parentKind is not yet narrowed there) resolves both
   // props from parentKind/iteration.nodes['phase_review']. The task-branch call site
   // is only reachable once TS has narrowed parentKind to the 'for_each_task' literal
-  // (the phase branch returns earlier), so `parentKind === 'for_each_phase'` there would
-  // be a TS2367 impossible-comparison error — it instead hardcodes isPhaseCorrective={false}
-  // and phaseReviewDocPath={null}, which is semantically identical (a task corrective is
-  // never phase-level).
+  // (the phase branch returns earlier), so it hardcodes correctiveScope="task" and
+  // phaseReviewDocPath={null} — semantically identical (a task corrective is never
+  // phase-level).
   assert.ok(
-    /isPhaseCorrective=\{parentKind === ['"]for_each_phase['"]\}/.test(src),
-    "the for_each_phase-branch <DAGCorrectiveTaskGroup> call site must pass isPhaseCorrective={parentKind === 'for_each_phase'}"
+    /correctiveScope=\{parentKind === ['"]for_each_phase['"]\s*\?\s*['"]phase['"]\s*:\s*['"]task['"]\}/.test(src),
+    "the for_each_phase-branch <DAGCorrectiveTaskGroup> call site must pass correctiveScope={parentKind === 'for_each_phase' ? 'phase' : 'task'}"
   );
   assert.ok(
     /phaseReviewDocPath=\{parentKind === ['"]for_each_phase['"]\s*\?\s*\(\(iteration\.nodes\[['"]phase_review['"]\]\s+as\s+StepNodeState\s*\|\s*undefined\)\?\.\s*doc_path\s*\?\?\s*null\)\s*:\s*null\}/.test(src),
     "the for_each_phase-branch <DAGCorrectiveTaskGroup> call site must resolve phaseReviewDocPath from iteration.nodes['phase_review'] as a StepNodeState, falling back to null"
   );
-  const isPhaseCorrectiveFalseMatches = src.match(/isPhaseCorrective=\{false\}/g) ?? [];
+  const correctiveScopeTaskMatches = src.match(/correctiveScope="task"/g) ?? [];
   const phaseReviewDocPathNullMatches = src.match(/phaseReviewDocPath=\{null\}/g) ?? [];
   assert.strictEqual(
-    isPhaseCorrectiveFalseMatches.length,
+    correctiveScopeTaskMatches.length,
     1,
-    `the for_each_task-branch <DAGCorrectiveTaskGroup> call site must hardcode isPhaseCorrective={false} — found ${isPhaseCorrectiveFalseMatches.length}`
+    `the for_each_task-branch <DAGCorrectiveTaskGroup> call site must hardcode correctiveScope="task" — found ${correctiveScopeTaskMatches.length}`
   );
   assert.strictEqual(
     phaseReviewDocPathNullMatches.length,
@@ -1162,3 +1161,91 @@ test("FR-11 phase arm 'Executing' mapping still resolves via task_executor or ta
   assert.ok(/derivedBadge\.label\s*===\s*['"]Executing['"]/.test(phaseArm),
     "phase arm must still map the 'Executing' label to a stage id (FR-11 preserves Executing)");
 });
+
+// ─── P04-T04: retry-budget wiring (state + budgetOrigin threaded into DAGCorrectiveTaskGroup) ─
+//
+// Uses a dedicated counter/gate (rather than the shared `passed`/`failed`
+// from the top of this file) because the earlier `if (failed > 0) process.exit(1)`
+// gate already fired before this block runs — reusing that pair would let a
+// failure here go unnoticed.
+
+console.log("\nDAGIterationPanel — retry budget wiring (P04-T04)\n");
+
+let passedRB = 0;
+let failedRB = 0;
+function testRB(name: string, fn: () => void) {
+  try {
+    fn();
+    console.log(`  ✓ ${name}`);
+    passedRB++;
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error(`  ✗ ${name}\n    ${msg}`);
+    failedRB++;
+  }
+}
+
+testRB("dag-iteration-panel.tsx imports AnyProjectState and declares state: AnyProjectState on its props", () => {
+  assert.ok(/AnyProjectState/.test(PANEL_SOURCE), 'panel must import AnyProjectState');
+  assert.ok(/state:\s*AnyProjectState;/.test(PANEL_SOURCE), 'DAGIterationPanelProps must declare state: AnyProjectState');
+});
+
+testRB("dag-iteration-panel.tsx destructures state from its props", () => {
+  assert.ok(
+    /state,\s*\n\}:\s*DAGIterationPanelProps\)/.test(PANEL_SOURCE),
+    'the component function must destructure state alongside its other props'
+  );
+});
+
+testRB("dag-iteration-panel.tsx forwards state={state} and budgetOrigin={0} to BOTH <DAGCorrectiveTaskGroup> call sites", () => {
+  const correctiveGroupBlocks = PANEL_SOURCE.match(/<DAGCorrectiveTaskGroup\b[\s\S]*?\/>/g) ?? [];
+  assert.strictEqual(
+    correctiveGroupBlocks.length,
+    2,
+    `expected exactly 2 <DAGCorrectiveTaskGroup> call sites, got ${correctiveGroupBlocks.length}`
+  );
+  const stateCount = correctiveGroupBlocks.filter((block) => /state=\{state\}/.test(block)).length;
+  const originCount = correctiveGroupBlocks.filter((block) => /budgetOrigin=\{0\}/.test(block)).length;
+  assert.strictEqual(
+    stateCount,
+    2,
+    `expected state={state} on both <DAGCorrectiveTaskGroup> call sites, got ${stateCount}`
+  );
+  assert.strictEqual(
+    originCount,
+    2,
+    `expected budgetOrigin={0} on both <DAGCorrectiveTaskGroup> call sites, got ${originCount}`
+  );
+});
+
+testRB("dag-iteration-panel.tsx forwards state={state} to every nested <DAGLoopNode> call site (for_each_task loop hosted inside a for_each_phase iteration)", () => {
+  const loopNodeBlocks = PANEL_SOURCE.match(/<DAGLoopNode\b[\s\S]*?\/>/g) ?? [];
+  assert.strictEqual(
+    loopNodeBlocks.length,
+    3,
+    `expected exactly 3 nested <DAGLoopNode> call sites (preLoopEntries, loopEntry, postLoopEntries), got ${loopNodeBlocks.length}`
+  );
+  const stateCount = loopNodeBlocks.filter((block) => /state=\{state\}/.test(block)).length;
+  assert.strictEqual(
+    stateCount,
+    3,
+    `expected state={state} forwarded to all 3 nested <DAGLoopNode> call sites, got ${stateCount} — a missing forward breaks DAGLoopNodeProps.state (required) and fails next build's typecheck`
+  );
+});
+
+testRB("dag-iteration-panel.tsx imports resolveTaskCardClasses from dag-timeline-helpers", () => {
+  assert.ok(
+    /import\s+\{[^}]*resolveTaskCardClasses[^}]*\}\s+from\s+['"]\.\/dag-timeline-helpers['"]/.test(PANEL_SOURCE),
+    'iteration panel must import resolveTaskCardClasses for task-iteration card classes (P02-T03)'
+  );
+});
+
+testRB("dag-iteration-panel.tsx for_each_task branch (else arm) calls resolveTaskCardClasses(iteration.status) for cardClasses", () => {
+  assert.ok(
+    /}\s*else\s*\{\s*cardClasses\s*=\s*resolveTaskCardClasses\(iteration\.status\);/.test(PANEL_SOURCE),
+    'for_each_task branch (else arm) must assign cardClasses = resolveTaskCardClasses(iteration.status) (P02-T03)'
+  );
+});
+
+console.log(`\n${passedRB} passed, ${failedRB} failed\n`);
+if (failedRB > 0) process.exit(1);

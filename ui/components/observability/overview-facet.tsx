@@ -76,6 +76,8 @@ export function OverviewFacet({ transcript, rows }: OverviewFacetProps) {
           output={receipt.raw.output}
           cacheRead={receipt.raw.cacheRead}
           cacheCreate={receipt.raw.cacheCreate}
+          spend={receipt.costWeighted}
+          dollars={receipt.dollars}
         />
 
         {/* (2) Tools card — chips by descending count + Tools-facet hint (FR-3, DD-5, DD-7) */}

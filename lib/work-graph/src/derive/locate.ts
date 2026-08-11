@@ -17,7 +17,7 @@ export interface LocateResult {
   repo?: string;
   /** Set when kind is 'worktree' — project folder names whose resolved worktree_name matches */
   projects?: string[];
-  /** Set when kind is 'worktree' — branch of the worktree dir from git worktree list */
+  /** Set when kind is 'worktree' or 'main-clone' — branch of that dir from git worktree list */
   branch?: string | null;
 }
 
@@ -167,7 +167,8 @@ export function locate(cwd: string, deps: LocateDeps): LocateResult {
   // 3. Main-clone check (registry) ------------------------------------------
   for (const [repoName, localPath] of Object.entries(deps.registryLocalPaths)) {
     if (localPath && within(localPath, cwd)) {
-      return { kind: 'main-clone', repo: repoName };
+      const live = listWorktrees(exec, localPath);
+      return { kind: 'main-clone', repo: repoName, branch: live.get(path.resolve(localPath)) ?? null };
     }
   }
 

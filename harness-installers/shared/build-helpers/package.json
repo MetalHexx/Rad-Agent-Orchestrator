@@ -1,6 +1,6 @@
 {
   "name": "@rad-orchestration/build-helpers",
-  "version": "1.0.0-alpha.12",
+  "version": "1.0.0-alpha.13",
   "private": true,
   "type": "module",
   "description": "Mechanical, installer-blind helpers for installer build orchestrators.",

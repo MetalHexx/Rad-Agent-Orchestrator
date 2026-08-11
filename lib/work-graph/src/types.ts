@@ -18,7 +18,7 @@ export interface WorktreeRef {
   path: string;
   branch: string | null;
   exists: boolean;
-  resolvedVia: 'convention' | 'shared-worktree-name' | 'git';
+  resolvedVia: 'convention' | 'shared-worktree-name' | 'git' | 'registry-clone';
 }
 export interface Project extends Node {
   kind: 'project';

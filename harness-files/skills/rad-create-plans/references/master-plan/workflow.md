@@ -11,9 +11,14 @@ like, and what to test — enough contract for a coding agent to execute a task
 
 1. **Carry the requirements context in.** The approved Requirements doc is the
    seed — its repos, its `R{n}` requirements, its Technical Specification, Design 
-   requirements and Testing Approach. Don't re-derive scope or re-interview the user. 
-   Carry the sealed `project-type`, `repos`, and `repo-group` from its frontmatter 
-   forward verbatim (see Output Contract).
+   requirements and Testing Approach.
+   - Don't re-derive scope or re-interview the user. 
+   - Carry `project-type` and `repo-group` from its frontmatter forward verbatim. 
+   - Finalize `repos:` here — it is exactly the set of repos named by the `**Target 
+   repo:**` lines of the tasks you author. A repo the Requirements carried as a 
+   candidate that no task ends up touching is dropped from the frontmatter. The
+   Requirements body's `## Reference` material is for you to ground with for authoring,
+   but never appear in the frontmatter `repos:` field.
 
 2. **Recover from a prior parse failure (retries only).** Read
    `state.graph.nodes.master_plan.last_parse_error` from `state.json`. If it is
@@ -30,7 +35,10 @@ like, and what to test — enough contract for a coding agent to execute a task
    - A task heading whose phase id doesn't match its enclosing `## P{NN}:`.
    - A task missing its `**Target repo:**` line.
    - A task whose `**Target repo:**` names a repo outside the sealed frontmatter
-     `repos:` seal.
+     `repos:` array.
+   - A frontmatter `repos:` array that carries a repo no task's `**Target repo:**` 
+     names. Either drop the repo from the array, if it was reference-only, or add 
+     the task that should have targeted it.
 
    Re-emit with the narrow correction; leave the rest intact. The loop has a
    hardcoded cap of 3 retries — after the cap the pipeline halts for manual help.
@@ -80,7 +88,8 @@ like, and what to test — enough contract for a coding agent to execute a task
    that a human reads before the run. It lives **above** the first phase heading,
    in the parser's preamble region, so every phase here is a **bold label, never a
    heading** — `**P01 · {Title}** · repos: … · order: T01→T02` — followed by a task
-   mini-table (`Task · Repo · Complexity · Purpose`). Never write `## Phase`,
+   mini-table (`Task · Repo · Complexity · Purpose`). The `repos:` on a phase label
+   are the repos that this phase touch. Never write `## Phase`,
    `## P1`, or any `## P{NN}:` / `### P{NN}-T{MM}:` line in this section; those
    patterns belong only to the full blocks below (see Heading discipline under
    Output Contract).
@@ -159,11 +168,16 @@ total_tasks: {N}
 
 - `status`: `draft` | `approved`. Always `draft` at authoring time; approval
   happens later in the pipeline.
-- `project-type`, `repos`, `repo-group`: carried forward from the Requirements
-  doc's sealed frontmatter. `standard` maps to one or more registered repos;
-  `side-project` seals `repos: ["{PROJECT-NAME}"]` and `repo-group: null`. The
-  `repos:` array is the **authoritative seal** the explosion reads — every task's
-  `**Target repo:**` must be a member of it.
+- `project-type` and `repo-group`: carried forward from the Requirements doc's
+  sealed frontmatter. `standard` maps to one or more registered repos; 
+  `side-project` seals `repos: ["{PROJECT-NAME}"]` and `repo-group: null`.
+- `repos:` is finalized at authoring time — it is exactly the set of repos named by 
+  the `**Target repo:**` lines of the tasks you author. The `repos:` array is the 
+  **authoritative set** of repos touched by the project. The repo array set is an
+  equality enforced in both directions:
+  - Every task's `**Target repo:**` is a member of the `repos:` array.
+  - Every member of the `repos:` array is named by at least one task.
+  A violation in either direction will fail plan validation.
 - `total_phases`: count of `## P{NN}:` headings. `total_tasks`: count of
   `### P{NN}-T{MM}:` headings.
 - No `author` field — git carries provenance.
@@ -303,7 +317,9 @@ call, never a fixed ceremony.
 Before saving, a quick judgment pass — not a structural lint (the parser enforces
 shape):
 
-- Every task's `**Target repo:**` is a member of the sealed frontmatter `repos:`.
+- The sealed frontmatter `repos:` and the union of every task's `**Target repo:**` 
+  are the same set — no task names a repo outside the `repos:` array, and no member
+  of the `repos:` array is left without a task.
 - Paired cross-repo tasks pin the *same* contract on both sides.
 - Complexity reads honest — and `complex` is the exception, not the rule.
 - Each brief is contract-rich, not thin: a coding agent has the shape to land it without

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import os from 'node:os';
 import path from 'node:path';
+import { EventEmitter } from 'node:events';
 import {
   validateLaunchFlags,
   worktreeLaunch,
@@ -13,6 +14,10 @@ import {
 import { runCommand } from '../../../src/framework/command.js';
 
 const addDir = path.join(os.homedir(), '.radorc', 'projects');
+// On a Windows test host, addDir contains backslashes; the darwin AppleScript
+// builder now correctly escapes them (Finding 1), so the substring embedded
+// in the darwin payload is doubled relative to the raw path on other platforms.
+const expectedAddDir = (platform: NodeJS.Platform): string => (platform === 'darwin' ? addDir.replace(/\\/g, '\\\\') : addDir);
 
 describe('validateLaunchFlags', () => {
   it('rejects --prompt with --agent vscode', () => {
@@ -69,8 +74,8 @@ describe('worktreeLaunch dispatch matrix', () => {
     return { spawn, result };
   }
 
-  function deliveredPayload(spawnFn: ReturnType<typeof vi.fn>, platform: NodeJS.Platform): string {
-    const call = spawnFn.mock.calls[0]!;
+  function deliveredPayload(spawnFn: ReturnType<typeof vi.fn>, platform: NodeJS.Platform, callIndex = 0): string {
+    const call = spawnFn.mock.calls[callIndex]!;
     const args = call[1] as string[];
     if (platform === 'win32') {
       const idx = args.indexOf('-EncodedCommand');
@@ -88,11 +93,34 @@ describe('worktreeLaunch dispatch matrix', () => {
     return args[cIdx + 1] ?? '';
   }
 
+  /**
+   * Decode the `do script "..."` string literal under AppleScript's own
+   * escape rules: `\\` → one literal `\`, `\"` → one literal `"`, and an
+   * unescaped `"` terminates the literal early (the bug Finding 1 fixes) —
+   * anything after that point is not part of the decoded string.
+   */
+  function decodeAppleScriptDoScriptLiteral(script: string): string {
+    const marker = 'do script "';
+    const start = script.indexOf(marker) + marker.length;
+    let out = '';
+    for (let i = start; i < script.length; i++) {
+      const ch = script[i];
+      if (ch === '\\' && (script[i + 1] === '\\' || script[i + 1] === '"')) {
+        out += script[i + 1];
+        i++;
+        continue;
+      }
+      if (ch === '"') break;
+      out += ch;
+    }
+    return out;
+  }
+
   it.each(['win32', 'darwin', 'linux'] as const)('launches claude on %s with internally-resolved --add-dir', (platform) => {
     const { spawn } = runCase('claude', platform);
     const payload = deliveredPayload(spawn, platform);
     expect(payload).toContain('claude');
-    expect(payload).toContain(addDir);
+    expect(payload).toContain(expectedAddDir(platform));
     expect(payload).toContain('--permission-mode');
     expect(payload).toContain('auto');
   });
@@ -101,7 +129,7 @@ describe('worktreeLaunch dispatch matrix', () => {
     const { spawn } = runCase('copilot', platform);
     const payload = deliveredPayload(spawn, platform);
     expect(payload).toContain('copilot');
-    expect(payload).toContain(addDir);
+    expect(payload).toContain(expectedAddDir(platform));
     expect(payload).toContain('--allow-tool=shell');
     expect(payload).toContain('-i');
     expect(payload).toContain('/rad-execute X');
@@ -134,6 +162,18 @@ describe('worktreeLaunch dispatch matrix', () => {
   it('on darwin uses osascript', () => {
     const { spawn } = runCase('claude', 'darwin');
     expect(spawn.mock.calls[0]![0]).toBe('osascript');
+  });
+
+  it('on darwin a raw backslash-then-quote in the prompt round-trips intact through the emitted script', () => {
+    const spawn = vi.fn(() => ({ unref: () => undefined }) as never);
+    const prompt = 'foo\\"bar';
+    const result = worktreeLaunch({
+      agent: 'claude', worktreePath: '/wt/x', prompt, permissionMode: 'auto', platform: 'darwin', spawn,
+    });
+    expect(result.ok).toBe(true);
+    const script = deliveredPayload(spawn, 'darwin');
+    const decoded = decodeAppleScriptDoScriptLiteral(script);
+    expect(decoded).toContain(prompt);
   });
 
   it('on linux uses gnome-terminal', () => {
@@ -173,6 +213,156 @@ describe('worktreeLaunch dispatch matrix', () => {
     // PowerShell-quoted with '' for the embedded single quote.
     expect(payload).toContain("'/x''s command'");
     expect(payload).not.toContain("'\\''");
+  });
+
+  it.each(['win32', 'darwin', 'linux'] as const)('pins --model sonnet in the claude payload on %s', (platform) => {
+    const { spawn } = runCase('claude', platform);
+    const payload = deliveredPayload(spawn, platform);
+    expect(payload).toContain('--model');
+    expect(payload).toContain('sonnet');
+  });
+
+  it.each(['win32', 'darwin', 'linux'] as const)('omits --model and --permission-mode from the copilot payload on %s', (platform) => {
+    const { spawn } = runCase('copilot', platform);
+    const payload = deliveredPayload(spawn, platform);
+    expect(payload).not.toContain('--model');
+    expect(payload).not.toContain('--permission-mode');
+  });
+
+  it.each(['win32', 'darwin', 'linux'] as const)('omits --model and --permission-mode from the vscode payload on %s', (platform) => {
+    const { spawn } = runCase('vscode', platform);
+    const payload = deliveredPayload(spawn, platform);
+    expect(payload).not.toContain('--model');
+    expect(payload).not.toContain('--permission-mode');
+  });
+
+  it('defaults to --permission-mode auto when no permission mode is supplied at all', () => {
+    const spawn = vi.fn(() => ({ unref: () => undefined }) as never);
+    const result = worktreeLaunch({
+      agent: 'claude', worktreePath: '/wt/x', prompt: '/rad-execute X', platform: 'linux', spawn,
+    });
+    expect(result.ok).toBe(true);
+    const payload = deliveredPayload(spawn, 'linux');
+    expect(payload).toContain('--permission-mode');
+    expect(payload).toContain('auto');
+  });
+});
+
+describe('worktreeLaunch spawn attempts (tab-or-window fallback)', () => {
+  function throwingSpawn(...results: Array<'throw' | 'ok' | 'error-event'>) {
+    const impl = (result: 'throw' | 'ok' | 'error-event') => {
+      if (result === 'throw') return () => { throw new Error('ENOENT'); };
+      if (result === 'error-event') return () => ({
+        unref: () => undefined,
+        on: (event: 'error', listener: (err: Error) => void) => { if (event === 'error') listener(new Error('ENOENT')); },
+      });
+      return () => ({ unref: () => undefined });
+    };
+    const spawn = vi.fn();
+    for (const r of results) spawn.mockImplementationOnce(impl(r) as never);
+    return spawn;
+  }
+
+  it('on win32 the first attempt targets -w 0 new-tab', () => {
+    const spawn = throwingSpawn('ok');
+    worktreeLaunch({ agent: 'terminal', worktreePath: '/wt/x', platform: 'win32', spawn });
+    const [file, args] = spawn.mock.calls[0]!;
+    expect(file).toBe('wt');
+    expect((args as string[]).slice(0, 3)).toEqual(['-w', '0', 'new-tab']);
+    expect(spawn).toHaveBeenCalledTimes(1);
+  });
+
+  it('on linux the first attempt uses --tab', () => {
+    const spawn = throwingSpawn('ok');
+    worktreeLaunch({ agent: 'terminal', worktreePath: '/wt/x', platform: 'linux', spawn });
+    const [file, args] = spawn.mock.calls[0]!;
+    expect(file).toBe('gnome-terminal');
+    expect((args as string[])[0]).toBe('--tab');
+    expect(spawn).toHaveBeenCalledTimes(1);
+  });
+
+  it('on darwin spawns once via osascript, unchanged', () => {
+    const spawn = throwingSpawn('ok');
+    const result = worktreeLaunch({ agent: 'terminal', worktreePath: '/wt/x', platform: 'darwin', spawn });
+    expect(result.ok).toBe(true);
+    expect(spawn).toHaveBeenCalledTimes(1);
+    expect(spawn.mock.calls[0]![0]).toBe('osascript');
+  });
+
+  it('on win32 a tab attempt that throws falls back to the window form, and no third call fires', () => {
+    const spawn = throwingSpawn('throw', 'ok');
+    const result = worktreeLaunch({ agent: 'terminal', worktreePath: '/wt/x', platform: 'win32', spawn });
+    expect(result.ok).toBe(true);
+    expect(spawn).toHaveBeenCalledTimes(2);
+    const [file, args] = spawn.mock.calls[1]!;
+    expect(file).toBe('wt');
+    expect((args as string[]).slice(0, 2)).toEqual(['--startingDirectory', '/wt/x']);
+    expect(args).not.toContain('new-tab');
+  });
+
+  it('on win32 a tab child that emits error falls back to the window form, and no third call fires', () => {
+    const spawn = throwingSpawn('error-event', 'ok');
+    const result = worktreeLaunch({ agent: 'terminal', worktreePath: '/wt/x', platform: 'win32', spawn });
+    expect(result.ok).toBe(true);
+    expect(spawn).toHaveBeenCalledTimes(2);
+    const [file, args] = spawn.mock.calls[1]!;
+    expect(file).toBe('wt');
+    expect((args as string[])[0]).toBe('--startingDirectory');
+  });
+
+  it('on linux a tab attempt that throws falls back to the window form, and no third call fires', () => {
+    const spawn = throwingSpawn('throw', 'ok');
+    const result = worktreeLaunch({ agent: 'terminal', worktreePath: '/wt/x', platform: 'linux', spawn });
+    expect(result.ok).toBe(true);
+    expect(spawn).toHaveBeenCalledTimes(2);
+    const [file, args] = spawn.mock.calls[1]!;
+    expect(file).toBe('gnome-terminal');
+    expect(args).not.toContain('--tab');
+  });
+
+  it('on linux a tab child that emits error falls back to the window form, and no third call fires', () => {
+    const spawn = throwingSpawn('error-event', 'ok');
+    const result = worktreeLaunch({ agent: 'terminal', worktreePath: '/wt/x', platform: 'linux', spawn });
+    expect(result.ok).toBe(true);
+    expect(spawn).toHaveBeenCalledTimes(2);
+    const [file, args] = spawn.mock.calls[1]!;
+    expect(file).toBe('gnome-terminal');
+    expect(args).not.toContain('--tab');
+  });
+
+  it('reports failure when both the tab and window attempts throw, without a third call', () => {
+    const spawn = throwingSpawn('throw', 'throw');
+    const result = worktreeLaunch({ agent: 'terminal', worktreePath: '/wt/x', platform: 'win32', spawn });
+    expect(result.ok).toBe(false);
+    expect(spawn).toHaveBeenCalledTimes(2);
+  });
+
+  it('the last attempt (darwin has only one, which is both first and last) attaches an error listener that swallows the event instead of leaving it uncaught', () => {
+    let capturedChild: EventEmitter | undefined;
+    const spawn = vi.fn(() => {
+      const child = Object.assign(new EventEmitter(), { unref: () => undefined });
+      capturedChild = child;
+      return child as never;
+    });
+    const result = worktreeLaunch({ agent: 'terminal', worktreePath: '/wt/x', platform: 'darwin', spawn });
+    expect(result.ok).toBe(true);
+    // A real spawn's ENOENT surfaces as an async 'error' event on the child.
+    // With no listener attached, EventEmitter throws synchronously on emit;
+    // with the fix, the listener swallows it.
+    expect(() => capturedChild!.emit('error', new Error('ENOENT'))).not.toThrow();
+  });
+
+  it('the win32 tab attempt payload still opens with the env-clearing prologue', () => {
+    const spawn = throwingSpawn('ok');
+    worktreeLaunch({
+      agent: 'claude', worktreePath: '/wt/x', prompt: '/rad-execute X',
+      permissionMode: 'auto', platform: 'win32', spawn,
+    });
+    const args = spawn.mock.calls[0]![1] as string[];
+    expect(args.slice(0, 3)).toEqual(['-w', '0', 'new-tab']);
+    const encoded = args[args.indexOf('-EncodedCommand') + 1]!;
+    const payload = Buffer.from(encoded, 'base64').toString('utf16le');
+    expect(payload.startsWith('Remove-Item Env:CLAUDECODE')).toBe(true);
   });
 });
 

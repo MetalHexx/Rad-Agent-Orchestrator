@@ -5,9 +5,9 @@
  * NOTE: Tests use the established .test.ts pattern (no DOM/JSX rendering).
  */
 import assert from "node:assert";
-import { getCommitLinkData, deriveRepoBaseUrl, formatNodeId, getDisplayName, parsePhaseNameFromDocPath, parseTaskNameFromDocPath, groupNodesBySection, deriveCurrentPhase, derivePhaseProgress, getRowButtonDescriptor, NODE_SECTION_MAP } from './dag-timeline-helpers';
-import type { GateNodeState, NodeStatus } from '@/types/state';
-import { compoundNodeIds, stepNode, gateNode, forEachPhaseNode } from './__fixtures__';
+import { getCommitLinkData, deriveRepoBaseUrl, formatNodeId, getDisplayName, parsePhaseNameFromDocPath, parseTaskNameFromDocPath, groupNodesBySection, deriveCurrentPhase, derivePhaseProgress, getRowButtonDescriptor, NODE_SECTION_MAP, deriveCorrectiveHostBadge, resolveTaskCardClasses } from './dag-timeline-helpers';
+import type { GateNodeState, NodeStatus, CorrectiveTaskEntry } from '@/types/state';
+import { compoundNodeIds, stepNode, gateNode, forEachPhaseNode, baseCorrectiveTask } from './__fixtures__';
 
 let passed = 0;
 let failed = 0;
@@ -734,13 +734,34 @@ test("DD-2 completed iteration → Completed (icon-only label)", () => {
 
 console.log("\nderiveGateBadgeStatusAndLabel tests\n");
 
-test("FR-4 gate_active=true overrides to Not Started (DD-3)", () => {
+test("a blocking gate (gate_active=true, status in_progress) renders the shared Pending Review badge, non-spinning", () => {
   const node: GateNodeState = { kind: 'gate', status: 'in_progress', gate_active: true };
+  assert.deepStrictEqual(
+    deriveGateBadgeStatusAndLabel(node),
+    { status: 'in_progress', label: 'Pending Review', cssVar: '--tier-review', isSpinning: false },
+  );
+});
+
+test("an active task/phase gate (gate_active=true, status not_started) renders the same Pending Review badge", () => {
+  const node: GateNodeState = { kind: 'gate', status: 'not_started', gate_active: true };
+  assert.deepStrictEqual(
+    deriveGateBadgeStatusAndLabel(node),
+    { status: 'not_started', label: 'Pending Review', cssVar: '--tier-review', isSpinning: false },
+  );
+});
+
+test("gate_active=false uses underlying status default", () => {
+  const node: GateNodeState = { kind: 'gate', status: 'completed', gate_active: false };
+  assert.deepStrictEqual(deriveGateBadgeStatusAndLabel(node), { status: 'completed', label: 'Completed' });
+});
+
+test("a gate not yet reached (gate_active=false, status not_started) still renders Not Started", () => {
+  const node: GateNodeState = { kind: 'gate', status: 'not_started', gate_active: false };
   assert.deepStrictEqual(deriveGateBadgeStatusAndLabel(node), { status: 'not_started', label: 'Not Started' });
 });
 
-test("FR-4 gate_active=false uses underlying status default", () => {
-  const node: GateNodeState = { kind: 'gate', status: 'completed', gate_active: false };
+test("an approved gate (status completed) is unaffected by gate_active", () => {
+  const node: GateNodeState = { kind: 'gate', status: 'completed', gate_active: true };
   assert.deepStrictEqual(deriveGateBadgeStatusAndLabel(node), { status: 'completed', label: 'Completed' });
 });
 
@@ -1188,6 +1209,112 @@ test("FR-12/FR-17 phase_planning leaf no longer resolves to --tier-planning (fal
   assert.deepStrictEqual(
     resolveStageBadge('phase_planning', 'in_progress'),
     { cssVar: '--status-in-progress', label: 'In Progress' },
+  );
+});
+
+console.log("\nresolveTaskCardClasses tests\n");
+
+test("in_progress status returns correct card classes", () => {
+  assert.strictEqual(
+    resolveTaskCardClasses('in_progress'),
+    'border border-border/70 bg-card rounded-md mb-1.5'
+  );
+});
+
+test("completed status returns correct card classes", () => {
+  assert.strictEqual(
+    resolveTaskCardClasses('completed'),
+    'border border-border/50 bg-muted/30 rounded-md mb-1.5'
+  );
+});
+
+test("failed status returns correct card classes", () => {
+  assert.strictEqual(
+    resolveTaskCardClasses('failed'),
+    'border border-[var(--status-failed)] bg-card rounded-md mb-1.5'
+  );
+});
+
+test("halted status returns correct card classes", () => {
+  assert.strictEqual(
+    resolveTaskCardClasses('halted'),
+    'border border-[var(--status-failed)] bg-card rounded-md mb-1.5'
+  );
+});
+
+test("not_started status (default) returns correct card classes", () => {
+  assert.strictEqual(
+    resolveTaskCardClasses('not_started'),
+    'border border-border/40 bg-card rounded-md mb-1.5'
+  );
+});
+
+test("skipped status (default) returns correct card classes", () => {
+  assert.strictEqual(
+    resolveTaskCardClasses('skipped'),
+    'border border-border/40 bg-card rounded-md mb-1.5'
+  );
+});
+
+console.log("\nderiveCorrectiveHostBadge tests\n");
+
+function ct(overrides: Partial<CorrectiveTaskEntry> = {}): CorrectiveTaskEntry {
+  return { ...baseCorrectiveTask, ...overrides };
+}
+
+test("zero correctives, in_progress final_review defers to resolveStageBadge ('Reviewing')", () => {
+  assert.deepStrictEqual(
+    deriveCorrectiveHostBadge('final_review', 'in_progress', []),
+    { status: 'in_progress', label: 'Reviewing', cssVar: '--tier-review' },
+  );
+});
+
+test("undefined correctiveTasks (never birthed) behaves the same as an empty array", () => {
+  assert.deepStrictEqual(
+    deriveCorrectiveHostBadge('final_review', 'in_progress', undefined),
+    { status: 'in_progress', label: 'Reviewing', cssVar: '--tier-review' },
+  );
+});
+
+test("one in-flight corrective under an in_progress host reads 'Correcting' / --status-failed", () => {
+  assert.deepStrictEqual(
+    deriveCorrectiveHostBadge('final_review', 'in_progress', [ct({ index: 1, status: 'in_progress' })]),
+    { status: 'in_progress', label: 'Correcting', cssVar: '--status-failed' },
+  );
+});
+
+test("several correctives with only the most recent in flight still reads 'Correcting'", () => {
+  assert.deepStrictEqual(
+    deriveCorrectiveHostBadge('final_review', 'in_progress', [
+      ct({ index: 1, status: 'completed' }),
+      ct({ index: 2, status: 'completed' }),
+      ct({ index: 3, status: 'in_progress' }),
+    ]),
+    { status: 'in_progress', label: 'Correcting', cssVar: '--status-failed' },
+  );
+});
+
+test("several completed correctives with no in-flight entry falls through to resolveStageBadge, not 'Correcting'", () => {
+  assert.deepStrictEqual(
+    deriveCorrectiveHostBadge('final_review', 'in_progress', [
+      ct({ index: 1, status: 'completed' }),
+      ct({ index: 2, status: 'completed' }),
+    ]),
+    { status: 'in_progress', label: 'Reviewing', cssVar: '--tier-review' },
+  );
+});
+
+test("a completed host does not read 'Correcting' even if a corrective entry is (impossibly) still in_progress", () => {
+  assert.deepStrictEqual(
+    deriveCorrectiveHostBadge('final_review', 'completed', [ct({ index: 1, status: 'in_progress' })]),
+    { status: 'completed', label: 'Completed', cssVar: '--status-complete' },
+  );
+});
+
+test("deriveCorrectiveHostBadge is not gated to task iterations — it resolves for an arbitrary step-hosting nodeId", () => {
+  assert.deepStrictEqual(
+    deriveCorrectiveHostBadge('some_other_step', 'not_started', []),
+    { status: 'not_started', label: 'Not Started', cssVar: '--status-not-started' },
   );
 });
 

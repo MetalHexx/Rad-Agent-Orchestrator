@@ -6,6 +6,7 @@ import { enrichActionContext, resolveActivePhaseIndex, resolveActiveTaskIndex, t
 import { makeV6State } from '../../helpers/state-factory.js';
 import type { PipelineState, OrchestrationConfig } from '../../../src/lib/pipeline-engine/types.js';
 import { userDataPaths } from '../../../src/lib/paths.js';
+import { writeLocal } from '@rad-orchestration/repo-registry';
 
 // Module-boundary mock: resolveRequirementsDoc (context-enrichment.ts) reads real
 // paths via userDataPaths() + WorkGraphService, so isolate it here rather than
@@ -536,6 +537,95 @@ describe('spawn_phase_reviewer per-repo SHA grouping (FR-3)', () => {
     expect(apiEntry?.phase_head_sha).toBe('last_api_sha');
     expect(uiEntry?.phase_head_sha).toBe('last_ui_sha');
   });
+
+  /**
+   * Per the Master Plan's "one repo per task" authoring policy, a phase's
+   * tasks routinely target *different* repos — task 0 touches only fake-api,
+   * task 1 touches only fake-ui. Neither repo appears in both the first and
+   * last task, so a first/last-task-only lookup would leave one SHA null for
+   * each repo. Both repos must still get real first/head SHAs by scanning
+   * every task iteration in the phase.
+   */
+  function buildDisjointRepoPhaseReviewerState(): PipelineState {
+    return {
+      graph: {
+        nodes: {
+          phase_loop: {
+            kind: 'for_each_phase',
+            status: 'in_progress',
+            iterations: [
+              {
+                index: 0,
+                status: 'in_progress',
+                doc_path: null,
+                repos: [],
+                corrective_tasks: [],
+                nodes: {
+                  task_loop: {
+                    kind: 'for_each_task',
+                    status: 'completed',
+                    iterations: [
+                      {
+                        index: 0,
+                        status: 'completed',
+                        doc_path: '/fake/t01.md',
+                        repos: [
+                          { name: 'fake-api', commit_hash: 'only_api_sha' },
+                        ],
+                        corrective_tasks: [],
+                        nodes: {},
+                      },
+                      {
+                        index: 1,
+                        status: 'completed',
+                        doc_path: '/fake/t02.md',
+                        repos: [
+                          { name: 'fake-ui', commit_hash: 'only_ui_sha' },
+                        ],
+                        corrective_tasks: [],
+                        nodes: {},
+                      },
+                    ],
+                  },
+                },
+              },
+            ],
+          },
+        },
+      },
+      pipeline: {
+        gate_mode: null,
+        current_tier: 'execution',
+        halt_reason: null,
+        source_control: {
+          worktree_name: 'MULTI-REPO-5',
+          auto_commit: 'always',
+          auto_pr: 'always',
+          repos: [
+            { name: 'fake-api', branch: 'radorch/MULTI-REPO-5', base_branch: 'main', remote_url: null, compare_url: null, pr_url: null },
+            { name: 'fake-ui', branch: 'radorch/MULTI-REPO-5', base_branch: 'main', remote_url: null, compare_url: null, pr_url: null },
+          ],
+        },
+      },
+      project: { name: 'MULTI-REPO-5' },
+    } as unknown as PipelineState;
+  }
+
+  it('spawn_phase_reviewer still resolves both SHAs when tasks target disjoint repos', () => {
+    const state = buildDisjointRepoPhaseReviewerState();
+    const ctx = enrichActionContext({ action: 'spawn_phase_reviewer', walkerContext: {}, state, config: DEFAULT_CONFIG, cliContext: {} });
+    const repos = ctx.repos as Array<Record<string, unknown>>;
+    const apiEntry = repos.find(r => r.name === 'fake-api');
+    const uiEntry = repos.find(r => r.name === 'fake-ui');
+    // fake-api only appears in task 0 (the first task) — a first/last-task-only
+    // lookup would still find phase_first_sha here, but must not miss phase_head_sha.
+    expect(apiEntry?.phase_first_sha).toBe('only_api_sha');
+    expect(apiEntry?.phase_head_sha).toBe('only_api_sha');
+    // fake-ui only appears in task 1 (the last task) — a first/last-task-only
+    // lookup would still find phase_head_sha here, but must not miss phase_first_sha.
+    expect(uiEntry?.phase_first_sha).toBe('only_ui_sha');
+    expect(uiEntry?.phase_head_sha).toBe('only_ui_sha');
+  });
 });
 
 describe('per-repo chronology and final SHAs (FR-3, FR-4)', () => {
@@ -637,6 +727,38 @@ describe('per-repo chronology and final SHAs (FR-3, FR-4)', () => {
     const ordinal = new Map([['aaaa1111', 2], ['bbbb2222', 1]]);
     const err = validateBaseShaChronology(['aaaa1111', 'bbbb2222'], ordinal, 'fake-api');
     expect(err).toMatch(/fake-api/);
+  });
+
+  it('final reviewer range extends over a step-hosted final corrective, appended last (P02-T01)', () => {
+    const state = buildTwoRepoProjectWithCommits(); // api: [a1,a2], ui: [u1,u2]
+    // A prior final corrective hosted on `final_review`, chronologically after
+    // every phase/task commit in the run.
+    (state.graph.nodes as Record<string, unknown>).final_review = {
+      kind: 'step',
+      status: 'completed',
+      doc_path: '/fake/final-review.md',
+      retries: 0,
+      hosts_correctives: true,
+      corrective_tasks: [
+        {
+          index: 1,
+          status: 'completed',
+          reason: 'final review requested changes',
+          injected_after: 'final_review',
+          nodes: {},
+          repos: [
+            { name: 'fake-api', commit_hash: 'a3' },
+            { name: 'fake-ui', commit_hash: 'u3' },
+          ],
+          doc_path: '/fake/final-corrective-handoff.md',
+        },
+      ],
+    };
+    const ctx = enrichActionContext({ action: 'spawn_final_reviewer', walkerContext: {}, state, config: DEFAULT_CONFIG, cliContext: {} });
+    expect(ctx.repos).toEqual([
+      expect.objectContaining({ name: 'fake-api', project_base_sha: 'a1', project_head_sha: 'a3' }),
+      expect.objectContaining({ name: 'fake-ui', project_base_sha: 'u1', project_head_sha: 'u3' }),
+    ]);
   });
 });
 
@@ -741,5 +863,188 @@ describe('spawn_final_reviewer requirements_doc resolution via work-graph (P01-T
 
     const ctx = enrichActionContext(makeEnrichmentInput('spawn_final_reviewer', stateForProject(projectName)));
     expect(ctx.requirements_doc).toBeNull();
+  });
+});
+
+describe('final-scope corrective sentinel — absent phase identity, no handoff_doc key (P01 review Finding 1)', () => {
+  const DEFAULT_CONFIG = { limits: {} } as unknown as OrchestrationConfig;
+
+  /**
+   * Build a state with an open final corrective hosted on `final_review`
+   * (kind: 'step', hosts_correctives: true, corrective_tasks: [...]). No
+   * phase_loop/task_loop iterations are needed — the final-scope resolver
+   * short-circuits before any phase resolution runs.
+   */
+  function stateWithActiveFinalCorrective(): PipelineState {
+    return {
+      graph: {
+        nodes: {
+          final_review: {
+            kind: 'step',
+            status: 'in_progress',
+            doc_path: '/fake/final-review.md',
+            retries: 0,
+            hosts_correctives: true,
+            corrective_tasks: [
+              {
+                index: 1,
+                status: 'in_progress',
+                reason: 'final review requested changes',
+                injected_after: 'final_review',
+                nodes: {},
+                repos: [{ name: 'my-api', commit_hash: 'corr123' }],
+                doc_path: '/fake/final-corrective-handoff.md',
+                review_report_path: '/fake/final-review.md',
+              },
+            ],
+          },
+        },
+      },
+      pipeline: {
+        gate_mode: null,
+        current_tier: 'execution',
+        halt_reason: null,
+        source_control: {
+          worktree_name: 'test-project',
+          auto_commit: 'always',
+          auto_pr: 'always',
+          repos: [
+            { name: 'my-api', branch: 'radorch/test', base_branch: 'main', remote_url: null, compare_url: null, pr_url: null },
+          ],
+        },
+      },
+      project: { name: 'test-project' },
+    } as unknown as PipelineState;
+  }
+
+  it('execute_task at final scope carries a null phase_number/phase_id sentinel and omits handoff_doc entirely', () => {
+    const state = stateWithActiveFinalCorrective();
+    const ctx = enrichActionContext({ action: 'execute_task', walkerContext: {}, state, config: DEFAULT_CONFIG, cliContext: {} });
+    expect(ctx.task_id).toBe('FINAL');
+    expect(ctx.task_number).toBeNull();
+    expect(ctx.phase_number).toBeNull();
+    expect(ctx.phase_id).toBeNull();
+    expect(ctx.corrective_index).toBe(1);
+    expect(ctx.review_report_path).toBe('/fake/final-review.md');
+    expect(Object.hasOwn(ctx, 'handoff_doc')).toBe(false);
+  });
+
+  it('spawn_code_reviewer at final scope carries the same sentinel, is_correction, and omits handoff_doc entirely', () => {
+    const state = stateWithActiveFinalCorrective();
+    const ctx = enrichActionContext({ action: 'spawn_code_reviewer', walkerContext: {}, state, config: DEFAULT_CONFIG, cliContext: {} });
+    expect(ctx.task_id).toBe('FINAL');
+    expect(ctx.task_number).toBeNull();
+    expect(ctx.phase_number).toBeNull();
+    expect(ctx.phase_id).toBeNull();
+    expect(ctx.is_correction).toBe(true);
+    expect(ctx.corrective_index).toBe(1);
+    expect(Object.hasOwn(ctx, 'handoff_doc')).toBe(false);
+    const repos = ctx.repos as Array<Record<string, unknown>>;
+    expect(repos.find(r => r.name === 'my-api')?.head_sha).toBe('corr123');
+  });
+
+  it('gate_task at final scope returns the base sentinel without throwing', () => {
+    const state = stateWithActiveFinalCorrective();
+    const ctx = enrichActionContext({ action: 'gate_task', walkerContext: {}, state, config: DEFAULT_CONFIG, cliContext: {} });
+    expect(ctx.task_id).toBe('FINAL');
+    expect(ctx.phase_number).toBeNull();
+    expect(ctx.phase_id).toBeNull();
+  });
+
+  /**
+   * After a `final_rejected` reopen, `corrective_budget_origin` advances past
+   * spent history entries. `corrective_index` must read window-relative
+   * (entry.index - budgetOrigin), never the raw ever-growing index.
+   */
+  function stateWithWindowedFinalCorrective(): PipelineState {
+    const base = stateWithActiveFinalCorrective();
+    const finalReview = base.graph.nodes.final_review as unknown as {
+      corrective_tasks: unknown[];
+      corrective_budget_origin?: number;
+    };
+    finalReview.corrective_tasks = [
+      { index: 1, status: 'completed', reason: 'spent history', injected_after: 'final_review', nodes: {}, repos: [{ name: 'my-api', commit_hash: 'old1' }] },
+      { index: 2, status: 'completed', reason: 'spent history', injected_after: 'final_review', nodes: {}, repos: [{ name: 'my-api', commit_hash: 'old2' }] },
+      {
+        index: 3,
+        status: 'in_progress',
+        reason: 'final review requested changes (new window)',
+        injected_after: 'final_review',
+        nodes: {},
+        repos: [{ name: 'my-api', commit_hash: 'corr123' }],
+        doc_path: '/fake/final-corrective-handoff.md',
+        review_report_path: '/fake/final-review.md',
+      },
+    ];
+    finalReview.corrective_budget_origin = 2;
+    return base;
+  }
+
+  it('execute_task at final scope reports corrective_index window-relative after a final_rejected budget-origin advance', () => {
+    const state = stateWithWindowedFinalCorrective();
+    const ctx = enrichActionContext({ action: 'execute_task', walkerContext: {}, state, config: DEFAULT_CONFIG, cliContext: {} });
+    expect(ctx.corrective_index).toBe(1);
+  });
+
+  it('spawn_code_reviewer at final scope reports corrective_index window-relative after a final_rejected budget-origin advance', () => {
+    const state = stateWithWindowedFinalCorrective();
+    const ctx = enrichActionContext({ action: 'spawn_code_reviewer', walkerContext: {}, state, config: DEFAULT_CONFIG, cliContext: {} });
+    expect(ctx.corrective_index).toBe(1);
+  });
+});
+
+// The derivation being right is worth little if the dispatch wiring drops the path:
+// repos[].path is the only working directory a spawned coder ever sees.
+describe('execute_task repos[] carries the clone path for an in_place repo', () => {
+  const DEFAULT_CONFIG = { limits: {} } as unknown as OrchestrationConfig;
+  const REPO = 'rad-orc-source';
+
+  function seedProject(root: string, inPlace: boolean): PipelineState {
+    const projectDir = path.join(root, 'projects', 'test-project');
+    fs.mkdirSync(projectDir, { recursive: true });
+    const sourceControl = {
+      worktree_name: 'test-project',
+      auto_commit: 'always',
+      auto_pr: 'always',
+      repos: [{ name: REPO, branch: 'radorch/test', base_branch: 'main', remote_url: null, compare_url: null, pr_url: null, ...(inPlace ? { in_place: true } : {}) }],
+    };
+    // WorkGraphService derives from state.json on disk, not the in-memory state,
+    // so the binding has to be seeded in both places.
+    fs.writeFileSync(path.join(projectDir, 'state.json'), JSON.stringify({
+      project: { name: 'test-project' },
+      pipeline: { source_control: sourceControl },
+      graph: { nodes: {} },
+    }));
+
+    const s = makeV6State({ taskRepos: [{ name: REPO, commit_hash: 'abc1234' }] });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const phaseIter = (s as any).graph.nodes.phase_loop.iterations[0];
+    phaseIter.status = 'in_progress';
+    phaseIter.nodes.task_loop.iterations[0].status = 'in_progress';
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (s as any).pipeline.source_control = sourceControl;
+    return s as unknown as PipelineState;
+  }
+
+  function enrichedRepos(state: PipelineState): Array<Record<string, unknown>> {
+    const ctx = enrichActionContext({ action: 'execute_task', walkerContext: {}, state, config: DEFAULT_CONFIG, cliContext: {} });
+    return ctx.repos as Array<Record<string, unknown>>;
+  }
+
+  it('dispatches the registered clone path when the repo is bound in place', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ce-inplace-'));
+    mockUserDataPathsRoot(root);
+    const clonePath = path.join(root, 'clones', REPO);
+    writeLocal({ root, localPaths: { [REPO]: clonePath } });
+
+    expect(enrichedRepos(seedProject(root, true))[0].path).toBe(clonePath);
+  });
+
+  it('still dispatches the convention worktree path when the repo is not bound in place', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ce-inplace-'));
+    mockUserDataPathsRoot(root);
+    writeLocal({ root, localPaths: { [REPO]: path.join(root, 'clones', REPO) } });
+
+    expect(enrichedRepos(seedProject(root, false))[0].path).toBe(path.join(root, 'worktrees', 'test-project', REPO));
   });
 });

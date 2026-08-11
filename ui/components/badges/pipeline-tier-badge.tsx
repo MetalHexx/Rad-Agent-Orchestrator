@@ -1,6 +1,7 @@
 "use client";
 
 import { SpinnerBadge } from "./spinner-badge";
+import { PENDING_REVIEW_LABEL, PENDING_REVIEW_CSS_VAR } from "./pending-review";
 import type { PipelineTier, PlanningStatus, ExecutionStatus } from "@/types/state";
 
 interface PipelineTierBadgeProps {
@@ -13,7 +14,7 @@ const TIER_CONFIG = {
   planning: { label: "Planning", cssVar: "--tier-planning" },
   // label is never used directly for execution — resolveBadgeState() sets it explicitly per sub-status
   execution: { label: "Approved", cssVar: "--tier-execution" },
-  review: { label: "Final Review", cssVar: "--tier-review" },
+  review: { label: PENDING_REVIEW_LABEL, cssVar: "--tier-review" },
   complete: { label: "Complete", cssVar: "--tier-complete" },
   halted: { label: "Halted", cssVar: "--tier-halted" },
   not_initialized: { label: "Not Initialized", cssVar: "--tier-not-initialized" },
@@ -54,9 +55,23 @@ function resolveBadgeState(
       label = "Executing";
       isSpinning = true;
     } else {
-      // not_started, complete, or undefined → queued/approved state
-      label = "Approved";
+      // not_started, complete, or undefined → queued state awaiting a person
+      label = PENDING_REVIEW_LABEL;
+      cssVar = PENDING_REVIEW_CSS_VAR;
       isSpinning = false;
+    }
+  } else if (tier === "review") {
+    if (executionStatus === "halted") {
+      label = "Halted";
+      cssVar = "--tier-halted";
+      isSpinning = false;
+    } else if (executionStatus === "in_progress") {
+      label = "Executing";
+      cssVar = "--tier-execution";
+      isSpinning = true; // corrective in flight
+    } else {
+      label = PENDING_REVIEW_LABEL;
+      isSpinning = false; // parked at the gate
     }
   } else {
     label = base.label;

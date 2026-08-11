@@ -32,9 +32,22 @@ contract). Keep in lockstep with this document.}
 
 ## Affected Repositories
 
+{A repo this table describes as changing is a repo the plan actually changes — the final
+reviewer reads this table as its conformance contract. Frontmatter `repos:` is not derived
+from this table. A read-only repo belongs in `## Reference`; if it also appears as a row
+here, its Nature of change cell says read-only explicitly.}
+
 | Repository | Role | Nature of change |
 |---|---|---|
 | `{repo}` | {what it does here} | {new / edited surfaces} |
+
+## Reference
+
+{Only when the project reads repos or artifacts it does not change. Name each and
+what in it is worth looking at, so the Master Plan author can ground on it.
+Nothing here belongs in frontmatter `repos:`.}
+
+- `{repo or path}` — {what to look at, and why it matters}.
 
 ## Requirements
 

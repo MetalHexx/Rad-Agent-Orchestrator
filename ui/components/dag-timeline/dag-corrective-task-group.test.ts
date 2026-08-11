@@ -16,6 +16,7 @@ import {
   CORRECTIVE_CHILD_DEPTH,
 } from './dag-corrective-task-group';
 import { getCommitLinkData, filterCompatibleNodes } from './dag-timeline-helpers';
+import { deriveRetryBudget } from '@/lib/max-retries-resolver';
 import {
   stepNode,
   gateNode,
@@ -24,6 +25,7 @@ import {
   forEachPhaseNode,
   forEachTaskNode,
   baseCorrectiveTask,
+  makeProjectState,
 } from './__fixtures__';
 import type {
   NodeState,
@@ -218,8 +220,8 @@ test('dag-corrective-task-group.tsx renders a <DocumentLink path={entry.doc_path
     '<DocumentLink> path prop must be entry.doc_path (the new CorrectiveTaskEntry.doc_path field). Trailing `!` non-null assertion accepted when callsite is gated on a hasHandoff boolean derived from entry.doc_path.'
   );
   assert.ok(
-    /<DocumentLink[^/]*label=\{handoffLabel\}/.test(correctiveTaskGroupSource),
-    '<DocumentLink> label prop must be {handoffLabel} so the phase-vs-task label selection (P01-T04) applies to the handoff link'
+    /<DocumentLink[^/]*label=\{handoffLabel!?\}/.test(correctiveTaskGroupSource),
+    '<DocumentLink> label prop must be {handoffLabel} so the scope-aware label selection applies to the handoff link'
   );
   assert.ok(
     /<DocumentLink[^/]*onDocClick=\{onDocClick\}/.test(correctiveTaskGroupSource),
@@ -227,36 +229,44 @@ test('dag-corrective-task-group.tsx renders a <DocumentLink path={entry.doc_path
   );
 });
 
-test('dag-corrective-task-group.tsx (P01-T04) selects "Phase Plan"/"Task Handoff" and "Phase Report"/"Code Review" labels from isPhaseCorrective', () => {
+test('dag-corrective-task-group.tsx selects "Phase Plan"/"Task Handoff"/none and "Phase Report"/"Code Review"/"Final Review" labels from a CORRECTIVE_LABELS table keyed by correctiveScope', () => {
   assert.ok(
-    /const handoffLabel = isPhaseCorrective \? 'Phase Plan' : 'Task Handoff';/.test(correctiveTaskGroupSource),
-    'handoffLabel must select "Phase Plan" for a phase corrective and "Task Handoff" otherwise'
+    /const \{ handoff: handoffLabel, report: reportLabel \} = CORRECTIVE_LABELS\[correctiveScope\];/.test(correctiveTaskGroupSource),
+    'handoffLabel/reportLabel must be destructured from the CORRECTIVE_LABELS table keyed by correctiveScope'
   );
   assert.ok(
-    /const reportLabel = isPhaseCorrective \? 'Phase Report' : 'Code Review';/.test(correctiveTaskGroupSource),
-    'reportLabel must select "Phase Report" for a phase corrective and "Code Review" otherwise'
+    /task:\s*\{\s*handoff:\s*'Task Handoff',\s*report:\s*'Code Review'\s*\}/.test(correctiveTaskGroupSource),
+    'the task scope must map to "Task Handoff" / "Code Review"'
+  );
+  assert.ok(
+    /phase:\s*\{\s*handoff:\s*'Phase Plan',\s*report:\s*'Phase Report'\s*\}/.test(correctiveTaskGroupSource),
+    'the phase scope must map to "Phase Plan" / "Phase Report"'
+  );
+  assert.ok(
+    /final:\s*\{\s*handoff:\s*null,\s*report:\s*'Final Review'\s*\}/.test(correctiveTaskGroupSource),
+    'the final scope must map to no handoff label and "Final Review"'
   );
   assert.ok(
     !/label="Task Handoff"/.test(correctiveTaskGroupSource) && !/label="Code Review"/.test(correctiveTaskGroupSource),
-    'no bare "Task Handoff" or "Code Review" string literal may remain on a <DocumentLink label=...> — both must route through the phase-aware label selection'
+    'no bare "Task Handoff" or "Code Review" string literal may remain on a <DocumentLink label=...> — both must route through the scope-aware label table'
   );
 });
 
-test('dag-corrective-task-group.tsx (P01-T04) Report DocumentLink resolves its path from phaseReviewDocPath for a phase corrective', () => {
+test('dag-corrective-task-group.tsx Report DocumentLink resolves its path from phaseReviewDocPath for a phase or final corrective', () => {
   assert.ok(
-    /const reportDocPath = isPhaseCorrective \? phaseReviewDocPath : codeReviewDocPath;/.test(correctiveTaskGroupSource),
-    'reportDocPath must resolve to phaseReviewDocPath for a phase corrective and codeReviewDocPath otherwise'
+    /const reportDocPath = \(correctiveScope === 'phase' \|\| correctiveScope === 'final'\) \? phaseReviewDocPath : codeReviewDocPath;/.test(correctiveTaskGroupSource),
+    'reportDocPath must resolve to phaseReviewDocPath for a phase or final corrective and codeReviewDocPath otherwise'
   );
   assert.ok(
     /<DocumentLink\s+path=\{reportDocPath!?\}\s+label=\{reportLabel\}/.test(correctiveTaskGroupSource),
-    'the Report <DocumentLink> must use reportDocPath/reportLabel so a phase corrective\'s "Phase Report" link targets the phase_review doc'
+    'the Report <DocumentLink> must use reportDocPath/reportLabel so a phase or final corrective\'s report link targets the phase_review/final_review doc'
   );
 });
 
-test('dag-corrective-task-group.tsx (P01-T04) recursive self-call forwards isPhaseCorrective={false} and phaseReviewDocPath={null} for nested correctives', () => {
+test('dag-corrective-task-group.tsx recursive self-call forwards correctiveScope="task" and phaseReviewDocPath={null} for nested correctives', () => {
   assert.ok(
-    /isPhaseCorrective=\{false\}/.test(correctiveTaskGroupSource),
-    'a corrective nested under a corrective task is never phase-level — the recursive self-call must force isPhaseCorrective={false}'
+    /correctiveScope="task"/.test(correctiveTaskGroupSource),
+    'a corrective nested under a corrective task is never phase-level — the recursive self-call must force correctiveScope="task"'
   );
   assert.ok(
     /phaseReviewDocPath=\{null\}/.test(correctiveTaskGroupSource),
@@ -506,7 +516,7 @@ test4("FR-8/FR-10/DD-7/FR-15 corrective row trailing-link slot order: CommitChip
   // phase-aware handoffLabel/reportLabel selection, so locate the slots by their prop
   // expression instead of a literal string.
   const commitChipsIdx = CT_SOURCE.indexOf('<CommitChips');
-  const handoffIdx     = CT_SOURCE.indexOf('label={handoffLabel}');
+  const handoffIdx     = CT_SOURCE.search(/label=\{handoffLabel!?\}/);
   const reviewIdx      = CT_SOURCE.indexOf('label={reportLabel}');
   assert.ok(commitChipsIdx !== -1 && handoffIdx !== -1 && reviewIdx !== -1,
     "CommitChips and both trailing DocumentLink label slots must be present (FR-15, FR-8, DD-7)");
@@ -555,6 +565,128 @@ test4("NFR-3 P02-T02 source-shape tests run under the test4 helper so failed4 > 
     assert.ok(re.test(SELF_SOURCE),
       `P02-T02 source-shape test \`${label}\` must call test4(...) (currently calling test(...) — failures would not exit non-zero)`);
   }
+});
+
+console.log("\nDAGCorrectiveTaskGroup — retry budget (P04-T04)\n");
+
+test4("dag-corrective-task-group.tsx imports RetryBadge from @/components/badges and deriveRetryBudget from @/lib/max-retries-resolver", () => {
+  assert.ok(
+    /import\s+\{\s*RetryBadge\s*\}\s+from\s+['"]@\/components\/badges['"]/.test(CT_SOURCE),
+    'corrective task group must import RetryBadge so each row can surface its retry budget'
+  );
+  assert.ok(
+    /import\s+\{\s*deriveRetryBudget\s*\}\s+from\s+['"]@\/lib\/max-retries-resolver['"]/.test(CT_SOURCE),
+    'corrective task group must derive the retry budget through the shared resolver, not a local config.limits read'
+  );
+});
+
+test4("dag-corrective-task-group.tsx DAGCorrectiveTaskGroupProps carries budgetOrigin?: number defaulting to 0", () => {
+  assert.ok(
+    /budgetOrigin\?:\s*number/.test(CT_SOURCE),
+    'DAGCorrectiveTaskGroupProps must declare budgetOrigin?: number'
+  );
+  assert.ok(
+    /budgetOrigin\s*=\s*0/.test(CT_SOURCE),
+    'DAGCorrectiveTaskGroup must default budgetOrigin to 0 at the destructure site'
+  );
+});
+
+test4("dag-corrective-task-group.tsx derives retryBudget via deriveRetryBudget(entry, state, budgetOrigin) and renders <RetryBadge> conditionally", () => {
+  assert.ok(
+    /deriveRetryBudget\(entry,\s*state,\s*budgetOrigin\)/.test(CT_SOURCE),
+    'CorrectiveRow must call deriveRetryBudget(entry, state, budgetOrigin)'
+  );
+  assert.ok(
+    /retryBudget\s*!==\s*null[\s\S]{0,80}<RetryBadge/.test(CT_SOURCE),
+    'CorrectiveRow must render <RetryBadge> only when retryBudget !== null (omitted for a spent-window entry)'
+  );
+  assert.ok(
+    /<RetryBadge\s+attempt=\{retryBudget\.attempt\}\s+max=\{retryBudget\.max\}/.test(CT_SOURCE),
+    'CorrectiveRow must forward retryBudget.attempt/max to <RetryBadge>'
+  );
+});
+
+test4("dag-corrective-task-group.tsx forwards state and budgetOrigin to each <CorrectiveRow>", () => {
+  assert.ok(/state=\{state\}/.test(CT_SOURCE), 'DAGCorrectiveTaskGroup must forward state={state} to CorrectiveRow');
+  assert.ok(/budgetOrigin=\{budgetOrigin\}/.test(CT_SOURCE), 'DAGCorrectiveTaskGroup must forward budgetOrigin={budgetOrigin} to CorrectiveRow');
+});
+
+test4("dag-corrective-task-group.tsx recursive self-call for nested correctives forwards state={state}", () => {
+  const nestedCallIdx = CT_SOURCE.indexOf('correctiveScope="task"');
+  assert.ok(nestedCallIdx > -1, 'sanity: nested self-call site must exist');
+  const window = CT_SOURCE.slice(nestedCallIdx, nestedCallIdx + 300);
+  assert.ok(/state=\{state\}/.test(window), 'the recursive self-call for nested correctives must forward state={state}');
+});
+
+// Logic-level proof that the resolver call CorrectiveRow makes actually satisfies the
+// acceptance criteria at all three scopes: present for an in-window attempt, absent
+// for a spent-window entry, regardless of correctiveScope (the scope only changes
+// labels/links, never the retry-budget derivation).
+console.log("\nDAGCorrectiveTaskGroup — retry budget behavior across scopes\n");
+
+test4("retry budget present at task/phase/final scope alike for an in-window entry (index 1, origin 0)", () => {
+  const state = makeProjectState(2);
+  const entry: CorrectiveTaskEntry = { ...baseCorrectiveTask, index: 1 };
+  const budget = deriveRetryBudget(entry, state, 0);
+  assert.deepStrictEqual(budget, { attempt: 1, max: 2, label: '1/2' });
+});
+
+test4("retry budget is absent (null) for a spent-window entry (index predates budgetOrigin)", () => {
+  const state = makeProjectState(2);
+  const entry: CorrectiveTaskEntry = { ...baseCorrectiveTask, index: 1 };
+  assert.strictEqual(deriveRetryBudget(entry, state, 2), null);
+});
+
+test4("final-scope retry budget reads the step host's own corrective_budget_origin, not always 0", () => {
+  const state = makeProjectState(2);
+  const entry: CorrectiveTaskEntry = { ...baseCorrectiveTask, index: 3 };
+  const budget = deriveRetryBudget(entry, state, 2);
+  assert.deepStrictEqual(budget, { attempt: 1, max: 2, label: '1/2' });
+});
+
+console.log("\nDAGCorrectiveTaskGroup — card classes for corrective rows (P02-T03)\n");
+
+test4("dag-corrective-task-group.tsx imports resolveTaskCardClasses from dag-timeline-helpers", () => {
+  assert.ok(
+    /import\s+\{[^}]*resolveTaskCardClasses[^}]*\}\s+from\s+['"]\.\/dag-timeline-helpers['"]/.test(CT_SOURCE),
+    'corrective task group must import resolveTaskCardClasses for card treatment on corrective rows (P02-T03)'
+  );
+});
+
+test4("dag-corrective-task-group.tsx nested-accordion branch: AccordionItem carries className={resolveTaskCardClasses(entry.status)}", () => {
+  assert.ok(
+    /<AccordionItem\s+value=\{buildCorrectiveItemValue[\s\S]*?className=\{resolveTaskCardClasses\(entry\.status\)\}/.test(CT_SOURCE),
+    'nested-accordion AccordionItem must carry className={resolveTaskCardClasses(entry.status)} (P02-T03)'
+  );
+});
+
+test4("dag-corrective-task-group.tsx flat-row branch: outer div wraps with className={resolveTaskCardClasses(entry.status)}", () => {
+  // Look for pattern: outer div with card classes, then inner div with role/aria/data attrs
+  assert.ok(
+    /<div\s+className=\{resolveTaskCardClasses\(entry\.status\)\}>\s*<div[\s\S]*?role="option"[\s\S]*?aria-selected/.test(CT_SOURCE),
+    'flat-row outer wrapper must use className={resolveTaskCardClasses(entry.status)}, with inner div carrying role/aria (P02-T03)'
+  );
+});
+
+test4("dag-corrective-task-group.tsx flat-row branch: inner div retains role='option', aria-label, data-timeline-row, data-row-key, tabIndex, onFocus", () => {
+  // Extract the flat-row return block to verify the inner div structure
+  const flatRowMatch = CT_SOURCE.match(/\/\/ Flat-row[\s\S]*?return\s*\(\s*<div\s+className=\{resolveTaskCardClasses[\s\S]*?<\/div>\s*\);/);
+  assert.ok(flatRowMatch, 'flat-row branch structure must exist (P02-T03)');
+  const flatRowCode = flatRowMatch ? flatRowMatch[0] : '';
+
+  // The inner div should have role="option"
+  assert.ok(
+    /role="option"[\s\S]*?data-timeline-row[\s\S]*?data-row-key/.test(flatRowCode),
+    'flat-row inner div must carry role="option" and data-row-key (P02-T03)'
+  );
+  assert.ok(
+    /aria-selected=\{false\}[\s\S]*?aria-label=\{/.test(flatRowCode),
+    'flat-row inner div must carry aria-selected and aria-label (P02-T03)'
+  );
+  assert.ok(
+    /tabIndex=\{isFocused \? 0 : -1\}[\s\S]*?onFocus=\{handleFocus\}/.test(flatRowCode),
+    'flat-row inner div must carry tabIndex and onFocus (P02-T03)'
+  );
 });
 
 console.log(`\n${passed4} passed, ${failed4} failed\n`);

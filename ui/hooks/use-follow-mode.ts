@@ -91,9 +91,18 @@ function walkNodes(nodes: NodesRecord, result: string[], pathPrefix?: string): v
       }
     } else if (node.kind === "parallel") {
       walkNodes(node.nodes, result, pathPrefix);
+    } else if (node.kind === "step" && node.corrective_tasks) {
+      // Step nodes may host correctives (final_review, or custom step hosts).
+      // Emit ct-... keys for in_progress entries; emit all regardless of
+      // budget window — an entry cannot be in_progress outside the window anyway.
+      for (const ct of node.corrective_tasks) {
+        if (ct.status === "in_progress") {
+          result.push(buildCorrectiveItemValue(qualifiedId, ct.index));
+        }
+      }
     }
-    // step / gate / conditional nodes have no nested loop / iteration
-    // children — skip.
+    // gate / conditional nodes have no nested loop / iteration
+    // children — skip. step nodes without corrective_tasks also skip here.
   }
 }
 

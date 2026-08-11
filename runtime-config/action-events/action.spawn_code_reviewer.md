@@ -13,6 +13,8 @@ The envelope carries `data.context.repos[]` — an array where each entry has `n
 
 Inline `data.context.handoff_doc` — the original scope doc (task handoff) the coder implemented against — so the reviewer reviews the diff against the same contract. When `data.context.review_report_path` is present (a re-review of a correction), inline it too so the reviewer sees the report that requested the prior changes. Both fields are emitted as absolute paths.
 
+When the spawn carries no `handoff_doc`, inline `review_report_path` alone; the reviewer follows its task-scope contract's absent-handoff rule. `is_correction` and the per-repo `head_sha` are present as at any other corrective scope.
+
 Extract the review doc path from the agent's final message.
 
 The reviewer signals `code_review_completed` with its verdict (`approved` | `changes_requested` | `rejected`) on the review doc's frontmatter. Do not perform any mediation — the verdict routes the pipeline directly, and the coder self-mediates any corrective the engine births.
