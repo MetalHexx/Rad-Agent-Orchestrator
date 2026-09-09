@@ -125,6 +125,34 @@ test('a healthy ready signal resets the restart budget so transient errors do no
   assert.deepEqual(degraded, [], 'a healthy ready signal reset the budget, so no degrade fired');
 });
 
+test('suspendProjectsWatch closes and nulls the projects watcher, idempotently', async () => {
+  __resetLiveRuntimeForTest();
+  const w = spyWatcher();
+  const rt = getLiveRuntime({ projectsRoot: '/p', makeWatcher: () => w as never, coalesceWindowMs: 0 });
+  await rt.suspendProjectsWatch();
+  assert.equal(w.closeCount, 1, 'suspend closes the current watcher');
+  await rt.suspendProjectsWatch();
+  assert.equal(w.closeCount, 1, 'a second suspend call while already suspended resolves without closing again');
+});
+
+test('a supervisor restart during suspension does not construct a new watcher; resume re-opens exactly one', async () => {
+  __resetLiveRuntimeForTest();
+  const instances = [spyWatcher(), spyWatcher()];
+  let makeCalls = 0;
+  const makeWatcher = () => { const inst = instances[makeCalls]; makeCalls += 1; return inst as never; };
+  const rt = getLiveRuntime({ projectsRoot: '/p', makeWatcher, coalesceWindowMs: 0, maxRestarts: 1 });
+  assert.equal(makeCalls, 1, 'the watcher starts eagerly on build()');
+
+  await rt.suspendProjectsWatch();
+  assert.equal(instances[0].closeCount, 1, 'suspend closed the outgoing watcher');
+
+  instances[0].emit('error', new Error('late error during delete')); // reaches supervisor.reportError -> start()
+  assert.equal(makeCalls, 1, 'a restart attempt while suspended must not construct a new watcher');
+
+  rt.resumeProjectsWatch();
+  assert.equal(makeCalls, 2, 'resume re-opens exactly one new watcher');
+});
+
 test('the /api/events route pins the Node runtime and stays dynamic (AD-12)', () => {
   const route = readFileSync(
     path.join(process.cwd(), 'app', 'api', 'events', 'route.ts'),

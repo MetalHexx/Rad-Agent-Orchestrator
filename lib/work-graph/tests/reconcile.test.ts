@@ -1,9 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { WorkGraph } from '../src/graph.js';
 import { pruneEdges } from '../src/reconcile.js';
+import { PROJECT_STATE_LABELS } from '../src/index.js';
 import type { Node, Edge } from '../src/index.js';
 
-const prj = (id: string): Node => ({ id, kind: 'project', name: id, status: 'done' });
+const prj = (id: string): Node => ({ id, kind: 'project', name: id, status: 'done', state: 'complete', stateLabel: PROJECT_STATE_LABELS.complete });
 
 describe('dangling-edge reconciliation', () => {
   const edges: Edge[] = [

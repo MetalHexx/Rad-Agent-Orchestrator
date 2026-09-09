@@ -1,12 +1,9 @@
 "use client";
 
-import React, { useState } from "react";
-import { Loader2 } from "lucide-react";
+import React from "react";
 import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useApproveGate } from "@/hooks/use-approve-gate";
-import { ConfirmApprovalDialog } from "@/components/dashboard/confirm-approval-dialog";
-import { GateErrorBanner } from "@/components/dashboard/gate-error-banner";
+import { useApprovalWizard } from "@/hooks/use-approval-wizard";
 import { cn } from "@/lib/utils";
 import type { GateEvent } from "@/types/state";
 
@@ -36,8 +33,7 @@ export interface ApproveGateButtonProps {
   variant?: "default" | "outline" | "secondary";
   /**
    * Optional leading icon (e.g. a `Check`) shown before the label when idle.
-   * Omit for the icon-less default. Hidden while a request is pending (the
-   * spinner takes its place).
+   * Omit for the icon-less default.
    */
   icon?: LucideIcon;
   /**
@@ -47,16 +43,20 @@ export interface ApproveGateButtonProps {
   iconCssVar?: string;
 }
 
-const DIALOG_TITLES: Record<GateEvent, string> = {
-  plan_approved: "Approve Plan",
-  final_approved: "Approve Final Review",
-};
-
-const DIALOG_DESCRIPTIONS: Record<GateEvent, string> = {
-  plan_approved: "You are approving",
-  final_approved: "You are approving",
-};
-
+/**
+ * The Approve trigger, and nothing more.
+ *
+ * It owns no dialog, no request, and no pending state: clicking it hands the
+ * gate to `ApprovalWizardProvider`, which renders the wizard above every
+ * live-state-driven subtree. That split is deliberate. This button is rendered
+ * by dag-widget state views that the pipeline can swap out at any moment — a
+ * successful final approval replaces `finalReviewView` with `completeView`
+ * outright — so anything this component owned would be destroyed by the very
+ * approval it just performed. Caller-side conditional rendering (`{gatePending
+ * && <ApproveGateButton/>}`) is therefore safe again, and correct: a resolved
+ * gate should stop offering Approve, and unmounting the trigger no longer
+ * takes a dialog down with it.
+ */
 export const ApproveGateButton = React.forwardRef<
   HTMLButtonElement,
   ApproveGateButtonProps
@@ -64,23 +64,7 @@ export const ApproveGateButton = React.forwardRef<
   { gateEvent, projectName, documentName, label, className, tabIndex, variant = "default", icon: Icon, iconCssVar },
   ref,
 ) {
-  const { approveGate, isPending, error, clearError } = useApproveGate();
-  const [open, setOpen] = useState<boolean>(false);
-
-  const dialogTitle = DIALOG_TITLES[gateEvent];
-  const consequenceDescription = DIALOG_DESCRIPTIONS[gateEvent];
-
-  const handleConfirm = async () => {
-    const success = await approveGate(projectName, gateEvent);
-    if (success) {
-      setOpen(false);
-    }
-  };
-
-  const handleOpenChange = (value: boolean) => {
-    if (!value) clearError();
-    setOpen(value);
-  };
+  const { openApprovalWizard } = useApprovalWizard();
 
   return (
     <div className={className}>
@@ -89,47 +73,17 @@ export const ApproveGateButton = React.forwardRef<
         variant={variant}
         size="sm"
         className={cn(variant === "default" && "w-full sm:w-auto")}
-        disabled={isPending}
-        aria-busy={isPending ? "true" : undefined}
-        aria-disabled={isPending ? "true" : undefined}
         tabIndex={tabIndex}
-        onClick={() => setOpen(true)}
+        onClick={() => openApprovalWizard({ gateEvent, projectName, documentName })}
       >
-        {isPending ? (
-          <>
-            <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
-            Approving…
-          </>
-        ) : (
-          <>
-            {Icon && (
-              <Icon
-                style={iconCssVar ? { color: `var(${iconCssVar})` } : undefined}
-                aria-hidden="true"
-              />
-            )}
-            {label}
-          </>
-        )}
-      </Button>
-      <ConfirmApprovalDialog
-        open={open}
-        onOpenChange={handleOpenChange}
-        title={dialogTitle}
-        documentName={documentName}
-        description={consequenceDescription}
-        onConfirm={handleConfirm}
-        isPending={isPending}
-      />
-      {error && (
-        <div className="mt-2">
-          <GateErrorBanner
-            message={error.message}
-            detail={error.detail}
-            onDismiss={clearError}
+        {Icon && (
+          <Icon
+            style={iconCssVar ? { color: `var(${iconCssVar})` } : undefined}
+            aria-hidden="true"
           />
-        </div>
-      )}
+        )}
+        {label}
+      </Button>
     </div>
   );
 });

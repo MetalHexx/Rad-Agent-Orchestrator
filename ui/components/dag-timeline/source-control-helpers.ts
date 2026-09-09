@@ -1,11 +1,12 @@
 import type { RepoCommitEntry, V5SourceControlState, SourceControlRepo } from '@/types/state';
+import type { ProjectKind } from '@/types/components';
 import { deriveRepoBaseUrl, getCommitLinkData } from './dag-timeline-helpers';
 
 export type LocationKind = 'worktree' | 'in-place' | 'side-project';
 
 /** FR-10: side-project (whole project) wins over in-place (per repo); default worktree. */
 export function resolveLocationKind(
-  projectType: 'standard' | 'side-project' | undefined,
+  projectType: ProjectKind | undefined,
   inPlace: boolean | undefined,
 ): LocationKind {
   if (projectType === 'side-project') return 'side-project';
@@ -58,4 +59,23 @@ export function hasSourceControlRepos(sc: { repos?: { name: string }[] | undefin
 
 export function selectSourceControlRepos(sc: V5SourceControlState | null): SourceControlRepo[] {
   return sc?.repos ?? [];
+}
+
+/** A repo carrying a live pull request, ready for display. */
+export interface PrLink {
+  repoName: string;
+  url: string;
+}
+
+/**
+ * Every repo carrying a non-empty `pr_url`, in `repos[]` order; `[]` when
+ * none. Repo-aware replacement for the single `repos[0].pr_url` pin that
+ * previously dropped every PR but the first — and hid all of them once the
+ * first repo's PR closed even while others stayed open.
+ */
+export function selectPrLinks(sc: V5SourceControlState | null | undefined): PrLink[] {
+  if (!sc) return [];
+  return sc.repos
+    .filter((repo): repo is SourceControlRepo & { pr_url: string } => !!repo.pr_url)
+    .map((repo) => ({ repoName: repo.name, url: repo.pr_url }));
 }

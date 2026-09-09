@@ -10,9 +10,9 @@ Worktrees live under `~/.radorc/worktrees/<worktree_name>/<repo-slug>/`. Know th
 
 ## worktree_name reuse
 
-Each worktree record carries a `worktree_name` key. It defaults to the project name. An offshoot project can share its parent's `worktree_name` — this is how a correction project points at the parent's existing worktrees rather than creating new ones.
+A workspace folder is always named after a project — the project's `worktree_name` by default, or another project's when one is continued at `/rad-execute` time.
 
-When you see the same `worktree_name` across two projects, those projects share a physical worktree. Edits in one affect the other.
+Each worktree record carries a `worktree_name` key. When two projects share the same `worktree_name`, they share physical worktrees. Edits in one are visible in the other.
 
 ## Find before acting
 

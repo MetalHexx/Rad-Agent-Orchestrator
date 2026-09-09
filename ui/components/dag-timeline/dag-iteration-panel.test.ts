@@ -1249,3 +1249,53 @@ testRB("dag-iteration-panel.tsx for_each_task branch (else arm) calls resolveTas
 
 console.log(`\n${passedRB} passed, ${failedRB} failed\n`);
 if (failedRB > 0) process.exit(1);
+
+// ─── P05-T02: Amendment badge wiring ─────────────────────────────────────────
+
+console.log("\nDAGIterationPanel — amendment badge wiring (P05-T02)\n");
+
+let passedAmend = 0;
+let failedAmend = 0;
+function testAmend(name: string, fn: () => void) {
+  try {
+    fn();
+    console.log(`  ✓ ${name}`);
+    passedAmend++;
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error(`  ✗ ${name}\n    ${msg}`);
+    failedAmend++;
+  }
+}
+
+testAmend("dag-iteration-panel.tsx imports AmendmentBadge from @/components/badges", () => {
+  assert.ok(
+    /import\s+\{[^}]*AmendmentBadge[^}]*\}\s+from\s+['"]@\/components\/badges['"]/.test(PANEL_SOURCE),
+    'panel must import AmendmentBadge from @/components/badges'
+  );
+});
+
+testAmend("dag-iteration-panel.tsx renders <AmendmentBadge index={iteration.amendment}> gated on iteration.amendment != null in BOTH parentKind branches", () => {
+  const matches = PANEL_SOURCE.match(
+    /iteration\.amendment\s*!=\s*null\s*&&\s*\([\s\S]{0,60}?<AmendmentBadge\s+index=\{iteration\.amendment\}\s*\/>/g
+  ) ?? [];
+  assert.strictEqual(
+    matches.length,
+    2,
+    `expected <AmendmentBadge index={iteration.amendment} /> gated on iteration.amendment != null in both the phase and task branches — found ${matches.length}`
+  );
+});
+
+testAmend("dag-iteration-panel.tsx renders AmendmentBadge as a sibling of NodeStatusBadge, not nested inside it", () => {
+  const nodeStatusBlocks = [...PANEL_SOURCE.matchAll(/<NodeStatusBadge[\s\S]*?\/>/g)];
+  assert.ok(nodeStatusBlocks.length >= 2, 'expected >= 2 <NodeStatusBadge ... /> usages');
+  for (const m of nodeStatusBlocks) {
+    assert.ok(
+      !/AmendmentBadge/.test(m[0]),
+      'AmendmentBadge must render as a sibling of NodeStatusBadge, not nested inside its own element'
+    );
+  }
+});
+
+console.log(`\n${passedAmend} passed, ${failedAmend} failed\n`);
+if (failedAmend > 0) process.exit(1);

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import path from 'node:path';
-import { executeResolve, isClaudeCodeHarness } from '../../../src/commands/execute/resolve.js';
+import { executeResolve, findWorktreeCandidates, isClaudeCodeHarness } from '../../../src/commands/execute/resolve.js';
 import type { ExecuteResolveDeps, RecordedSourceControl, RunMode } from '../../../src/commands/execute/resolve.js';
 import type { CloneFacts } from '../../../src/lib/clone-facts.js';
 import type { Project, LocateResult, NodeStatus, Tier } from '@rad-orchestration/work-graph';
@@ -17,7 +17,7 @@ function makeProject(
     tier?: Tier | null;
   } = {},
 ): Project {
-  const docs: Project['docs'] = { others: [] };
+  const docs: Project['docs'] = { others: [], subfolders: [] };
   if (opts.masterPlan !== null) docs.masterPlan = opts.masterPlan ?? `${name}-MASTER-PLAN.md`;
   return {
     id: name,
@@ -30,6 +30,7 @@ function makeProject(
     sourceControlInitialized: opts.sourceControlInitialized ?? false,
     docs,
     worktrees: [],
+    haltReason: null,
   };
 }
 
@@ -51,6 +52,7 @@ const deps = (over: Partial<ExecuteResolveDeps> = {}): ExecuteResolveDeps => ({
   readConfig: () => ({ autoCommit: 'always', autoPr: 'never' }),
   defaultBranch: () => 'main',
   worktreeExists: () => true,
+  worktreeCommitFacts: () => null,
   planApproved: () => true,
   worktreesDir: '/wt',
   sideProjectsDir: '/sp',
@@ -100,6 +102,9 @@ describe('executeResolve — run mode from location + settled-ness', () => {
     { location: 'a repo worktree beneath it', locate: () => loc({ kind: 'worktree', worktree_name: 'P', projects: ['P'], repo: 'rad-orc-source', branch: 'radorch/P' }) },
     { location: "a different project's worktree", locate: () => loc({ kind: 'worktree', worktree_name: 'OTHER', projects: ['OTHER'], branch: 'radorch/OTHER' }), otherProject: 'OTHER' },
     { location: 'a main clone', locate: () => loc({ kind: 'main-clone', repo: 'rad-orc-source' }) },
+    // Standing inside an unrelated side-project's dir is still not-in-a-worktree
+    // for a STANDARD project — it must fresh-launch exactly like "nowhere".
+    { location: "a side-project directory", locate: () => loc({ kind: 'side-project', worktree_name: 'SIDE' }) },
     { location: 'nowhere', locate: () => loc({ kind: 'none' }) },
   ];
 
@@ -121,11 +126,15 @@ describe('executeResolve — run mode from location + settled-ness', () => {
     },
     'a main clone': {
       settled: { runMode: 'launch', ask: [] },
-      unsettled: { runMode: 'launch', ask: ['autoCommit', 'autoPr'] },
+      unsettled: { runMode: 'launch', ask: ['autoCommit', 'autoPr', 'worktreeSource'] },
+    },
+    'a side-project directory': {
+      settled: { runMode: 'launch', ask: [] },
+      unsettled: { runMode: 'launch', ask: ['autoCommit', 'autoPr', 'worktreeSource'] },
     },
     nowhere: {
       settled: { runMode: 'launch', ask: [] },
-      unsettled: { runMode: 'launch', ask: ['autoCommit', 'autoPr'] },
+      unsettled: { runMode: 'launch', ask: ['autoCommit', 'autoPr', 'worktreeSource'] },
     },
   };
 
@@ -461,16 +470,22 @@ describe('executeResolve — derived convention', () => {
 describe('executeResolve — next ordering and pre-substitution', () => {
   it('bakes resolved always/never into the prepare command; leaves a placeholder for "ask"', () => {
     const baked = executeResolve(deps({ project: 'P', locate: () => loc({ kind: 'none' }), readConfig: () => ({ autoCommit: 'always', autoPr: 'never' }) }));
-    expect(baked.next[0]).toBe('execute prepare --project P --auto-commit always --auto-pr never');
+    expect(baked.next[0]).toBe('execute prepare --project P --worktree-name {wt} --auto-commit always --auto-pr never');
 
     const asked = executeResolve(deps({ project: 'P', locate: () => loc({ kind: 'none' }), readConfig: () => ({ autoCommit: 'ask', autoPr: 'ask' }) }));
-    expect(asked.next[0]).toBe('execute prepare --project P --auto-commit {ac} --auto-pr {ap}');
+    expect(asked.next[0]).toBe('execute prepare --project P --worktree-name {wt} --auto-commit {ac} --auto-pr {ap}');
   });
 
   it('launch emits prepare then a worktree-launch command into the parent dir, with no permission-mode flag', () => {
     const r = executeResolve(deps({ project: 'P', locate: () => loc({ kind: 'none' }), worktreesDir: '/wt' }));
     expect(r.next).toHaveLength(2);
-    expect(r.next[1]).toBe(`worktree launch --agent claude --worktree-path "${path.join('/wt', 'P')}" --prompt "/rad-execute P"`);
+    expect(r.next[1]).toBe(`worktree launch --agent claude --worktree-path "${path.join('/wt', '{wt}')}" --prompt "/rad-execute P"`);
+  });
+
+  it('the {wt} placeholder round-trips: substituting the project name reproduces exactly what was asserted before this task', () => {
+    const r = executeResolve(deps({ project: 'P', locate: () => loc({ kind: 'none' }), worktreesDir: '/wt' }));
+    expect(r.next[0]!.replace('{wt}', 'P')).toBe('execute prepare --project P --worktree-name P --auto-commit always --auto-pr never');
+    expect(r.next[1]!.replace('{wt}', 'P')).toBe(`worktree launch --agent claude --worktree-path "${path.join('/wt', 'P')}" --prompt "/rad-execute P"`);
   });
 });
 
@@ -630,23 +645,25 @@ describe('executeResolve — the clone-binding offer and the multi-repo stop', (
 
   // A settled project never reaches the offer: 7b has already claimed it. On the
   // repo's default branch the clone is irrelevant and today's workspace launch
-  // stands. Config is forced to 'ask' so the ask sets are meaningful.
+  // stands — that launch is the fresh-launch branch (a main clone is not a
+  // worktree), so it carries worktreeSource same as any other fresh launch.
+  // Config is forced to 'ask' so the ask sets are meaningful.
   const expected: Record<string, Record<'default' | 'feature', { settled: [RunMode, string[]]; unsettled: [RunMode, string[]] }>> = {
     'single-repo, this clone': {
-      default: { settled: ['launch', []], unsettled: ['launch', ['autoCommit', 'autoPr']] },
+      default: { settled: ['launch', []], unsettled: ['launch', ['autoCommit', 'autoPr', 'worktreeSource']] },
       feature: { settled: ['launch', []], unsettled: ['in-place', ['autoCommit', 'autoPr', 'bindClone']] },
     },
     'single-repo, another clone': {
-      default: { settled: ['launch', []], unsettled: ['launch', ['autoCommit', 'autoPr']] },
-      feature: { settled: ['launch', []], unsettled: ['launch', ['autoCommit', 'autoPr']] },
+      default: { settled: ['launch', []], unsettled: ['launch', ['autoCommit', 'autoPr', 'worktreeSource']] },
+      feature: { settled: ['launch', []], unsettled: ['launch', ['autoCommit', 'autoPr', 'worktreeSource']] },
     },
     'multi-repo including this clone': {
-      default: { settled: ['launch', []], unsettled: ['launch', ['autoCommit', 'autoPr']] },
+      default: { settled: ['launch', []], unsettled: ['launch', ['autoCommit', 'autoPr', 'worktreeSource']] },
       feature: { settled: ['launch', []], unsettled: ['unknown', []] },
     },
     'multi-repo excluding this clone': {
-      default: { settled: ['launch', []], unsettled: ['launch', ['autoCommit', 'autoPr']] },
-      feature: { settled: ['launch', []], unsettled: ['launch', ['autoCommit', 'autoPr']] },
+      default: { settled: ['launch', []], unsettled: ['launch', ['autoCommit', 'autoPr', 'worktreeSource']] },
+      feature: { settled: ['launch', []], unsettled: ['launch', ['autoCommit', 'autoPr', 'worktreeSource']] },
     },
   };
 
@@ -726,7 +743,7 @@ describe('executeResolve — the clone-binding offer and the multi-repo stop', (
     const r = standingIn('main', shapes[2]!, false);
     expect(r.runMode).toBe('launch');
     expect(r.derived?.launchDir).toBe(path.join('/wt', 'P'));
-    expect(r.next[0]).toMatch(/^execute prepare --project P --auto-commit /);
+    expect(r.next[0]).toMatch(/^execute prepare --project P --worktree-name \{wt\} --auto-commit /);
   });
 
   it('an already-started multi-repo project named from one of its clones launches into its workspace', () => {
@@ -884,5 +901,241 @@ describe('executeResolve — confirmations', () => {
     }));
     expect(r.ask.confirmDone).toBe(true);
     expect(r.runMode).toBe('launch');
+  });
+});
+
+// ── Fresh launch: which workspace to continue in ─────────────────────────────
+
+describe('executeResolve — worktreeCandidates on a fresh launch', () => {
+  it('zero-candidate case: worktreeCandidates is present and empty when nothing else qualifies', () => {
+    const r = executeResolve(deps({ project: 'P', locate: () => loc({ kind: 'none' }) }));
+    expect(r.ask.worktreeSource).toBe(true);
+    expect(r.worktreeCandidates).toEqual([]);
+  });
+
+  it('surfaces a qualifying candidate end-to-end', () => {
+    const r = executeResolve(deps({
+      project: 'P',
+      locate: () => loc({ kind: 'none' }),
+      listProjects: () => [makeProject('P'), makeProject('OTHER')],
+      worktreesDir: '/wt',
+      worktreeCommitFacts: () => ({ lastCommitAt: 123, lastCommitRelative: '2 days ago', branch: 'radorch/OTHER' }),
+    }));
+    expect(r.worktreeCandidates).toEqual([
+      {
+        project: 'OTHER',
+        worktreeName: 'OTHER',
+        workspacePath: path.join('/wt', 'OTHER'),
+        branch: 'radorch/OTHER',
+        lastCommitRelative: '2 days ago',
+        missingRepos: [],
+      },
+    ]);
+  });
+
+  it('every other branch leaves worktreeSource and worktreeCandidates unset', () => {
+    const resume = executeResolve(deps({
+      locate: () => loc({ kind: 'worktree', worktree_name: 'P', projects: ['P'], branch: 'radorch/P' }),
+      listProjects: () => [makeProject('P', { sourceControlInitialized: true })],
+    }));
+    expect(resume.ask.worktreeSource).toBeUndefined();
+    expect(resume.worktreeCandidates).toBeUndefined();
+
+    const settledLaunch = executeResolve(deps({
+      project: 'P',
+      locate: () => loc({ kind: 'none' }),
+      listProjects: () => [makeProject('P', { sourceControlInitialized: true })],
+    }));
+    expect(settledLaunch.ask.worktreeSource).toBeUndefined();
+    expect(settledLaunch.worktreeCandidates).toBeUndefined();
+
+    const reuse = executeResolve(deps({
+      project: 'FOLLOWUP',
+      locate: () => loc({ kind: 'worktree', worktree_name: 'PARENT', projects: ['PARENT'], branch: 'radorch/PARENT' }),
+      listProjects: () => [makeProject('FOLLOWUP'), makeProject('PARENT')],
+    }));
+    expect(reuse.ask.worktreeSource).toBeUndefined();
+    expect(reuse.worktreeCandidates).toBeUndefined();
+  });
+});
+
+describe('findWorktreeCandidates — filter, rank, and cap', () => {
+  interface Setup {
+    projects?: Project[];
+    readProjectRepos?: (project: string) => { repos: string[]; projectType: 'standard' | 'side-project' };
+    worktreeExists?: (worktreeName: string, repo: string) => boolean;
+    recordedSourceControl?: (projectDir: string) => RecordedSourceControl | null;
+    worktreeCommitFacts?: (worktreeName: string, repo: string) => { lastCommitAt: number; lastCommitRelative: string; branch: string | null } | null;
+  }
+
+  const wtDeps = (over: Setup = {}) => ({
+    listProjects: () => over.projects ?? [],
+    readProjectRepos: over.readProjectRepos ?? (() => ({ repos: [], projectType: 'standard' as const })),
+    worktreeExists: over.worktreeExists ?? (() => true),
+    recordedSourceControl: over.recordedSourceControl ?? (() => null),
+    worktreeCommitFacts: over.worktreeCommitFacts ?? (() => null),
+    worktreesDir: '/wt',
+  });
+
+  it('excludes done and skipped projects; every other status stays eligible', () => {
+    const projects = [
+      makeProject('DONE', { status: 'done' }),
+      makeProject('SKIPPED', { status: 'skipped' }),
+      makeProject('BLOCKED', { status: 'blocked' }),
+    ];
+    const candidates = findWorktreeCandidates(
+      wtDeps({ projects, readProjectRepos: () => ({ repos: ['rad-orc-source'], projectType: 'standard' as const }) }),
+      'P',
+      ['rad-orc-source'],
+    );
+    expect(candidates.map((c) => c.project)).toEqual(['BLOCKED']);
+  });
+
+  it('excludes the launching project itself', () => {
+    const projects = [makeProject('P'), makeProject('OTHER')];
+    const candidates = findWorktreeCandidates(
+      wtDeps({ projects, readProjectRepos: () => ({ repos: ['rad-orc-source'], projectType: 'standard' as const }) }),
+      'P',
+      ['rad-orc-source'],
+    );
+    expect(candidates.map((c) => c.project)).toEqual(['OTHER']);
+  });
+
+  it('excludes a project sharing no repo with the launching project', () => {
+    const projects = [makeProject('OTHER')];
+    const candidates = findWorktreeCandidates(
+      wtDeps({ projects, readProjectRepos: () => ({ repos: ['unrelated-repo'], projectType: 'standard' as const }) }),
+      'P',
+      ['rad-orc-source'],
+    );
+    expect(candidates).toEqual([]);
+  });
+
+  it('skips a candidate whose readProjectRepos throws rather than failing the whole resolution', () => {
+    const projects = [makeProject('BROKEN'), makeProject('OK')];
+    const candidates = findWorktreeCandidates(
+      wtDeps({
+        projects,
+        readProjectRepos: (project) => {
+          if (project === 'BROKEN') throw new Error('no master plan');
+          return { repos: ['rad-orc-source'], projectType: 'standard' as const };
+        },
+      }),
+      'P',
+      ['rad-orc-source'],
+    );
+    expect(candidates.map((c) => c.project)).toEqual(['OK']);
+  });
+
+  it("excludes a candidate whose workspace folder holds none of its own repos", () => {
+    const projects = [makeProject('OTHER')];
+    const candidates = findWorktreeCandidates(
+      wtDeps({
+        projects,
+        readProjectRepos: () => ({ repos: ['rad-orc-source'], projectType: 'standard' as const }),
+        worktreeExists: () => false,
+      }),
+      'P',
+      ['rad-orc-source'],
+    );
+    expect(candidates).toEqual([]);
+  });
+
+  it('orders by injected lastCommitAt, newest first, with a project-name tie-break', () => {
+    const projects = [makeProject('B'), makeProject('A'), makeProject('C')];
+    const commitAt: Record<string, number> = { B: 100, A: 100, C: 200 };
+    const candidates = findWorktreeCandidates(
+      wtDeps({
+        projects,
+        readProjectRepos: () => ({ repos: ['rad-orc-source'], projectType: 'standard' as const }),
+        worktreeCommitFacts: (worktreeName) => ({ lastCommitAt: commitAt[worktreeName]!, lastCommitRelative: `${commitAt[worktreeName]}`, branch: 'radorch/x' }),
+      }),
+      'P',
+      ['rad-orc-source'],
+    );
+    expect(candidates.map((c) => c.project)).toEqual(['C', 'A', 'B']);
+  });
+
+  it('caps at three when five qualify', () => {
+    const projects = ['A', 'B', 'C', 'D', 'E'].map((n) => makeProject(n));
+    const candidates = findWorktreeCandidates(
+      wtDeps({ projects, readProjectRepos: () => ({ repos: ['rad-orc-source'], projectType: 'standard' as const }) }),
+      'P',
+      ['rad-orc-source'],
+    );
+    expect(candidates).toHaveLength(3);
+  });
+
+  it("a candidate whose recorded worktreeName differs from its own project name reports the shared name", () => {
+    const projects = [makeProject('OTHER')];
+    const candidates = findWorktreeCandidates(
+      wtDeps({
+        projects,
+        readProjectRepos: () => ({ repos: ['rad-orc-source'], projectType: 'standard' as const }),
+        recordedSourceControl: () => ({ worktreeName: 'SHARED', repos: [] }),
+      }),
+      'P',
+      ['rad-orc-source'],
+    );
+    expect(candidates[0]?.worktreeName).toBe('SHARED');
+    expect(candidates[0]?.workspacePath).toBe(path.join('/wt', 'SHARED'));
+  });
+
+  it('two projects resolving to the same shared workspace collapse to a single option', () => {
+    const projects = [makeProject('ONE'), makeProject('TWO')];
+    const candidates = findWorktreeCandidates(
+      wtDeps({
+        projects,
+        readProjectRepos: () => ({ repos: ['rad-orc-source'], projectType: 'standard' as const }),
+        recordedSourceControl: () => ({ worktreeName: 'SHARED', repos: [] }),
+      }),
+      'P',
+      ['rad-orc-source'],
+    );
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]?.worktreeName).toBe('SHARED');
+  });
+
+  it("missingRepos names the launching project's repos the candidate's workspace lacks", () => {
+    const projects = [makeProject('OTHER')];
+    const candidates = findWorktreeCandidates(
+      wtDeps({
+        projects,
+        readProjectRepos: () => ({ repos: ['fake-api'], projectType: 'standard' as const }),
+        worktreeExists: (_wt, repo) => repo === 'fake-api',
+      }),
+      'P',
+      ['fake-api', 'fake-ui'],
+    );
+    expect(candidates[0]?.missingRepos).toEqual(['fake-ui']);
+  });
+
+  it('missingRepos is empty when the candidate holds every repo the launching project needs', () => {
+    const projects = [makeProject('OTHER')];
+    const candidates = findWorktreeCandidates(
+      wtDeps({
+        projects,
+        readProjectRepos: () => ({ repos: ['fake-api', 'fake-ui'], projectType: 'standard' as const }),
+        worktreeExists: () => true,
+      }),
+      'P',
+      ['fake-api', 'fake-ui'],
+    );
+    expect(candidates[0]?.missingRepos).toEqual([]);
+  });
+
+  it('a candidate with no readable commit facts is kept with a null branch/lastCommitRelative and sorts last', () => {
+    const projects = [makeProject('FRESH'), makeProject('STALE')];
+    const candidates = findWorktreeCandidates(
+      wtDeps({
+        projects,
+        readProjectRepos: () => ({ repos: ['rad-orc-source'], projectType: 'standard' as const }),
+        worktreeCommitFacts: (worktreeName) => (worktreeName === 'FRESH' ? { lastCommitAt: 100, lastCommitRelative: 'now', branch: 'radorch/FRESH' } : null),
+      }),
+      'P',
+      ['rad-orc-source'],
+    );
+    expect(candidates.map((c) => c.project)).toEqual(['FRESH', 'STALE']);
+    expect(candidates[1]).toMatchObject({ branch: null, lastCommitRelative: null });
   });
 });

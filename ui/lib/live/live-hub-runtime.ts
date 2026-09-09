@@ -8,6 +8,7 @@ import {
   lifecycleTopic,
   type RawFsEvent,
 } from './state-adapter';
+import { classifySessionsEvent, sessionsTopicForProject } from './sessions-adapter';
 import { createTopicHub } from './topic-hub';
 import { createWatcherSupervisor } from './watcher-supervisor';
 import { tailCompleteLines } from './telemetry-tail';
@@ -45,6 +46,11 @@ export interface TelemetryChangeNotification {
 export interface TranscriptChangeNotification {
   type: 'transcript_change';
   payload: { sessionId: string; agentId?: string; kind: 'added' | 'changed' | 'removed' };
+  timestamp: string;
+}
+export interface SessionsChangeNotification {
+  type: 'sessions_change';
+  payload: { projectName: string };
   timestamp: string;
 }
 
@@ -119,6 +125,10 @@ function build(args: RuntimeArgs) {
   let registryWatcher: MinimalWatcher | null = null;
   let telemetryWatcher: MinimalWatcher | null = null;
   let transcriptWatcher: MinimalWatcher | null = null;
+  // Set while a caller (the project-delete route) has asked the projects watcher
+  // to let go of its fs handles. Guards startWatcher() so a supervisor restart
+  // racing the delete cannot re-open a handle on a directory being removed.
+  let suspended = false;
 
   const emitDegraded = () => {
     const n: DegradedNotification = { type: 'live_degraded', payload: { degraded: true } };
@@ -199,6 +209,22 @@ function build(args: RuntimeArgs) {
     if (!sem) return;
     const notif: LifecycleNotification = {
       type: sem.kind,
+      payload: { projectName: sem.projectName },
+      timestamp: new Date().toISOString(),
+    };
+    hub.publish({ topic: sem.topic, kind: 'changed', projectName: sem.projectName, notif });
+  }
+
+  // Classify a raw fs event as a `.project-sessions.json` write and publish a
+  // nudge carrying only the project name, mirroring the registry topic's
+  // payload-free change pattern — the client refetches GET
+  // /api/projects/:name/sessions on receipt. The sessions file itself is
+  // never read, parsed, or shipped through the hub.
+  function publishSessionsEvent(type: RawFsEvent['type'], filePath: string): void {
+    const sem = classifySessionsEvent({ type, filePath }, args.projectsRoot);
+    if (!sem) return;
+    const notif: SessionsChangeNotification = {
+      type: 'sessions_change',
       payload: { projectName: sem.projectName },
       timestamp: new Date().toISOString(),
     };
@@ -497,6 +523,9 @@ function build(args: RuntimeArgs) {
   }
 
   function startWatcher(): void {
+    // Suspended by an in-flight project delete: never (re)open the projects
+    // watcher, even when reached via supervisor.reportError's restart path.
+    if (suspended) return;
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const chokidarMod = require('chokidar');
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -522,6 +551,7 @@ function build(args: RuntimeArgs) {
         }
         publishStateEvent(type, fp);
         publishLifecycleEvent(type, fp);
+        publishSessionsEvent(type, fp);
       });
     });
     w.on('error', (err: unknown) => supervisor.reportError(err));
@@ -558,6 +588,10 @@ function build(args: RuntimeArgs) {
   // returns `state:<name>`), so subscribeAll can fan in every project's state topic.
   const STATE_TOPIC_PREFIX = stateTopicForProject('');
   const LIFECYCLE_TOPIC = lifecycleTopic();
+  // 'sessions:' — the prefix every per-project sessions topic shares, mirroring
+  // STATE_TOPIC_PREFIX, so subscribeAllSessionsTopics can fan in every project's
+  // sessions topic and subscribeAllArtifactTopics can exclude it.
+  const SESSIONS_TOPIC_PREFIX = sessionsTopicForProject('');
 
   return {
     subscribeAllArtifactTopics(listener: (n: ArtifactChangeNotification) => void): () => void {
@@ -568,12 +602,21 @@ function build(args: RuntimeArgs) {
       return hub.subscribeAll((e) => {
         if (
           !e.topic.startsWith(STATE_TOPIC_PREFIX) &&
+          !e.topic.startsWith(SESSIONS_TOPIC_PREFIX) &&
           e.topic !== LIFECYCLE_TOPIC &&
           e.topic !== REGISTRY_TOPIC &&
           e.topic !== TELEMETRY_TOPIC &&
           e.topic !== TRANSCRIPT_TOPIC
         )
           listener(toNotif(e));
+      });
+    },
+    subscribeAllSessionsTopics(listener: (n: SessionsChangeNotification) => void): () => void {
+      // Rides hub.subscribeAll filtered to sessions: topics, mirroring
+      // subscribeAllStateTopics. The nudge notification was built at publish
+      // time and rides the hub event's notif field.
+      return hub.subscribeAll((e) => {
+        if (e.topic.startsWith(SESSIONS_TOPIC_PREFIX) && e.notif) listener(e.notif as SessionsChangeNotification);
       });
     },
     subscribeAllStateTopics(listener: (n: StateChangeNotification) => void): () => void {
@@ -623,6 +666,38 @@ function build(args: RuntimeArgs) {
       degradedListeners.add(listener);
       return () => degradedListeners.delete(listener);
     },
+    // Publishes a project_removed lifecycle notification directly, for a caller
+    // (the project-delete route) that already knows the outcome rather than
+    // relying on the watcher observing it — the route closes the watcher before
+    // deleting, so a fresh watcher reopened afterward never sees the removal.
+    publishProjectRemoved(projectName: string): void {
+      const notif: LifecycleNotification = {
+        type: 'project_removed',
+        payload: { projectName },
+        timestamp: new Date().toISOString(),
+      };
+      hub.publish({ topic: LIFECYCLE_TOPIC, kind: 'changed', projectName, notif });
+    },
+    // Suspends the projects watcher so its fs handles are released before a
+    // caller (the project-delete route) removes the directory it watches.
+    // Awaited, not fire-and-forget: the caller needs the handles actually
+    // gone before it deletes. Idempotent — calling this while already
+    // suspended resolves immediately without touching the watcher again.
+    async suspendProjectsWatch(): Promise<void> {
+      if (suspended) return;
+      suspended = true;
+      const outgoing = watcher;
+      if (outgoing) {
+        watcher = null;
+        await outgoing.close();
+      }
+    },
+    // Clears the suspension flag and re-opens the projects watcher. Safe to
+    // call unconditionally (e.g. from a `finally`) — startWatcher() re-arms.
+    resumeProjectsWatch(): void {
+      suspended = false;
+      startWatcher();
+    },
     // Tear down all four process-level watchers (projects, registry, telemetry,
     // transcripts). The singleton normally stays warm for the process lifetime;
     // teardown exists so a host that owns the runtime lifecycle can close all fs
@@ -666,6 +741,15 @@ export function getLiveRuntime(args: RuntimeArgs): LiveRuntime {
     globalThis[GLOBAL_KEY] = build(args);
   }
   return globalThis[GLOBAL_KEY]!;
+}
+
+// Never constructs. Unlike getLiveRuntime, which builds the singleton from
+// whatever args it is first handed, a route calling this before any SSE
+// connection would otherwise create a runtime with the wrong (partial) arg
+// set and permanently poison every later consumer. A null return simply
+// means there is nothing to suspend.
+export function getLiveRuntimeIfActive(): LiveRuntime | null {
+  return globalThis[GLOBAL_KEY] ?? null;
 }
 
 // Test-only reset: deletes the process-level singleton so each test starts fresh.

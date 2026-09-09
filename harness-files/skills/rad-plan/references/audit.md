@@ -10,6 +10,7 @@ is to hand it a precise, actionable list it can work straight down.
 
 - the approved Requirements doc, and
 - the Master Plan drafted against it.
+- On a follow-up pass — your second or third dispatch against this same plan — you also receive the full history of findings a prior pass raised that the planner chose not to act on, each carrying the finding's original Lens / "What's wrong" / "Where" plus the planner's stated rationale for declining it.
 
 Read both end to end before you judge anything. Then spot-check the plan against the
 **codebase** it pins — the audit only earns its keep if you confirm the plan's claims
@@ -82,6 +83,15 @@ fabricated signature sends a coder down a hole before they write a line.
 - Don't flag the deliberate omissions: the requirements name what's intentionally out of
   scope, and a plan is right to skip those. A genuine gap is missing work; a non-goal is
   finished thinking.
+
+## Treating carried-forward disputes
+
+When you're handed a declined-findings history, read it before you start. Treat a declined
+finding as settled — don't re-raise it — unless you have genuinely new grounds the planner's
+stated rationale doesn't address: fresh evidence in the plan or codebase, or a distinct
+problem in the same area the original finding didn't name. Re-litigating a disagreement the
+planner already explained, with no new grounds, just burns another pass without moving the
+plan forward.
 
 ## What you return
 

@@ -6,8 +6,9 @@
  * (the coder's per-repo commit result rides task_completed) and verifies that
  * per-repo commit hashes and pr_urls land in the v6 repos[] shape (NFR-6, FR-7).
  */
-import { describe, it, expect } from 'vitest';
-import { processEvent } from '../../../src/lib/pipeline-engine/engine.js';
+import path from 'node:path';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { processEvent, __setActionEventsRootForTests } from '../../../src/lib/pipeline-engine/engine.js';
 import type {
   ForEachPhaseNodeState,
   ForEachTaskNodeState,
@@ -26,6 +27,13 @@ import {
   type MockIO,
 } from './fixtures/parity-states.js';
 import type { StepNodeState } from '../../../src/lib/pipeline-engine/types.js';
+
+// Pin the catalog root to the repo's own runtime-config/action-events/ so this
+// suite is hermetic and never falls back to an ambient ~/.radorc/action-events/
+// install (which may predate fields this diff's loader now requires).
+const REPO_ACTION_EVENTS_DIR = path.resolve(__dirname, '..', '..', '..', '..', 'runtime-config', 'action-events');
+beforeEach(() => { __setActionEventsRootForTests(REPO_ACTION_EVENTS_DIR); });
+afterEach(() => { __setActionEventsRootForTests(null); });
 
 // Config for the two-repo end-to-end test: deterministic gate flow (no ask_gate_mode
 // dialogs for task/phase gates), always auto-commit and auto-PR so the coder commits

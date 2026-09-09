@@ -2,9 +2,11 @@
  * Tests for SSE state_change sidebar-patching logic in use-projects hook.
  * Run with: npx tsx ui/hooks/use-projects.test.ts
  *
- * v5 and v6 states are structurally identical; the handler derives sidebar
- * fields from the graph uniformly and only discriminates the reported
- * schemaVersion. These tests mirror that uniform mapping.
+ * v5 and v6 states are structurally identical; the handler derives
+ * planningStatus/executionStatus from the graph uniformly (for the sort
+ * classifier) and only discriminates the reported schemaVersion. tier/state/
+ * stateLabel are never derived here — they're copied verbatim from the
+ * server-sent `payload.projectState`, mirroring ui/hooks/use-projects.ts.
  */
 import assert from 'node:assert';
 
@@ -16,6 +18,16 @@ type PlanningStatus = 'not_started' | 'in_progress' | 'complete';
 type ExecutionStatus = 'not_started' | 'in_progress' | 'complete' | 'halted';
 type NodeStatus = 'not_started' | 'in_progress' | 'completed' | 'halted' | 'skipped';
 
+// Inline mirror of @rad-orchestration/work-graph#ProjectState / DerivedProjectState
+type ProjectState =
+  | 'not_initialized' | 'not_started' | 'planning' | 'planned'
+  | 'executing' | 'pending_review' | 'halted' | 'complete';
+interface DerivedProjectState {
+  tier: PipelineTier | null;
+  state: ProjectState;
+  label: string;
+}
+
 interface NodeState {
   status: NodeStatus;
   [key: string]: unknown;
@@ -25,6 +37,8 @@ type NodesRecord = Record<string, NodeState>;
 interface ProjectSummary {
   name: string;
   tier: PipelineTier | 'not_initialized';
+  state: ProjectState;
+  stateLabel: string;
   hasState: boolean;
   hasMalformedState: boolean;
   errorMessage?: string;
@@ -83,21 +97,21 @@ function deriveExecutionStatus(graphStatus: GraphStatus, nodes: NodesRecord): Ex
 }
 
 // The uniform SSE state_change mapping logic replicated from
-// ui/hooks/use-projects.ts. v5 and v6 are handled identically via graph-based
-// derivation; only the reported schemaVersion differs.
+// ui/hooks/use-projects.ts. tier/state/stateLabel are copied verbatim from
+// payload.projectState — this function computes none of them itself.
+// planningStatus/executionStatus are still graph-derived, for the sort
+// classifier only; v5 and v6 are handled identically there.
 function applyStateChange(
   p: ProjectSummary,
-  payload: { projectName: string; state: AnyState }
+  payload: { projectName: string; state: AnyState; projectState: DerivedProjectState }
 ): ProjectSummary {
   if (p.name !== payload.projectName) return p;
   const state = payload.state;
-  const tier: PipelineTier =
-    state.graph.status === 'completed'
-      ? 'complete'
-      : state.pipeline.current_tier;
   return {
     ...p,
-    tier,
+    tier: payload.projectState.tier ?? 'not_initialized',
+    state: payload.projectState.state,
+    stateLabel: payload.projectState.label,
     planningStatus: derivePlanningStatus(state.graph.nodes),
     executionStatus: deriveExecutionStatus(state.graph.status, state.graph.nodes),
     lastUpdated: state.project?.updated,
@@ -128,6 +142,8 @@ async function run() {
     const p: ProjectSummary = {
       name: 'test',
       tier: 'not_initialized',
+      state: 'not_initialized',
+      stateLabel: 'Not Initialized',
       hasState: false,
       hasMalformedState: false,
       lastUpdated: undefined,
@@ -142,7 +158,8 @@ async function run() {
         updated: '2026-04-06T14:30:00.000Z',
       },
     };
-    const result = applyStateChange(p, { projectName: 'test', state });
+    const projectState: DerivedProjectState = { tier: 'execution', state: 'pending_review', label: 'Pending Review' };
+    const result = applyStateChange(p, { projectName: 'test', state, projectState });
     assert.strictEqual(result.lastUpdated, '2026-04-06T14:30:00.000Z');
   });
 
@@ -150,6 +167,8 @@ async function run() {
     const p: ProjectSummary = {
       name: 'other-project',
       tier: 'planning',
+      state: 'planning',
+      stateLabel: 'Planning',
       hasState: true,
       hasMalformedState: false,
       lastUpdated: '2026-01-01T00:00:00.000Z',
@@ -164,7 +183,8 @@ async function run() {
         updated: '2026-04-06T14:30:00.000Z',
       },
     };
-    const result = applyStateChange(p, { projectName: 'test', state });
+    const projectState: DerivedProjectState = { tier: 'execution', state: 'pending_review', label: 'Pending Review' };
+    const result = applyStateChange(p, { projectName: 'test', state, projectState });
     assert.strictEqual(result, p);
     assert.strictEqual(result.lastUpdated, '2026-01-01T00:00:00.000Z');
   });
@@ -174,6 +194,8 @@ async function run() {
     const p: ProjectSummary = {
       name: 'proj',
       tier: 'not_initialized',
+      state: 'not_initialized',
+      stateLabel: 'Not Initialized',
       hasState: false,
       hasMalformedState: false,
     };
@@ -188,19 +210,24 @@ async function run() {
       },
       project: { name: 'proj', created: '2026-01-01T00:00:00Z', updated: '2026-04-10T00:00:00Z' },
     };
-    const result = applyStateChange(p, { projectName: 'proj', state });
+    const projectState: DerivedProjectState = { tier: 'planning', state: 'planning', label: 'Planning' };
+    const result = applyStateChange(p, { projectName: 'proj', state, projectState });
     assert.strictEqual(result.schemaVersion, 'v6');
     assert.strictEqual(result.tier, 'planning');
+    assert.strictEqual(result.state, 'planning');
+    assert.strictEqual(result.stateLabel, 'Planning');
     assert.strictEqual(result.planningStatus, 'in_progress');
     assert.strictEqual(result.executionStatus, 'not_started');
     assert.strictEqual(result.graphStatus, 'in_progress');
   });
 
-  // v5 completed graph — tier becomes 'complete'
-  await test('(g) v5 state_change with completed graph — tier is "complete", schemaVersion is "v5"', async () => {
+  // v5 completed graph — tier/state become 'complete'
+  await test('(g) v5 state_change with completed graph — tier/state are "complete", schemaVersion is "v5"', async () => {
     const p: ProjectSummary = {
       name: 'proj',
       tier: 'not_initialized',
+      state: 'not_initialized',
+      stateLabel: 'Not Initialized',
       hasState: false,
       hasMalformedState: false,
     };
@@ -220,19 +247,24 @@ async function run() {
       },
       project: { name: 'proj', created: '2026-01-01T00:00:00Z', updated: '2026-04-12T10:00:00Z' },
     };
-    const result = applyStateChange(p, { projectName: 'proj', state });
+    const projectState: DerivedProjectState = { tier: 'complete', state: 'complete', label: 'Complete' };
+    const result = applyStateChange(p, { projectName: 'proj', state, projectState });
     assert.strictEqual(result.schemaVersion, 'v5');
     assert.strictEqual(result.tier, 'complete');
+    assert.strictEqual(result.state, 'complete');
+    assert.strictEqual(result.stateLabel, 'Complete');
     assert.strictEqual(result.planningStatus, 'complete');
     assert.strictEqual(result.executionStatus, 'complete');
     assert.strictEqual(result.lastUpdated, '2026-04-12T10:00:00Z');
   });
 
-  // v5 in-progress graph — tier from pipeline.current_tier
-  await test('(h) v5 state_change with in-progress graph — tier from pipeline.current_tier, schemaVersion is "v5"', async () => {
+  // v5 in-progress graph — tier/state from the server-sent projectState
+  await test('(h) v5 state_change with in-progress graph — tier/state from projectState, schemaVersion is "v5"', async () => {
     const p: ProjectSummary = {
       name: 'proj',
       tier: 'not_initialized',
+      state: 'not_initialized',
+      stateLabel: 'Not Initialized',
       hasState: false,
       hasMalformedState: false,
     };
@@ -252,9 +284,12 @@ async function run() {
       },
       project: { name: 'proj', created: '2026-01-01T00:00:00Z', updated: '2026-04-12T11:00:00Z' },
     };
-    const result = applyStateChange(p, { projectName: 'proj', state });
+    const projectState: DerivedProjectState = { tier: 'execution', state: 'executing', label: 'Executing' };
+    const result = applyStateChange(p, { projectName: 'proj', state, projectState });
     assert.strictEqual(result.schemaVersion, 'v5');
     assert.strictEqual(result.tier, 'execution');
+    assert.strictEqual(result.state, 'executing');
+    assert.strictEqual(result.stateLabel, 'Executing');
     assert.strictEqual(result.planningStatus, 'complete');
     assert.strictEqual(result.executionStatus, 'in_progress');
     assert.strictEqual(result.lastUpdated, '2026-04-12T11:00:00Z');
@@ -265,6 +300,8 @@ async function run() {
     const p: ProjectSummary = {
       name: 'other-proj',
       tier: 'planning',
+      state: 'planning',
+      stateLabel: 'Planning',
       hasState: true,
       hasMalformedState: false,
       lastUpdated: '2026-01-01T00:00:00Z',
@@ -274,7 +311,8 @@ async function run() {
       pipeline: { current_tier: 'execution' },
       graph: { status: 'in_progress', nodes: {} },
     };
-    const result = applyStateChange(p, { projectName: 'proj', state });
+    const projectState: DerivedProjectState = { tier: 'execution', state: 'pending_review', label: 'Pending Review' };
+    const result = applyStateChange(p, { projectName: 'proj', state, projectState });
     assert.strictEqual(result, p);
     assert.strictEqual(result.lastUpdated, '2026-01-01T00:00:00Z');
   });
@@ -284,6 +322,8 @@ async function run() {
     const p: ProjectSummary = {
       name: 'proj',
       tier: 'not_initialized',
+      state: 'not_initialized',
+      stateLabel: 'Not Initialized',
       hasState: false,
       hasMalformedState: false,
     };
@@ -303,7 +343,8 @@ async function run() {
       },
       project: { name: 'proj', created: '2026-01-01T00:00:00Z', updated: '2026-04-16T00:00:00Z' },
     };
-    const result = applyStateChange(p, { projectName: 'proj', state });
+    const projectState: DerivedProjectState = { tier: 'execution', state: 'executing', label: 'Executing' };
+    const result = applyStateChange(p, { projectName: 'proj', state, projectState });
     assert.strictEqual(result.graphStatus, 'in_progress');
   });
 
@@ -311,6 +352,8 @@ async function run() {
     const p: ProjectSummary = {
       name: 'proj',
       tier: 'not_initialized',
+      state: 'not_initialized',
+      stateLabel: 'Not Initialized',
       hasState: false,
       hasMalformedState: false,
     };
@@ -331,7 +374,8 @@ async function run() {
       },
       project: { name: 'proj', created: '2026-01-01T00:00:00Z', updated: '2026-04-16T00:00:00Z' },
     };
-    const result = applyStateChange(p, { projectName: 'proj', state });
+    const projectState: DerivedProjectState = { tier: 'complete', state: 'complete', label: 'Complete' };
+    const result = applyStateChange(p, { projectName: 'proj', state, projectState });
     assert.strictEqual(result.graphStatus, 'completed');
   });
 
@@ -339,6 +383,8 @@ async function run() {
     const p: ProjectSummary = {
       name: 'proj',
       tier: 'not_initialized',
+      state: 'not_initialized',
+      stateLabel: 'Not Initialized',
       hasState: false,
       hasMalformedState: false,
     };
@@ -348,9 +394,59 @@ async function run() {
       graph: { status: 'in_progress', nodes: { research: { status: 'in_progress' } } },
       project: { name: 'proj', created: '2026-01-01T00:00:00Z', updated: '2026-04-16T00:00:00Z' },
     };
-    const result = applyStateChange(p, { projectName: 'proj', state });
+    const projectState: DerivedProjectState = { tier: 'planning', state: 'planning', label: 'Planning' };
+    const result = applyStateChange(p, { projectName: 'proj', state, projectState });
     assert.strictEqual(result.graphStatus, 'in_progress');
     assert.strictEqual(result.schemaVersion, 'v6');
+  });
+
+  // The seam to get right: the hook must never reconstruct tier/state/label
+  // from `payload.state` itself — it only ever copies `payload.projectState`.
+  await test('(m) payload.projectState lands on the summary verbatim, even when it disagrees with payload.state — the hook derives no label of its own', async () => {
+    const p: ProjectSummary = {
+      name: 'proj',
+      tier: 'not_initialized',
+      state: 'not_initialized',
+      stateLabel: 'Not Initialized',
+      hasState: false,
+      hasMalformedState: false,
+    };
+    const state: V5State = {
+      $schema: 'orchestration-state-v5',
+      pipeline: { current_tier: 'execution' },
+      graph: { status: 'in_progress', nodes: { phase_loop: { status: 'in_progress' } } },
+      project: { name: 'proj', created: '2026-01-01T00:00:00Z', updated: '2026-05-01T00:00:00Z' },
+    };
+    // Deliberately NOT what deriving from `state` above would produce
+    // ('execution'/'executing') — proves the hook patches verbatim rather
+    // than recomputing from payload.state.
+    const projectState: DerivedProjectState = { tier: 'review', state: 'halted', label: 'Halted' };
+    const result = applyStateChange(p, { projectName: 'proj', state, projectState });
+    assert.strictEqual(result.tier, 'review');
+    assert.strictEqual(result.state, 'halted');
+    assert.strictEqual(result.stateLabel, 'Halted');
+  });
+
+  await test('(n) payload.projectState.tier === null maps to "not_initialized" on the summary', async () => {
+    const p: ProjectSummary = {
+      name: 'proj',
+      tier: 'execution',
+      state: 'executing',
+      stateLabel: 'Executing',
+      hasState: true,
+      hasMalformedState: false,
+    };
+    const state: V5State = {
+      $schema: 'orchestration-state-v5',
+      pipeline: { current_tier: 'execution' },
+      graph: { status: 'not_started', nodes: {} },
+      project: { name: 'proj', created: '2026-01-01T00:00:00Z', updated: '2026-05-02T00:00:00Z' },
+    };
+    const projectState: DerivedProjectState = { tier: null, state: 'not_started', label: 'Not Started' };
+    const result = applyStateChange(p, { projectName: 'proj', state, projectState });
+    assert.strictEqual(result.tier, 'not_initialized');
+    assert.strictEqual(result.state, 'not_started');
+    assert.strictEqual(result.stateLabel, 'Not Started');
   });
 
   console.log(`\n${passed} passed, ${failed} failed`);

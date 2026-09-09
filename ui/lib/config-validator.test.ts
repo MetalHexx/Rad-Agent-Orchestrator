@@ -230,6 +230,29 @@ test('validator accepts a boolean and rejects a non-boolean (FR-6)', () => {
   assert.ok(validateConfig({ ...base, telemetry: { enabled: 'yes' } } as any)['telemetry.enabled']);
 });
 
+// --- ambient_awareness.verbosity ---
+
+test('absent ambient_awareness section produces no validation error', () => {
+  const cfg = makeValidConfig();
+  const result = validateConfig(cfg);
+  assert.strictEqual(result['ambient_awareness.verbosity'], undefined);
+});
+
+test('ambient_awareness.verbosity valid value is valid', () => {
+  const cfg = makeValidConfig();
+  cfg.ambient_awareness = { verbosity: 'minimal' };
+  const result = validateConfig(cfg);
+  assert.strictEqual(result['ambient_awareness.verbosity'], undefined);
+});
+
+test('ambient_awareness.verbosity invalid value returns error', () => {
+  const cfg = makeValidConfig();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  cfg.ambient_awareness = { verbosity: 'loud' as any };
+  const result = validateConfig(cfg);
+  assert.strictEqual(result['ambient_awareness.verbosity'], 'Invalid ambient awareness verbosity');
+});
+
 // --- ui.port (Dashboard) ---
 
 test('a UI Port number field exists for ui.port', () => {
@@ -282,6 +305,58 @@ test('ui.port missing while ui section present returns error', () => {
   cfg.ui = {} as any;
   const result = validateConfig(cfg);
   assert.strictEqual(result['ui.port'], 'Must be a whole number between 1 and 65535');
+});
+
+// --- communication_style (optional section) ---
+
+test('absent communication_style section produces no validation error', () => {
+  const cfg = makeValidConfig();
+  const result = validateConfig(cfg);
+  assert.strictEqual(result['communication_style.enabled'], undefined);
+  assert.strictEqual(result['communication_style.selected'], undefined);
+});
+
+test('communication_style.enabled non-boolean returns error', () => {
+  const cfg = makeValidConfig();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  cfg.communication_style = { enabled: 'true' as any, selected: 'formal.md' };
+  const result = validateConfig(cfg);
+  assert.strictEqual(result['communication_style.enabled'], 'Must be true or false');
+});
+
+test('communication_style.selected empty string returns error', () => {
+  const cfg = makeValidConfig();
+  cfg.communication_style = { enabled: true, selected: '' };
+  const result = validateConfig(cfg);
+  assert.strictEqual(result['communication_style.selected'], 'Must be a non-empty string');
+});
+
+test('communication_style membership check is skipped when knownStylePaths is omitted', () => {
+  const cfg = makeValidConfig();
+  cfg.communication_style = { enabled: true, selected: 'custom/does-not-exist.md' };
+  const result = validateConfig(cfg);
+  assert.strictEqual(result['communication_style.selected'], undefined);
+});
+
+test('communication_style membership check is skipped when knownStylePaths is empty', () => {
+  const cfg = makeValidConfig();
+  cfg.communication_style = { enabled: true, selected: 'custom/does-not-exist.md' };
+  const result = validateConfig(cfg, []);
+  assert.strictEqual(result['communication_style.selected'], undefined);
+});
+
+test('communication_style.selected not in knownStylePaths returns error', () => {
+  const cfg = makeValidConfig();
+  cfg.communication_style = { enabled: true, selected: 'custom/does-not-exist.md' };
+  const result = validateConfig(cfg, ['formal.md', 'custom/casual.md']);
+  assert.strictEqual(result['communication_style.selected'], 'Selected style is not a known communication style');
+});
+
+test('communication_style.selected present in knownStylePaths is valid', () => {
+  const cfg = makeValidConfig();
+  cfg.communication_style = { enabled: true, selected: 'custom/casual.md' };
+  const result = validateConfig(cfg, ['formal.md', 'custom/casual.md']);
+  assert.strictEqual(result['communication_style.selected'], undefined);
 });
 
 // --- Summary ---

@@ -1,37 +1,97 @@
 "use client";
 import { useState, useCallback } from 'react';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Hexagon, Box, HardDrive, Folder, FolderX } from 'lucide-react';
+import { Card } from '@/components/ui/card';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Box, HardDrive, Folder, FolderX, GitPullRequest, Github } from 'lucide-react';
 import { BindStateDot } from '@/components/repo-registry/bind-state-dot';
-import { ExternalLink } from '@/components/documents';
 import { postOpenFolder } from '@/hooks/use-open-folder';
-import { SECTION_LABEL_CLASSES, CARD_SHELL_CLASSES } from './dag-section-group';
-import { resolveLocationKind, resolveRepoFolderPath, LOCATION_KIND_LABEL } from './source-control-helpers';
+import { cn } from '@/lib/utils';
+import { SECTION_LABEL_CLASSES } from './dag-section-group';
+import { resolveLocationKind, resolveRepoFolderPath } from './source-control-helpers';
+import type { LocationKind } from './source-control-helpers';
 import type { RepoBindInfo } from './source-control-bind';
 import type { SourceControlRepo, V5AutoCommit, V5AutoPR } from '@/types/state';
+import type { ProjectKind } from '@/types/components';
 
 export interface SourceControlPanelProps {
   repos: SourceControlRepo[];
   projectName: string;
-  projectType?: 'standard' | 'side-project';
+  projectType?: ProjectKind;
+  /** Retained for the prop contract; the panel renders no auto-commit surface. */
   autoCommit?: V5AutoCommit;
   autoPr?: V5AutoPR;
   bindByName: Record<string, RepoBindInfo>;
 }
 
-function pillCssVar(v: V5AutoCommit | V5AutoPR | undefined): string {
-  return v === 'always' ? '--status-complete' : v === 'ask' ? '--status-in-progress' : '--status-failed';
-}
+/**
+ * A location chip is an exception marker: a worktree is the norm and earns no
+ * chip, so only the two exceptional kinds are mapped here.
+ */
+const LOCATION_CHIP = {
+  'in-place': { label: 'In-place', Icon: Box },
+  'side-project': { label: 'Side-project', Icon: HardDrive },
+} as const;
 
-// SC-PANEL-POLISH: display-only verdict — show a locked Yes/No, and hide the
-// badge entirely while the policy is still `ask`/unset. State is untouched.
-function policyVerdict(v: V5AutoCommit | V5AutoPR | undefined): 'Yes' | 'No' | null {
-  return v === 'always' ? 'Yes' : v === 'never' ? 'No' : null;
-}
+/**
+ * The four tracks, in render order: repo · branch · worktree/location ·
+ * pull-request. At full width the first two and the last size to their own
+ * content; the worktree/location track — third, so it can freely take
+ * whatever room is left — fills the remainder, and the pull-request track
+ * hugs the card's right edge. Rows and the header are `grid-cols-subgrid`
+ * children of `PANEL_GRID_CLASSES` below so their cells share one set of
+ * column tracks; that alignment is what makes content-based sizing possible
+ * across rows.
+ */
+const PANEL_GRID_CLASSES =
+  'grid grid-cols-[minmax(0,max-content)_minmax(0,max-content)_minmax(0,1fr)_minmax(0,max-content)]';
 
-// DD-5: location-kind pill icon (lucide) — hexagon / box / hard-drive.
-const LOCATION_KIND_ICON = { worktree: Hexagon, 'in-place': Box, 'side-project': HardDrive } as const;
+/**
+ * Applied to the header row and to each repo row. At full width every row
+ * subgrids into the panel's shared column tracks; the two container-width
+ * reflows below drop subgrid for an explicit self-contained template, since
+ * a stacked label/value row no longer needs to align with its neighbors.
+ */
+const ROW_GRID_CLASSES = [
+  'grid grid-cols-subgrid col-span-full gap-x-3',
+  '@max-[860px]/sc:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] @max-[860px]/sc:gap-y-2.5',
+  '@max-[560px]/sc:grid-cols-[minmax(0,1fr)]',
+].join(' ');
+
+const CELL_CLASSES =
+  'flex min-w-0 items-center gap-2 @max-[860px]/sc:flex-col @max-[860px]/sc:items-start @max-[860px]/sc:gap-1';
+/**
+ * The pull-request cell hugs the card's right edge at full width, alongside
+ * the right-aligned header above it; the reflow at 860px stacks every cell
+ * left-aligned, so `justify-end` is undone by the same variant.
+ */
+const PR_CELL_CLASSES = cn(CELL_CLASSES, 'justify-end @max-[860px]/sc:justify-start');
+const CELL_INNER_CLASSES = 'flex min-w-0 max-w-full items-center gap-2';
+const CELL_KEY_CLASSES =
+  'hidden text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground @max-[860px]/sc:block';
+/**
+ * A non-interactive control keeps the real button's box metrics — the 1px
+ * border and the inline padding — so its glyph lands on the same vertical line
+ * as the button in the row above and the column doesn't read ragged.
+ */
+const INERT_CONTROL_CLASSES =
+  'border-transparent bg-transparent hover:bg-transparent ' +
+  'dark:border-transparent dark:bg-transparent dark:hover:bg-transparent';
+const CONTROL_LABEL_CLASSES = 'min-w-0 truncate';
+
+const CONTROL_SIZING_CLASSES = 'min-w-0 max-w-full';
+/**
+ * The folder control is the one that gives: `shrink` undoes the house Button's
+ * `shrink-0` so a long path ellipsises inside its cell instead of overflowing
+ * the row. Every other control keeps its full short label.
+ */
+const YIELDING_CONTROL_CLASSES = `${CONTROL_SIZING_CLASSES} shrink`;
+
+/** House outline/sm button chrome, sized to whatever room its cell has left. */
+function controlClasses(...extra: string[]): string {
+  return cn(buttonVariants({ variant: 'outline', size: 'sm' }), CONTROL_SIZING_CLASSES, ...extra);
+}
 
 function parsePrNumber(url: string): string {
   const m = url.match(/\/pull\/(\d+)/);
@@ -39,23 +99,54 @@ function parsePrNumber(url: string): string {
 }
 
 /**
- * SC-PANEL-POLISH: when the OS file explorer can't be opened, surface an
- * actionable message through the panel's inline `role="alert"` — the project's
- * existing error surface (cf. ExecutePlanButton) — naming the folder so the
- * user can navigate to it manually. The server never echoes absolute paths, so
- * we use the convention path the client already holds.
+ * When the OS file explorer can't be opened, name the folder so the user can
+ * navigate to it manually. The server never echoes absolute paths, so the
+ * message carries the path the client already holds.
  */
 export function buildFolderOpenError(path: string): string {
   return `Couldn't open the folder in your file explorer. Navigate to it directly: ${path}`;
 }
 
 /**
- * SC-PANEL-POLISH: a simple link that opens the repo folder in the OS file
- * explorer (Explorer / Finder / file-manager) via the guarded local endpoint.
- * No clipboard copy, no checkmark. A missing folder renders disabled. A failed
- * open is reported up via `onResult` to the panel-level inline alert.
+ * The pull-request cell's single control, in one ordered precedence chain —
+ * the first matching rule wins and no later rule is consulted. `null` means
+ * the cell renders empty (a side-project has nothing to show here).
  */
-function FolderOpenButton({ path, label, missing, projectName, onResult }: { path: string; label: string; missing: boolean; projectName: string; onResult: (error: string | null) => void }) {
+type PrControl =
+  | { kind: 'pr-link'; label: string; href: string }
+  | { kind: 'compare-link'; href: string }
+  | { kind: 'status'; label: string };
+
+function resolvePrControl(
+  repo: SourceControlRepo,
+  kind: LocationKind,
+  autoPr: V5AutoPR | undefined
+): PrControl | null {
+  if (kind === 'side-project') return null;
+  if (repo.pr_url) return { kind: 'pr-link', label: parsePrNumber(repo.pr_url), href: repo.pr_url };
+  if (kind === 'in-place') return { kind: 'status', label: 'No PR (in-place)' };
+  if (repo.compare_url) return { kind: 'compare-link', href: repo.compare_url };
+  if (autoPr === 'always') return { kind: 'status', label: 'Opens automatically' };
+  if (autoPr === 'ask') return { kind: 'status', label: 'No PR yet' };
+  return { kind: 'status', label: 'No PR' };
+}
+
+/**
+ * Opens the repo's folder in the OS file explorer via the guarded local
+ * endpoint. A missing folder renders as a non-interactive warning treatment; a
+ * failed open is reported up through `onResult` to the panel-level alert.
+ */
+function FolderOpenButton({
+  path,
+  missing,
+  projectName,
+  onResult,
+}: {
+  path: string;
+  missing: boolean;
+  projectName: string;
+  onResult: (error: string | null) => void;
+}) {
   const onOpen = useCallback(async () => {
     onResult(null); // clear any prior error on a fresh attempt
     const res = await postOpenFolder(projectName, path);
@@ -65,12 +156,17 @@ function FolderOpenButton({ path, label, missing, projectName, onResult }: { pat
   if (missing) {
     return (
       <Tooltip>
-        <TooltipTrigger render={
-          <span aria-label={`Folder is missing: ${path}`}
-            className="inline-flex items-center gap-1.5 rounded-sm text-sm text-[var(--color-warning)]" />
-        }>
-          <FolderX className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-          <span className="max-w-[200px] truncate">{label}</span>
+        <TooltipTrigger
+          render={
+            <span
+              aria-disabled="true"
+              aria-label={`Folder is missing: ${path}`}
+              className={controlClasses(INERT_CONTROL_CLASSES, 'shrink cursor-default text-[var(--color-warning)]')}
+            />
+          }
+        >
+          <FolderX aria-hidden="true" />
+          <span className={CONTROL_LABEL_CLASSES}>{path}</span>
         </TooltipTrigger>
         <TooltipContent>Folder is missing at {path}</TooltipContent>
       </Tooltip>
@@ -79,130 +175,207 @@ function FolderOpenButton({ path, label, missing, projectName, onResult }: { pat
 
   return (
     <Tooltip>
-      <TooltipTrigger render={
-        <button type="button" onClick={onOpen} aria-label={`Open folder in file explorer: ${path}`}
-          className="inline-flex items-center gap-1.5 rounded-sm text-sm text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
-      }>
-        <Folder className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-        {/* visible label is the (truncated) folder path, not the word "Folder" */}
-        <span className="max-w-[200px] truncate">{label}</span>
+      <TooltipTrigger
+        render={
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={onOpen}
+            aria-label={`Open folder in file explorer: ${path}`}
+            className={YIELDING_CONTROL_CLASSES}
+          />
+        }
+      >
+        <Folder aria-hidden="true" />
+        <span className={CONTROL_LABEL_CLASSES}>{path}</span>
       </TooltipTrigger>
       <TooltipContent>Open {path} in file explorer</TooltipContent>
     </Tooltip>
   );
 }
 
-export function SourceControlPanel({ repos, projectName, projectType, autoCommit, autoPr, bindByName }: SourceControlPanelProps) {
+export function SourceControlPanel({ repos, projectName, projectType, autoPr, bindByName }: SourceControlPanelProps) {
   // Panel-level inline alert for a failed file-explorer open (latest attempt wins).
   const [folderError, setFolderError] = useState<string | null>(null);
-  if (!repos || repos.length === 0) return null; // FR-3 safety net (page also gates)
-  const panelKind = resolveLocationKind(projectType, repos.length > 0 && repos.every((r) => r.in_place === true));
-  const LocIcon = LOCATION_KIND_ICON[panelKind];
-  // SC-PANEL-POLISH: locked Yes/No verdicts; null → badge hidden (ask/unset).
-  const commitVerdict = policyVerdict(autoCommit);
-  const prVerdict = policyVerdict(autoPr);
+  if (!repos || repos.length === 0) return null;
+
+  const kinds = repos.map((r) => resolveLocationKind(projectType, r.in_place));
+  // The third column is only "Worktree" while every row actually is one.
+  const locationHeader = kinds.every((k) => k === 'worktree') ? 'Worktree' : 'Location';
+  // An all-side-project panel keeps the fourth track, but has nothing to name it.
+  const showPrHeader = kinds.some((k) => k !== 'side-project');
 
   return (
-    <div role="group" aria-label="Source Control section">
+    <div role="group" aria-label="Source Control section" className="@container/sc">
       <TooltipProvider>
-        {/* DD-5: section-label row carries the label + right-aligned loc-badge + value-text policy pills (not a card header) */}
-        <div className="mb-1 flex items-center gap-2">
-          <span aria-hidden="true" className={SECTION_LABEL_CLASSES}>Source Control</span>
-          <div className="ml-auto flex items-center gap-2">
-            <Tooltip>
-              <TooltipTrigger render={
-                <Badge variant="outline" className="gap-1.5" aria-label={`Location kind: ${LOCATION_KIND_LABEL[panelKind]}`} />
-              }>
-                <LocIcon className="h-3 w-3" aria-hidden="true" />
-                {LOCATION_KIND_LABEL[panelKind]}
-              </TooltipTrigger>
-              <TooltipContent>Where this project&apos;s work physically lives: {LOCATION_KIND_LABEL[panelKind]}</TooltipContent>
-            </Tooltip>
-            {commitVerdict && (
-              <Tooltip>
-                <TooltipTrigger render={<Badge variant="outline" style={{ color: `var(${pillCssVar(autoCommit)})`, borderColor: `var(${pillCssVar(autoCommit)})` }} aria-label={`auto-commit ${commitVerdict}`} />}>auto-commit: {commitVerdict}</TooltipTrigger>
-                <TooltipContent>Auto-Commit: {commitVerdict}</TooltipContent>
-              </Tooltip>
-            )}
-            {prVerdict && (
-              <Tooltip>
-                <TooltipTrigger render={<Badge variant="outline" style={{ color: `var(${pillCssVar(autoPr)})`, borderColor: `var(${pillCssVar(autoPr)})` }} aria-label={`auto-pr ${prVerdict}`} />}>auto-pr: {prVerdict}</TooltipTrigger>
-                <TooltipContent>Auto-PR: {prVerdict}</TooltipContent>
-              </Tooltip>
-            )}
-          </div>
-        </div>
-        <div className={CARD_SHELL_CLASSES}>
-          <div className="py-2">
-            {repos.map((repo) => {
-              const kind = resolveLocationKind(projectType, repo.in_place);
+        <div aria-hidden="true" className={SECTION_LABEL_CLASSES}>Source Control</div>
+        <Card className="gap-0 py-2">
+          <div className={cn(PANEL_GRID_CLASSES, 'px-3')}>
+            <div
+              className={cn(
+                ROW_GRID_CLASSES,
+                'items-center border-b border-border mb-2 pt-1 pb-2',
+                'text-[10.5px] font-medium uppercase tracking-[0.09em] text-muted-foreground',
+                '@max-[860px]/sc:hidden'
+              )}
+            >
+              <div>Repo</div>
+              <div>Branch</div>
+              <div>{locationHeader}</div>
+              <div className="text-right">{showPrHeader ? 'Pull Request' : null}</div>
+            </div>
+            {repos.map((repo, index) => {
+              const kind = kinds[index];
               const isSide = kind === 'side-project';
               const bind = bindByName[repo.name];
+              const chip = kind === 'worktree' ? null : LOCATION_CHIP[kind];
+              const folderPath = resolveRepoFolderPath({
+                locationKind: kind,
+                projectName,
+                repoName: repo.name,
+                registryPath: bind?.path ?? null,
+              });
+              const pr = resolvePrControl(repo, kind, autoPr);
+
               return (
-                <div key={repo.name} className="flex items-center gap-2 rounded-md py-2 pl-3 pr-3 hover:bg-accent/50" data-location-kind={kind}>
-                  {/* Leading bind dot — omitted for side-projects (FR-5, FR-10, DD-2) */}
-                  {!isSide && bind && (
-                    <Tooltip>
-                      <TooltipTrigger render={<span className="inline-flex shrink-0" />}><BindStateDot state={bind.state} /></TooltipTrigger>
-                      <TooltipContent>{bind.path ? `${bind.state} · ${bind.path}` : bind.state}</TooltipContent>
-                    </Tooltip>
+                <div
+                  key={repo.name}
+                  data-location-kind={kind}
+                  className={cn(
+                    ROW_GRID_CLASSES,
+                    'mx-1.5 my-0.5 items-center rounded-md px-1.5 py-2 hover:bg-accent/50',
+                    '@max-[860px]/sc:items-start @max-[860px]/sc:px-2 @max-[860px]/sc:py-2.5'
                   )}
-                  {/* Repo name — registry deep link; plain text for side-projects (FR-6) */}
-                  {isSide ? (
-                    <span className="text-sm font-medium">{repo.name}</span>
-                  ) : (
-                    <Tooltip>
-                      <TooltipTrigger render={<a href={`/repo-registry?repo=${encodeURIComponent(repo.name)}`} className="rounded-sm text-sm font-medium text-foreground hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={`Open ${repo.name} in Repo Registry`} />}>{repo.name}</TooltipTrigger>
-                      <TooltipContent>Open {repo.name} in Repo Registry</TooltipContent>
-                    </Tooltip>
-                  )}
-                  {/* branch → base (DD-6: page font, no monospace); FR-10: side-project shows branch only */}
-                  <span className="text-sm text-muted-foreground">{repo.branch}{!isSide && <> → {repo.base_branch}</>}</span>
-                  {/* Trailing actions (Folder / Compare / PR) — FR-7, FR-8, FR-9, DD-4 */}
-                  {(() => {
-                    const folderPath = resolveRepoFolderPath({ locationKind: kind, projectName, repoName: repo.name, registryPath: bind?.path ?? null });
-                    const folderLabel = kind === 'worktree' ? `${projectName}/${repo.name}` : folderPath;
-                    const missing = bind?.state === 'missing';
-                    return (
-                      <div className="ml-auto flex items-center gap-3">
-                        {/* DD-4 trailing order: Folder → Compare → PR */}
-                        <FolderOpenButton path={folderPath} label={folderLabel} missing={missing} projectName={projectName} onResult={setFolderError} />
-                        {!isSide && repo.compare_url && (
+                >
+                  <div className={CELL_CLASSES}>
+                    <span className={CELL_KEY_CLASSES}>Repo</span>
+                    <span className={CELL_INNER_CLASSES}>
+                      {!isSide && bind && (
+                        <Tooltip>
+                          <TooltipTrigger render={<span className="inline-flex shrink-0" />}>
+                            <BindStateDot state={bind.state} />
+                          </TooltipTrigger>
+                          <TooltipContent>{bind.path ? `${bind.state} · ${bind.path}` : bind.state}</TooltipContent>
+                        </Tooltip>
+                      )}
+                      {isSide ? (
+                        <span className="truncate text-sm font-medium">{repo.name}</span>
+                      ) : (
+                        <Tooltip>
+                          <TooltipTrigger
+                            render={
+                              <a
+                                href={`/repo-registry?repo=${encodeURIComponent(repo.name)}`}
+                                aria-label={`Open ${repo.name} in Repo Registry`}
+                                className="truncate rounded-sm text-sm font-medium text-foreground hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                              />
+                            }
+                          >
+                            {repo.name}
+                          </TooltipTrigger>
+                          <TooltipContent>Open {repo.name} in Repo Registry</TooltipContent>
+                        </Tooltip>
+                      )}
+                      {chip && (
+                        <Badge variant="outline" className="shrink-0 gap-1">
+                          <chip.Icon aria-hidden="true" />
+                          {chip.label}
+                        </Badge>
+                      )}
+                    </span>
+                  </div>
+
+                  <div className={CELL_CLASSES}>
+                    <span className={CELL_KEY_CLASSES}>Branch</span>
+                    <span className="min-w-0 max-w-full truncate text-sm text-muted-foreground @max-[860px]/sc:overflow-visible @max-[860px]/sc:whitespace-normal @max-[860px]/sc:[overflow-wrap:anywhere]">
+                      {repo.branch}
+                      {!isSide && <> → {repo.base_branch}</>}
+                    </span>
+                  </div>
+
+                  <div className={CELL_CLASSES}>
+                    <span className={CELL_KEY_CLASSES}>{locationHeader}</span>
+                    <span className={CELL_INNER_CLASSES}>
+                      <FolderOpenButton
+                        path={folderPath}
+                        missing={bind?.state === 'missing'}
+                        projectName={projectName}
+                        onResult={setFolderError}
+                      />
+                    </span>
+                  </div>
+
+                  {/* The pull-request cell resolves to exactly one control — a PR link,
+                      a Compare link standing in until one exists, or a status message. */}
+                  <div className={PR_CELL_CLASSES}>
+                    {pr && (
+                      <span className={CELL_INNER_CLASSES}>
+                        {pr.kind === 'pr-link' && (
                           <Tooltip>
-                            <TooltipTrigger render={<span className="inline-flex" />}>
-                              <ExternalLink href={repo.compare_url} label="Compare" icon="github" />
+                            <TooltipTrigger
+                              render={
+                                <a
+                                  href={pr.href}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  aria-label={pr.label}
+                                  className={controlClasses()}
+                                />
+                              }
+                            >
+                              <GitPullRequest aria-hidden="true" />
+                              <span className={CONTROL_LABEL_CLASSES}>{pr.label}</span>
                             </TooltipTrigger>
-                            <TooltipContent>Compare {repo.branch} vs {repo.base_branch}</TooltipContent>
+                            <TooltipContent>{pr.label} · open</TooltipContent>
                           </Tooltip>
                         )}
-                        {/* PR: worktree → link or muted "No PR"; in-place → always "No PR (in-place)"; side-project → nothing (FR-8, FR-10, DD-4) */}
-                        {!isSide && (
-                          kind === 'in-place' ? (
-                            <ExternalLink href={null} label="No PR (in-place)" icon="git-pull-request" />
-                          ) : repo.pr_url ? (
-                            <Tooltip>
-                              <TooltipTrigger render={<span className="inline-flex" />}>
-                                <ExternalLink href={repo.pr_url} label={parsePrNumber(repo.pr_url)} icon="git-pull-request" />
-                              </TooltipTrigger>
-                              <TooltipContent>{parsePrNumber(repo.pr_url)} · open</TooltipContent>
-                            </Tooltip>
-                          ) : (
-                            <ExternalLink href={null} label="No PR" icon="git-pull-request" />
-                          )
+                        {pr.kind === 'compare-link' && (
+                          <Tooltip>
+                            <TooltipTrigger
+                              render={
+                                <a
+                                  href={pr.href}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  aria-label={`Compare ${repo.branch} with ${repo.base_branch}`}
+                                  className={controlClasses()}
+                                />
+                              }
+                            >
+                              <Github aria-hidden="true" />
+                              <span className={CONTROL_LABEL_CLASSES}>Compare</span>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              Compare {repo.branch} vs {repo.base_branch}
+                            </TooltipContent>
+                          </Tooltip>
                         )}
-                      </div>
-                    );
-                  })()}
+                        {pr.kind === 'status' && (
+                          <span
+                            aria-disabled="true"
+                            className={controlClasses(
+                              INERT_CONTROL_CLASSES,
+                              'cursor-not-allowed text-muted-foreground'
+                            )}
+                          >
+                            <GitPullRequest aria-hidden="true" />
+                            <span className={CONTROL_LABEL_CLASSES}>{pr.label}</span>
+                          </span>
+                        )}
+                      </span>
+                    )}
+                  </div>
                 </div>
               );
             })}
           </div>
           {folderError && (
-            <p role="alert" className="border-t border-border/50 px-3 py-2 text-xs text-destructive">
+            <p role="alert" className="mt-2 border-t border-border/50 px-4 py-2 text-xs text-destructive">
               {folderError}
             </p>
           )}
-        </div>
+        </Card>
       </TooltipProvider>
     </div>
   );

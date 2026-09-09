@@ -1,0 +1,22 @@
+{
+  // Nothing at the repo root is compiled — this config exists so `tsx` can run the
+  // TypeScript guards in `tests/` from the root, where the cross-surface cohesion
+  // guard imports UI modules through their `@/*` alias. Every sub-package keeps
+  // its own tsconfig; this one never applies to them.
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "types": ["node"],
+    "paths": {
+      "@/*": ["./ui/*"]
+    }
+  },
+  "include": ["tests/**/*.ts"]
+}

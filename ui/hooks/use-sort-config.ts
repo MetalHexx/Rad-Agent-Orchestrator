@@ -37,9 +37,10 @@ const STORAGE_KEY = "monitoring-ui-sort-config";
 
 // FR-14 / AD-4 — Urgent-first priority map keyed off the same four fields
 // the row badge reads (`tier`, `planningStatus`, `executionStatus`,
-// `hasMalformedState`). Lower number = higher urgency = floats to top in
-// `asc` ('Urgent first') direction. Slot 9 is the bottom (Not Initialized
-// and any unrecognized combination — see AD-4 final clause).
+// `hasMalformedState`), plus a `portfolio` bucket keyed off `project_type`.
+// Lower number = higher urgency = floats to top in `asc` ('Urgent first')
+// direction. Slot 10 is the bottom (Not Initialized and any unrecognized
+// combination — see AD-4 final clause).
 const STATUS_PRIORITY_URGENT_FIRST = {
   halted: 0,
   malformed: 1,
@@ -49,8 +50,9 @@ const STATUS_PRIORITY_URGENT_FIRST = {
   planning: 5,
   planned: 6,
   notStarted: 7,
-  complete: 8,
-  notInitialized: 9,
+  portfolio: 8,
+  complete: 9,
+  notInitialized: 10,
 } as const;
 
 // FR-15 / AD-4 — Done-first priority map. NOT a literal `priority * -1` of
@@ -67,7 +69,8 @@ const STATUS_PRIORITY_DONE_FIRST = {
   executing: 6,
   malformed: 7,
   halted: 8,
-  notInitialized: 9,   // FR-15 — still bottom
+  portfolio: 9,
+  notInitialized: 10,   // FR-15 — still bottom
 } as const;
 
 type StatusBucket = keyof typeof STATUS_PRIORITY_URGENT_FIRST;
@@ -75,10 +78,16 @@ type StatusBucket = keyof typeof STATUS_PRIORITY_URGENT_FIRST;
 function classifyStatus(p: ProjectSummary): StatusBucket {
   const { tier, planningStatus, executionStatus, hasMalformedState } = p;
 
+  if (hasMalformedState) return 'malformed';
+  // A portfolio root has no pipeline of its own to report — its badge fully
+  // replaces the state badge (KIND_PRESENTATION.portfolio.replacesStateBadge),
+  // so this is checked before the halted check: a portfolio directory that
+  // still carries a stale halted state.json must not sort into the Halted
+  // bucket while showing a Portfolio badge.
+  if (p.project_type === 'portfolio') return 'portfolio';
   // tier === 'execution' AND executionStatus === 'halted' renders as Halted
   // in the badge; same source-of-truth for sort.
   if (tier === 'halted' || executionStatus === 'halted') return 'halted';
-  if (hasMalformedState) return 'malformed';
 
   if (tier === 'execution') {
     if (executionStatus === 'in_progress') return 'executing';

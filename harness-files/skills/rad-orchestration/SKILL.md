@@ -19,7 +19,7 @@ Always read through the `references/context.md` document to understand the overa
 Before you can run the pipeline, you need to understand the system configuration and user preferences. This configuration is stored in `~/.radorc/orchestration.yml`.  Read this and commit it to memory.  These values are important for the life of a project run.
 
 ## Step 3: The Pipeline Script
-The pipeline script (`scripts/radorch.mjs`) is the engine that drives the project forward.  It listens for events, gives you action to execute, and manages the flow of the project.  Familiarize yourself with how to run this script and how it interacts with the rest of the system.  Read through the `references/pipeline-guide.md` document to understand the details of how the pipeline works, including the envelope structure, CLI commands, and error handling.
+The pipeline script (`scripts/radorch.mjs`) is the engine that drives the project forward.  It listens for events, gives you action to execute, and manages the flow of the project.  Familiarize yourself with how to run this script and how it interacts with the rest of the system.  Read through the `references/pipeline-guide.md` document to understand the details of how the pipeline works, including the envelope structure, completion commands, and error handling.
 
 ## Step 4: Understand the Project Documents
 Review the documentation standards at `references/document-conventions.md` to understand the naming conventions, placement, and content of these documents.  These documents are the audit trail of our projects. 
@@ -34,6 +34,7 @@ There is no exception to the document-reading rule for correctives — you do no
 - Lean on the `radorch.mjs` script to manage the flow of the project.  
   - This is your default mode of operation.  
   - It is the source of truth for project state and your next move.
+  - Never compose or type a CLI call yourself — run only a command handed to you on the envelope, changing only its `<fill-in: ...>` markers. See `references/pipeline-guide.md` for the envelope shape.
   - Always come back to the script after getting steered by the user or after resolving an out-of-band issue.
 - Some pipeline results may have a `data.has_custom_instructions` field.
   - If true, this means the prompt includes custom instructions that might be out of the ordinary
@@ -47,10 +48,7 @@ There is no exception to the document-reading rule for correctives — you do no
   - You don't need to understand every detail of how the subagents work before handing off work to them.
   - Reading them and then repeating them in spawn prompts is a waste of time and tokens.
   - Only read them if you need to troubleshoot an issue or if the pipeline prompt specifically instructs you to do so.
-- Avoid reading `state.json` directly if you can avoid it. 
-  - You should use the pipeline script to manage state.
-  - You should only read state.json if there is a problem.
-  - You should avoid writing to state.json directly unless there is a very good reason to repair it.
+- **Never read or write `state.json` directly.** A state file exists, the engine owns it, and it is the sole record of where the run stands. The CLI is the only way to observe or advance state. The single exception is a situation where not reading it would fail the run outright — even then, never write to it, and never repair a value yourself. Halt and hand the operator the diagnosis and the options.
 - Heed the human gates and user preferences found in `~/.radorc/orchestration.yml` and the pipeline results.
   - You should not overrule or circumvent these! 
   - The user may override this and allow you to do so. 
@@ -63,7 +61,6 @@ There is no exception to the document-reading rule for correctives — you do no
     - Don't wait until the end of the run to mention it.
 
 ## Additional Resources
-- **`schemas/orchestration-state-v6.schema.json`** — State file JSON Schema
 - **`scripts/radorch.mjs` CLI** — Pipeline runtime and many other tools.
 - **`~/.radorc/orchestration.yml`** — System configuration; 
 - **`~/.radorc/templates/`** — The review-intensity tier process templates.

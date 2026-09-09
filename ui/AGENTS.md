@@ -1,96 +1,69 @@
-# `ui/` — Contributing Guide
+# `ui/`
 
-## Purpose
+The **radorch dashboard** — a Next.js App Router standalone-build Node app that ships inside the
+installer payload as `~/.radorc/ui/`. It is a read-mostly view over `~/.radorc/`: it browses
+projects, drives gates, inspects pipeline state, and edits config and custom-instruction overlays.
 
-This folder is the **radorch dashboard** — a Next.js 14 (App Router) standalone-build Node app that ships inside the installer payload as `~/.radorc/ui/`. The dashboard lets users browse projects, drive gates, inspect pipeline state, and (since ACTION-EVENT-DATA-2) edit per-slot custom instruction overlays for actions and events with a live byte-for-byte Preview against the orchestrator's compose function.
-
-The dashboard server is launched by `radorch ui start` (a CLI subcommand at `cli/src/commands/ui/start.ts`). That command stamps its own binary location into the env var `RADORCH_CLI_PATH` so the UI's server-side routes can shell out to the same CLI that spawned them.
-
-The UI is built ONCE during the standard-installer build (`emit-ui-bundle` in `harness-installers/shared/build-helpers/`) and shipped to the top-level `output/ui/` (shared across all three harnesses per AD-9 — never duplicated under `output/<harness>/`).
+> **The how and why live in [`docs/internals/dashboard.md`](../docs/internals/dashboard.md)** — path
+> resolution, the live-update pipeline, the two builds this module has to survive, and the reasoning
+> behind the boundaries below. Read it before restructuring anything here, adding a route that
+> crosses a seam, or making a change that spans modules. Not needed for a routine edit.
 
 ## How it works
 
-Layered structure:
+- **`app/`** — App Router routes, two flavors. **Pages** (`page.tsx`, `layout.tsx`) render React;
+  **API routes** (`app/api/<resource>/route.ts`) hold the server-side handlers. **All long-lived
+  business logic lives behind the routes**, never in the pages.
+- **`components/`** — React components grouped by feature folder. `components/ui/` is
+  shadcn-generated primitives — **do not hand-edit those**; regenerate via the shadcn CLI.
+- **`hooks/`** — one hook per file, tests alongside as `<name>.test.ts(x)`.
+- **`lib/`** — pure helpers, FS readers, the `cli-shell` wrapper, type definitions. Server-only
+  modules use `node:*` builtins and run inside route handlers; client-only modules avoid them.
+- **`types/`** — shared interfaces. Pure type declarations, no runtime code.
 
-- **`app/`** — Next.js App Router routes. Two flavors:
-  - **Pages** (`page.tsx`, `layout.tsx`) — React server + client components rendered by Next.
-  - **API routes** (`app/api/<resource>/route.ts`) — server-side `GET`/`POST`/`PUT`/`DELETE` handlers consumed by the page components via `fetch`. **All long-lived business logic lives behind these routes**, not in the pages.
-- **`components/`** — reusable React components, grouped by feature folder. The `components/ui/` subfolder is shadcn-generated primitives (`button.tsx`, `tooltip.tsx`, etc.) — do not hand-edit those; regenerate via the shadcn CLI if a primitive needs updating.
-- **`hooks/`** — custom React hooks (`useCatalog`, `useDirtyCards`, `useApproveGate`, etc.). One hook per file; tests live alongside as `<name>.test.ts(x)`.
-- **`lib/`** — pure helpers (parsers, FS readers, the `cli-shell` execFile/spawn wrapper, type definitions). Server-only modules use `node:*` builtins and run inside route handlers; client-only modules avoid them.
-- **`types/`** — shared TypeScript interfaces consumed across `app/`, `components/`, `hooks/`, and `lib/`. Pure type declarations only — no runtime code.
+## Conventions
 
-Tests use `node --test` with `tsx` as the TypeScript loader. The runner is configured in `package.json#scripts.test`:
+- **Server boundary: API routes only.** Browser-side code — pages, components, hooks — must never
+  reach for `node:fs`, `child_process`, or any other Node builtin. Expose it through an
+  `app/api/<thing>/route.ts` handler and `fetch` it.
+- **`export const dynamic = 'force-dynamic'` on any API route that reads mutable state.** Without
+  it Next caches the response and the dashboard ships stale data after a backend change.
+- **`use client` is opt-in.** Default to server components; add it only when the file uses
+  `useState`, `useEffect`, `useRouter`, or another browser-only surface.
+- **Preserve a route's status codes and response body shape when refactoring its internals.** Hooks
+  and components consume those contracts and often have no test against the route itself.
+- **Tests at the boundary.** Every API route gets a `route.test.ts` sibling; every hook a
+  `<name>.test.ts(x)` sibling. Components get tests only when they encode an invariant worth
+  pinning.
+- **Every editable config field is registered in `ui/lib/config-field-meta.ts`** — the single source
+  of truth for the config editor — with a matching entry in `ui/lib/config-validator.ts`. Adding a
+  field anywhere else produces a control that renders and never validates.
+- **Clickable rows and tiles use sibling `<button>`s** for open versus delete. Never nest one
+  interactive element inside another.
+- **Match `gate/route.ts` for env-var failure modes.** A server path needing `RADORCH_CLI_PATH`
+  hard-fails with HTTP 500 and a body naming the variable and the fix.
+  `ui/lib/cli-shell.ts#runCli` returns this as a failure envelope rather than throwing.
 
-```
-node --test --import tsx "lib/**/*.test.ts" "lib/**/*.test.mjs" \
-  "hooks/**/*.test.ts" "hooks/**/*.test.tsx" \
-  "components/**/*.test.ts" "components/**/*.test.tsx" \
-  "app/**/*.test.ts" "app/**/*.test.tsx" "tests/**/*.test.ts"
-```
+### Shell out, or stay in-process
 
-This runner resolves `.js` extensions to `.ts` files via bundler-style resolution. **Next's webpack does NOT** — see the cross-package import rule below.
+Draw the line at **what is being touched**, not at "is it in the CLI."
 
-## Feature: brainstorming live visual docs
+1. **Mutates pipeline state, or needs the pipeline runtime?** → Shell out. `gate/route.ts` is the
+   canonical example: it invokes `processEvent`, which writes `state.json` and runs an
+   orchestration step.
+2. **Needs byte-for-byte parity with orchestrator output?** → Shell out. The action-event compose
+   route is the example — Preview must match what the engine would emit, and it is user-clicked, so
+   a subprocess is honest.
+3. **Otherwise, just reading or writing files under `~/.radorc/`?** → **In-process.** Use `fs`
+   directly or add a `ui/lib/` helper.
 
-Surfaces a project's brainstorming artifacts — `*-REQUIREMENTS.md`, `*-BRAINSTORM.html`, and `*-WIREFRAME-*.html` — as live previews on the launch screen, in the DAG view, and in a full-screen modal. How the pieces fit:
+Most new features are case 3. When in doubt choose in-process; escalating later is cheap.
 
-- **Model** — `lib/artifact-model.ts#deriveArtifacts` (pure) takes the file list and returns **project-root files only**, ordered **markdown first, then html, alphabetical by filename within each type** — a *stable* order that never depends on mtime, so live edits (which bump mtime) don't reorder rows on any surface or shift the modal's active item. `hooks/use-project-artifacts.ts` memoizes it (`useProjectArtifacts`) and exposes `deleteArtifact`.
-- **Raw route** — `app/api/projects/[name]/raw/route.ts` serves a root HTML artifact as `text/html` under a strict CSP, with the usual `..` / within-projectDir guards. Opt-in `?chrome=` injects a `<style>` before `</head>`: `scroll` = thin dark app-matching scrollbars (the modal stage), `hide` = no scrollbars (thumbnails); no param = untouched raw bytes.
-- **Preview iframes** — `components/artifacts/iframe-preview.tsx`: `IframePreview` (scaled, non-interactive thumbnail, requests `&chrome=hide`) and `StageIframe` (modal stage, `&chrome=scroll`, `computeFitScale` for scale-to-fit). Both set `sandbox="allow-same-origin"` (NOT `allow-scripts`) — **required** so the injected scrollbar CSS is honored (an opaque-origin `sandbox=""` iframe ignores scrollbar styling), while static artifacts still can't run JS or read app storage.
-- **Surfaces** — launch tiles (`components/layout/launch-screen.tsx`, `components/artifacts/artifact-tile.tsx`), the DAG Planning section (`components/planning-section/planning-section.tsx` + `planning-docs-list.tsx`), and `ArtifactViewerModal` (`components/artifacts/artifact-viewer-modal.tsx` — filmstrip nav + markdown/HTML). Clickable rows/tiles use **sibling** real `<button>`s for open vs. delete — never one interactive element nested inside another (HTML/ARIA validity).
-- **Data flow** — the files API returns `{ files, mtimes, requirementsStatus }`; `app/projects/page.tsx` threads `fileList`/`fileMtimes` into the model and gates the timeline body on a `filesLoaded` flag so the Planning section and the DAG render together (no late pop-in / layout shift).
-- **Delete** — `POST /api/projects/[name]/delete?path=` unlinks one artifact, server-side **allowlisted to root-level `.md`/`.html`** so it can't touch `state.json` / schemas; the confirm dialog surfaces failures instead of silently advancing.
-
-## Coding standards
-
-- **Server boundary: API routes only.** Browser-side code (`page.tsx`, components, hooks) must never reach for `node:fs`, `child_process`, or any other Node builtin. If you need data from the filesystem or another process, expose it through an `app/api/<thing>/route.ts` handler and fetch it from the client.
-- **No cross-package source imports — shell out to the CLI instead.** See the dedicated rule below; this is non-negotiable.
-- **Default `export const dynamic = 'force-dynamic'` on API routes that read mutable state.** Without it, Next caches the response and the dashboard ships stale data after a backend change.
-- **HTTP contract stability.** When you refactor a route's internals, preserve the existing status codes and response body shape. Hooks and components consume those contracts; changing them silently breaks consumers that have no tests against the route.
-- **Tests at the boundary.** Every API route gets a `route.test.ts` sibling. Every hook gets a `<name>.test.ts(x)` sibling. Components get tests only when they encode invariants worth pinning (FR-mapped behavior, structural-shape assertions via `readFileSync` source inspection are common for pair-view and similar feature components).
-- **No `any` casts unless they're already there.** Next's `build-standalone` script (`next build`) runs ESLint AND the TypeScript typecheck across every `.ts(x)` file in the project — including test files. A stray `as any` introduced for test-fixture convenience will block the standard-installer build, not just the dev `npm test`.
-- **`use client` is opt-in.** Default to server components; add `"use client"` only when the file uses `useState`, `useEffect`, `useRouter`, browser APIs, or other client-only surface.
-- **Match the `gate/route.ts` pattern for env-var failure modes.** Any server-side path that needs `RADORCH_CLI_PATH` hard-fails with HTTP 500 and a body like `{ error: 'RADORCH_CLI_PATH not set.', detail: '...start via radorch ui start...' }` when the env var is unset. The shared helper `ui/lib/cli-shell.ts#runCli` returns this as a failure envelope rather than throwing — wrap it in your route's 500 response.
-
-## 🚫 Hard rule: no direct code dependencies on `cli/`
-
-**The UI must NOT import TypeScript source from `cli/src/`** — not via relative path (`../../cli/src/...`), not via re-export, not via a third "shared" package that hides the same edge.
-
-### Why this rule exists
-
-- The standard-installer build runs `next build` to produce a standalone bundle. Next's webpack resolver does NOT map `.js → .ts` for imports that point outside the `ui/` project root, so any `from '../../cli/src/.../something.js'` line breaks the build with `Module not found: Can't resolve '...'`.
-- The local `npm test` runner (`node --test --import tsx`) DOES resolve `.js → .ts` cross-package because `tsx` uses bundler-style resolution. This is a footgun: tests pass green while the production build silently breaks.
-- Reaching into CLI source also bypasses the JSON envelope contract that every other consumer of the CLI relies on, weakening the integration surface.
-
-### Compiled workspace-package exception
-
-**The UI MAY import `@rad-orchestration/repo-registry` and `@rad-orchestration/telemetry` by their package names** in server-side API routes (`app/api/**/*.ts`). This is a sanctioned exception because:
-
-- The workspace symlink resolves against the library's compiled `dist/` (ESM `.js` + `.d.ts`), not raw TypeScript source — Next's webpack resolver handles it correctly.
-- The root `npm install` establishes the workspace symlink before any build step; no deep relative path is needed.
-- Because the dev server reads `dist/` (not src), a lib source change is invisible until its `dist` is rebuilt **and** `next dev` restarts (Fast Refresh doesn't watch external `dist`). `npm run dev:live` rebuilds these libs on startup to avoid that staleness; `dev:live:watch` keeps them fresh on every lib edit.
-- Browser-side code (pages, components, hooks) must still never import from these packages; all `@rad-orchestration/repo-registry` and `@rad-orchestration/telemetry` imports must remain in server-side API routes only.
-
-The general ban on importing another package's `.ts` source remains absolute. Only compiled output consumed through the by-name workspace symlink qualifies for this carve-out.
-
-## Architectural rule: shell out vs in-process
-
-When the UI needs functionality that the CLI also implements, draw the line at **what's being touched**, not at "is it in the CLI."
-
-**Shell out to the CLI when the operation mutates pipeline state or needs the pipeline runtime.** The canonical example is `ui/app/api/projects/[name]/gate/route.ts` — it invokes `processEvent`, which writes `state.json` and runs an actual orchestration step. The compose route (`ui/app/api/action-events/compose/route.ts`) is the secondary example — preview must be byte-for-byte identical to what the orchestrator would emit, AND it's user-clicked / low-frequency (~1 spawn per Preview click), so paying for a subprocess is honest.
-
-**Stay in-process for pure reads/writes against user-owned files in `~/.radorc/`.** The dashboard's catalog, shipped, and custom routes all touch `~/.radorc/action-events/` — a directory the UI server has direct `fs` access to. Spawning a Node subprocess that loads the ~10 MB `radorch.mjs` bundle just to do an `fs.readFileSync` is wasteful: cold-start on Windows is ~150-300 ms × N for N slot cards on a single page. Use `fs` directly.
-
-**Cross-package source imports stay forbidden.** When the UI needs an algorithm that the CLI also implements (e.g., parsing action/event frontmatter, deriving a signal line), transplant a verbatim copy into `ui/lib/` with a header comment naming the canonical CLI source. The current example is `ui/lib/action-events-fs.ts` — it mirrors `cli/src/lib/pipeline-engine/action-event-loader.ts` and the `deriveSignalLine` export from `composer.ts`. Drift risk is bounded because the compose route (still shelled out) exercises the same frontmatter shapes end-to-end — any parser divergence would surface as a Preview output mismatch.
-
-### The shell-out pattern (when it applies)
-
-When you DO shell out, use `ui/lib/cli-shell.ts#runCli<T>`. It spawns the CLI as a subprocess via `child_process.execFile` (or `spawn` if you need to pipe stdin), addresses the binary through `process.env.RADORCH_CLI_PATH`, and parses the standard envelope `{ ok, data, error }` from stdout.
+When you do shell out, use `runCli<T>` from `ui/lib/cli-shell.ts`. It always pipes stdin so the
+subprocess cannot hang on a non-TTY parent, and it returns a failure envelope for every failure
+mode — routes branch on `envelope.ok` and never need a try/catch.
 
 ```ts
-import { runCli } from '@/lib/cli-shell';
-
 const result = await runCli<{ prompt: string }>({
   args: ['action-events', 'compose', '--kind', kind, '--name', name],
   stdin: JSON.stringify({ overlay }),
@@ -98,98 +71,150 @@ const result = await runCli<{ prompt: string }>({
 if (!result.envelope.ok) {
   return NextResponse.json({ error: result.envelope.error.message }, { status: 500 });
 }
-return NextResponse.json({ prompt: result.envelope.data.prompt }, { status: 200 });
 ```
 
-`runCli` always pipes stdin (even an empty payload) so the CLI subprocess cannot hang waiting on a non-TTY parent. It returns a failure envelope for every failure mode (env var missing, spawn error, unparseable stdout, CLI exit non-zero) — routes branch on `envelope.ok` and never need a try/catch.
+### Transplants
 
-### Adding a new feature — picking the side
+When the UI needs an algorithm the CLI also implements, **copy it into `ui/lib/` with a header
+comment naming the canonical CLI source.** The CLI stays canonical; the copy is a consumer. Existing
+transplants: `action-events-fs.ts`, `communication-styles-fs.ts`, `project-sessions-reader.ts`,
+`fs-reader.ts`'s `communication_style` and `ambient_awareness` defaults, `registry/validate.ts#normalizeRemote`,
+and `portfolio-show.ts`. Never import the original — see the hard rule below.
 
-1. **Does the operation mutate `~/.radorc/projects/<name>/state.json` OR invoke the pipeline engine's state machine?** → Shell out. Add a CLI subcommand (see `cli/AGENTS.md#Adding a new subcommand`), wrap with `runCli` in your route.
-2. **Does the UI need byte-for-byte parity with output the orchestrator would compose?** → Shell out (compose is the example).
-3. **Otherwise — does it just read or write files in `~/.radorc/`?** → In-process. Add a helper to `ui/lib/` or use `fs` directly in the route.
+`normalizeRemote` is the one to be careful with. `action-events-fs.ts`,
+`communication-styles-fs.ts`, `project-sessions-reader.ts`, and `portfolio-show.ts` are **read-only**
+consumers of files or state the CLI owns, so drift shows up as a display mismatch. `normalizeRemote` is
+a **writer**: both it and `cli/src/lib/repo-identity.ts` normalize remotes into the same shared registry,
+so a divergence does not merely display wrong — it persists mixed canonical forms on disk, and the
+registry has no reconciliation pass. `fs-reader.ts`'s defaults are read-side but reach disk too,
+because the same module's `writeConfig` saves what a form-mode config edit sends back.
 
-The vast majority of new dashboard features are case (3). When in doubt, choose in-process — you can always escalate to shell-out later if a parity or state-mutation requirement emerges.
+## Hazards
 
-## Feature: Observability toggle
+### Never import TypeScript source from `cli/src/`
 
-The dashboard's configuration editor includes an **Observability** section that controls whether the telemetry library captures usage events for harness sessions.
+Not by relative path, not by re-export, not through a third "shared" package hiding the same edge.
 
-### How the field is registered
+**This fails in the direction that hurts.** The local test runner (`node --test --import tsx`) uses
+bundler-style resolution and maps `.js → .ts` across packages, so tests pass green. Next's webpack
+resolver does **not** do this outside the `ui/` project root, so `next build` breaks with
+`Module not found` — meaning the failure appears in the installer build, not in your test run.
 
-`ui/lib/config-field-meta.ts` is the single source of truth for every editable config field. The telemetry entry is:
+**The compiled-workspace-package exception.** The UI **may** import
+`@rad-orchestration/repo-registry`, `@rad-orchestration/telemetry`, `@rad-orchestration/work-graph`,
+and `@rad-orchestration/terminal-launch` **by package name**, in `app/api/**` routes and in
+server-only `lib/` modules. Those resolve to compiled `dist/`, which webpack handles correctly.
+Browser-side code still never imports them. Type-only imports (`import type`) are exempt from the
+location restriction — `isolatedModules` erases them, so they never reach a browser bundle.
+
+The ban on importing another package's `.ts` source is otherwise absolute.
+
+### A route segment is untrusted input
+
+`[name]` and `[sessionId]` arrive from the network. **Validate the segment itself before it reaches
+any path operation**, and validate it the same way in every route that accepts it.
+
+`path.join` **collapses** `..` rather than rejecting it, so a containment check whose base is
+derived from the same untrusted segment can never fail — `join(root, name).startsWith(join(root,
+name))` is tautological and reads like a guard. Contain with `path.relative` instead: a result that
+is non-empty, does not start with `..`, and is not itself absolute (a Windows drive-letter mismatch
+yields an absolute "relative" path). `lib/work-graph/src/delete-project.ts:94` is the reference
+implementation; `ui/lib/path-resolver.ts` has a private copy, `isStrictlyUnderHome`, wired only to
+display formatting — **it is not exported, so do not reach for it.** Write the three-part check
+inline.
+
+**Known deviation:** the artifact routes do not follow this yet. `raw/route.ts:51`,
+`document/route.ts:35`, and `delete/route.ts:36` each contain with `startsWith`. Match the
+surrounding route when you edit one of those; use the idiom above for anything new.
+
+Related: **the sessions launch route never reads its own request body.** Every value handed to
+`launchTerminal` is looked up server-side from the project's own `.project-sessions.json` by the
+validated id in the URL. It spawns a local process on request, so its input surface is deliberately
+tiny. Keep it that way.
+
+### Artifact iframes must not gain `allow-scripts`
+
+Artifact previews set `sandbox="allow-same-origin"` and nothing else. Same-origin is required so the
+injected scrollbar CSS is honored — an opaque-origin `sandbox=""` frame ignores it. **Adding
+`allow-scripts` alongside `allow-same-origin` defeats the sandbox entirely**, letting arbitrary
+project HTML run JS against the dashboard's own origin and storage. Artifacts are user-authored
+files; treat them as untrusted documents.
+
+The artifact delete route is allowlisted server-side to root-level `.md` and `.html` so it cannot
+reach `state.json` or a schema. Widening that allowlist widens what a delete can destroy.
+
+### An SSE event name is declared twice
+
+`types/events.ts` carries both a TypeScript union and the runtime `EVENT_TYPES` array, because the
+client registers one named listener per entry. **A name in the union but not the array is silently
+dropped by the browser** — no type error, no runtime error, just an event that never arrives. A test
+guards this; keep it passing rather than working around it.
+
+### Project deletion needs the watchers released first
+
+`remove/route.ts` suspends the projects watcher and the shared watcher before deleting and resumes
+both in a `finally`. On Windows an open directory handle blocks the removal outright. This is also
+why deletion stays in-process despite touching `state.json`: a subprocess cannot reach into its
+parent's in-memory watcher state.
+
+## When a change here ripples
+
+- **Added a cross-package import, or changed anything `tsc` or ESLint sees?** Any of those fails
+  `emit-ui-bundle`, and the standard installer cannot ship at all — the dashboard is bundled once
+  and shared across every harness. Verify with
+  `node harness-installers/standard/build-scripts/build.js` from the repo root, not just
+  `npm test`. Detail: [`harness-installers/standard/AGENTS.md`](../harness-installers/standard/AGENTS.md)
+
+- **Added a route that value-imports a workspace package?** Next's file tracer cannot see through an
+  externalized package, so the route works in dev and **returns 500 in the shipped standalone
+  build**. Add an `outputFileTracingIncludes` entry for it in `ui/next.config.mjs` pulling in that
+  library's `dist/` and `package.json`. Detail:
+  [`docs/internals/dashboard.md`](../docs/internals/dashboard.md)
+
+- **Changed a transplanted parser in `ui/lib/`?** The canonical implementation is in `cli/`, and
+  nothing tests the two against each other — they drift silently until output diverges. Apply the
+  same change to the CLI source named in the file's header comment, or confirm it does not apply.
+  Detail: [`cli/AGENTS.md`](../cli/AGENTS.md)
+
+- **Changed the artifact filename matchers in `ui/lib/artifact-model.ts`?** Those names are a live
+  contract with the skill that *writes* the files — `rad-visual-docs` emits `{PROJECT}-BRAINSTORM.html`
+  and `{PROJECT}-WIREFRAME-{SLUG}.html` on the strength of these matchers. Break the pair and the
+  artifact still lands on disk and still surfaces — it just falls through to the generic `Visual`
+  branch and loses its dedicated slot, with nothing to signal the regression. Update the skill's
+  naming conventions in the same change. Detail:
+  [`harness-files/AGENTS.md`](../harness-files/AGENTS.md)
+
+- **Added or changed a config field?** The field must exist in the shipped `orchestration.yml`
+  that `runtime-config/` ships, or the editor writes a key nothing reads. The CLI validates the
+  same file independently. Detail: [`runtime-config/AGENTS.md`](../runtime-config/AGENTS.md)
+
+## Commands
+
+Run from `ui/`:
 
 ```
-{
-  key: 'telemetry.enabled',
-  label: 'Observability',
-  tooltip: 'Capture neutral, non-attributed usage telemetry for harness sessions. Off by default; turning it on is opt-in.',
-  section: 'telemetry',
-  controlType: 'switch',
-}
+npm run dev               # next dev, nothing else wired
+npm run dev:live          # dev + RADORCH_CLI_PATH + rebuilds the @rad-orchestration/* lib dist
+npm run dev:live:watch    # dev:live, plus rebuild a lib and restart on its src change
+npm test                  # node --test across lib/ hooks/ components/ app/ tests/ types/
+npm run build             # next build
+npm run build-standalone  # the build the installer runs (clean + next build)
 ```
 
-- **`key`** — the dot-path that `config-form.tsx` reads/writes against the live `OrchestrationConfig` object via `getNestedValue` / `onChange`.
-- **`section: 'telemetry'`** — `config-form.tsx` renders this inside an accordion section titled **Observability** (mapped in `SECTION_TITLES`).
-- **`controlType: 'switch'`** — renders a shadcn `Switch` component. The switch's `checked` state is `!!value`; toggling calls `onChange('telemetry.enabled', checked)`.
-
-### Validation
-
-`ui/lib/config-validator.ts` validates `telemetry.enabled` in the optional-section block:
-
-```
-// 10. telemetry (optional section)
-if (config.telemetry !== undefined) {
-  if (!isSection(config.telemetry) || typeof config.telemetry.enabled !== 'boolean') {
-    errors['telemetry.enabled'] = 'Invalid telemetry enabled setting';
-  }
-}
-```
-
-The section is entirely optional — if `telemetry` is absent from `orchestration.yml` the validator produces no error. When the section is present, `telemetry.enabled` must be a boolean; any other type emits a field-level error keyed `'telemetry.enabled'` that the `ConfigFieldRow` for that field will surface.
-
-### Session-start preamble indicator
-
-When telemetry is enabled (`telemetry.enabled: true` in `orchestration.yml`), the CLI's `session-context` subcommand (`cli/src/commands/session-context/render.ts`) appends a `· observability \`on\`` segment to the **Config** row of the preamble block. This indicator is surfaced to the assistant on every session start via the `session-preamble.mjs` hook (`harness-installers/shared/hooks/session-preamble.mjs`). When telemetry is disabled or the `telemetry` section is absent, the indicator is omitted entirely.
-
-## Seams to other modules
-
-- **`cli/` (via shell-out for state-mutating ops only; in-process duplicates for parsers/types)** — Routes that mutate pipeline state or need parity with orchestrator output invoke `radorch <noun> <subcommand>` via `RADORCH_CLI_PATH` + `runCli`. The CLI emits the JSON envelope `{ ok, data, error }` on stdout; the UI parses it and maps to HTTP. Pure parsers / type shapes (e.g., `parseActionEventFile`, `CatalogEntry`) are transplanted as verbatim copies into `ui/lib/` (canonical implementation stays in CLI). Never import from `cli/src/`.
-- **`~/.radorc/` (user data)** — The UI reads project state from `~/.radorc/projects/<name>/state.json` via `ui/lib/fs-reader.ts`. The same `os.homedir()` indirection used elsewhere is the only sanctioned path-resolution mechanism (AD-10) — tests stub `os.homedir()` to redirect (see `ui/lib/test-helpers.ts#withHomedir`).
-- **`harness-installers/standard/build-scripts/build.js`** — invokes `emit-ui-bundle` which runs `next build` inside `ui/`, producing the standalone bundle that's packaged into `harness-installers/standard/output/ui/`. Any change that breaks `next build` (cross-package imports, type errors, lint errors) breaks the installer.
-- **`radorch ui start`** (CLI subcommand at `cli/src/commands/ui/start.ts`) — launches the UI dev/prod server and sets `RADORCH_CLI_PATH` to its own binary path so the spawned UI process can shell back out to the CLI.
-
-## Common commands
-
-Run from the `ui/` directory:
-
-```
-npm run dev               # Next dev server (live reload) on http://localhost:3000
-npm run dev:live          # same live reload, auto-wires RADORCH_CLI_PATH + auto-builds the @rad-orchestration/* lib dist
-npm run dev:live:watch    # dev:live, plus rebuild a lib + restart next dev when its src changes (--watch-libs)
-npm test                  # node --test across lib/ hooks/ components/ app/
-npm run build             # next build (production; same as build-standalone but no clean step)
-npm run build-standalone  # the build the installer uses; runs the prebuild clean step + next build
-```
-
-### `dev:live` vs `dev` — developing against a live UI
-
-Both give Fast Refresh / hot reload, and replace the heavy build → pack → reinstall → `radorch ui start` loop for UI work. The difference is `RADORCH_CLI_PATH`:
-
-- **`npm run dev`** runs `next dev` with nothing else wired. Read-only surfaces (project browsing, docs, the DAG, observability) work, but any route that shells out to the CLI — **driving gates** and the **action-event compose Preview** — returns HTTP 500 because `RADORCH_CLI_PATH` is unset (`lib/cli-shell.ts`).
-- **`npm run dev:live`** (`scripts/dev-live.mjs`) runs the same `next dev` but auto-points `RADORCH_CLI_PATH` at the locally built CLI (`cli/dist/bin/radorch.js`) — the same env var the production launcher (`radorch ui start`) sets — so the shell-out routes work in dev too. It needs the CLI built first (`cd cli && npm run build`, or `npm run watch` for continuous rebuilds); if the bundle is missing it prints a warning and continues, and the read-only surfaces still work.
-- **`dev:live` also rebuilds the UI's `@rad-orchestration/*` lib `dist/` on startup** (the deps from `package.json`, in the canonical build order `repo-registry → work-graph → telemetry`). This closes the stale-dist footgun: those libs are consumed via the workspace symlink → `dist/` and are externalized (see the carve-out above), so Fast Refresh does **not** watch them — a lib source change that wasn't rebuilt would otherwise serve stale data with no warning. Pass `--skip-libs` to skip the build (fast pure-UI path), or use `dev:live:watch` (`--watch-libs`) to rebuild the changed lib and restart `next dev` automatically whenever a `lib/*/src` file changes.
-
-Run from the repo root to verify the full installer build picks up your UI changes:
+Run from the repo root to confirm the installer picks your changes up:
 
 ```
 node harness-installers/standard/build-scripts/build.js
 ```
 
-If `emit-ui-bundle` fails, the installer cannot ship. Treat that as a P0.
+**`npm test` runs in no CI workflow.** CI runs `next build` and one smoke route only, so several
+guards live exclusively in the local suite — run it for every change here.
 
 ## Further reading
 
-- `cli/AGENTS.md` — the CLI binary the UI shells out to; documents the subcommand structure, JSON envelope shape, and three-level help convention.
-- `harness-installers/standard/AGENTS.md` — the installer that bundles this UI; explains how `emit-ui-bundle` packages the standalone Next build.
-- `AGENTS.md` (repo root) — repo-wide rules: per-module ownership, no cross-module reach-ins, canonical source vs runtime compiled outputs.
+- [`docs/internals/dashboard.md`](../docs/internals/dashboard.md) — this module's architecture: path
+  resolution, the live-update pipeline, the standalone-build traps
+- [`cli/AGENTS.md`](../cli/AGENTS.md) — the binary this module shells out to, and the envelope shape
+- [`harness-installers/standard/AGENTS.md`](../harness-installers/standard/AGENTS.md) — how
+  `emit-ui-bundle` packages the standalone build
+- [`AGENTS.md`](../AGENTS.md) — the repo map, and the invariants no single module owns

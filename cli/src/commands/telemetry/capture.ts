@@ -5,7 +5,7 @@ import { readTelemetryEnabled } from './config.js';
 import type { CommandContext } from '../../framework/context.js';
 import {
   ClaudeCodeAdapter, FileCheckpointStore, NdjsonSink, TelemetryCollector,
-  pruneAgedPartitions, ingestTranscripts, type HookEvent,
+  pruneAgedPartitions, readProjectIndex, ingestTranscripts, type HookEvent,
 } from '@rad-orchestration/telemetry';
 
 export interface CaptureData {
@@ -32,7 +32,13 @@ export async function captureCore(deps: CaptureCoreDeps): Promise<CaptureData> {
     );
     const res = collector.capture(signal);
     ingestTranscripts({ root: telemetryRoot, signal, now, log: (m, p) => { void logger.debug(m, p); } });
-    const pruned = pruneAgedPartitions({ root: telemetryRoot, maxAgeDays: 14, now }); // FR-6 — capture owns retention
+    // FR-6 — capture owns retention. The project index lives at the telemetry root, so
+    // sparing project-attributed sessions costs one file read, not a walk of project folders:
+    // this runs on PostToolUse, at tool-call frequency.
+    const pruned = pruneAgedPartitions({
+      root: telemetryRoot, maxAgeDays: 14, now,
+      exemptSessionIds: readProjectIndex(telemetryRoot).sessions.map((s) => s.sessionId),
+    });
     await logger.info('telemetry_captured', { event: signal.event, sessionId: signal.sessionId, written: res.written, skipped: res.skipped, pruned, locked: res.locked });
     return { enabled: true, sessionId: signal.sessionId, written: res.written, skipped: res.skipped, pruned, locked: res.locked };
   } catch (e) {

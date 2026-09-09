@@ -182,6 +182,10 @@ export async function runInstall(opts) {
       } catch { /* prior manifest may be unavailable — clobber install acceptable */ }
     }
     const manifest = loadManifest(opts.pluginRoot, deliveringVersion);
+    // The corpus is installer-owned in full and is replaced, never merged. This channel
+    // keeps only one manifest, so the prior-version removal pass above cannot run — without
+    // this, a page dropped between two releases would linger on disk forever.
+    fs.rmSync(paths.docs, { recursive: true, force: true });
     installManifestFiles(manifest, opts.pluginRoot, { radHome: opts.radHome });
 
     // UI hydration: extract the gzipped tarball wholesale. The tarball

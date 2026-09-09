@@ -9,6 +9,7 @@ export function userDataPaths(opts = {}) {
     installJson: path.join(root, 'install.json'),
     orchestrationYml: path.join(root, 'orchestration.yml'),
     templates: path.join(root, 'templates'),
+    docs: path.join(root, 'docs'),
     ui: path.join(root, 'ui'),
     projects: path.join(root, 'projects'),
     telemetry: path.join(root, 'telemetry'),

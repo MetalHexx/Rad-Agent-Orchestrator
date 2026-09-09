@@ -33,6 +33,17 @@ interface ArtifactLiveValue {
    *  live so the Planning docs list's Draft pill clears on the next
    *  `artifact_change` refresh instead of a one-time fetch going stale. */
   requirementsStatus: string | null;
+  /** Owner-guarded file list from the latest snapshot — the single source the
+   *  modal's document list is built from. Empty while a switched-to project's
+   *  own snapshot is still in flight. */
+  files: string[];
+  /** True once the CURRENT project's first snapshot has settled, success or
+   *  failure. Falsy for a project whose snapshot hasn't landed yet, so the
+   *  owner pairing gives the project-change reset for free. */
+  snapshotLoaded: boolean;
+  /** Force an immediate snapshot refresh — for a user-initiated change that
+   *  must not wait on the filesystem watcher. */
+  refresh: () => void;
 }
 
 export const defaultArtifactLiveValue: ArtifactLiveValue = {
@@ -43,6 +54,9 @@ export const defaultArtifactLiveValue: ArtifactLiveValue = {
   degraded: false,
   markActive: () => {},
   requirementsStatus: null,
+  files: [],
+  snapshotLoaded: false,
+  refresh: () => {},
 };
 
 export const ArtifactLiveContext = React.createContext<ArtifactLiveValue>(defaultArtifactLiveValue);
@@ -61,9 +75,25 @@ export function ArtifactLiveProvider({
   hasTimeline: boolean;
   children: React.ReactNode;
 }) {
-  const [files, setFiles] = React.useState<string[]>([]);
-  const [mtimes, setMtimes] = React.useState<Record<string, number>>({});
-  const [requirementsStatus, setRequirementsStatus] = React.useState<string | null>(null);
+  // Owner-paired snapshot state: `files`/`mtimes`/`requirementsStatus` all
+  // live and reset together, keyed to the project that fetched them. Derived
+  // during render — the same synchronous guard the page's old `fileList` had —
+  // so the instant `projectName` changes, every derived field below goes
+  // empty/unloaded in that same render, with no window where an outgoing
+  // project's snapshot could leak into the incoming one.
+  const [owned, setOwned] = React.useState<{
+    owner: string;
+    files: string[];
+    mtimes: Record<string, number>;
+    requirementsStatus: string | null;
+    loaded: boolean;
+  } | null>(null);
+  const isOwner = owned?.owner === projectName;
+  const files = isOwner ? owned.files : [];
+  const mtimes = isOwner ? owned.mtimes : {};
+  const requirementsStatus = isOwner ? owned.requirementsStatus : null;
+  const snapshotLoaded = isOwner && owned.loaded;
+
   const [live, setLive] = React.useState<LiveState>(emptyLiveState);
   const [degraded, setDegraded] = React.useState(false);
   const activeRef = React.useRef<string | null>(activeFileName);
@@ -80,6 +110,8 @@ export function ArtifactLiveProvider({
 
   const prevFilesRef = React.useRef<string[] | null>(null);
   const prevMtimesRef = React.useRef<Record<string, number>>({});
+  // Monotonic per-fetch id: only the LATEST issued refresh may land (see refreshSnapshot).
+  const requestIdRef = React.useRef(0);
   const pulseTimersRef = React.useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   const applyChange = React.useCallback((fileName: string, kind: 'added' | 'changed' | 'removed') => {
@@ -97,6 +129,7 @@ export function ArtifactLiveProvider({
 
   const refreshSnapshot = React.useCallback(async (mode: RefreshMode) => {
     if (!projectName) return;
+    const requestId = ++requestIdRef.current;
     const snap = await fetchArtifactSnapshot(projectName);
 
     // A newer project took over while this fetch was in flight. Bail before touching
@@ -106,14 +139,27 @@ export function ArtifactLiveProvider({
     // during a project switch — is what falsely pulsed/badged every doc on switch.
     if (projectName !== projectNameRef.current) return;
 
-    // A failed fetch (cold start, transient 5xx, aborted request) resolves to an
-    // empty snapshot. It must NOT become the diff baseline: storing [] makes the next
-    // successful snapshot diff every file as `added` (the initial-load pulse variant).
-    if (!snap.ok) return;
+    // A LATER refresh for this same project has already been issued. The owner check
+    // above cannot see this one: on an A→B→A return, the first (never-cancelled) A
+    // request's captured name still equals the current one, so if it resolves after
+    // the second A request it would overwrite a fresher snapshot and diff baseline
+    // with stale files. Only a per-fetch id can tell those two apart.
+    if (requestId !== requestIdRef.current) return;
 
-    setFiles(snap.files);
-    setMtimes(snap.mtimes);
-    setRequirementsStatus(snap.requirementsStatus);
+    // Record the current owner's snapshot. A failed fetch (cold start, transient 5xx,
+    // aborted request) resolves to an EMPTY snapshot, so it must never overwrite a
+    // payload this project already loaded — a blip would otherwise blank every tile
+    // and the open doc. With no prior data for this project, that empty result is
+    // still committed with `loaded: true` so the UI reveals instead of hanging on a
+    // skeleton forever. Either way the diff-baseline guard just below still holds: a
+    // failed fetch never becomes `prevFilesRef`, since storing [] there would make
+    // the next successful snapshot diff every file as `added`.
+    setOwned((prev) => {
+      if (!snap.ok && prev?.owner === projectName && prev.loaded) return prev;
+      return { owner: projectName, files: snap.files, mtimes: snap.mtimes, requirementsStatus: snap.requirementsStatus, loaded: true };
+    });
+
+    if (!snap.ok) return;
 
     // Only a 'live' refresh (an artifact_change event landed for THIS project) may
     // pulse. The initial 'baseline' snapshot just records state, so visiting or
@@ -131,9 +177,14 @@ export function ArtifactLiveProvider({
   }, [projectName, applyChange]);
 
   // On project change: reset the diff baseline and take an initial snapshot.
+  // `owned` itself needs no explicit reset here — the render-time owner
+  // comparison above already stops matching the instant `projectName` changes,
+  // which is what keeps this a synchronous guard rather than an effect-driven
+  // one (an effect would leave a one-render window where the outgoing
+  // project's files/mtimes still read as current).
   React.useEffect(() => {
     if (!projectName) {
-      setFiles([]); setLive(emptyLiveState()); setRequirementsStatus(null);
+      setLive(emptyLiveState());
       prevFilesRef.current = null; prevMtimesRef.current = {};
       return;
     }
@@ -189,14 +240,30 @@ export function ArtifactLiveProvider({
     setLive((s) => clearUnseenFor(s, fileName));
   }, []);
 
+  // Imperative refresh for a user-initiated change (e.g. a delete) that must
+  // not wait on the filesystem watcher's SSE round-trip. 'live' so it still
+  // diffs and clears the deleted file rather than silently re-baselining.
+  const refresh = React.useCallback(() => { void refreshSnapshot('live'); }, [refreshSnapshot]);
+
   const artifacts = React.useMemo(
     () => (projectName ? deriveArtifacts(projectName, files, hasTimeline) : []),
     [projectName, files, hasTimeline],
   );
 
   const value = React.useMemo<ArtifactLiveValue>(
-    () => ({ artifacts, unseen: live.unseen, activePulse: live.activePulse, mtimes, degraded, markActive, requirementsStatus }),
-    [artifacts, live.unseen, live.activePulse, mtimes, degraded, markActive, requirementsStatus],
+    () => ({
+      artifacts,
+      unseen: live.unseen,
+      activePulse: live.activePulse,
+      mtimes,
+      degraded,
+      markActive,
+      requirementsStatus,
+      files,
+      snapshotLoaded,
+      refresh,
+    }),
+    [artifacts, live.unseen, live.activePulse, mtimes, degraded, markActive, requirementsStatus, files, snapshotLoaded, refresh],
   );
 
   return <ArtifactLiveContext.Provider value={value}>{children}</ArtifactLiveContext.Provider>;

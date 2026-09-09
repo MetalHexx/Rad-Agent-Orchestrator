@@ -25,3 +25,5 @@ export {
 } from './dag-timeline-helpers';
 export type { SectionLabel, SectionGroup } from './dag-timeline-helpers';
 export { SourceControlPanel } from './source-control-panel';
+export { DeleteProjectDialog } from './delete-project-dialog';
+export type { DeleteProjectDialogProps } from './delete-project-dialog';

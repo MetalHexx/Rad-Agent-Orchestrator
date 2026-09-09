@@ -67,9 +67,37 @@ export function stageActionEventsBundle(home, { harness = 'claude' } = {}) {
   return { bundle, manifest, harness };
 }
 
-/** Runs a manifest-driven install for the staged action-events bundle. */
+/** Stages a synthetic bundle containing the communication-styles catalog whose
+ *  layout matches what `runtime-config/communication-styles/` ships, and
+ *  returns the bundle path plus the matching manifest (with
+ *  `${RAD_HOME}/communication-styles/...` destinations as emit-manifest would
+ *  produce). */
+export function stageCommunicationStylesBundle(home, { harness = 'claude' } = {}) {
+  const bundle = path.join(home, 'bundle');
+  const csDir = path.join(bundle, 'communication-styles');
+  fs.mkdirSync(path.join(csDir, 'custom'), { recursive: true });
+  const styles = ['direct.md', 'caveman.md', 'high-level.md', 'socratic.md'];
+  for (const style of styles) {
+    fs.writeFileSync(path.join(csDir, style), `# ${style}\n`);
+  }
+
+  const manifest = {
+    files: styles.map((style) => ({
+      bundlePath: `communication-styles/${style}`,
+      destinationPath: `\${RAD_HOME}/communication-styles/${style}`,
+      sha256: 'x',
+    })),
+  };
+
+  return { bundle, manifest, harness };
+}
+
+/** Runs a manifest-driven install for the staged action-events and
+ *  communication-styles bundles, sharing a single bundle root. */
 export function installFull(home, { harness = 'claude' } = {}) {
-  const { bundle, manifest } = stageActionEventsBundle(home, { harness });
+  const { bundle, manifest: aeManifest } = stageActionEventsBundle(home, { harness });
+  const { manifest: csManifest } = stageCommunicationStylesBundle(home, { harness });
+  const manifest = { files: [...aeManifest.files, ...csManifest.files] };
   installManifestFiles(manifest, bundle, harness);
   return { bundle, manifest };
 }

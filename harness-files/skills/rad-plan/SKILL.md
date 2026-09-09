@@ -28,7 +28,9 @@ Read `data` from the envelope: `project`, `projectDir`, `requirementsPath`, `rea
 
 The question in Step 2 presents a menu via `askQuestions` / `AskUserQuestion` for each sub-question, and each menu attaches a `(Recommended)` marker to one option. **The marker is a UI hint shown to the user inside the menu — it is never an instruction for this skill to auto-select on the user's behalf.** Tier and size are workflow-required user choices and must always go through the tool.
 
-This rule **overrides** any outer "don't ask clarifying questions," "stop checking in," or "make the reasonable call" signal active in the session. Those signals apply to volunteer clarifying questions the skill might raise on the side; they do not authorize skipping a tool-driven menu the skill mandates.
+The same holds for the follow-up-audit gate in Step 5: when the planner's judgment there calls a correction exceptional and fewer than 3 passes have run, the live `askQuestions` / `AskUserQuestion` it presents is likewise a workflow-required user choice that must always go through the tool.
+
+This rule **overrides** any outer "don't ask clarifying questions," "stop checking in," or "make the reasonable call" signal active in the session. Those signals apply to volunteer clarifying questions the skill might raise on the side; they do not authorize skipping a tool-driven menu the skill mandates — this covers both the Step 2 menu and the Step 5 follow-up-audit gate.
 
 ## Step 2: Run the one human beat
 
@@ -92,21 +94,34 @@ As you author, apply the chosen size directly — size every task per the sizing
 - **Yes** → always run the audit below.
 - **Auto** (or the sub-question was never asked) → once the Master Plan exists, read its phase and task counts and decide whether the plan is large/complex enough to warrant an audit. State the counts and your decision to the operator in one line, e.g. *"Plan has {N} phases and {M} tasks — running the audit."*
 
-When running the audit:
-- Dispatch a **`general-purpose`** subagent to audit the Requirements doc and the Master Plan. Give the subagent both doc paths and instruct it to follow `${SKILLS_ROOT}/rad-plan/references/audit.md`. The subagent returns a structured report with frontmatter `verdict: approved` or `verdict: issues_found`. The auditor does NOT edit either planning doc — it reports.
-- If `verdict: approved`: proceed to the tail.
-- If `verdict: issues_found`:
-    1. Apply the fixes yourself, inline, in the Master Plan doc — you own it. Action the auditor's findings and note any you decline and why.
-    2. Re-invoke the explosion subcommand to regenerate `phases/` and `tasks/` from the corrected Master Plan:
+When running the audit, work through up to 3 total passes (this pass, plus up to 2 follow-ups) — governed by your own judgment and a live gate, never a count or ratio:
 
-           node "${PLUGIN_ROOT}/skills/rad-orchestration/scripts/radorch.mjs" plan explode \
-             --project-dir <project-dir> \
-             --master-plan <master-plan-path> \
-             --project-name <project-name>
+a. **Dispatch the pass.** Dispatch a **`general-purpose`** subagent to audit the Requirements doc and the Master Plan. Give the subagent both doc paths and instruct it to follow `${SKILLS_ROOT}/rad-plan/references/audit.md`. On the second or third pass, also hand it this run's accumulated declined-findings history (built in pass-step c below). The subagent returns a structured report with frontmatter `verdict: approved` or `verdict: issues_found`. The auditor does NOT edit either planning doc — it reports.
+b. **Approved:** the loop ends — go to pass-step e.
+c. **Issues found:** apply the fixes yourself, inline, in the Master Plan doc — you own it. For any finding you decline, note why, and append it to this run's declined-findings history — the finding's Lens, "What's wrong," and "Where," plus your rationale for declining it — carried into every later pass's dispatch.
+d. **Judge whether a follow-up is warranted** — only if fewer than 3 passes have run so far (the ceiling is absolute; at 3, skip straight to pass-step e regardless of this judgment — pass-step c above has already applied the 3rd pass's own fixes, so the ceiling only cancels the *ask for a 4th* pass, never the fix for what the 3rd pass found). State a one-line judgment on whether what you just corrected was exceptional: not a formula, your own read of how much of the plan needed rework, whether the same defect recurred across multiple phases, and whether the corrections landed on load-bearing findings (Accurate/Complete lens) versus cosmetic ones (Coherent-lens sizing nits).
+   - **Not exceptional:** the loop ends — go to pass-step e.
+   - **Exceptional:** present a live `askQuestions` / `AskUserQuestion`, in the same two-sentence-max copy style as the Step 2 pre-audit prompt:
 
-       The subcommand clears `phases/` and `tasks/` by deleting their contents and resets `state.graph.nodes.phase_loop` before re-seeding. The envelope is `{ ok, data, error }`; on success read `data.emittedPhases` and `data.emittedTasks`. On exit code `2` with `data.error` populated (parse failure in the corrected Master Plan), halt and surface the structured `data.error` payload (`{ line, expected, found, message }`) to the user — do not retry in-skill.
-- Show the user the concise audit report and a summary of the corrections you applied.
-- Single pass, no re-audit after corrections.
+     | Option | Copy (two sentences max) |
+     |---|---|
+     | `Auto` **(Recommended)** | Runs the follow-up pass — your judgment above already called it warranted. |
+     | `Yes` | Run the follow-up audit pass now. |
+     | `No` | Skip it and finalize the plan as corrected so far. |
+
+     Framing prose: "The last audit pass found enough to fix that a second look seems worthwhile — run a follow-up audit pass? `Auto` follows the recommendation above."
+     - **No:** the loop ends — go to pass-step e.
+     - **Yes / Auto:** go back to pass-step a for another pass.
+e. **Regenerate and report.** If any pass applied corrections, re-invoke the explosion subcommand once — against the final corrected Master Plan, only after the loop above has fully ended — to regenerate `phases/` and `tasks/`:
+
+       node "${PLUGIN_ROOT}/skills/rad-orchestration/scripts/radorch.mjs" plan explode \
+         --project-dir <project-dir> \
+         --master-plan <master-plan-path> \
+         --project-name <project-name>
+
+   The subcommand clears `phases/` and `tasks/` by deleting their contents and resets `state.graph.nodes.phase_loop` before re-seeding. The envelope is `{ ok, data, error }`; on success read `data.emittedPhases` and `data.emittedTasks`. On exit code `2` with `data.error` populated (parse failure in the corrected Master Plan), halt and surface the structured `data.error` payload (`{ line, expected, found, message }`) to the user — do not retry in-skill.
+
+   Show the user the concise audit report(s) and a summary of the corrections applied across every pass that ran. If the loop ended because the 3-pass ceiling was reached rather than a clean pass or a declined follow-up, say so plainly.
 
 ## Step 6: Tail
 

@@ -4,16 +4,17 @@ import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useProjects } from "@/hooks/use-projects";
 import { useFollowMode } from "@/hooks/use-follow-mode";
+import { useProjectViewMode } from "@/hooks/use-project-view-mode";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { Alert, AlertTitle, AlertDescription, AlertAction } from "@/components/ui/alert";
 import { ProjectSidebar } from "@/components/sidebar";
-import { LaunchScreen } from "@/components/layout";
-import { useStartAction } from "@/hooks/use-start-action";
+import { OverviewPage } from "@/components/overview";
 import { deleteArtifact } from "@/hooks/use-project-artifacts";
+import { useDeleteProject } from "@/hooks/use-delete-project";
 import { ConfirmApprovalDialog } from "@/components/dashboard";
-import { DAGTimeline, DAGTimelineSkeleton, ProjectHeader, HaltReasonBanner, SourceControlPanel, deriveCurrentPhase, derivePhaseProgress } from "@/components/dag-timeline";
+import { DAGTimeline, DAGTimelineSkeleton, ProjectHeader, DeleteProjectDialog, HaltReasonBanner, SourceControlPanel, deriveCurrentPhase, derivePhaseProgress } from "@/components/dag-timeline";
 import { PlanningSection } from "@/components/planning-section";
-import { hasSourceControlRepos, selectSourceControlRepos } from "@/components/dag-timeline/source-control-helpers";
+import { hasSourceControlRepos, selectSourceControlRepos, selectPrLinks } from "@/components/dag-timeline/source-control-helpers";
 import { buildBindLookup } from "@/components/dag-timeline/source-control-bind";
 import { useRegistryStore } from "@/components/repo-registry/use-registry-store";
 import { SSEStatusBanner } from "@/components/badges";
@@ -24,7 +25,8 @@ import type { ProjectSummary, DocumentFrontmatter } from "@/types/components";
 import { ArtifactViewerModal } from "@/components/artifacts";
 import { useArtifactModal, markdownPathForActive, deleteTargetForActive } from "@/hooks/use-artifact-modal";
 import { ArtifactLiveProvider, useArtifactLive } from "@/hooks/use-artifact-live";
-import { buildModalDocs, type ModalDoc } from "@/lib/modal-doc-model";
+import { ApprovalWizardProvider } from "@/hooks/use-approval-wizard";
+import { buildModalDocs } from "@/lib/modal-doc-model";
 import { selectProjectView, type ProjectView } from "@/lib/project-view";
 import { nextHoldState, type HoldState } from "@/lib/hold-floor";
 
@@ -56,12 +58,13 @@ interface ProjectsPageContentProps {
   onAccordionChange: (value: string[], eventDetails: { reason: string }) => void;
   sseStatus: SSEConnectionStatus;
   reconnect: () => void;
-  filesLoaded: boolean;
   setPendingDelete: (a: { fileName: string } | null) => void;
   onActivePathChange: (path: string | null) => void;
   registerOnDeleted: (fn: () => void) => void;
   urlDoc: string | null;
-  modalDocs: ModalDoc[];
+  onRequestDelete: () => void;
+  viewMode: 'overview' | 'pipeline';
+  onViewModeChange: (mode: 'overview' | 'pipeline') => void;
 }
 
 function ProjectsPageContent({
@@ -78,16 +81,25 @@ function ProjectsPageContent({
   onAccordionChange,
   sseStatus,
   reconnect,
-  filesLoaded,
   setPendingDelete,
   onActivePathChange,
   registerOnDeleted,
   urlDoc,
-  modalDocs,
+  onRequestDelete,
+  viewMode,
+  onViewModeChange,
 }: ProjectsPageContentProps) {
   const live = useArtifactLive();
   const artifacts = live.artifacts;
   const requirementsStatus = live.requirementsStatus;
+
+  // The modal's unified, path-identified document list — built from the
+  // provider's owner-paired snapshot (live.files), which already carries
+  // subfolder paths the root-only live.artifacts can't represent.
+  const modalDocs = React.useMemo(
+    () => (selectedProject ? buildModalDocs(selectedProject, live.files, v5State, v5State !== null) : []),
+    [selectedProject, live.files, v5State],
+  );
 
   // Tracks the latest selectedProject so the modal-doc fetch below can tell,
   // at the point its response resolves, whether it's still current. The
@@ -118,9 +130,15 @@ function ProjectsPageContent({
   const modal = useArtifactModal(getArtifacts, urlDoc, navigate);
   const openArtifactModal = modal.openByName;
 
+  // Bridges a delete to the provider: the outer component's confirm dialog
+  // sits outside ArtifactLiveProvider, so it has no way to trigger a refresh
+  // itself. Composing modal.onDeleted with live.refresh here — and having the
+  // outer component call only this registered handler — gets the delete an
+  // immediate snapshot refresh without waiting on the filesystem watcher.
+  const onDeleted = React.useCallback(() => { modal.onDeleted(); live.refresh(); }, [modal.onDeleted, live]);
   React.useEffect(() => {
-    registerOnDeleted(modal.onDeleted);
-  }, [registerOnDeleted, modal.onDeleted]);
+    registerOnDeleted(onDeleted);
+  }, [registerOnDeleted, onDeleted]);
 
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [modalClosing, setModalClosing] = useState(false);
@@ -154,8 +172,21 @@ function ProjectsPageContent({
   // so reopening always starts hidden again.
   useEffect(() => { if (!modal.open) { setIsFullScreen(false); setShowFrontmatter(false); } }, [modal.open]);
 
+  // Memoized so its identity is stable across a snapshot refresh that doesn't
+  // touch the active doc — `modalDocs` gets a new array identity on every
+  // `live.files` change, but `mdPath` only changes when the active doc itself
+  // (or its markdown-ness) actually changes.
+  const mdPath = React.useMemo(
+    () => markdownPathForActive(modalDocs, modal.activePath),
+    [modalDocs, modal.activePath],
+  );
+  // Keys the body-fetch effect to the open doc's own mtime rather than to
+  // `modalDocs`/`live.files` directly, so an edit to ANY other file in the
+  // project — which gives `live.files` a fresh identity — does not refetch
+  // the doc the reader currently has open.
+  const activeMtime = modal.activePath ? (live.mtimes[modal.activePath] ?? 0) : 0;
+
   useEffect(() => {
-    const mdPath = markdownPathForActive(modalDocs, modal.activePath);
     if (!modal.open || !mdPath || !selectedProject) {
       setModalMarkdown(null);
       setModalMarkdownFileName(null);
@@ -191,7 +222,7 @@ function ProjectsPageContent({
         setModalMarkdownFileName(mdPath);
       });
     return () => { cancelled = true; };
-  }, [modal.open, modal.activePath, modalDocs, selectedProject]);
+  }, [modal.open, mdPath, selectedProject, activeMtime]);
 
   const handleToggleFrontmatter = useCallback(() => setShowFrontmatter((v) => !v), []);
 
@@ -205,7 +236,13 @@ function ProjectsPageContent({
 
   React.useEffect(() => () => { if (closeTimerRef.current) clearTimeout(closeTimerRef.current); }, []);
 
-  const startAction = useStartAction(selectedProject);
+  // A pipeline-less project has no Pipeline view to toggle to, so visiting one
+  // pins the operator's global Overview/Pipeline preference to Overview — a
+  // later switch to a project that DOES have a pipeline then starts there
+  // instead of carrying over a stale Pipeline choice from before.
+  useEffect(() => {
+    if (view === 'launch' && viewMode !== 'overview') onViewModeChange('overview');
+  }, [view, viewMode, onViewModeChange]);
 
   // `view` is the only thing consulted here — the ownership comparisons that
   // decided it live in selectProjectView, so no local condition can second-guess
@@ -217,12 +254,14 @@ function ProjectsPageContent({
           <div className="overflow-auto">
             <ProjectHeader
               projectName={selected.name}
-              tier={selected.tier}
-              planningStatus={selected.planningStatus}
-              executionStatus={selected.executionStatus}
+              state={selected.state}
+              stateLabel={selected.stateLabel}
               followMode={false}
               onToggleFollowMode={() => {}}
               projectType={selected.project_type}
+              onRequestDelete={onRequestDelete}
+              viewMode={viewMode}
+              onViewModeChange={onViewModeChange}
             />
             <div className="flex flex-col">
               <HaltReasonBanner
@@ -246,12 +285,14 @@ function ProjectsPageContent({
           <div className="overflow-auto">
             <ProjectHeader
               projectName={selected.name}
-              tier={selected.tier}
-              planningStatus={selected.planningStatus}
-              executionStatus={selected.executionStatus}
+              state={selected.state}
+              stateLabel={selected.stateLabel}
               followMode={false}
               onToggleFollowMode={() => {}}
               projectType={selected.project_type}
+              onRequestDelete={onRequestDelete}
+              viewMode={viewMode}
+              onViewModeChange={onViewModeChange}
             />
             <div className="flex flex-col">
               <SSEStatusBanner
@@ -285,9 +326,8 @@ function ProjectsPageContent({
           <div className="overflow-auto">
             <ProjectHeader
               projectName={selected.name}
-              tier={selected.tier}
-              planningStatus={selected.planningStatus}
-              executionStatus={selected.executionStatus}
+              state={selected.state}
+              stateLabel={selected.stateLabel}
               graphStatus={v5Derivations.graphStatus}
               gateMode={v5Derivations.gateMode}
               currentPhaseName={v5Derivations.currentPhaseName}
@@ -295,6 +335,9 @@ function ProjectsPageContent({
               followMode={followMode}
               onToggleFollowMode={toggleFollowMode}
               projectType={selected.project_type}
+              onRequestDelete={onRequestDelete}
+              viewMode={viewMode}
+              onViewModeChange={onViewModeChange}
             />
             <div className="flex flex-col">
               <HaltReasonBanner
@@ -308,7 +351,15 @@ function ProjectsPageContent({
               />
             </div>
             <div className="px-6 py-4 flex flex-col gap-3">
-              {filesLoaded ? (
+              {!live.snapshotLoaded ? (
+                <DAGTimelineSkeleton />
+              ) : viewMode === 'overview' ? (
+                <OverviewPage
+                  projectName={selected.name}
+                  onOpenArtifact={(index) => openArtifactModal(artifacts[index].fileName)}
+                  onDeleteArtifact={(a) => setPendingDelete(a)}
+                />
+              ) : (
                 <>
                   <PlanningSection
                     artifacts={artifacts}
@@ -332,7 +383,7 @@ function ProjectsPageContent({
                     compareUrlByRepo={v5Derivations.compareUrlByRepo}
                     projectName={selected.name}
                     phaseLoopStatus={v5Derivations.phaseLoopStatus}
-                    prUrl={v5State.pipeline.source_control?.repos?.[0]?.pr_url ?? null}
+                    prLinks={selectPrLinks(v5State.pipeline.source_control)}
                     afterPlanningSlot={
                       hasSourceControlRepos(v5State.pipeline.source_control) && (
                         <SourceControlPanel
@@ -347,33 +398,39 @@ function ProjectsPageContent({
                     }
                   />
                 </>
-              ) : (
-                <DAGTimelineSkeleton />
               )}
             </div>
           </div>
         );
 
+      // Always the Overview — a pipeline-less project has no DAG to toggle to,
+      // so unlike 'plan' this branch never consults `viewMode`.
       case 'launch':
         return (
-          <div className="flex h-full flex-col">
-            <SSEStatusBanner
-              status={sseStatus}
-              degraded={live.degraded}
-              onReconnect={reconnect}
+          <div className="overflow-auto">
+            <ProjectHeader
+              projectName={selected.name}
+              state={selected.state}
+              stateLabel={selected.stateLabel}
+              followMode={false}
+              onToggleFollowMode={() => {}}
+              projectType={selected.project_type}
+              onRequestDelete={onRequestDelete}
+              viewMode={undefined}
+              onViewModeChange={onViewModeChange}
             />
-            <div className="min-h-0 flex-1">
-              <LaunchScreen
+            <div className="flex flex-col">
+              <SSEStatusBanner
+                status={sseStatus}
+                degraded={live.degraded}
+                onReconnect={reconnect}
+              />
+            </div>
+            <div className="px-6 py-4 flex flex-col gap-3">
+              <OverviewPage
                 projectName={selected.name}
-                artifacts={artifacts}
                 onOpenArtifact={(index) => openArtifactModal(artifacts[index].fileName)}
                 onDeleteArtifact={(a) => setPendingDelete(a)}
-                onStartPlanning={() => startAction.start('start-planning')}
-                onStartBrainstorming={() => startAction.start('start-brainstorming')}
-                pendingAction={startAction.pendingAction}
-                errorMessage={startAction.errorMessage}
-                unseen={live.unseen}
-                activePulse={live.activePulse}
               />
             </div>
           </div>
@@ -409,7 +466,7 @@ function ProjectsPageContent({
         />
       )}
 
-      {modal.open && filesLoaded && !modalDocs.some((d) => d.path === modal.activePath) && (
+      {modal.open && live.snapshotLoaded && !modalDocs.some((d) => d.path === modal.activePath) && (
         <div role="alert" className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="flex flex-col items-center gap-3 rounded-xl bg-card p-6 text-card-foreground shadow-lg">
             <p className="text-sm text-muted-foreground">Document not found.</p>
@@ -477,22 +534,10 @@ export default function ProjectsPage() {
     }
   }, [urlProject, isLoading, projects, router]);
 
-  // Paired with its owning project, exactly like `projectState` (T01): a
-  // `/files` response that resolves for a project no longer selected must
-  // never surface as that project's file list.
-  const [ownedFiles, setOwnedFiles] = useState<{ owner: string; files: string[] } | null>(null);
-  const fileList = ownedFiles?.owner === selectedProject ? ownedFiles.files : [];
-  const [filesLoaded, setFilesLoaded] = useState(false);
-
-  // Tracks the latest selectedProject so the /files fetch below can tell, at
-  // the point its response resolves, whether it's still current — the
-  // closure it was issued under only sees the value at issue time.
-  const selectedProjectRef = React.useRef<string | null>(selectedProject);
-  selectedProjectRef.current = selectedProject;
-
-  // The single ownership gate for state: everything derived below inherits it,
-  // so v5Derivations, useFollowMode and buildModalDocs cannot see state that was
-  // fetched for a different project.
+  // The single ownership gate for state: everything derived below inherits it
+  // (including the v5State handed down to ProjectsPageContent's buildModalDocs
+  // call), so v5Derivations, useFollowMode, and the modal's doc list can never
+  // see state that was fetched for a different project.
   const usableState = projectState && projectState.owner === selectedProject ? projectState.state : null;
 
   const v6State: ProjectStateV6 | null =
@@ -503,6 +548,7 @@ export default function ProjectsPage() {
 
   const nodesForFollowMode = v5State ? v5State.graph.nodes : null;
   const { followMode, expandedLoopIds, onAccordionChange, toggleFollowMode } = useFollowMode(nodesForFollowMode, selectedProject);
+  const { mode: viewMode, setMode: setViewMode } = useProjectViewMode();
 
   const selected: ProjectSummary | undefined = useMemo(
     () => projects.find((p) => p.name === selectedProject),
@@ -512,9 +558,31 @@ export default function ProjectsPage() {
   const [pendingDelete, setPendingDelete] = useState<{ fileName: string } | null>(null);
   const [deletePending, setDeletePending] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
-  const [fileRefetch, setFileRefetch] = useState(0);
   const handleModalDeletedRef = React.useRef<() => void>(() => {});
   const registerOnDeleted = useCallback((fn: () => void) => { handleModalDeletedRef.current = fn; }, []);
+
+  // Project-level delete (header trash control). The hook is instantiated
+  // unconditionally per the rules of hooks; it does nothing until the
+  // dialog's handlers below actually call loadPlan/confirm, both of which
+  // only fire once a project is selected.
+  const [deleteProjectOpen, setDeleteProjectOpen] = useState(false);
+  const { plan: deletePlan, planError: deletePlanError, report: deleteReport, isPending: deleteProjectPending, loadPlan: loadDeletePlan, confirm: confirmDeleteProject, reset: resetDeleteProject } = useDeleteProject(selectedProject ?? "");
+  const handleRequestDeleteProject = useCallback(() => {
+    setDeleteProjectOpen(true);
+    void loadDeletePlan();
+  }, [loadDeletePlan]);
+  const handleDeleteProjectOpenChange = useCallback((o: boolean) => {
+    setDeleteProjectOpen(o);
+    if (!o) resetDeleteProject();
+  }, [resetDeleteProject]);
+  const handleConfirmDeleteProject = useCallback(async (skip: NonNullable<Parameters<typeof confirmDeleteProject>[0]>) => {
+    const complete = await confirmDeleteProject(skip);
+    if (complete) {
+      setDeleteProjectOpen(false);
+      resetDeleteProject();
+      router.replace('/projects');
+    }
+  }, [confirmDeleteProject, resetDeleteProject, router]);
 
   const v5Derivations = useMemo(() => {
     if (!v5State) {
@@ -534,52 +602,6 @@ export default function ProjectsPage() {
       phaseLoopStatus: typedPhaseLoop?.status,
     };
   }, [v5State]);
-
-  // The modal's unified, path-identified document list — built here (not inside
-  // ProjectsPageContent) because this is where the raw recursive `fileList` is
-  // already owned; the inner component only ever sees the root-only
-  // `live.artifacts`, which can't represent subfolder docs.
-  const modalDocs = useMemo(() => {
-    if (!selectedProject) return [];
-    return buildModalDocs(selectedProject, fileList, v5State, v5State !== null);
-  }, [selectedProject, fileList, v5State]);
-
-  // Reset the files-loaded gate on project change ONLY (not on fileRefetch),
-  // so deleting an artifact — which bumps fileRefetch — doesn't flash the
-  // timeline body back to a skeleton.
-  useEffect(() => { setFilesLoaded(false); }, [selectedProject]);
-
-  useEffect(() => {
-    if (!selectedProject) {
-      setOwnedFiles(null);
-      return;
-    }
-    const project = selectedProject;
-    // The owner comparison below (in addition to `cancelled`): a response for
-    // a project the user returned to and left again can still land while
-    // `cancelled` is false for the run current at issue time, so ownership is
-    // re-checked against the live ref at the point of writing rather than
-    // relying on effect-cleanup ordering alone.
-    let cancelled = false;
-    fetch(`/api/projects/${encodeURIComponent(project)}/files`)
-      .then((res) => {
-        if (!res.ok) throw new Error("Failed to fetch files");
-        return res.json();
-      })
-      .then((data: { files: string[] }) => {
-        if (cancelled || project !== selectedProjectRef.current) return;
-        setOwnedFiles({ owner: project, files: data.files });
-        setFilesLoaded(true);
-      })
-      .catch(() => {
-        if (cancelled || project !== selectedProjectRef.current) return;
-        setOwnedFiles({ owner: project, files: [] });
-        // Mark loaded even on failure so the DAG still reveals (the Planning
-        // docs just stay empty) rather than hanging on the skeleton forever.
-        setFilesLoaded(true);
-      });
-    return () => { cancelled = true; };
-  }, [selectedProject, fileRefetch]);
 
   // Active path for the provider — derived from modal state inside the
   // inner component and surfaced here via state so the provider prop stays live.
@@ -622,6 +644,7 @@ export default function ProjectsPage() {
         selectedName: selected.name,
         tier: selected.tier,
         schemaVersion: selected.schemaVersion,
+        projectType: selected.project_type,
         hasMalformedState: selected.hasMalformedState,
         ownedState: projectState,
         ownedError: error,
@@ -637,6 +660,11 @@ export default function ProjectsPage() {
   }, [selected, selectProject]);
 
   return (
+    // ApprovalWizardProvider sits outside every live-state-driven subtree on
+    // purpose: approving a final review completes the graph, which swaps the
+    // dag-widget card from `finalReviewView` to `completeView` and unmounts the
+    // Approve button that started it. The wizard must outlive that.
+    <ApprovalWizardProvider>
     <div className="flex h-[calc(100vh-3.5rem)] flex-col bg-background">
       <SidebarProvider className="min-h-0 flex-1">
         <ProjectSidebar
@@ -684,12 +712,13 @@ export default function ProjectsPage() {
                 onAccordionChange={onAccordionChange}
                 sseStatus={sseStatus}
                 reconnect={reconnect}
-                filesLoaded={filesLoaded}
                 setPendingDelete={setPendingDelete}
                 onActivePathChange={setActivePath}
                 registerOnDeleted={registerOnDeleted}
                 urlDoc={urlDoc}
-                modalDocs={modalDocs}
+                onRequestDelete={handleRequestDeleteProject}
+                viewMode={viewMode}
+                onViewModeChange={setViewMode}
               />
             </ArtifactLiveProvider>
           ) : (
@@ -728,12 +757,24 @@ export default function ProjectsPage() {
           if (ok) {
             setPendingDelete(null);
             handleModalDeletedRef.current();
-            setFileRefetch((n) => n + 1);
           } else {
             setDeleteError(`Failed to delete ${pendingDelete.fileName}. Please try again.`);
           }
         }}
       />
+
+      <DeleteProjectDialog
+        open={deleteProjectOpen}
+        onOpenChange={handleDeleteProjectOpenChange}
+        projectName={selectedProject ?? ''}
+        plan={deletePlan}
+        planError={deletePlanError}
+        report={deleteReport}
+        isPending={deleteProjectPending}
+        onConfirm={handleConfirmDeleteProject}
+        projectType={selected?.project_type}
+      />
     </div>
+    </ApprovalWizardProvider>
   );
 }

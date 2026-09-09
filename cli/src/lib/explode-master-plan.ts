@@ -1,6 +1,22 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { stringifyYaml, parseYaml } from './yaml.js';
+import { parseYaml } from './yaml.js';
+import {
+  phaseFilename,
+  taskFilename,
+  buildPhaseFrontmatter,
+  buildTaskFrontmatter,
+  renderDoc,
+  renderPhaseBody,
+  renderTaskBody,
+  toRelativeDocPath,
+  buildTaskIterationEntry,
+  buildPhaseIterationEntry,
+} from './plan-emitters.js';
+import type {
+  IterationEntry,
+  ForEachPhaseNodeState,
+} from './plan-emitters.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -36,6 +52,8 @@ export interface ParsedPhase {
   body: string;
   /** Tasks nested under this phase. */
   tasks: ParsedTask[];
+  /** File-absolute 1-based line number of the phase's "## P{NN}:" heading. */
+  startLine: number;
 }
 
 export interface ParsedMasterPlan {
@@ -148,28 +166,6 @@ function validateFrontmatterPhaseCreated(frontmatter: Record<string, unknown>): 
 }
 
 // ── Minimal types for state.json support ──────────────────────────────────────
-
-interface IterationEntry {
-  index: number;
-  status: string;
-  nodes: Record<string, unknown>;
-  corrective_tasks: unknown[];
-  doc_path?: string | null;
-  repos: { name: string; commit_hash: string | null }[];
-  complexity?: 'simple' | 'standard' | 'complex';
-}
-
-interface ForEachTaskNodeState {
-  kind: 'for_each_task';
-  status: string;
-  iterations: IterationEntry[];
-}
-
-interface ForEachPhaseNodeState {
-  kind: 'for_each_phase';
-  status: string;
-  iterations: IterationEntry[];
-}
 
 interface PipelineState {
   project?: { project_type?: string; [k: string]: unknown };
@@ -344,6 +340,7 @@ export function parseMasterPlan(masterPlanPath: string): ParsedMasterPlan {
         title: (title ?? '').trim(),
         body: '',
         tasks: [],
+        startLine: lineNumber,
       };
       continue;
     }
@@ -499,6 +496,34 @@ export function parseMasterPlan(masterPlanPath: string): ParsedMasterPlan {
   };
 }
 
+/** Throws when any phase's tasks do not run T01, T02, … with no gaps. */
+export function validateTaskNumbering(phases: ParsedPhase[]): void {
+  for (const phase of phases) {
+    for (let j = 0; j < phase.tasks.length; j++) {
+      const task = phase.tasks[j]!;
+      const expectedIndex = j + 1;
+      if (task.taskIndex === expectedIndex) continue;
+
+      const expectedId = `${phase.id}-T${String(expectedIndex).padStart(2, '0')}`;
+      if (j === 0) {
+        throw new ParseError({
+          line: task.startLine,
+          expected: `${phase.id}'s first task to be numbered ${expectedId}`,
+          found: task.id,
+          message: `Phase ${phase.id}'s first task must be numbered ${expectedId}, found ${task.id}`,
+        });
+      }
+      const prevTask = phase.tasks[j - 1]!;
+      throw new ParseError({
+        line: task.startLine,
+        expected: `${phase.id}'s tasks to run consecutively — ${expectedId} after ${prevTask.id}`,
+        found: task.id,
+        message: `Phase ${phase.id}'s tasks must run consecutively; expected ${expectedId} after ${prevTask.id}, found ${task.id}`,
+      });
+    }
+  }
+}
+
 function extractComplexity(body: string): 'simple' | 'standard' | 'complex' {
   const match = body.match(/\*\*Complexity:\*\*[ \t]*([^\n]*)/);
   const value = (match?.[1] ?? '').trim().toLowerCase();
@@ -509,14 +534,37 @@ function extractComplexity(body: string): 'simple' | 'standard' | 'complex' {
 }
 
 function extractLeadSentence(body: string): string {
-  for (const raw of body.split(/\r?\n/)) {
+  const lines = body.split(/\r?\n/);
+  const isNonContent = (raw: string, line: string): boolean => {
+    if (line.length === 0) return true;
+    if (/^\*\*[^*]+:\*\*/.test(line)) return true;  // a "**Field:**" line
+    if (/^\*\*[^*]+\*\*$/.test(line)) return true;  // a colon-less bold section label, e.g. "**Files**"
+    if (/^\s*[-*]\s/.test(raw)) return true;         // a bullet
+    if (/^#/.test(line)) return true;                // a heading
+    if (/^```/.test(line)) return true;              // a fenced-code fence
+    return false;
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i]!;
     const line = raw.trim();
-    if (line.length === 0) continue;
-    if (/^\*\*[^*]+:\*\*/.test(line)) continue; // a "**Field:**" line
-    if (/^\s*[-*]\s/.test(raw)) continue;       // a bullet
-    if (/^#/.test(line)) continue;              // a heading
-    if (/^```/.test(line)) continue;            // a fenced-code fence
-    return line;
+    if (isNonContent(raw, line)) continue;
+
+    // Found the start of the purpose paragraph. Keep joining subsequent
+    // physical lines into it until a blank line or a section-label/bullet/
+    // heading/fence line, so a hard-wrapped paragraph isn't truncated.
+    const parts = [line];
+    let j = i + 1;
+    while (j < lines.length) {
+      const nextRaw = lines[j]!;
+      const nextLine = nextRaw.trim();
+      if (isNonContent(nextRaw, nextLine)) break;
+      parts.push(nextLine);
+      j++;
+    }
+    const paragraph = parts.join(' ');
+    const terminator = paragraph.match(/[.!?](?=\s|$)/);
+    return terminator ? paragraph.slice(0, terminator.index! + 1) : paragraph;
   }
   return '';
 }
@@ -532,122 +580,6 @@ function extractTargetRepos(body: string): string[] {
     }
   }
   return repos;
-}
-
-// ── Filename helpers ──────────────────────────────────────────────────────────
-
-/**
- * Slugify a phase/task title into the filename suffix. Mirrors the existing
- * hand-authored convention (SCREAMING-KEBAB-CASE).
- */
-function titleToFilenameSlug(title: string): string {
-  const cleaned = title
-    .trim()
-    .toUpperCase()
-    .replace(/[^A-Z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-  return cleaned || 'UNTITLED';
-}
-
-function phaseFilename(projectName: string, phase: ParsedPhase): string {
-  const idx = String(phase.index).padStart(2, '0');
-  return `${projectName}-PHASE-${idx}-${titleToFilenameSlug(phase.title)}.md`;
-}
-
-function taskFilename(projectName: string, task: ParsedTask): string {
-  const pidx = String(task.phaseIndex).padStart(2, '0');
-  const tidx = String(task.taskIndex).padStart(2, '0');
-  return `${projectName}-TASK-P${pidx}-T${tidx}-${titleToFilenameSlug(task.title)}.md`;
-}
-
-// ── Emission ──────────────────────────────────────────────────────────────────
-
-function unionTaskRepos(phase: ParsedPhase): string[] {
-  const repos: string[] = [];
-  const seen = new Set<string>();
-  for (const task of phase.tasks) {
-    for (const r of task.targetRepos) {
-      if (!seen.has(r)) { seen.add(r); repos.push(r); }
-    }
-  }
-  return repos;
-}
-
-function buildPhaseFrontmatter(opts: {
-  projectName: string;
-  phase: ParsedPhase;
-  createdIso: string;
-}): Record<string, unknown> {
-  return {
-    project: opts.projectName,
-    phase: opts.phase.index,
-    title: opts.phase.title,
-    status: 'active',
-    tasks: opts.phase.tasks.map(t => ({ id: `T${String(t.taskIndex).padStart(2, '0')}`, title: t.title })),
-    repos: unionTaskRepos(opts.phase),
-    created: opts.createdIso,
-    type: 'phase_plan',
-  };
-}
-
-function buildTaskFrontmatter(opts: {
-  projectName: string;
-  task: ParsedTask;
-  createdIso: string;
-}): Record<string, unknown> {
-  return {
-    project: opts.projectName,
-    phase: opts.task.phaseIndex,
-    task: opts.task.taskIndex,
-    title: opts.task.title,
-    status: 'pending',
-    complexity: opts.task.complexity,
-    repos: opts.task.targetRepos,
-    created: opts.createdIso,
-    type: 'task_handoff',
-  };
-}
-
-function renderDoc(frontmatter: Record<string, unknown>, body: string): string {
-  const frontmatterYaml = stringifyYaml(frontmatter).trimEnd();
-  return `---\n${frontmatterYaml}\n---\n\n${body.trimEnd()}\n`;
-}
-
-function renderPhaseBody(phase: ParsedPhase): string {
-  const header = `# Phase ${phase.index}: ${phase.title}`;
-  const sections: string[] = [header, ''];
-  if (phase.body.trim().length > 0) {
-    sections.push(phase.body.trim(), '');
-  }
-  sections.push('## Tasks', '');
-  if (phase.tasks.length === 0) {
-    sections.push('_(no tasks emitted by explosion script — phase has no task headings in the Master Plan)_');
-  } else {
-    sections.push('| Task | Repo | Complexity | Purpose |', '|---|---|---|---|');
-    for (const t of phase.tasks) {
-      const tidx = `T${String(t.taskIndex).padStart(2, '0')}`;
-      const repoCell = t.targetRepos.join(', ');
-      const purposeCell = t.purpose.trim().length > 0 ? t.purpose : '—';
-      sections.push(`| ${tidx} | ${repoCell} | ${t.complexity} | ${purposeCell} |`);
-    }
-    const order = phase.tasks.map(t => `T${String(t.taskIndex).padStart(2, '0')}`).join(' → ');
-    sections.push('', `**Order:** ${order}`);
-  }
-  return sections.join('\n');
-}
-
-function renderTaskBody(task: ParsedTask): string {
-  const pidx = String(task.phaseIndex).padStart(2, '0');
-  const tidx = String(task.taskIndex).padStart(2, '0');
-  const header = `# P${pidx}-T${tidx}: ${task.title}`;
-  const sections: string[] = [header, ''];
-  if (task.body.trim().length > 0) {
-    sections.push(task.body.trim());
-  } else {
-    sections.push('_(empty body in Master Plan)_');
-  }
-  sections.push('', '## Execution Notes', '', '_(none yet — appended at runtime)_');
-  return sections.join('\n');
 }
 
 // ── Clearing helper ───────────────────────────────────────────────────────────
@@ -682,6 +614,7 @@ export function explodeMasterPlan(opts: ExplodeOptions): ExplodeResult {
 
   // 1. Parse first — NO filesystem side effects yet. Propagate ParseError up.
   const parsed = parseMasterPlan(masterPlanPath);
+  validateTaskNumbering(parsed.phases);
 
   const phasesDir = path.join(projectDir, 'phases');
   const tasksDir = path.join(projectDir, 'tasks');
@@ -748,14 +681,6 @@ export function explodeMasterPlan(opts: ExplodeOptions): ExplodeResult {
   };
 }
 
-function toRelativeDocPath(absPath: string, projectDir: string): string {
-  const rel = path.relative(projectDir, absPath);
-  // Normalize to forward slashes — matches the legacy state.json convention
-  // (phases/NAME-PHASE-NN-TITLE.md, tasks/NAME-TASK-PNN-TMM-TITLE.md) and
-  // keeps state.json portable across platforms + check-in/check-out.
-  return rel.split(path.sep).join('/');
-}
-
 function seedIterations(
   state: PipelineState,
   parsed: ParsedMasterPlan,
@@ -796,30 +721,15 @@ function seedIterations(
       const taskFileAbs = emittedTaskFiles[taskFilePointer++] ?? null;
       const taskFile = taskFileAbs !== null ? toRelativeDocPath(taskFileAbs, projectDir) : null;
       const task = phase.tasks[j]!;
-      taskLoopIterations.push({
-        index: j,
-        status: 'not_started',
-        nodes: {},
-        corrective_tasks: [],
-        doc_path: taskFile,
-        repos: task.targetRepos.map(name => ({ name, commit_hash: null })),
-        complexity: task.complexity,
-      });
+      taskLoopIterations.push(buildTaskIterationEntry({ index: j, task, docPath: taskFile }));
     }
-    const taskLoop: ForEachTaskNodeState = {
-      kind: 'for_each_task',
-      status: 'not_started',
-      iterations: taskLoopIterations,
-    };
 
-    const phaseEntry: IterationEntry = {
+    const phaseEntry = buildPhaseIterationEntry({
       index: i,
-      status: 'not_started',
-      nodes: { task_loop: taskLoop },
-      corrective_tasks: [],
-      doc_path: phaseFile,
-      repos: unionTaskRepos(phase).map(name => ({ name, commit_hash: null })),
-    };
+      phase,
+      docPath: phaseFile,
+      taskIterations: taskLoopIterations,
+    });
     phaseLoop.iterations.push(phaseEntry);
   }
 }

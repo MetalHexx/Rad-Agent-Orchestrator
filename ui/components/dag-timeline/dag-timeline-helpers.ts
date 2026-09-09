@@ -1,6 +1,7 @@
 import type { StepNodeState, GateNodeState, ConditionalNodeState, ParallelNodeState, NodesRecord, NodeState, ForEachPhaseNodeState, GateEvent, NodeStatus, IterationEntry, CorrectiveTaskEntry } from '@/types/state';
 import { STATUS_MAP } from './node-status-map';
 import { PENDING_REVIEW_LABEL, PENDING_REVIEW_CSS_VAR } from '@/components/badges/pending-review';
+import { LAUNCH_BUTTONS_ENABLED } from '@/lib/launch-buttons-flag';
 
 export type CompatibleNodeState = StepNodeState | GateNodeState | ConditionalNodeState | ParallelNodeState;
 
@@ -201,7 +202,10 @@ export type RowButtonDescriptor =
  *
  * Decision table (FR-3 mutex):
  *   plan_approval_gate, gate_active=true                            → approve (FR-1)
- *   plan_approval_gate, status=completed, phase_loop=not_started    → execute (FR-2)
+ *   plan_approval_gate, status=completed, phase_loop=not_started    → execute (FR-2),
+ *                                                                      gated off entirely
+ *                                                                      while LAUNCH_BUTTONS_ENABLED
+ *                                                                      is false (AIOPS-266 pivot)
  *   final_approval_gate, gate_active=true                           → approve (FR-1)
  *   anything else                                                   → none
  */
@@ -220,9 +224,11 @@ export function getRowButtonDescriptor(
 
   // FR-2: Execute Plan only on the plan-approval row, only when the gate
   // has been approved (status completed) AND the phase_loop has not yet
-  // begun. The final-approval row never yields 'execute'.
+  // begun. The final-approval row never yields 'execute'. Suppressed
+  // entirely while LAUNCH_BUTTONS_ENABLED is false (AIOPS-266 pivot).
   const leaf = extractLeaf(nodeId);
   if (
+    LAUNCH_BUTTONS_ENABLED &&
     leaf === 'plan_approval_gate' &&
     node.status === 'completed' &&
     phaseLoopStatus === 'not_started'

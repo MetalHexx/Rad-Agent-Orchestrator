@@ -16,21 +16,24 @@ implementation plan (granular, file-level steps belong to the Master Plan).
    from the project holds in multi-repo and detached/worktree layouts where the
    current directory is not the project.
 
-3. **Discover repo-tied skills.** For each repo in the set, list its skill catalog —
-   pass the repo's absolute path as `--repo-root`:
+3. **Discover repo-tied skills.** List the skills available across the repos in scope
+   using their registered names:
 
    ```
-   node "${PLUGIN_ROOT}/skills/rad-orchestration/scripts/radorch.mjs" skill-list --repo-root <absolute-repo-path>
+   node "${PLUGIN_ROOT}/skills/rad-orchestration/scripts/radorch.mjs" skill list --repo rad-orc-source
    ```
 
    **Skip the repo you are standing in** — the harness already surfaces its skills.
-   If you stand above all repos (e.g. a worktrees parent, no current repo), run it
-   for every one. Read a listed skill only when its description matches the work;
+   If you need skills from multiple repos, list each by name, separated by commas:
+   `--repo repo-a,repo-b`. Read a listed skill only when its description matches the work;
    skip the rest to avoid token waste.
    - **Capture them in the doc.** Record the surfaced repo skills (each with its
      repo tag) and any connected MCP servers worth reaching for in `## Required
      Skills and MCPs`, so a later Master Plan session — often a fresh context —
-     starts with the tooling in hand. Omit the section when a project needs none.
+     starts with the tooling in hand. A skill's absolute path is for opening the file
+     during authoring; it is never written into the document — planning documents are
+     read from other worktrees and other machines where that path does not resolve.
+     Omit the section when a project needs none.
 
 4. **Read repo instruction files** In each area you will touch,
    read `CLAUDE.md`, `AGENTS.md`, and equivalents — including module-level files —

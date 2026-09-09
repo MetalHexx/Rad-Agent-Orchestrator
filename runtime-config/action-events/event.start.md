@@ -6,4 +6,4 @@ description: Cold-start signal that loads state and resolves the next action wit
 signal_payload: {}
 ---
 
-Signal `start` on the first call for a new project, when continuing an existing project, and on recovery after context compaction or agent restart. The pipeline loads `state.json`, skips mutation, and resolves the next action from the current state — so this event is always safe to send.
+Fires on the first call for a new project, when continuing an existing project, and on recovery after context compaction or agent restart. The pipeline loads `state.json`, skips mutation, and resolves the next action from the current state — so this event is always safe to send.

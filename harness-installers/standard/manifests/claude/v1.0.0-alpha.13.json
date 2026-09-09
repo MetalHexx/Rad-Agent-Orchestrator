@@ -83,6 +83,10 @@
       "destinationPath": "${RAD_HOME}/action-events/event.final_approved.md"
     },
     {
+      "bundlePath": "action-events/event.final_corrective_requested.md",
+      "destinationPath": "${RAD_HOME}/action-events/event.final_corrective_requested.md"
+    },
+    {
       "bundlePath": "action-events/event.final_rejected.md",
       "destinationPath": "${RAD_HOME}/action-events/event.final_rejected.md"
     },
@@ -163,12 +167,208 @@
       "destinationPath": "${HARNESS_ROOT}/agents/reviewer.md"
     },
     {
+      "bundlePath": "communication-styles/caveman.md",
+      "destinationPath": "${RAD_HOME}/communication-styles/caveman.md"
+    },
+    {
+      "bundlePath": "communication-styles/direct.md",
+      "destinationPath": "${RAD_HOME}/communication-styles/direct.md"
+    },
+    {
+      "bundlePath": "communication-styles/high-level.md",
+      "destinationPath": "${RAD_HOME}/communication-styles/high-level.md"
+    },
+    {
+      "bundlePath": "communication-styles/socratic.md",
+      "destinationPath": "${RAD_HOME}/communication-styles/socratic.md"
+    },
+    {
+      "bundlePath": "docs/README.md",
+      "destinationPath": "${RAD_HOME}/docs/README.md"
+    },
+    {
+      "bundlePath": "docs/assets/amendments-ui-1.png",
+      "destinationPath": "${RAD_HOME}/docs/assets/amendments-ui-1.png"
+    },
+    {
+      "bundlePath": "docs/assets/config-gear-panel.png",
+      "destinationPath": "${RAD_HOME}/docs/assets/config-gear-panel.png"
+    },
+    {
+      "bundlePath": "docs/assets/dashboard-screenshot.png",
+      "destinationPath": "${RAD_HOME}/docs/assets/dashboard-screenshot.png"
+    },
+    {
+      "bundlePath": "docs/assets/docs-viewer.png",
+      "destinationPath": "${RAD_HOME}/docs/assets/docs-viewer.png"
+    },
+    {
+      "bundlePath": "docs/assets/observability-ui-1.png",
+      "destinationPath": "${RAD_HOME}/docs/assets/observability-ui-1.png"
+    },
+    {
+      "bundlePath": "docs/assets/observability-ui-2.png",
+      "destinationPath": "${RAD_HOME}/docs/assets/observability-ui-2.png"
+    },
+    {
+      "bundlePath": "docs/assets/observability-ui-3.png",
+      "destinationPath": "${RAD_HOME}/docs/assets/observability-ui-3.png"
+    },
+    {
+      "bundlePath": "docs/assets/observability-ui-4.png",
+      "destinationPath": "${RAD_HOME}/docs/assets/observability-ui-4.png"
+    },
+    {
+      "bundlePath": "docs/assets/observability-ui-5.png",
+      "destinationPath": "${RAD_HOME}/docs/assets/observability-ui-5.png"
+    },
+    {
+      "bundlePath": "docs/assets/observability-ui-6.png",
+      "destinationPath": "${RAD_HOME}/docs/assets/observability-ui-6.png"
+    },
+    {
+      "bundlePath": "docs/assets/rad-orc-ascii.png",
+      "destinationPath": "${RAD_HOME}/docs/assets/rad-orc-ascii.png"
+    },
+    {
+      "bundlePath": "docs/assets/rad-orc.png",
+      "destinationPath": "${RAD_HOME}/docs/assets/rad-orc.png"
+    },
+    {
+      "bundlePath": "docs/assets/rad-project-example-1.png",
+      "destinationPath": "${RAD_HOME}/docs/assets/rad-project-example-1.png"
+    },
+    {
+      "bundlePath": "docs/assets/repo-registry-ui.png",
+      "destinationPath": "${RAD_HOME}/docs/assets/repo-registry-ui.png"
+    },
+    {
+      "bundlePath": "docs/assets/visual-docs-ui-1.png",
+      "destinationPath": "${RAD_HOME}/docs/assets/visual-docs-ui-1.png"
+    },
+    {
+      "bundlePath": "docs/assets/visual-docs-ui-2.png",
+      "destinationPath": "${RAD_HOME}/docs/assets/visual-docs-ui-2.png"
+    },
+    {
+      "bundlePath": "docs/assets/visual-docs-ui-3.png",
+      "destinationPath": "${RAD_HOME}/docs/assets/visual-docs-ui-3.png"
+    },
+    {
+      "bundlePath": "docs/assets/visual-docs-ui-4.png",
+      "destinationPath": "${RAD_HOME}/docs/assets/visual-docs-ui-4.png"
+    },
+    {
+      "bundlePath": "docs/assets/visual-docs-ui-5.png",
+      "destinationPath": "${RAD_HOME}/docs/assets/visual-docs-ui-5.png"
+    },
+    {
+      "bundlePath": "docs/assets/visual-docs-ui-6.png",
+      "destinationPath": "${RAD_HOME}/docs/assets/visual-docs-ui-6.png"
+    },
+    {
+      "bundlePath": "docs/docs/ambient-awareness.md",
+      "destinationPath": "${RAD_HOME}/docs/docs/ambient-awareness.md"
+    },
+    {
+      "bundlePath": "docs/docs/amendments.md",
+      "destinationPath": "${RAD_HOME}/docs/docs/amendments.md"
+    },
+    {
+      "bundlePath": "docs/docs/communication-styles.md",
+      "destinationPath": "${RAD_HOME}/docs/docs/communication-styles.md"
+    },
+    {
+      "bundlePath": "docs/docs/configuration.md",
+      "destinationPath": "${RAD_HOME}/docs/docs/configuration.md"
+    },
+    {
+      "bundlePath": "docs/docs/custom-instructions.md",
+      "destinationPath": "${RAD_HOME}/docs/docs/custom-instructions.md"
+    },
+    {
+      "bundlePath": "docs/docs/dashboard.md",
+      "destinationPath": "${RAD_HOME}/docs/docs/dashboard.md"
+    },
+    {
+      "bundlePath": "docs/docs/docs-viewer.md",
+      "destinationPath": "${RAD_HOME}/docs/docs/docs-viewer.md"
+    },
+    {
+      "bundlePath": "docs/docs/document-types.md",
+      "destinationPath": "${RAD_HOME}/docs/docs/document-types.md"
+    },
+    {
+      "bundlePath": "docs/docs/feedback.md",
+      "destinationPath": "${RAD_HOME}/docs/docs/feedback.md"
+    },
+    {
+      "bundlePath": "docs/docs/getting-started.md",
+      "destinationPath": "${RAD_HOME}/docs/docs/getting-started.md"
+    },
+    {
+      "bundlePath": "docs/docs/install.md",
+      "destinationPath": "${RAD_HOME}/docs/docs/install.md"
+    },
+    {
+      "bundlePath": "docs/docs/observability.md",
+      "destinationPath": "${RAD_HOME}/docs/docs/observability.md"
+    },
+    {
+      "bundlePath": "docs/docs/pipeline.md",
+      "destinationPath": "${RAD_HOME}/docs/docs/pipeline.md"
+    },
+    {
+      "bundlePath": "docs/docs/planning.md",
+      "destinationPath": "${RAD_HOME}/docs/docs/planning.md"
+    },
+    {
+      "bundlePath": "docs/docs/projects.md",
+      "destinationPath": "${RAD_HOME}/docs/docs/projects.md"
+    },
+    {
+      "bundlePath": "docs/docs/repo-registry.md",
+      "destinationPath": "${RAD_HOME}/docs/docs/repo-registry.md"
+    },
+    {
+      "bundlePath": "docs/docs/sessions.md",
+      "destinationPath": "${RAD_HOME}/docs/docs/sessions.md"
+    },
+    {
+      "bundlePath": "docs/docs/skills.md",
+      "destinationPath": "${RAD_HOME}/docs/docs/skills.md"
+    },
+    {
+      "bundlePath": "docs/docs/source-control.md",
+      "destinationPath": "${RAD_HOME}/docs/docs/source-control.md"
+    },
+    {
+      "bundlePath": "docs/docs/subagents.md",
+      "destinationPath": "${RAD_HOME}/docs/docs/subagents.md"
+    },
+    {
+      "bundlePath": "docs/docs/visual-docs.md",
+      "destinationPath": "${RAD_HOME}/docs/docs/visual-docs.md"
+    },
+    {
       "bundlePath": "hooks/session-preamble.mjs",
       "destinationPath": "${HARNESS_ROOT}/hooks/session-preamble.mjs"
     },
     {
       "bundlePath": "hooks/telemetry-capture.mjs",
       "destinationPath": "${HARNESS_ROOT}/hooks/telemetry-capture.mjs"
+    },
+    {
+      "bundlePath": "skills/rad-amend/SKILL.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-amend/SKILL.md"
+    },
+    {
+      "bundlePath": "skills/rad-amend/references/audit.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-amend/references/audit.md"
+    },
+    {
+      "bundlePath": "skills/rad-amend/references/guidance.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-amend/references/guidance.md"
     },
     {
       "bundlePath": "skills/rad-brainstorm/SKILL.md",
@@ -203,8 +403,28 @@
       "destinationPath": "${HARNESS_ROOT}/skills/rad-code-review/task-review.md"
     },
     {
+      "bundlePath": "skills/rad-communication/SKILL.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-communication/SKILL.md"
+    },
+    {
+      "bundlePath": "skills/rad-communication/references/STYLE-TEMPLATE.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-communication/references/STYLE-TEMPLATE.md"
+    },
+    {
+      "bundlePath": "skills/rad-communication/references/dimensions.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-communication/references/dimensions.md"
+    },
+    {
       "bundlePath": "skills/rad-create-plans/SKILL.md",
       "destinationPath": "${HARNESS_ROOT}/skills/rad-create-plans/SKILL.md"
+    },
+    {
+      "bundlePath": "skills/rad-create-plans/references/amendment/workflow.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-create-plans/references/amendment/workflow.md"
+    },
+    {
+      "bundlePath": "skills/rad-create-plans/references/authoring-standard.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-create-plans/references/authoring-standard.md"
     },
     {
       "bundlePath": "skills/rad-create-plans/references/master-plan/templates/MASTER-PLAN.md",
@@ -229,6 +449,26 @@
     {
       "bundlePath": "skills/rad-execute/SKILL.md",
       "destinationPath": "${HARNESS_ROOT}/skills/rad-execute/SKILL.md"
+    },
+    {
+      "bundlePath": "skills/rad-help/SKILL.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-help/SKILL.md"
+    },
+    {
+      "bundlePath": "skills/rad-help/references/skill-lookup.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-help/references/skill-lookup.md"
+    },
+    {
+      "bundlePath": "skills/rad-help/references/spotlight.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-help/references/spotlight.md"
+    },
+    {
+      "bundlePath": "skills/rad-help/references/tutorial.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-help/references/tutorial.md"
+    },
+    {
+      "bundlePath": "skills/rad-init/SKILL.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-init/SKILL.md"
     },
     {
       "bundlePath": "skills/rad-log-error/SKILL.md",
@@ -271,6 +511,46 @@
       "destinationPath": "${HARNESS_ROOT}/skills/rad-plan/references/audit.md"
     },
     {
+      "bundlePath": "skills/rad-portfolio/SKILL.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-portfolio/SKILL.md"
+    },
+    {
+      "bundlePath": "skills/rad-portfolio/references/bootstrap.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-portfolio/references/bootstrap.md"
+    },
+    {
+      "bundlePath": "skills/rad-portfolio/references/collaboration.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-portfolio/references/collaboration.md"
+    },
+    {
+      "bundlePath": "skills/rad-portfolio/references/debrief.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-portfolio/references/debrief.md"
+    },
+    {
+      "bundlePath": "skills/rad-portfolio/references/scribing.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-portfolio/references/scribing.md"
+    },
+    {
+      "bundlePath": "skills/rad-portfolio/templates/DECISIONS.template.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-portfolio/templates/DECISIONS.template.md"
+    },
+    {
+      "bundlePath": "skills/rad-portfolio/templates/GROUND-TRUTH.template.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-portfolio/templates/GROUND-TRUTH.template.md"
+    },
+    {
+      "bundlePath": "skills/rad-portfolio/templates/ITERATIONS.template.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-portfolio/templates/ITERATIONS.template.md"
+    },
+    {
+      "bundlePath": "skills/rad-portfolio/templates/ROOT.template.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-portfolio/templates/ROOT.template.md"
+    },
+    {
+      "bundlePath": "skills/rad-portfolio/templates/TECHNICAL.template.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-portfolio/templates/TECHNICAL.template.md"
+    },
+    {
       "bundlePath": "skills/rad-project/SKILL.md",
       "destinationPath": "${HARNESS_ROOT}/skills/rad-project/SKILL.md"
     },
@@ -309,6 +589,10 @@
     {
       "bundlePath": "skills/rad-repo/references/multi-repo-projects.md",
       "destinationPath": "${HARNESS_ROOT}/skills/rad-repo/references/multi-repo-projects.md"
+    },
+    {
+      "bundlePath": "skills/rad-session/SKILL.md",
+      "destinationPath": "${HARNESS_ROOT}/skills/rad-session/SKILL.md"
     },
     {
       "bundlePath": "skills/rad-source-control/SKILL.md",

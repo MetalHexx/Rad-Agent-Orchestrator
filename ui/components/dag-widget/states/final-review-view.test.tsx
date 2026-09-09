@@ -150,6 +150,39 @@ test('Final Review renders no PR link when pr_url is null', () => {
   assert.ok(!html.includes('<a '), 'no PR anchor rendered');
 });
 
+test('Final Review renders one link per repo carrying a PR, disambiguated by repo name when there is more than one', () => {
+  const state = makeState('approved', 'reviews/FINAL.md', null);
+  state.pipeline.source_control = {
+    worktree_path: '/tmp/demo',
+    auto_commit: 'never',
+    auto_pr: 'never',
+    repos: [
+      { name: 'api', branch: 'b', base_branch: 'main', remote_url: null, compare_url: null, pr_url: null },
+      { name: 'ui', branch: 'b', base_branch: 'main', remote_url: null, compare_url: null, pr_url: 'https://github.com/o/ui/pull/5' },
+    ],
+  };
+  const { view, ctx } = resolveStateView(state, undefined, {
+    onDocClick: () => {},
+    compareUrlByRepo: {},
+    projectName: 'demo',
+  });
+  assert.deepEqual(ctx.prLinks, [{ repoName: 'ui', url: 'https://github.com/o/ui/pull/5' }]);
+  const html = renderToStaticMarkup(createElement('div', null, view.render(ctx)));
+  assert.match(html, /href="https:\/\/github\.com\/o\/ui\/pull\/5"/, 'the second repo\'s PR still surfaces even though the first repo has none');
+
+  state.pipeline.source_control.repos[0].pr_url = 'https://github.com/o/api/pull/4';
+  const { view: view2, ctx: ctx2 } = resolveStateView(state, undefined, {
+    onDocClick: () => {},
+    compareUrlByRepo: {},
+    projectName: 'demo',
+  });
+  const html2 = renderToStaticMarkup(createElement('div', null, view2.render(ctx2)));
+  assert.match(html2, /href="https:\/\/github\.com\/o\/api\/pull\/4"/);
+  assert.match(html2, /href="https:\/\/github\.com\/o\/ui\/pull\/5"/);
+  assert.ok(html2.includes('api PR #4'), 'repo name disambiguates when more than one PR link renders');
+  assert.ok(html2.includes('ui PR #5'), 'repo name disambiguates when more than one PR link renders');
+});
+
 // ─── in-progress vs completed presentation — Done-when: the in-progress card is honest ──
 
 test('Final Review with no verdict and no report yet renders the "Final Review" sublabel and no Report button', () => {
@@ -195,7 +228,7 @@ test('Final Review reads the report + verdict from the top-level final_review no
     taskProgress: null,
     wholeGraphProgress: null,
     repos: [],
-    prUrl: null,
+    prLinks: [],
     onDocClick: () => {},
     compareUrlByRepo: {},
     projectName: 'demo',

@@ -1,8 +1,13 @@
-import type { GraphDTO, Project, WorktreeRef } from '@rad-orchestration/work-graph';
+import type { GraphDTO, Project, ProjectState, WorktreeRef } from '@rad-orchestration/work-graph';
 
 export interface LeanWorktree { repo: string; path: string; branch: string | null; exists: boolean; }
 export interface LeanProject {
-  name: string; status: string; tier: string | null; sourceControlInitialized: boolean;
+  name: string; state: ProjectState; stateLabel: string; status: string;
+  /** Diagnostic pipeline-stage detail, subordinate to `state`/`stateLabel` — never the
+   *  canonical answer to "what state is this project in". Carried through for tooling
+   *  that still keys off the tier; prefer `state`/`stateLabel`. */
+  tier: string | null;
+  sourceControlInitialized: boolean;
   dir: string; projectType?: 'side-project'; group?: string;
   worktrees: LeanWorktree[]; docs: Project['docs'];
   related: { follows?: string; spawned?: string[]; [k: string]: string | string[] | undefined };
@@ -21,7 +26,7 @@ export function toLeanProject(p: Project, graph: GraphDTO): LeanProject {
     }
   }
   const lean: LeanProject = {
-    name: p.name, status: p.status, tier: p.tier, sourceControlInitialized: p.sourceControlInitialized,
+    name: p.name, state: p.state, stateLabel: p.stateLabel, status: p.status, tier: p.tier, sourceControlInitialized: p.sourceControlInitialized,
     dir: p.dir, docs: p.docs,
     worktrees: p.worktrees.map((w: WorktreeRef) => ({ repo: w.repo, path: w.path, branch: w.branch, exists: w.exists })),
     related,
@@ -32,11 +37,11 @@ export function toLeanProject(p: Project, graph: GraphDTO): LeanProject {
 }
 
 export function renderProjectTable(projects: Project[]): string {
-  const rows = projects.map((p) => `${p.name}\t${p.status}\t${p.tier ?? '-'}`);
-  return ['NAME\tSTATUS\tTIER', ...rows].join('\n');
+  const rows = projects.map((p) => `${p.name}\t${p.stateLabel}\t${p.status}\t${p.tier ?? '-'}`);
+  return ['NAME\tSTATE\tstatus\ttier', ...rows].join('\n');
 }
 export function renderProjectCard(p: LeanProject): string {
-  const lines = [`${p.name}  [${p.status}] tier=${p.tier ?? '-'}`, `dir: ${p.dir}`];
+  const lines = [`${p.name}  [${p.stateLabel}]  (status=${p.status} tier=${p.tier ?? '-'})`, `dir: ${p.dir}`];
   if (p.group) lines.push(`group: ${p.group}`);
   for (const w of p.worktrees) lines.push(`worktree ${w.repo}: ${w.path} (${w.branch ?? 'detached'}) exists=${w.exists}`);
   return lines.join('\n');

@@ -3,6 +3,7 @@
   "private": true,
   "workspaces": [
     "lib/repo-registry",
+    "lib/terminal-launch",
     "lib/work-graph",
     "lib/telemetry",
     "lib/graph-engine",

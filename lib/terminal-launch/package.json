@@ -1,0 +1,28 @@
+{
+  "name": "@rad-orchestration/terminal-launch",
+  "version": "1.0.0-alpha.14",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "description": "Platform-neutral terminal spawning: harness argument shapes and env sanitization shared by the CLI and the dashboard",
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^22.19.17",
+    "typescript": "^5.9.3",
+    "vitest": "^3.0.0"
+  }
+}

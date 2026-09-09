@@ -27,7 +27,9 @@ If `review_report_path` is in your context, this is a corrective cycle: **re-ope
 
 ## Report
 
-- **First review** → write to `{PROJECT-DIR}/reports/{NAME}-CODE-REVIEW-P{NN}-T{NN}-{TITLE}.md`.
+Every review report goes in `{PROJECT-DIR}/reports/`.
+
+- **First review** → write `{NAME}-CODE-REVIEW-P{NN}-T{NN}-{TITLE}.md` there.
 - **Re-review** → update the file handed to you as `review_report_path`, in place.
 
-Use the report shape in SKILL.md. Frontmatter adds `phase: {NN}` and `task: {NN}`; the title is `Phase {NN}, Task {NN} — {TASK-TITLE}`.
+Use the report shape in SKILL.md. Frontmatter adds `phase` and `task`, each a 1-based integer (`phase: 1`, `task: 2` — not `P01`, and not zero-padded); the title is `Phase {PHASE-NUMBER}, Task {TASK-NUMBER} — {TASK-TITLE}`.

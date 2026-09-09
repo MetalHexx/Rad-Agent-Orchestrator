@@ -8,5 +8,7 @@ tools:
   - edit
   - execute
   - todo
+  - playwright/*
+  - chrome-devtools/*
 skills:
   - rad-code-review

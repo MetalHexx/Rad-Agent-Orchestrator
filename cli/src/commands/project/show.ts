@@ -9,7 +9,7 @@ import { toLeanProject, renderProjectCard } from './lean.js';
 interface Args { id?: string }
 export const projectShowCommand = defineCommand({
   name: 'project-show',
-  description: 'Show one project: status, tier, dir, worktrees, docs, and relationships',
+  description: 'Show one project: state (the canonical answer), status, tier (diagnostic pipeline-stage detail), dir, worktrees, docs, and relationships',
   args: { id: { description: 'Project id (folder name) to show', required: true } },
   flags: {},
   handler: async ({ args, ctx }: { args: Args; flags: Record<string, never>; ctx: CommandContext }) => {

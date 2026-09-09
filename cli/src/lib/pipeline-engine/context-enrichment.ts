@@ -11,33 +11,74 @@ import type {
   StepNodeState,
 } from './types.js';
 
+type CommitResolution =
+  | { status: 'resolved'; position: number }
+  | { status: 'ambiguous' }
+  | { status: 'not_found' };
+
 /**
- * Validate that `commits[0]` is the chronologically earliest commit according
- * to the git-history ordinal map. Returns an error string when the invariant
- * is violated (FR-7), or null when everything is fine.
- *
- * @param commits - Traversal-ordered list of short SHAs (8-char prefix).
- * @param ordinal - Map from short SHA to 1-based chronological position
- *                  (lower = older) derived from `git rev-list --topo-order --reverse`.
- * @param repoName - Optional repo name to include in the violation message (FR-4).
+ * Resolve a stored commit hash (any width the repo's `commit_hash` field may
+ * carry, 7 to 40 characters) against an ordinal map keyed on full 40-character
+ * SHAs, by prefix relation rather than a fixed-width slice — a shorter stored
+ * hash and a longer one for the same commit must resolve identically. A
+ * prefix that matches more than one full SHA is `ambiguous` rather than
+ * silently resolved to whichever entry the map happened to iterate first —
+ * mirroring git's own refusal to resolve an ambiguous abbreviated object name.
  */
-export function validateBaseShaChronology(
+function resolveOrdinalPosition(ordinal: Map<string, number>, commit: string): CommitResolution {
+  const exact = ordinal.get(commit);
+  if (exact !== undefined) return { status: 'resolved', position: exact };
+
+  let match: number | undefined;
+  for (const [fullSha, position] of ordinal) {
+    if (fullSha.startsWith(commit)) {
+      if (match !== undefined) return { status: 'ambiguous' };
+      match = position;
+    }
+  }
+  return match !== undefined ? { status: 'resolved', position: match } : { status: 'not_found' };
+}
+
+/**
+ * Validate that every commit in a repo's accumulated commit range is
+ * reachable from that repo's `HEAD`, according to the git-history ordinal
+ * map. Returns an operator-facing rejection message naming the offending
+ * repo and commit when one cannot be located or is an ambiguous abbreviation,
+ * or null when every commit resolves to exactly one commit.
+ *
+ * @param commits - The repo's accumulated commit hashes, in any order and of
+ *                  any width; each is resolved against `ordinal` by prefix.
+ * @param ordinal - Full 40-character SHA to 1-based chronological position
+ *                  (lower = older), derived from
+ *                  `git rev-list --topo-order --reverse HEAD`.
+ * @param repoName - Optional repo name to include in the rejection message.
+ * @param repoPath - Optional worktree path to include in the rejection
+ *                  message, so an operator can tell a stale binding from
+ *                  rewritten history.
+ */
+export function validateCommitsReachableFromHead(
   commits: string[],
   ordinal: Map<string, number>,
   repoName?: string,
+  repoPath?: string,
 ): string | null {
-  if (commits.length === 0) return null;
-  const base = commits[0];
-  const baseOrd = ordinal.get(base);
-  if (baseOrd === undefined) return null; // unknown to git history — leave to other checks
-  for (const c of commits) {
-    const o = ordinal.get(c);
-    if (o !== undefined && o < baseOrd) {
-      const repoPrefix = repoName ? `repo '${repoName}': ` : '';
+  const repoPrefix = repoName ? `Repo '${repoName}': ` : '';
+  const pathSuffix = repoPath ? ` Path checked: '${repoPath}'.` : '';
+  for (const commit of commits) {
+    const resolution = resolveOrdinalPosition(ordinal, commit);
+    if (resolution.status === 'ambiguous') {
       return (
-        `${repoPrefix}project_base_sha chronology violation: selected base '${base}' (git position ${baseOrd}) ` +
-        `is not the earliest commit — '${c}' (git position ${o}) precedes it. ` +
-        `A poisoned commit_hash likely contaminated base derivation.`
+        `${repoPrefix}the recorded commit '${commit}' is an ambiguous abbreviation — it matches more than ` +
+        `one commit in this repository's history, so it cannot be resolved to a single commit.${pathSuffix} ` +
+        `Record the full 40-character SHA for this commit (or a longer, unambiguous prefix), then re-run.`
+      );
+    }
+    if (resolution.status === 'not_found') {
+      return (
+        `${repoPrefix}a recorded commit is not reachable from this repository's HEAD, so it cannot be ` +
+        `placed in the commit history. Commit: '${commit}'.${pathSuffix} Confirm the commit exists in this ` +
+        `repository's history (it may have been rewritten by a rebase or reset, or recorded against the wrong ` +
+        `repository), then re-run.`
       );
     }
   }
@@ -151,8 +192,8 @@ export interface ActiveFinalCorrective {
  * ends in a `not_started` | `in_progress` entry. Null when none is active.
  *
  * The window is the engine's view of the list: entries before
- * `corrective_budget_origin` are audit history a re-review must not see as
- * still active (see `final_rejected`, which advances the origin).
+ * `corrective_budget_origin` are audit history a fresh round must not see as
+ * still active (see `final_corrective_requested`, which advances the origin).
  */
 export function resolveActiveFinalCorrective(state: PipelineState): ActiveFinalCorrective | null {
   for (const [hostId, node] of Object.entries(state.graph.nodes)) {
@@ -197,8 +238,8 @@ const EMPTY_CONTEXT_ACTIONS = new Set([
 /**
  * Report-fields subset for a corrective-active spawn: the corrective's
  * window-relative `corrective_index` (1-based within the current budget
- * window — `entry.index - budgetOrigin`, so a `final_rejected` reopen doesn't
- * leak the raw ever-growing index into a fresh window), plus
+ * window — `entry.index - budgetOrigin`, so an operator change request doesn't
+ * leak the raw ever-growing index into the fresh window it opens), plus
  * `review_report_path` when the entry carries a non-empty one (omitted
  * otherwise). Spread into the coder/reviewer spawn context so a correction
  * sees the review report that requested it. `budgetOrigin` defaults to 0 —
@@ -282,6 +323,16 @@ function buildReposArray(
     }
     return entry;
   });
+}
+
+/**
+ * Repo names from `pipeline.source_control.repos[]`, in state order — the same
+ * list the per-repo mutations match reported rows against by name, so it is the
+ * only correct source for a repos-array skeleton. Name-only by design: unlike
+ * `buildReposArray` it does no worktree resolution.
+ */
+export function repoNamesFromState(state: PipelineState): string[] {
+  return (state.pipeline.source_control?.repos ?? []).map(r => r.name);
 }
 
 /**
@@ -620,14 +671,19 @@ export function enrichActionContext(input: EnrichmentInput): Record<string, unkn
     };
   }
 
-  // Iter 12 — spawn_final_reviewer enrichment. Derive per-repo diff SHAs from
-  // iteration commit hashes across the whole pipeline. Traversal order: phases
-  // in index order → tasks in index order → task-correctives in index order →
-  // then phase-correctives (per phase). Commits are accumulated per repo in a
-  // Map keyed by repo name. `project_base_sha` is the first commit for that
-  // repo; `project_head_sha` is the last. The pipeline invariant ensures phase
-  // correctives always land after all task commits within a phase. Both null
-  // when no commits exist (auto-commit=off). FR-3: per-repo grouping.
+  // spawn_final_reviewer enrichment. Derive per-repo diff SHAs from iteration
+  // commit hashes across the whole pipeline. Commits are accumulated per repo,
+  // in a Map keyed by repo name, by walking phases in index order → tasks in
+  // index order → task-correctives in index order → phase-correctives (per
+  // phase), then step-hosted correctives last. That walk order is a traversal
+  // convenience only, not a chronology: an amendment can reopen `phase_loop`
+  // and add new phase/task commits after a step-hosted corrective has already
+  // completed, so the corrective's commit — appended last by walk order — can
+  // be chronologically *older* than commits the walk places before it.
+  // `project_base_sha` and `project_head_sha` are therefore read off the
+  // accumulated list only after it is reordered by the repo's real git
+  // history, not off the walk order's first/last positions. Both null when no
+  // commits exist (auto-commit=off).
   if (action === 'spawn_final_reviewer') {
     const phaseLoop = state.graph.nodes['phase_loop'] as ForEachPhaseNodeState | undefined;
     const commitsByRepo = new Map<string, string[]>();
@@ -668,9 +724,12 @@ export function enrichActionContext(input: EnrichmentInput): Record<string, unkn
     }
 
     // Step-hosted corrective commits (e.g. a final corrective on `final_review`)
-    // are appended last: a final corrective is chronologically after every phase
-    // and task in the run. Accumulate the whole array, not the spent window —
-    // a re-review after an approval-gate rejection must still see the corrective
+    // are appended after the phase/task walk above. A final corrective is
+    // ordinarily the last thing to happen in a run, but an amendment can reopen
+    // `phase_loop` afterward, so this walk position is never assumed to be
+    // chronologically last — the accumulated list is reordered by real git
+    // history below. Accumulate the whole array, not the spent window — a
+    // re-review after an approval-gate rejection must still see the corrective
     // work the rejection was meant to re-examine.
     for (const node of Object.values(state.graph.nodes)) {
       if (node.kind !== 'step') continue;
@@ -685,49 +744,100 @@ export function enrichActionContext(input: EnrichmentInput): Record<string, unkn
       }
     }
 
-    // FR-4: For each repo with > 1 commits, validate chronology using that
-    // repo's own worktree path as the git cwd. A chronology violation requires
-    // at least two commits to order against each other, so skip the rev-list
-    // invocation entirely for 0–1 commits (the check cannot fail there, and
-    // skipping it avoids spawning a subprocess when auto-commit is off). NFR-4.
+    // For each repo with at least one accumulated commit, resolve the repo's
+    // real commit ancestry via `git rev-list` (using that repo's own worktree
+    // path as the git cwd) and validate every commit is reachable in it,
+    // before reading off the base/head extremes — walk order alone is not
+    // chronology, since an amendment can reopen `phase_loop` behind an
+    // already-completed step-hosted corrective. A single accumulated commit
+    // still needs this same readability/reachability check — a corrupted
+    // hash, a rewritten history, or a stale worktree path is exactly as
+    // unusable with one commit as with many — so only the reorder step is
+    // skipped for it (there is nothing to order against a single element).
+    // Zero commits (auto-commit off) skips git entirely: there is no commit
+    // to validate, and skipping avoids spawning a subprocess needlessly.
     const reposArray = buildReposArray(state);
+    const rangeByRepo = new Map<string, { base: string | null; head: string | null }>();
     for (const entry of reposArray) {
       const repoName = entry.name as string;
       const commits = commitsByRepo.get(repoName) ?? [];
-      if (commits.length > 1) {
-        const repoPath = (entry.path as string) || process.cwd();
-        let ordinal = new Map<string, number>();
-        try {
-          const stdout = execFileSync('git', ['rev-list', '--topo-order', '--reverse', 'HEAD'], {
-            cwd: repoPath,
-            encoding: 'utf8',
-            maxBuffer: 10 * 1024 * 1024,
-          });
-          stdout.split('\n').map((s: string) => s.trim()).filter(Boolean).forEach((sha: string, i: number) => {
-            ordinal.set(sha.slice(0, 8), i + 1);
-          });
-        } catch {
-          ordinal = new Map();
-        }
-        const chronologyError = validateBaseShaChronology(
-          commits.map((c: string) => c.slice(0, 8)),
-          ordinal,
-          repoName,
-        );
-        if (chronologyError) {
-          return { ...walkerContext, error: chronologyError };
-        }
+      if (commits.length === 0) {
+        rangeByRepo.set(repoName, { base: null, head: null });
+        continue;
       }
+
+      const repoPath = entry.path as string;
+      if (!repoPath) {
+        return {
+          ...walkerContext,
+          error:
+            `Repo '${repoName}': could not resolve a worktree path for this repo, so its commit history ` +
+            `cannot be checked. Confirm 'source-control init' was run for this project and the repo is ` +
+            `registered with a resolvable worktree, then re-run.`,
+        };
+      }
+      const ordinal = new Map<string, number>();
+      let gitFailure: string | null = null;
+      try {
+        const stdout = execFileSync('git', ['rev-list', '--topo-order', '--reverse', 'HEAD'], {
+          cwd: repoPath,
+          encoding: 'utf8',
+          maxBuffer: 10 * 1024 * 1024,
+        });
+        stdout.split('\n').map((s: string) => s.trim()).filter(Boolean).forEach((sha: string, i: number) => {
+          ordinal.set(sha, i + 1);
+        });
+      } catch (err) {
+        gitFailure = err instanceof Error ? err.message : String(err);
+      }
+
+      if (ordinal.size === 0) {
+        return {
+          ...walkerContext,
+          error:
+            `This repository's commit history could not be read, so its commit range cannot be ordered. ` +
+            `Repo: '${repoName}'. Path checked: '${repoPath}'. Underlying git error: ${gitFailure ?? 'no commits were found'}. ` +
+            `Confirm this path points to an existing, valid git checkout — it may be a stale or moved ` +
+            `worktree path recorded in the project's state, or a directory that is not a git repository — ` +
+            `then re-run.`,
+        };
+      }
+
+      const unreachableError = validateCommitsReachableFromHead(commits, ordinal, repoName, repoPath);
+      if (unreachableError) {
+        return { ...walkerContext, error: unreachableError };
+      }
+
+      if (commits.length === 1) {
+        rangeByRepo.set(repoName, { base: commits[0], head: commits[0] });
+        continue;
+      }
+
+      // Every commit is already confirmed resolvable (and unambiguous) by the
+      // check above, so resolve each one's ordinal position once into a
+      // parallel array rather than re-resolving it inside the sort comparator
+      // on every comparison.
+      const positioned = commits.map(commit => {
+        const resolution = resolveOrdinalPosition(ordinal, commit);
+        if (resolution.status !== 'resolved') {
+          throw new Error(
+            `Internal error: commit '${commit}' failed to resolve after passing reachability validation.`
+          );
+        }
+        return { commit, position: resolution.position };
+      });
+      positioned.sort((a, b) => a.position - b.position);
+      rangeByRepo.set(repoName, { base: positioned[0].commit, head: positioned[positioned.length - 1].commit });
     }
 
     // Build repos[] with per-repo base/head SHAs.
     const repos = reposArray.map(entry => {
       const repoName = entry.name as string;
-      const commits = commitsByRepo.get(repoName) ?? [];
+      const range = rangeByRepo.get(repoName) ?? { base: null, head: null };
       return {
         ...entry,
-        project_base_sha: commits.length > 0 ? commits[0] : null,
-        project_head_sha: commits.length > 0 ? commits[commits.length - 1] : null,
+        project_base_sha: range.base,
+        project_head_sha: range.head,
       };
     });
 

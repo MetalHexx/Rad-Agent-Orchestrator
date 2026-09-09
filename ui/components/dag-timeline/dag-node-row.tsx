@@ -7,6 +7,7 @@ import { DocumentLink, ExternalLink } from '@/components/documents';
 import { ExecutePlanButton } from '@/components/dashboard';
 import { getDisplayName, getRowButtonDescriptor, deriveGateBadgeStatusAndLabel, getDocLinkLabel, resolveStageBadge } from './dag-timeline-helpers';
 import type { CompatibleNodeState } from './dag-timeline-helpers';
+import type { PrLink } from './source-control-helpers';
 import type { NodeStatus } from '@/types/state';
 
 interface DAGNodeRowProps {
@@ -20,16 +21,17 @@ interface DAGNodeRowProps {
   onFocusChange: (nodeId: string) => void;
   /** Top-level phase_loop status; drives FR-2 Execute Plan visibility (AD-2). */
   phaseLoopStatus?: NodeStatus;
-  /** PR URL surfaced on the `final_pr` row (Completion section). Sourced
-   *  from `state.pipeline.source_control.pr_url` and threaded through
-   *  DAGTimeline; ignored on every other row. */
-  prUrl?: string | null;
+  /** Pull requests surfaced on the `final_pr` row (Completion section), one
+   *  per repo carrying a live PR. Sourced from
+   *  `state.pipeline.source_control.repos` via `selectPrLinks` and threaded
+   *  through DAGTimeline; ignored on every other row. */
+  prLinks?: PrLink[];
 }
 
 // Re-export formatNodeId to preserve barrel export contract
 export { formatNodeId } from './dag-timeline-helpers';
 
-export function DAGNodeRow({ nodeId, node, currentNodePath, onDocClick, depth = 0, projectName, isFocused, onFocusChange, phaseLoopStatus, prUrl }: DAGNodeRowProps) {
+export function DAGNodeRow({ nodeId, node, currentNodePath, onDocClick, depth = 0, projectName, isFocused, onFocusChange, phaseLoopStatus, prLinks = [] }: DAGNodeRowProps) {
   const isActive = nodeId === currentNodePath;
   const descriptor =
     node.kind === 'gate' && projectName !== undefined
@@ -41,7 +43,7 @@ export function DAGNodeRow({ nodeId, node, currentNodePath, onDocClick, depth = 
   // Approve button. `hasActionButton` is gated the same way so keyboard
   // activation doesn't think a button is present when nothing renders.
   const hasActionButton = descriptor.kind === 'execute';
-  const isFinalPrRow = nodeId === 'final_pr' && prUrl != null && prUrl !== '';
+  const isFinalPrRow = nodeId === 'final_pr' && prLinks.length > 0;
 
   // Resolve stage-aware {status, cssVar, label, isSpinning} for the row.
   // Gate rows flow through deriveGateBadgeStatusAndLabel, which overrides
@@ -71,15 +73,23 @@ export function DAGNodeRow({ nodeId, node, currentNodePath, onDocClick, depth = 
 
   const handleKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== 'Enter' && event.key !== ' ') return;
+    // A focused PR anchor (reachable via Tab when there are 2+ repos, see the
+    // tabIndex below) handles its own Enter/Space activation natively —
+    // stepping aside here keeps the row-level synthesis below scoped to
+    // "the row itself has focus", so it never overrides which link the user
+    // actually selected. Checked by tagName rather than `instanceof
+    // HTMLAnchorElement` so this doesn't depend on a DOM global being present.
+    const target = event.target as { tagName?: string } | null;
+    if (target?.tagName === 'A') return;
     event.preventDefault();
     if (hasActionButton && actionButtonRef.current !== null) {
       actionButtonRef.current.click();
     } else if (isFinalPrRow) {
-      window.open(prUrl!, '_blank', 'noopener,noreferrer');
+      window.open(prLinks[0].url, '_blank', 'noopener,noreferrer');
     } else if (node.kind === 'step' && node.doc_path != null && node.doc_path !== '') {
       onDocClick(node.doc_path);
     }
-  }, [hasActionButton, isFinalPrRow, prUrl, node, onDocClick]);
+  }, [hasActionButton, isFinalPrRow, prLinks, node, onDocClick]);
 
   return (
     <div
@@ -110,9 +120,21 @@ export function DAGNodeRow({ nodeId, node, currentNodePath, onDocClick, depth = 
       {node.kind === 'step' && node.doc_path != null && node.doc_path !== '' && (
         <DocumentLink path={node.doc_path} label={getDocLinkLabel(nodeId)} onDocClick={onDocClick} tabIndex={-1} />
       )}
-      {nodeId === 'final_pr' && prUrl != null && prUrl !== '' && (
-        <ExternalLink href={prUrl} label="Pull Request" icon="github" tabIndex={-1} />
-      )}
+      {isFinalPrRow && prLinks.map((link) => (
+        <ExternalLink
+          key={link.repoName}
+          href={link.url}
+          label={prLinks.length > 1 ? `${link.repoName} Pull Request` : 'Pull Request'}
+          icon="github"
+          // With a single PR, the row's own Enter/Space handler opens it, so
+          // the anchor stays out of the roving-tabindex row's tab stop.
+          // With 2+ repos there is no single "primary" link to synthesize a
+          // click on, so each anchor joins the natural Tab order instead —
+          // otherwise only the first repo's PR would ever be keyboard
+          // reachable.
+          tabIndex={prLinks.length > 1 ? undefined : -1}
+        />
+      ))}
       {descriptor.kind === 'execute' && (
         <ExecutePlanButton
           ref={actionButtonRef}

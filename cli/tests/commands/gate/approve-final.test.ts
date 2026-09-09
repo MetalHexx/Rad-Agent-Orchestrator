@@ -17,13 +17,14 @@ async function makeProjectAtFinalGate(): Promise<string> {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gate-approve-final-'));
   fs.copyFileSync(path.join(TEMPLATES_DIR, 'medium.yml'), path.join(dir, 'template.yml'));
   const { processEvent } = await import('../../../src/lib/pipeline-engine/engine.js');
-  const { readState, writeState, readConfig, readDocument, ensureDirectories } =
+  const { readState, writeState, readConfig, readDocument, readDocumentRaw, writeDocument, ensureDirectories } =
     await import('../../../src/lib/pipeline-engine/state-io.js');
   const pathContext = {
     scriptsDir: path.resolve(__dirname, '..', '..', '..', 'src', 'lib', 'pipeline-engine'),
     templatesDir: TEMPLATES_DIR,
+    scriptPath: path.resolve(__dirname, '..', '..', '..', 'radorch.mjs'),
   };
-  const io = { readState, writeState, readConfig, readDocument, ensureDirectories };
+  const io = { readState, writeState, readConfig, readDocument, readDocumentRaw, writeDocument, ensureDirectories };
   processEvent('start', dir, { template: 'medium' }, io, pathContext);
 
   // Mutate the state directly: mark every top-level node up to final_approval_gate

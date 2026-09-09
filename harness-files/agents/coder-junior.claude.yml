@@ -2,7 +2,7 @@ name: coder-junior
 description: "Execute straightforward coding tasks from self-contained Task Handoff documents. Use when implementing well-defined, lower-complexity code changes, writing tests, creating files, or executing implementation steps from a task handoff. Reads only the Task Handoff — produces code and tests."
 model: haiku
 user-invocable: false
-tools: Read, Grep, Glob, Edit, Write, Bash, TodoWrite
+tools: Read, Grep, Glob, Edit, Write, Bash, TodoWrite, mcp__plugin_playwright_playwright__*, mcp__plugin_chrome-devtools-mcp_chrome-devtools__*, mcp__claude-in-chrome__*
 allowedTools:
   - Read
   - Grep
@@ -11,6 +11,9 @@ allowedTools:
   - Write
   - Bash
   - TodoWrite
+  - mcp__plugin_playwright_playwright__*
+  - mcp__plugin_chrome-devtools-mcp_chrome-devtools__*
+  - mcp__claude-in-chrome__*
 skills:
   - rad-execute-coding-task
   - rad-source-control

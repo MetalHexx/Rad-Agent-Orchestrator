@@ -12,6 +12,9 @@ import * as composerModule from '../../../src/lib/pipeline-engine/composer.js';
 import { composeOrphanRuntimeShape } from '../../../src/lib/pipeline-engine/composer.js';
 import type { PipelineTemplate } from '../../../src/lib/pipeline-engine/types.js';
 
+// Deterministic stand-in for the running script's path (PathContext.scriptPath).
+const SCRIPT_PATH = '/opt/radorch/radorch.mjs';
+
 const cleanups: Array<() => void> = [];
 afterEach(() => { while (cleanups.length) cleanups.pop()!(); });
 
@@ -106,9 +109,11 @@ describe('attachPromptIfActionResolved — Step-N renumbering and envelope flag'
       dummyTemplate,
       'kickoff',
       '/tmp/engine-orphan-post',
+      SCRIPT_PATH,
+      [],
     );
     expect(result.prompt).toMatch(/^## Step 1\n\npre-next instructions\n\n## Step 2\n\nfoo body\./);
-    expect(result.prompt).toMatch(/## Step 3\n\n[\s\S]*Signal: bar_done/);
+    expect(result.prompt).toMatch(/## Step 3\n\n[\s\S]*`completion_commands`/);
     expect(result.has_custom_instructions).toBe(true);
   });
 
@@ -119,6 +124,8 @@ describe('attachPromptIfActionResolved — Step-N renumbering and envelope flag'
       dummyTemplate,
       'kickoff',
       '/tmp/engine-orphan-post',
+      SCRIPT_PATH,
+      [],
     );
     expect(result.prompt as string).toMatch(/^## Step 1\n\nfoo body\./);
     expect(result.has_custom_instructions).toBe(false);
@@ -132,6 +139,8 @@ describe('attachPromptIfActionResolved — Step-N renumbering and envelope flag'
       dummyTemplate,
       'bar_done', // non-orphan
       '/tmp/engine-orphan-post',
+      SCRIPT_PATH,
+      [],
     );
     expect(result.has_custom_instructions).toBe(true);
   });
@@ -143,6 +152,8 @@ describe('attachPromptIfActionResolved — Step-N renumbering and envelope flag'
       dummyTemplate,
       'bar_done',
       '/tmp/engine-orphan-post',
+      SCRIPT_PATH,
+      [],
     );
     expect(result.has_custom_instructions).toBe(false);
   });
@@ -155,6 +166,8 @@ describe('attachPromptIfActionResolved — Step-N renumbering and envelope flag'
       dummyTemplate,
       'bar_done',
       relativeProjectDir,
+      SCRIPT_PATH,
+      [],
     );
     const handoffDoc = result.context['handoff_doc'] as string;
     expect(path.isAbsolute(handoffDoc)).toBe(true);
@@ -175,6 +188,8 @@ describe('attachPromptIfActionResolved — non-orphan event double-include guard
       dummyTemplate,
       'bar_done',
       '/tmp/engine-orphan-post',
+      SCRIPT_PATH,
+      [],
     );
     expect(result.prompt).toBeDefined();
     // The composed action prompt includes bar_done aftermath exactly once (from the
@@ -192,6 +207,8 @@ describe('attachPromptIfActionResolved — non-orphan event double-include guard
       dummyTemplate,
       'kickoff',
       '/tmp/engine-orphan-post',
+      SCRIPT_PATH,
+      [],
     );
     expect(result.prompt).toBeDefined();
     expect(result.prompt as string).not.toMatch(/^## After signaling/);
@@ -199,8 +216,10 @@ describe('attachPromptIfActionResolved — non-orphan event double-include guard
 
   it('returns the empty-action envelope when next is null (no spurious prepend)', () => {
     seedRoot();
-    const result = attachPromptIfActionResolved(null, dummyTemplate, 'kickoff', '/tmp/engine-orphan-post');
-    expect(result).toEqual({ action: null, context: {} });
+    const result = attachPromptIfActionResolved(
+      null, dummyTemplate, 'kickoff', '/tmp/engine-orphan-post', SCRIPT_PATH, [],
+    );
+    expect(result).toEqual({ action: null, context: {}, completion_commands: [] });
   });
 });
 
@@ -218,6 +237,8 @@ describe('attachPromptIfActionResolved — calls composeOrphanRuntimeShape via s
       dummyTemplate,
       'kickoff',
       '/tmp/engine-orphan-post',
+      SCRIPT_PATH,
+      [],
     );
 
     expect(spy.mock.calls.length).toBeGreaterThanOrEqual(1);

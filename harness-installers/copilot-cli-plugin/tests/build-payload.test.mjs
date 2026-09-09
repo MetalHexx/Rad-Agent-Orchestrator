@@ -28,6 +28,24 @@ function makeFixtureRoot() {
   fs.writeFileSync(join(root, 'runtime-config/action-events/README.md'), '# action-events\n');
   fs.writeFileSync(join(root, 'runtime-config/action-events/action.spawn_coder.md'), '# spawn_coder\n');
   fs.writeFileSync(join(root, 'runtime-config/action-events/event.task_completed.md'), '# task_completed\n');
+  // runtime-config/communication-styles/ — shipped style files + empty custom/ slot.
+  fs.mkdirSync(join(root, 'runtime-config/communication-styles/custom'), { recursive: true });
+  for (const style of ['direct.md', 'caveman.md', 'high-level.md', 'socratic.md']) {
+    fs.writeFileSync(join(root, `runtime-config/communication-styles/${style}`), `# ${style}\n`);
+  }
+
+  // Documentation corpus — README.md, docs/, assets/ at the fixture root
+  // (repoRoot == root for the copy-docs-corpus build step), including a page
+  // under each excluded prefix.
+  fs.writeFileSync(join(root, 'README.md'), '# fixture repo\n');
+  fs.mkdirSync(join(root, 'docs/internals/private'), { recursive: true });
+  fs.mkdirSync(join(root, 'docs/research'), { recursive: true });
+  fs.writeFileSync(join(root, 'docs/getting-started.md'), '# getting started\n');
+  fs.writeFileSync(join(root, 'docs/internals/system-architecture.md'), '# internals\n');
+  fs.writeFileSync(join(root, 'docs/internals/private/fork-divergence.md'), '# private\n');
+  fs.writeFileSync(join(root, 'docs/research/some-research.md'), '# research\n');
+  fs.mkdirSync(join(root, 'assets'), { recursive: true });
+  fs.writeFileSync(join(root, 'assets/diagram.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
 
   // Synthetic cli/ and ui/ source roots — minimal stubs so emit-cli-bundle
   // and emit-ui-bundle (with skipUiRunner) can run.
@@ -43,13 +61,13 @@ function makeFixtureRoot() {
   fs.mkdirSync(join(installerDir, 'manifests'), { recursive: true });
   fs.writeFileSync(join(installerDir, 'plugin.json'), JSON.stringify({
     name: 'rad-orc',
-    version: '1.0.0-alpha.13',
+    version: '1.0.0-alpha.14',
     author: { name: 'metalhexx' },
     license: 'MIT',
   }));
   fs.writeFileSync(join(installerDir, 'package.json'), JSON.stringify({
     name: '@rad-orchestration/copilot-cli-plugin-source',
-    version: '1.0.0-alpha.13',
+    version: '1.0.0-alpha.14',
     private: true,
     type: 'module',
     license: 'MIT',
@@ -62,8 +80,8 @@ function makeFixtureRoot() {
   fs.writeFileSync(join(installerDir, 'hooks/drift-check.mjs'), '// drift-check verbatim\n');
   fs.writeFileSync(join(installerDir, 'hooks/hooks.json'),
     JSON.stringify({ version: 1, hooks: { userPromptSubmitted: [], sessionStart: [] } }, null, 2));
-  fs.writeFileSync(join(installerDir, 'manifests/v1.0.0-alpha.13.json'),
-    JSON.stringify({ version: '1.0.0-alpha.13', channel: 'copilot-cli-plugin', files: [] }));
+  fs.writeFileSync(join(installerDir, 'manifests/v1.0.0-alpha.14.json'),
+    JSON.stringify({ version: '1.0.0-alpha.14', channel: 'copilot-cli-plugin', files: [] }));
   return root;
 }
 
@@ -91,7 +109,7 @@ test('runBuild produces a full output/ tree with adapter content, runtime-config
     assert.ok(fs.existsSync(join(out, 'hooks/hooks.json')));
     assert.ok(fs.existsSync(join(out, 'hooks/bootstrap.mjs')), 'bundled bootstrap');
     assert.ok(fs.existsSync(join(out, 'hooks/drift-check.mjs')), 'verbatim drift-check');
-    assert.ok(fs.existsSync(join(out, 'manifests/v1.0.0-alpha.13.json')));
+    assert.ok(fs.existsSync(join(out, 'manifests/v1.0.0-alpha.14.json')));
     // No .claude-plugin/ subfolder per FR-36.
     assert.ok(!fs.existsSync(join(out, '.claude-plugin')), '.claude-plugin/ absent — plugin.json at root');
   } finally {
@@ -147,7 +165,7 @@ test('synthesized output/package.json declares the published name @rad-orchestra
     });
     const pkg = JSON.parse(fs.readFileSync(join(root, 'harness-installers/copilot-cli-plugin/output/package.json'), 'utf8'));
     assert.strictEqual(pkg.name, '@rad-orchestration/copilot-cli-plugin', 'published name (FR-31)');
-    assert.strictEqual(pkg.version, '1.0.0-alpha.13', 'version stamped from plugin.json');
+    assert.strictEqual(pkg.version, '1.0.0-alpha.14', 'version stamped from plugin.json');
     for (const required of ['plugin.json', 'agents/', 'skills/', 'hooks/', 'manifests/']) {
       assert.ok(pkg.files.includes(required), `pkg.files must include ${required}`);
     }

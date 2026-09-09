@@ -50,13 +50,18 @@ export function deriveVerdictTone(verdict: string | null): VerdictTone {
  * `final_pr` into this view, `ctx.node` resolves to the PR node instead, so
  * reading through the top-level node keeps this view correct regardless of
  * which leaf is active. Controls surface the report — only once a report
- * document actually exists — and, when present, the run's PR link; no commit
- * chip at this milestone. When the run is parked at the final-approval gate
- * (`deriveFinalGatePending`), the card also carries the primary Approve action
- * — reusing `ApproveGateButton` (the same primitive the plan-approval card and
- * the timeline use) rather than re-implementing the gate POST. The Approve
- * action is gated because this view folds the whole completion phase; unlike
- * plan-approval it must not render Approve until the gate is actually active.
+ * document actually exists — and one link per repo carrying a pull request
+ * (`ctx.prLinks`), labelled with the repo name once there is more than one so
+ * multiple PRs are never collapsed onto a single control; no commit chip at
+ * this milestone. `ApproveGateButton` (the same primitive the plan-approval
+ * card and the timeline use) is rendered rather than re-implementing the gate
+ * POST, gated on `deriveFinalGatePending` — unlike plan-approval, this view
+ * folds the whole completion phase, so it must not offer Approve until the
+ * gate is actually active. Unmounting the trigger the moment the gate resolves
+ * is safe: the approval wizard it opens is owned by `ApprovalWizardProvider`
+ * well above this card, which is what keeps it alive when a successful
+ * approval completes the graph and swaps this whole view out for
+ * `completeView` a moment later.
  */
 export const finalReviewView: StateView = {
   id: 'final-review',
@@ -93,9 +98,14 @@ export const finalReviewView: StateView = {
             {docPath !== null && (
               <DocButton path={docPath} label="Report" onDocClick={ctx.onDocClick} iconCssVar={tone.cssVar} />
             )}
-            {ctx.prUrl !== null && (
-              <ExternalLinkButton href={ctx.prUrl} label={parsePrLabel(ctx.prUrl)} iconCssVar={tone.cssVar} />
-            )}
+            {ctx.prLinks.map((link) => (
+              <ExternalLinkButton
+                key={link.repoName}
+                href={link.url}
+                label={ctx.prLinks.length > 1 ? `${link.repoName} ${parsePrLabel(link.url)}` : parsePrLabel(link.url)}
+                iconCssVar={tone.cssVar}
+              />
+            ))}
           </CardControlsRow>
         </ControlsSlot>
       </>

@@ -236,6 +236,49 @@ test('regression: brainstorm, wireframes and a generic DIAGRAM html surface with
   assert.equal(byName['DEMO-DIAGRAM-FLOW.html'].kind, 'html');
 });
 
+test('recognizes an amendment doc by its ${project}-AMENDMENT- prefix (PIPELINE_DOC_SUFFIXES cannot match an indexed name)', () => {
+  const arts = deriveArtifacts(PROJECT, ['DEMO-AMENDMENT-01.md']);
+  assert.equal(arts.length, 1);
+  assert.equal(arts[0].fileName, 'DEMO-AMENDMENT-01.md');
+  assert.equal(arts[0].kind, 'markdown');
+  assert.equal(arts[0].isMarkdown, true);
+  assert.equal(arts[0].label, 'Amendment 1');
+  assert.equal(arts[0].category, 'amendment');
+});
+
+test('recognizes amendment docs independent of hasTimeline', () => {
+  const arts = deriveArtifacts(PROJECT, ['DEMO-AMENDMENT-01.md'], true);
+  assert.equal(arts[0].label, 'Amendment 1');
+  assert.equal(arts[0].category, 'amendment');
+});
+
+test('matches the project name literally, so a regex metacharacter in it cannot widen the amendment match', () => {
+  const dotted = 'DEMO.V2';
+  const arts = deriveArtifacts(dotted, ['DEMOXV2-AMENDMENT-01.md', 'DEMO.V2-AMENDMENT-01.md']);
+  const byName = Object.fromEntries(arts.map((a) => [a.fileName, a]));
+  assert.equal(byName['DEMO.V2-AMENDMENT-01.md'].category, 'amendment');
+  assert.equal(byName['DEMO.V2-AMENDMENT-01.md'].label, 'Amendment 1');
+  assert.notEqual(byName['DEMOXV2-AMENDMENT-01.md'].category, 'amendment');
+});
+
+test('matches the project name literally, so a regex metacharacter in it cannot widen the wireframe match', () => {
+  const dotted = 'DEMO.V2';
+  const arts = deriveArtifacts(dotted, ['DEMOXV2-WIREFRAME-LAUNCH.html', 'DEMO.V2-WIREFRAME-LAUNCH.html']);
+  const byName = Object.fromEntries(arts.map((a) => [a.fileName, a]));
+  assert.equal(byName['DEMO.V2-WIREFRAME-LAUNCH.html'].kind, 'wireframe');
+  assert.equal(byName['DEMO.V2-WIREFRAME-LAUNCH.html'].title, 'Launch');
+  assert.notEqual(byName['DEMOXV2-WIREFRAME-LAUNCH.html'].kind, 'wireframe');
+});
+
+test('a second amendment doc surfaces as its own row, distinct from the first', () => {
+  const arts = deriveArtifacts(PROJECT, ['DEMO-AMENDMENT-01.md', 'DEMO-AMENDMENT-02.md']);
+  assert.deepEqual(arts.map((a) => a.fileName), ['DEMO-AMENDMENT-01.md', 'DEMO-AMENDMENT-02.md']);
+  const byName = Object.fromEntries(arts.map((a) => [a.fileName, a]));
+  assert.equal(byName['DEMO-AMENDMENT-01.md'].label, 'Amendment 1');
+  assert.equal(byName['DEMO-AMENDMENT-02.md'].label, 'Amendment 2');
+  assert.ok(arts.every((a) => a.category === 'amendment'));
+});
+
 test('orders markdown first, then html, alphabetical within each type — deterministic, never mtime-based', () => {
   const files = [
     'DEMO-ARCHITECTURE.md',

@@ -49,14 +49,26 @@ Hand-roll the minimum project scaffold — do **NOT** invoke the installer and d
    ```
    The `@planner` agent in Requirements mode discovers this file by convention.
 
-4. **Generate the skill manifest for the fixture repo.** Run the manifest script with `--project-dir` (or `cwd`) pointed at the fixture root so the planner spawn includes repo-local skills:
+4. **Register the fixture as a scratch repo, then generate the skill manifest.** `skill list` resolves `--repo <name>` through the repo registry rather than a raw path (the old `--repo-root` flag is gone). The fixture lives inside this monorepo's own working tree, so copy it to a scratch location outside that tree, give the copy its own throwaway git identity, register + bind it under a scratch name, scan it, then tear the registration down:
    ```
-   cd prompt-tests/repo-skill-discovery-e2e/fixtures/skill-disco-fixture
-   node "${PLUGIN_ROOT}/skills/rad-orchestration/scripts/radorch.mjs" skill list --repo-root "$(pwd)"
+   FIXTURE_SCRATCH="$(mktemp -d)/skill-disco-fixture"
+   cp -r prompt-tests/repo-skill-discovery-e2e/fixtures/skill-disco-fixture "$FIXTURE_SCRATCH"
+   cd "$FIXTURE_SCRATCH"
+   git init -q
+   git remote add origin https://example.invalid/skill-disco-fixture.git
+   git symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
+   node "${PLUGIN_ROOT}/skills/rad-orchestration/scripts/radorch.mjs" repo add --path "$(pwd)" --name skill-disco-fixture-scratch --description "skill-discovery e2e fixture (scratch, torn down after this run)"
+   node "${PLUGIN_ROOT}/skills/rad-orchestration/scripts/radorch.mjs" skill list --repo skill-disco-fixture-scratch
    ```
    Expected envelope: `{ "ok": true, "data": { "skills": [...] } }` where `data.skills` is a JSON array of exactly two entries — `foo-test-runner` and `rainbow-lint-conventions` — in alphabetical order, each with an absolute `path` ending in `SKILL.md`. Confirm `scaffold-only` and `rad-decoy` are absent from `data.skills` and that no stderr warnings appear. If this check fails, stop — the fixture is malformed and the run will produce invalid signal.
 
    The JSON envelope above is the manifest content — stdout IS the output. Capture the `data.skills` array to a local file (e.g., `manifest.json`) in the run folder if you need it for later assertions, but do NOT commit it — `manifest.json` is not a baseline artifact.
+
+   Tear the scratch registration down once the manifest is captured — this run must not leave a stray entry in the operator's real repo registry:
+   ```
+   node "${PLUGIN_ROOT}/skills/rad-orchestration/scripts/radorch.mjs" repo remove --name skill-disco-fixture-scratch
+   rm -rf "$(dirname "$FIXTURE_SCRATCH")"
+   ```
 
 Do NOT create `state.json`, `orchestration.yml`, or `template.yml` yourself. The engine writes `state.json` on the first `start` event and snapshots `template.yml` from the global templates folder.
 

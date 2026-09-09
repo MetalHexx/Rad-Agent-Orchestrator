@@ -15,6 +15,7 @@ export interface UserDataPaths {
   readonly telemetry: string;
   readonly bootstrapLock: string;
   readonly actionEvents: string;
+  readonly communicationStyles: string;
 }
 
 export const SIDE_PROJECTS_DIRNAME = 'side-projects';
@@ -35,6 +36,7 @@ export function userDataPaths(): UserDataPaths {
     telemetry: path.join(root, 'telemetry'),
     bootstrapLock: path.join(root, 'runtime', 'bootstrap.lock'),
     actionEvents: path.join(root, 'action-events'),
+    communicationStyles: path.join(root, 'communication-styles'),
   };
 }
 

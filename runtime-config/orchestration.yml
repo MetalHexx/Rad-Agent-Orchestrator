@@ -11,5 +11,10 @@ source_control:
   auto_pr: ask
 telemetry:
   enabled: true
+ambient_awareness:
+  verbosity: minimal
 ui:
   port: 1337
+communication_style:
+  enabled: false
+  selected: high-level.md

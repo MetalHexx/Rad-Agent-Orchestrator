@@ -20,11 +20,12 @@ A **project-group** is a named bundle of projects (and optionally sub-groups). E
 
 Projects and groups are connected by typed edges. The known edge types are:
 
-- **`contains`** — a group contains a project or sub-group (grouping edge; set via `project-group add`).
-- **`follows`** — a project follows another in a series (e.g. iteration 2 follows iteration 1).
-- **`spawned-from`** — a project branched off from another as an offshoot (e.g. a side investigation spun out mid-project).
+- **`contains`** — a group contains a project or sub-group. This is the containment frame, not a drawn relationship (set via `project-group add`).
+- **`follows`** — a project follows another in a series (e.g. iteration 2 follows iteration 1). Asserts an ordering.
+- **`depends-on`** — a project is blocked by another. Asserts an ordering.
+- **`spawned-from`** — a project branched off from another as an offshoot (e.g. a side investigation spun out mid-project). Asserts origin only, no ordering.
 
-This set is extensible: unknown edge types are accepted by the CLI and rendered generically.
+This set is extensible: unknown edge types are accepted by the CLI and treated as decoration — drawn, but exerting no ordering force.
 
 ## Side-project vs. spawned-from
 

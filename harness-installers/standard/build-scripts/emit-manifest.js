@@ -15,9 +15,10 @@ const HYDRATION_EXCLUDED_PREFIXES = ['orchestration.yml', 'templates/', 'ui/'];
 
 // Assets that DO appear in the manifest but install into the shared user-data
 // root (~/.radorc/) rather than the per-harness root. Their manifest entries
-// use ${RAD_HOME} destinations so installManifestFiles routes them correctly
-// (FR-1, FR-19, AD-3). The action-events catalog is the first such asset.
-const USER_DATA_PREFIXES = ['action-events/'];
+// use ${RAD_HOME} destinations so installManifestFiles routes them correctly.
+// The action-events and communication-styles catalogs, and the documentation
+// corpus, are such assets.
+const USER_DATA_PREFIXES = ['action-events/', 'communication-styles/', 'docs/'];
 
 /**
  * Recursively collects all file paths under `dir`, returning absolute paths.

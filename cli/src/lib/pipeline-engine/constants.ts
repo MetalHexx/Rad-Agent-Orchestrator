@@ -103,6 +103,7 @@ export const EVENTS = Object.freeze({
   PLAN_REJECTED: 'plan_rejected',
   GATE_REJECTED: 'gate_rejected',
   FINAL_REJECTED: 'final_rejected',
+  FINAL_CORRECTIVE_REQUESTED: 'final_corrective_requested',
   HALT: 'halt',
   GATE_MODE_SET: 'gate_mode_set',
 } as const);
@@ -111,6 +112,7 @@ export const OUT_OF_BAND_EVENTS = new Set<string>([
   'plan_rejected',
   'gate_rejected',
   'final_rejected',
+  'final_corrective_requested',
   'halt',
   'gate_mode_set',
   // Parse-failure recovery loop: step-level `failed` events are not template-indexed
@@ -128,9 +130,9 @@ export const VALID_VERDICTS = new Set<string>(Object.values(REVIEW_VERDICTS));
 
 export const ALLOWED_NODE_TRANSITIONS: ReadonlyMap<string, ReadonlySet<string>> = new Map([
   ['not_started', new Set(['in_progress', 'skipped', 'completed'])],
-  // 'not_started' here: a rejection mutation (plan_rejected, final_rejected)
-  // resets a blocking human approval gate that is currently in_progress back
-  // to not_started.
+  // 'not_started' here: the plan_rejected and final_corrective_requested
+  // mutations reset a blocking human approval gate that is currently
+  // in_progress back to not_started.
   ['in_progress', new Set(['completed', 'failed', 'halted', 'not_started'])],
   ['completed',   new Set(['not_started', 'in_progress'])],
   ['failed',      new Set(['in_progress'])],

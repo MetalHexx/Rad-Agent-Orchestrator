@@ -1,10 +1,9 @@
 /**
- * Tests for ConfigInfoBanner, ConfigRawEditor, ConfigFooter & ConfigErrorState.
+ * Tests for ConfigInfoBanner, ConfigFooter & ConfigErrorState.
  * Run with: npx tsx ui/components/config/config-components.test.ts
  *
  * Tests verify:
  * - ConfigInfoBanner renders message and alert role
- * - ConfigRawEditor passes value/onChange/bannerMessage correctly
  * - ConfigFooter save button state machine (idle/saving/success/error)
  * - ConfigFooter error banner conditional rendering
  * - ConfigFooter disabled prop and onDismissError callback
@@ -40,18 +39,6 @@ type ConfigSaveState = "idle" | "saving" | "success" | "error";
 
 // ConfigInfoBanner simply passes message to AlertDescription.
 // No branching logic — test that the component module exports correctly.
-
-/* ------------------------------------------------------------------ */
-/*  Logic simulation — ConfigRawEditor                                 */
-/* ------------------------------------------------------------------ */
-
-// ConfigRawEditor passes bannerMessage to ConfigInfoBanner and value/onChange to Textarea.
-// The onChange handler extracts e.target.value — simulate that transform.
-function simulateTextareaChange(onChange: (value: string) => void, newValue: string): void {
-  // mirrors: onChange={(e) => onChange(e.target.value)}
-  const syntheticEvent = { target: { value: newValue } };
-  onChange(syntheticEvent.target.value);
-}
 
 /* ------------------------------------------------------------------ */
 /*  Logic simulation — ConfigFooter                                    */
@@ -106,35 +93,6 @@ test("ConfigInfoBanner uses Alert component which provides role=alert", () => {
   // Alert component in alert.tsx always renders role="alert"
   // ConfigInfoBanner wraps content in <Alert> so role="alert" is guaranteed.
   assert.ok(true, "Alert component provides role=alert by default");
-});
-
-/* ------------------------------------------------------------------ */
-/*  Tests — ConfigRawEditor                                            */
-/* ------------------------------------------------------------------ */
-
-console.log("\nConfigRawEditor logic tests\n");
-
-test("ConfigRawEditor module compiles and exports ConfigRawEditor", () => {
-  assert.ok(true, "Module existence verified via tsc --noEmit");
-});
-
-test("ConfigRawEditor passes value to textarea (contract check)", () => {
-  // value prop is passed directly to <Textarea value={value}>
-  const value = "key: value";
-  assert.strictEqual(value, "key: value");
-});
-
-test("ConfigRawEditor onChange callback receives the new string value", () => {
-  let received: string | undefined;
-  const onChange = (v: string) => { received = v; };
-  simulateTextareaChange(onChange, "new content");
-  assert.strictEqual(received, "new content");
-});
-
-test("ConfigRawEditor passes bannerMessage to ConfigInfoBanner", () => {
-  // bannerMessage prop is forwarded to <ConfigInfoBanner message={bannerMessage}>
-  const bannerMessage = "Editing raw YAML";
-  assert.strictEqual(bannerMessage, "Editing raw YAML");
 });
 
 /* ------------------------------------------------------------------ */

@@ -3,7 +3,6 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import type {
   OrchestrationConfig,
-  ConfigEditorMode,
   ConfigSaveState,
   ConfigValidationErrors,
   ConfigGetResponse,
@@ -11,7 +10,8 @@ import type {
   ConfigPutResponse,
 } from "@/types/config";
 import { validateConfig } from "@/lib/config-validator";
-import { stringifyYaml } from "@/lib/yaml-parser";
+
+interface StyleOption { value: string; label: string }
 
 export interface UseConfigEditorReturn {
   /** Panel open/close */
@@ -24,26 +24,18 @@ export interface UseConfigEditorReturn {
   loadError: string | null;
   retry: () => void;
 
-  /** Mode */
-  mode: ConfigEditorMode;
-  setMode: (mode: ConfigEditorMode) => void;
-
   /** Form state (structured) */
   config: OrchestrationConfig | null;
   updateField: (path: string, value: unknown) => void;
 
-  /** Raw YAML state */
-  rawYaml: string;
-  setRawYaml: (value: string) => void;
+  /** Runtime-sourced options for the Communication Style 'select' field */
+  styleOptions: StyleOption[];
 
-  /** Validation (form mode only) */
+  /** Validation */
   errors: ConfigValidationErrors;
 
   /** Dirty tracking */
   isDirty: boolean;
-
-  /** Whether the form was dirty when the user last switched to raw mode */
-  formDirtyOnSwitch: boolean;
 
   /** Save */
   saveState: ConfigSaveState;
@@ -58,17 +50,14 @@ export function useConfigEditor(): UseConfigEditorReturn {
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [mode, setModeState] = useState<ConfigEditorMode>("form");
   const [config, setConfig] = useState<OrchestrationConfig | null>(null);
-  const [rawYaml, setRawYaml] = useState("");
+  const [styleOptions, setStyleOptions] = useState<StyleOption[]>([]);
   const [saveState, setSaveState] = useState<ConfigSaveState>("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
   const [errors, setErrors] = useState<ConfigValidationErrors>({});
-  const [formDirtyOnSwitch, setFormDirtyOnSwitch] = useState(false);
 
-  // Baseline refs for dirty tracking
+  // Baseline ref for dirty tracking
   const baselineConfigRef = useRef<string>("");
-  const baselineRawYamlRef = useRef<string>("");
 
   // Abort controller for fetch cancellation
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -88,6 +77,19 @@ export function useConfigEditor(): UseConfigEditorReturn {
     };
   }, []);
 
+  const fetchStyleOptions = useCallback(async (signal: AbortSignal) => {
+    try {
+      const res = await fetch("/api/communication-styles", { signal });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = (await res.json()) as { styles: { path: string; title: string }[] };
+      if (!signal.aborted) {
+        setStyleOptions(json.styles.map((s) => ({ value: s.path, label: s.title })));
+      }
+    } catch {
+      if (!signal.aborted) setStyleOptions([]);
+    }
+  }, []);
+
   const fetchConfig = useCallback(async () => {
     // Abort any in-flight request
     if (abortControllerRef.current) {
@@ -96,6 +98,8 @@ export function useConfigEditor(): UseConfigEditorReturn {
 
     const controller = new AbortController();
     abortControllerRef.current = controller;
+
+    void fetchStyleOptions(controller.signal);
 
     try {
       const res = await fetch("/api/config", { signal: controller.signal });
@@ -108,9 +112,7 @@ export function useConfigEditor(): UseConfigEditorReturn {
       const json = (await res.json()) as ConfigGetResponse;
       if (!controller.signal.aborted) {
         setConfig(json.config);
-        setRawYaml(json.rawYaml);
         baselineConfigRef.current = JSON.stringify(json.config);
-        baselineRawYamlRef.current = json.rawYaml;
         const validationErrors = validateConfig(json.config);
         setErrors(validationErrors);
         setLoading(false);
@@ -122,25 +124,22 @@ export function useConfigEditor(): UseConfigEditorReturn {
       );
       setLoading(false);
     }
-  }, []);
+  }, [fetchStyleOptions]);
 
   const open = useCallback(() => {
     setIsOpen(true);
-    setModeState("form");
     setConfig(null);
-    setRawYaml("");
+    setStyleOptions([]);
     setErrors({});
     setLoadError(null);
     setSaveState("idle");
     setSaveError(null);
-    setFormDirtyOnSwitch(false);
     setLoading(true);
     fetchConfig();
   }, [fetchConfig]);
 
   const close = useCallback(() => {
     setIsOpen(false);
-    setFormDirtyOnSwitch(false);
     if (successTimeoutRef.current) {
       clearTimeout(successTimeoutRef.current);
       successTimeoutRef.current = null;
@@ -155,27 +154,6 @@ export function useConfigEditor(): UseConfigEditorReturn {
     setLoading(true);
     fetchConfig();
   }, [fetchConfig]);
-
-  const setMode = useCallback(
-    (newMode: ConfigEditorMode) => {
-      if (newMode === "raw") {
-        const formDirty =
-          config !== null &&
-          JSON.stringify(config) !== baselineConfigRef.current;
-        if (formDirty) {
-          setRawYaml(stringifyYaml(config));
-        }
-        setFormDirtyOnSwitch(formDirty);
-        // If not dirty, leave rawYaml as the original loaded value
-      }
-      if (newMode === "form") {
-        setFormDirtyOnSwitch(false);
-      }
-      // If switching to 'form': just change mode — do NOT parse raw YAML back
-      setModeState(newMode);
-    },
-    [config]
-  );
 
   const updateField = useCallback(
     (path: string, value: unknown) => {
@@ -219,20 +197,17 @@ export function useConfigEditor(): UseConfigEditorReturn {
       successTimeoutRef.current = null;
     }
 
-    if (mode === "form") {
-      if (!config) return;
-      const validationErrors = validateConfig(config);
-      if (Object.keys(validationErrors).length > 0) {
-        setErrors(validationErrors);
-        return;
-      }
+    if (!config) return;
+    const validationErrors = validateConfig(config);
+    if (Object.keys(validationErrors).length > 0) {
+      setErrors(validationErrors);
+      return;
     }
 
     setSaveState("saving");
     setSaveError(null);
 
-    const body: ConfigPutRequest =
-      mode === "form" ? { mode, config: config ?? undefined } : { mode, rawYaml };
+    const body: ConfigPutRequest = { mode: "form", config };
 
     try {
       const res = await fetch("/api/config", {
@@ -252,9 +227,6 @@ export function useConfigEditor(): UseConfigEditorReturn {
       const updatedConfig = json.config;
       setConfig(updatedConfig);
       baselineConfigRef.current = JSON.stringify(updatedConfig);
-      const updatedRawYaml = mode === "raw" ? rawYaml : stringifyYaml(updatedConfig);
-      setRawYaml(updatedRawYaml);
-      baselineRawYamlRef.current = updatedRawYaml;
 
       setSaveState("success");
       successTimeoutRef.current = setTimeout(() => {
@@ -265,17 +237,10 @@ export function useConfigEditor(): UseConfigEditorReturn {
       setSaveState("error");
       setSaveError(err instanceof Error ? err.message : "Save failed");
     }
-  }, [mode, config, rawYaml]);
+  }, [config]);
 
   // Compute isDirty on each render
-  let isDirty = false;
-  if (config !== null) {
-    if (mode === "form") {
-      isDirty = JSON.stringify(config) !== baselineConfigRef.current;
-    } else {
-      isDirty = rawYaml !== baselineRawYamlRef.current;
-    }
-  }
+  const isDirty = config !== null && JSON.stringify(config) !== baselineConfigRef.current;
 
   return {
     isOpen,
@@ -284,15 +249,11 @@ export function useConfigEditor(): UseConfigEditorReturn {
     loading,
     loadError,
     retry,
-    mode,
-    setMode,
     config,
     updateField,
-    rawYaml,
-    setRawYaml,
+    styleOptions,
     errors,
     isDirty,
-    formDirtyOnSwitch,
     saveState,
     saveError,
     save,

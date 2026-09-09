@@ -4,13 +4,15 @@ import { randomBytes } from 'node:crypto';
 
 import type { AnyProjectState } from '@/types/state';
 import { isV5State, isV6State } from '@/types/state';
-import type { OrchestrationConfig } from '@/types/config';
+import type { AmbientVerbosity, OrchestrationConfig } from '@/types/config';
 import type { ProjectSummary } from '@/types/components';
+import { deriveProjectState, PROJECT_STATE_LABELS } from '@rad-orchestration/work-graph';
 
 import { getOrchestrationYmlPath, getProjectsRoot, resolveProjectDir } from '@/lib/path-resolver';
 import { parseYaml } from '@/lib/yaml-parser';
 import { derivePlanningStatus, deriveExecutionStatus } from '@/lib/status-derivation';
 import { isProjectDirName } from '@/lib/project-name';
+import { rootDocPath, baseFromRootDir } from '@/lib/portfolio-identity';
 
 /**
  * Resolve the absolute path to orchestration.yml.
@@ -35,7 +37,76 @@ export async function readConfig(): Promise<OrchestrationConfig> {
 }
 
 /**
+ * Defaults applied to an absent or malformed `communication_style` section,
+ * mirroring `cli/src/commands/config/index.ts#readConfig` so the dashboard
+ * and the CLI agree on what an un-migrated config means.
+ */
+const COMMUNICATION_STYLE_DEFAULTS = { enabled: false, selected: 'high-level.md' } as const;
+
+/** Untyped view of a parsed `communication_style` section, for value-based hydration. */
+type RawCommunicationStyle = { enabled?: unknown; selected?: unknown };
+
+/**
+ * Hydrate `communication_style` with the same defaults the CLI applies, by
+ * value rather than by key presence: a `boolean` `enabled` and a non-empty
+ * string `selected` are kept, anything else (missing section, non-object
+ * section, wrong-typed field) falls back to the documented default.
+ *
+ * @param config - Parsed config, mutated in place with a hydrated section
+ */
+function hydrateCommunicationStyle(config: OrchestrationConfig): void {
+  const raw = config.communication_style as RawCommunicationStyle | null | undefined;
+  const section = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : undefined;
+
+  config.communication_style = {
+    enabled: typeof section?.enabled === 'boolean' ? section.enabled : COMMUNICATION_STYLE_DEFAULTS.enabled,
+    selected:
+      typeof section?.selected === 'string' && section.selected.length > 0
+        ? section.selected
+        : COMMUNICATION_STYLE_DEFAULTS.selected,
+  };
+}
+
+/** Mirrors `AMBIENT_VERBOSITY_LEVELS` in `cli/src/lib/ambient-verbosity.ts` — `ui/` may not
+ *  import `cli/src/`, so the enum is transplanted here by value. */
+const AMBIENT_VERBOSITY_LEVELS: readonly AmbientVerbosity[] = ['verbose', 'minimal', 'silent', 'off'];
+
+/**
+ * Defaults applied to an absent or malformed `ambient_awareness` section,
+ * mirroring `normalizeAmbientVerbosity` in `cli/src/lib/ambient-verbosity.ts`
+ * so the dashboard and the CLI agree on what an un-migrated config means.
+ */
+const AMBIENT_AWARENESS_DEFAULT_VERBOSITY: AmbientVerbosity = 'minimal';
+
+/** Untyped view of a parsed `ambient_awareness` section, for value-based hydration. */
+type RawAmbientAwareness = { verbosity?: unknown };
+
+/**
+ * Hydrate `ambient_awareness` with the same default the CLI applies, by value
+ * rather than by key presence: a `verbosity` naming one of the known levels is
+ * kept, anything else (missing section, non-object section, wrong-typed or
+ * unrecognized value) falls back to the documented default.
+ *
+ * @param config - Parsed config, mutated in place with a hydrated section
+ */
+function hydrateAmbientAwareness(config: OrchestrationConfig): void {
+  const raw = config.ambient_awareness as RawAmbientAwareness | null | undefined;
+  const section = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : undefined;
+
+  config.ambient_awareness = {
+    verbosity: (AMBIENT_VERBOSITY_LEVELS as readonly unknown[]).includes(section?.verbosity)
+      ? (section!.verbosity as AmbientVerbosity)
+      : AMBIENT_AWARENESS_DEFAULT_VERBOSITY,
+  };
+}
+
+/**
  * Read orchestration.yml and return both parsed config and raw YAML string.
+ *
+ * The parsed config has its `communication_style` and `ambient_awareness`
+ * sections hydrated with CLI defaults so the dashboard form never renders
+ * blank values for an un-migrated config; `rawYaml` stays byte-identical to
+ * the file on disk.
  *
  * @returns Object with parsed config and raw YAML string
  * @throws If orchestration.yml does not exist or is invalid YAML
@@ -47,6 +118,8 @@ export async function readConfigWithRaw(): Promise<{
   const configPath = getConfigPath();
   const rawYaml = await readFile(configPath, 'utf-8');
   const config = parseYaml<OrchestrationConfig>(rawYaml);
+  hydrateCommunicationStyle(config);
+  hydrateAmbientAwareness(config);
   return { config, rawYaml };
 }
 
@@ -119,19 +192,33 @@ export async function discoverProjects(): Promise<ProjectSummary[]> {
         const statePath = path.join(projectDir, 'state.json');
 
         const brainstormingFile = `${projectName}-BRAINSTORMING.md`;
-        const brainstormingAbsPath = path.join(projectDir, brainstormingFile);
+        const rootDocFile = path.basename(rootDocPath(absBasePath, projectName));
         // Initialised to false; resolved inside the try so any future exception
-        // in fileExists is contained by the per-project catch below.
+        // in the listing is contained by the per-project catch below.
         let hasBrainstorming = false;
+        let isPortfolio = false;
 
         try {
-          hasBrainstorming = await fileExists(brainstormingAbsPath);
+          // One directory listing answers both existence questions — the
+          // brainstorming doc and (when the `-ROOT` suffix gate below passes)
+          // the portfolio root doc — so portfolio detection adds no filesystem
+          // read beyond the one this loop already performed for the
+          // brainstorming check.
+          const dirFiles = await readdir(projectDir);
+          hasBrainstorming = dirFiles.includes(brainstormingFile);
+          // Cheap gate before consulting the listing: only a `-ROOT`-suffixed
+          // directory can be a portfolio root, so an ordinary project that
+          // happens to hold a same-named doc is never misclassified.
+          isPortfolio = baseFromRootDir(projectName) !== null && dirFiles.includes(rootDocFile);
           const raw = await readFile(statePath, 'utf-8');
           const state: AnyProjectState = JSON.parse(raw);
           if (isV5State(state) || isV6State(state)) {
+            const derived = deriveProjectState(state);
             return {
               name: projectName,
-              tier: state.graph.status === 'completed' ? 'complete' : state.pipeline.current_tier,
+              tier: derived.tier ?? 'not_initialized',
+              state: derived.state,
+              stateLabel: derived.label,
               hasState: true,
               hasMalformedState: false,
               brainstormingDoc: hasBrainstorming ? brainstormingFile : null,
@@ -140,7 +227,15 @@ export async function discoverProjects(): Promise<ProjectSummary[]> {
               lastUpdated: state.project?.updated,
               schemaVersion: isV6State(state) ? 'v6' : 'v5',
               graphStatus: state.graph.status,
-              project_type: state.project?.project_type,
+              // Normalize the disk value to the closed ProjectKind vocabulary — an
+              // unexpected/corrupted `project_type` must not reach the presentation
+              // table's lookup unvalidated (mirrors the ternary in
+              // lib/work-graph/src/derive/projects.ts).
+              project_type: isPortfolio
+                ? 'portfolio'
+                : state.project?.project_type === 'side-project'
+                  ? 'side-project'
+                  : 'standard',
             };
           }
           throw new Error(`Unrecognized state schema: ${(state as { $schema?: unknown }).$schema}`);
@@ -154,21 +249,27 @@ export async function discoverProjects(): Promise<ProjectSummary[]> {
             return {
               name: projectName,
               tier: 'not_initialized',
+              state: 'not_initialized',
+              stateLabel: PROJECT_STATE_LABELS.not_initialized,
               hasState: false,
               hasMalformedState: false,
               brainstormingDoc: hasBrainstorming ? brainstormingFile : null,
               graphStatus: 'not_initialized',
+              project_type: isPortfolio ? 'portfolio' : undefined,
             };
           }
           return {
             name: projectName,
             tier: 'not_initialized',
+            state: 'not_initialized',
+            stateLabel: PROJECT_STATE_LABELS.not_initialized,
             hasState: true,
             hasMalformedState: true,
             errorMessage:
               err instanceof Error ? err.message : 'Unknown parse error',
             brainstormingDoc: hasBrainstorming ? brainstormingFile : null,
             graphStatus: 'not_initialized',
+            project_type: isPortfolio ? 'portfolio' : undefined,
           };
         }
       }),

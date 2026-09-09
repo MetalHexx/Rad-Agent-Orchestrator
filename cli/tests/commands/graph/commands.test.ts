@@ -23,6 +23,15 @@ describe('graph commands', () => {
     expect(runGraphUnlink({ root, from: 'MR-2', to: 'MR-1', type: 'follows' }).rev).toBe(2);
     expect(runGraphShow({ root }).data.edges).toEqual([]);
   });
+  it('show surfaces the canonical state and stateLabel on every node', () => {
+    const { nodes } = runGraphShow({ root }).data;
+    expect(nodes.length).toBeGreaterThan(0);
+    for (const node of nodes) {
+      expect(typeof node.state).toBe('string');
+      expect(typeof node.stateLabel).toBe('string');
+      expect(node.stateLabel.length).toBeGreaterThan(0);
+    }
+  });
   it('scopes show by root and depth', () => {
     runGraphLink({ root, from: 'MR-2', to: 'MR-1', type: 'follows' });
     const scoped = runGraphShow({ root, rootId: 'MR-2', depth: 0 });

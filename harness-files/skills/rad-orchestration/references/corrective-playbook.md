@@ -1,6 +1,6 @@
 # Corrective Flow
 
-Reference for the orchestrator's role in a corrective cycle (task-scope, phase-scope, or final-scope). The orchestrator is a **dumb router** here — it does not read findings, does not judge them, and does not author anything. The coder self-mediates its own review; the pipeline engine births and budgets the corrective. This document covers only what the orchestrator actually does. `references/pipeline-guide.md` carries the short version (`## Corrective Flow`) plus the tier-selection policy this document defers to.
+Reference for the orchestrator's role in a corrective cycle (task-scope, phase-scope, or final-scope). For a reviewer-verdict corrective, the orchestrator is a **dumb router** — it does not read findings, does not judge them, and does not author anything; the coder self-mediates its own review, and the pipeline engine births and budgets the corrective. The one exception is the final scope's operator-initiated corrective (below), where a grounding pass and a short write-up happen before the signal. This document covers only what the orchestrator actually does. `references/pipeline-guide.md` carries the short version (`## Corrective Flow`) plus the tier-selection policy this document defers to.
 
 ---
 
@@ -10,11 +10,11 @@ A corrective cycle fires off the reviewer's raw `verdict`, nothing else:
 
 | Raw verdict | Orchestrator action |
 |---|---|
-| `changes_requested` | Signal the completion event (`code_review_completed` / `phase_review_completed` / `final_review_completed`) exactly as you would for any other outcome — same `--doc-path`, no extra flags, nothing authored. The engine reads the raw verdict and births the corrective. |
+| `changes_requested` | Signal the completion event (`code_review_completed` / `phase_review_completed` / `final_review_completed`) exactly as you would for any other outcome — run the envelope's command unchanged: same `--doc-path`, whatever pre-filled `--phase`/`--task` it already carries, nothing added and nothing authored. The engine reads the raw verdict and births the corrective. |
 | `approved` | Signal the completion event. Propagates untouched. |
 | `rejected` | Signal the completion event. The mutation routes it into a clean pipeline halt. |
 
-There is no separate mediation signal and no orchestrator-authored frontmatter or addendum. The review doc the reviewer produced is already everything the engine needs to decide.
+For this reviewer-verdict trigger there is no separate mediation signal and no orchestrator-authored frontmatter or addendum. The review doc the reviewer produced is already everything the engine needs to decide.
 
 Three outcomes never advance the pipeline past the corrective; each halts with a stated reason, and in every case the orchestrator still just signals the completion event and relays — it never computes the halt itself:
 
@@ -23,6 +23,22 @@ Three outcomes never advance the pipeline past the corrective; each halts with a
 | Exhausted budget | `corrective_tasks.length` (within the current budget window) reaches `max_retries_per_task`; the mutation halts instead of birthing another corrective. |
 | `rejected` verdict | The mutation routes it into a clean pipeline halt, at any scope. |
 | Template snapshot with no declared corrective host | The mutation cannot find a node to attach the corrective to and halts rather than guess one. |
+
+---
+
+## Operator-initiated corrective at final scope
+
+`final_corrective_requested` is a second corrective trigger, alongside the review-verdict one above. It fires from the operator's own choice at the final-approval gate (`references/pipeline-guide.md` → `request_final_approval`), not from a reviewer's verdict:
+
+| Trigger | Orchestrator action |
+|---|---|
+| Operator requests changes at the final-approval gate | Ground the objection enough to give the diagnosis substance, write it up as one short line — **Observed** / **Diagnosis** / **Fixed when** — that preserves the operator's own words, show it to the operator for confirmation, then signal `final_corrective_requested` carrying that write-up as `--reason`. See `rad-amend`'s Step 2 corrective route or `request_final_approval`'s catalog entry for the write-up's shape in full. The orchestrator authors no finding of its own — the write-up is not the finding, only the material the engine turns into one. |
+
+The engine does the rest: it appends the reason as a finding on the running final review report and births the corrective on `final_review`'s own `corrective_tasks[]` — the same array a `changes_requested` verdict appends to (see "Scope: task, phase, and final" below) — opening a fresh budget window so the operator's request draws down none of the budget an agent's own retries spend (see "Budget" below).
+
+The cycle closes the same way a review-verdict corrective does: the corrective's own child review (a `spawn_code_reviewer` dispatch, per `references/pipeline-guide.md` → "Reviewer tier selection") re-adjudicates the running final review report. The final reviewer itself is never re-dispatched.
+
+A rejection (`final_rejected`) is not this path — it carries no reason forward into a finding and births nothing; it halts the pipeline outright on the operator's stated reason.
 
 ---
 
@@ -49,7 +65,7 @@ The re-spawned reviewer (task or phase scope, per `references/pipeline-guide.md`
 
 `max_retries_per_task` (from `orchestration.yml`, default `5`) is the **sole** corrective gate. The engine tracks `corrective_tasks.length` against it and converts an exhausted budget into a clean pipeline halt on its own. The orchestrator does not count attempts, check the budget, or decide when to stop.
 
-At final scope, the ceiling is measured **within the current budget window**, not against the full `corrective_tasks` history. A human rejection at the final approval gate advances the window origin, so the next corrective is attempt one of the ceiling again — prior entries remain in the array as audit history but no longer count against the budget.
+At final scope, the ceiling is measured **within the current budget window**, not against the full `corrective_tasks` history. An operator change request at the final approval gate (`final_corrective_requested`) advances the window origin, so the corrective it births is attempt one of the ceiling again — prior entries remain in the array as audit history, standing outside the window the gate measures against. A rejection (`final_rejected`) does not touch the window at all; it halts the pipeline outright, with no corrective to measure a budget against.
 
 ---
 
@@ -69,33 +85,13 @@ This routing is derived from `state.json` by the engine — the orchestrator doe
 
 ## Verify Before Echo (corrective commit signals)
 
-**Scope:** the mutating `task_completed` signal on a corrective path — the one
-that records a commit hash. Commit is folded into the task, so a corrective
-task's own `task_completed` carries its hash. Not all signals; only this
-corrective commit echo.
+**Scope:** the mutating `task_completed` signal on a corrective path — the one that records a commit hash. Commit is folded into the task, so a corrective task's own `task_completed` carries its hash. Not all signals; only this corrective commit echo.
 
-When you are about to signal `task_completed` for a corrective task, the
-`--phase`/`--task`/`--branch` you echo come from `data.context`. On a corrective
-path that context can be stale. Before emitting the mutating signal:
+The `task_completed` command for a corrective task carries pre-filled `--phase`/`--task`/`--branch` values from `data.context` — to verify, never to compose or type. On a corrective path that context can be stale. Before running the command:
 
-1. **Read `state.json`.** Locate the node(s) carrying `status: in_progress`.
-2. **Confirm the active node.** On a phase-scope corrective the active node is
-   the last entry of the active phase's `corrective_tasks` (its `task_executor`
-   sub-node is `in_progress`); the echoed context should carry that phase's
-   identity with the phase-scope task sentinel (`task_number: null`,
-   `task_id: "P{NN}-PHASE"`). On a final-scope corrective the active node is
-   the last **windowed** entry of the review step's own `corrective_tasks`; the
-   echoed context should carry `task_number: null`, `task_id: "FINAL"`, and
-   **no** phase identity.
-3. **Confirm the identifiers address that node.** If `--phase`/`--task` do not
-   resolve to the `in_progress` node, **do not emit `task_completed`.** Inspect
-   and correct first — re-derive the correct identifiers from the markers, or
-   re-signal `start` (non-mutating) to let the engine recompute the action
-   context.
-4. **Never echo a context you have flagged as stale into a mutation.** A
-   finalized commit hash is immutable; the engine refuses a stale echo — and a
-   commit reported off its intended branch — with `ok: false`, but the rule is
-   to catch it before the signal, not rely on the engine's catch-net.
+1. **Read the identity off `data.context`.** `phase_number`, `task_number`, and `task_id` are already there — no state file to read.
+2. **Confirm the active node.** On a phase-scope corrective the active node is the last entry of the active phase's `corrective_tasks` (its `task_executor` sub-node is `in_progress`); the echoed context should carry that phase's identity with the phase-scope task sentinel (`task_number: null`, `task_id: "P{NN}-PHASE"`). On a final-scope corrective the active node is the last **windowed** entry of the review step's own `corrective_tasks`; the echoed context should carry `task_number: null`, `task_id: "FINAL"`, and **no** phase identity.
+3. **Confirm the identifiers address that node.** If `--phase`/`--task` do not resolve to that node, **do not run the command.** Re-enter `/rad-execute`, which hands you a command that reloads state and recomputes the context without mutating anything. If the recomputed identity still misses the node you believe is active, halt and hand the operator the diagnosis — never run the command anyway, and never repair anything.
+4. **Never echo a context you have flagged as stale into a mutation.** A finalized commit hash is immutable; the engine refuses a stale echo — and a commit reported off its intended branch — with `ok: false`, but the rule is to catch it before the signal, not rely on the engine's catch-net.
 
-This is a standing rule: a future orchestrator agent facing the same
-stale-context signal halts and verifies rather than echoing into a mutation.
+This is a standing rule: a future orchestrator agent facing the same stale-context signal halts and verifies rather than echoing into a mutation.

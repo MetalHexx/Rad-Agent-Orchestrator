@@ -11,4 +11,4 @@ Open the pull request(s) yourself — do not spawn an agent. Follow the `rad-sou
 
 The envelope carries `data.context.repos[]` — an array where each entry has `name`, `path`, `branch`, and `base_branch`. For each repo, open one PR from `branch` against `base_branch`, running `gh` in that repo's `path`.
 
-Relay the resulting `[{ name, pr_url }]` array into one array-shaped `pr_created` signal via `--repos '<json>'`. Give every entry an explicit `pr_url`: the URL when creation succeeded, or `pr_url: null` when it failed or a pre-condition was unmet. The pipeline records each entry's `pr_url` as given (a `null` records the attempt as unavailable) and proceeds to the human gate.
+Relay the resulting `[{ name, pr_url }]` array as the `pr_created` signal. Give every entry an explicit `pr_url`: the URL when creation succeeded, or `null` when it failed or a pre-condition was unmet — a `null` records the attempt as unavailable rather than as an error, and the pipeline proceeds to the human gate either way.

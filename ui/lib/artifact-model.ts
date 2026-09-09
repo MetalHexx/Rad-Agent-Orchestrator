@@ -13,7 +13,7 @@ export interface Artifact {
   /** True for Requirements / Master Plan when a pipeline timeline exists — they pin to the top in fixed order ahead of the alpha-sorted rest. */
   pinned?: boolean;
   /** Discriminator for the pipeline-doc identity of this artifact; absent for brainstorm/wireframe/generic docs. */
-  category?: 'requirements' | 'master-plan' | 'error-log' | 'plan-audit' | 'other';
+  category?: 'requirements' | 'master-plan' | 'error-log' | 'plan-audit' | 'amendment' | 'other';
 }
 
 /**
@@ -57,6 +57,24 @@ function pipelineDocMeta(fileName: string, project: string): { label: string; ca
   return suffix ? PIPELINE_DOC_META[suffix] : null;
 }
 
+/** Neutralize regex metacharacters so an interpolated value matches literally. */
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Resolve the label/category for a root amendment doc, or null when `fileName`
+ * isn't one. Amendment docs are named `${project}-AMENDMENT-{NN}.md`, one per
+ * amendment — an indexed family, not a single fixed name, so they can't be
+ * matched by `PIPELINE_DOC_SUFFIXES`'s exact-suffix denylist. Recognized by
+ * prefix instead, independent of `hasTimeline`.
+ */
+function amendmentDocMeta(fileName: string, project: string): { label: string; category: 'amendment' } | null {
+  const match = new RegExp(`^${escapeRegExp(project)}-AMENDMENT-(\\d+)\\.md$`).exec(fileName);
+  if (!match) return null;
+  return { label: `Amendment ${parseInt(match[1], 10)}`, category: 'amendment' };
+}
+
 function isRootFile(relPath: string): boolean {
   return !relPath.includes('/');
 }
@@ -98,7 +116,7 @@ export function deriveArtifacts(
   const brainstormVisual = `${project}-BRAINSTORM.html`;
   const requirementsMd = `${project}-REQUIREMENTS.md`;
   const masterPlanMd = `${project}-MASTER-PLAN.md`;
-  const wireframeRe = new RegExp(`^${project}-WIREFRAME-(.+)\\.html$`);
+  const wireframeRe = new RegExp(`^${escapeRegExp(project)}-WIREFRAME-(.+)\\.html$`);
 
   const root = files.filter(isRootFile);
   const out: Artifact[] = [];
@@ -157,6 +175,10 @@ export function deriveArtifacts(
     })
     .map((f): Artifact => {
       if (f.endsWith('.md')) {
+        const amendmentMeta = amendmentDocMeta(f, project);
+        if (amendmentMeta) {
+          return { fileName: f, kind: 'markdown', label: amendmentMeta.label, title: null, isMarkdown: true, category: amendmentMeta.category };
+        }
         const meta = hasTimeline ? pipelineDocMeta(f, project) : null;
         if (meta) {
           return { fileName: f, kind: 'markdown', label: meta.label, title: null, isMarkdown: true, category: meta.category };

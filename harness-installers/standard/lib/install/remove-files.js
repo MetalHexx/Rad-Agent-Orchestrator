@@ -6,8 +6,9 @@
 // skipped unconditionally (idempotent symmetry with install-files.js).
 //
 // FR-20 defensive guard: refuses any manifest entry that targets a path under
-// ${RAD_HOME}/action-events/custom/. The shipped manifest must never list a
-// user-authored custom payload; if one ever appears, abort the uninstall.
+// ${RAD_HOME}/<catalog>/custom/ for any user-data catalog (action-events,
+// communication-styles). The shipped manifest must never list a user-authored
+// custom payload; if one ever appears, abort the uninstall.
 //
 // AD-11: refuses any manifest entry whose resolved basename matches
 // repo-registry.yml or repo-registry.local.yml — registry files survive
@@ -42,15 +43,18 @@ export function removeManifestFiles(manifest, harness) {
   };
 
   // FR-20 / AD-11 defensive guard: refuse any manifest entry that targets a
-  // payload under action-events/custom/ or a repo-registry*.yml file. The
-  // shipped manifest must list neither; if one ever appears, abort before
-  // touching disk.
-  const customSegment = `${path.sep}action-events${path.sep}custom${path.sep}`;
+  // payload under a protected catalog's custom/ slot, or a repo-registry*.yml
+  // file. The shipped manifest must list neither; if one ever appears, abort
+  // before touching disk.
+  const PROTECTED_CUSTOM_SEGMENTS = ['action-events', 'communication-styles']
+    .map((cat) => `${path.sep}${cat}${path.sep}custom${path.sep}`);
   for (const entry of manifest.files ?? []) {
     const resolved = expandDestinationTokens(entry.destinationPath, harness);
-    if (resolved.includes(customSegment)) {
+    const guardedSegment = PROTECTED_CUSTOM_SEGMENTS.find((segment) => resolved.includes(segment));
+    if (guardedSegment) {
+      const catalog = guardedSegment.split(path.sep).filter(Boolean)[0];
       throw new Error(
-        `uninstall safety: manifest entry '${entry.bundlePath}' targets an action-events/custom/ ` +
+        `uninstall safety: manifest entry '${entry.bundlePath}' targets a ${catalog}/custom/ ` +
         `payload. Refusing to proceed.`,
       );
     }

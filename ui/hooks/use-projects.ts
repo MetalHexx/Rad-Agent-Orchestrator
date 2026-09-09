@@ -3,9 +3,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { usePathname } from "next/navigation";
 import type { ProjectSummary } from "@/types/components";
-import type { AnyProjectState } from "@/types/state";
 import { isV6State } from "@/types/state";
-import type { SSEEvent, SSEConnectionStatus } from "@/types/events";
+import type { SSEEvent, SSEConnectionStatus, SSEPayloadMap } from "@/types/events";
 import { derivePlanningStatus, deriveExecutionStatus } from "@/lib/status-derivation";
 import type { OwnedProjectState, OwnedError } from "@/lib/project-view";
 import { useSSEContext } from "@/hooks/use-sse-context";
@@ -147,19 +146,17 @@ export function useProjects(initialProject?: string | null): UseProjectsReturn {
 
       switch (event.type) {
         case "state_change": {
-          const payload = event.payload as { projectName: string; state: AnyProjectState };
+          const payload = event.payload as SSEPayloadMap["state_change"];
 
           // Unconditionally patch the projects array (sidebar reactivity).
-          // v5 and v6 are structurally identical (both have .graph/.pipeline/
-          // .project), so derive from the graph uniformly and discriminate only
-          // the reported schemaVersion. AnyProjectState is exactly v5|v6, so no
-          // other branch is needed.
+          // tier/state/stateLabel come straight from the server-derived
+          // projectState — this hook never recomputes a label of its own.
+          // planningStatus/executionStatus are still derived client-side
+          // because the sort classifier (not this badge) reads them; v5 and
+          // v6 are structurally identical, so that derivation stays uniform
+          // over the graph and only discriminates the reported schemaVersion.
           {
             const state = payload.state;
-            const tier =
-              state.graph.status === 'completed'
-                ? 'complete'
-                : state.pipeline.current_tier;
             const planningStatus = derivePlanningStatus(state.graph.nodes, state.graph.status);
             const executionStatus = deriveExecutionStatus(
               state.graph.status,
@@ -170,7 +167,14 @@ export function useProjects(initialProject?: string | null): UseProjectsReturn {
                 p.name === payload.projectName
                   ? {
                       ...p,
-                      tier,
+                      tier: payload.projectState.tier ?? 'not_initialized',
+                      state: payload.projectState.state,
+                      stateLabel: payload.projectState.label,
+                      // The server only publishes a state_change after parsing
+                      // state.json, so this project is readable right now — a
+                      // malformed verdict from an earlier list fetch is stale.
+                      hasMalformedState: false,
+                      errorMessage: undefined,
                       planningStatus,
                       executionStatus,
                       lastUpdated: state.project?.updated,

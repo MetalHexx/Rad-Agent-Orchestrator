@@ -8,11 +8,19 @@
  * the project's non-rendering test pattern.
  */
 import assert from "node:assert";
-import { formatNodeId } from './dag-node-row';
+import { JSDOM } from 'jsdom';
+import React, { createElement, act } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { createRoot } from 'react-dom/client';
+import { formatNodeId, DAGNodeRow } from './dag-node-row';
 import { getDisplayName, getGateNodeConfig, getRowButtonDescriptor, GATE_NODE_CONFIG } from './dag-timeline-helpers';
 import { STATUS_MAP } from './node-status-badge';
 import type { StepNodeState, GateNodeState, ConditionalNodeState, ParallelNodeState, NodeStatus } from '@/types/state';
 import { gateNode, conditionalNodeBranchTrue, conditionalNodeBranchFalse } from './__fixtures__';
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+(globalThis as any).React = React;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+(globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
 
 let passed = 0;
 let failed = 0;
@@ -662,9 +670,9 @@ test("gate_active=true on final_approval_gate → 'none' (Approve now owned by t
   assert.strictEqual(renderKindFor('final_approval_gate', node, 'not_started', 'POEMS-1'), 'none');
 });
 
-test("FR-2: plan_approval_gate completed AND phase_loop not_started → 'execute'", () => {
+test("AIOPS-266 pivot: plan_approval_gate completed AND phase_loop not_started → 'none' (launch buttons hidden)", () => {
   const node: GateNodeState = { kind: 'gate', status: 'completed', gate_active: true };
-  assert.strictEqual(renderKindFor('plan_approval_gate', node, 'not_started', 'POEMS-1'), 'execute');
+  assert.strictEqual(renderKindFor('plan_approval_gate', node, 'not_started', 'POEMS-1'), 'none');
 });
 
 test("FR-2: plan_approval_gate completed AND phase_loop in_progress → 'none'", () => {
@@ -860,26 +868,163 @@ test4("FR-17/DD-13 flat-row container retains pr-3 gutter", () => {
     "flat-row container must carry pr-3 gutter (FR-17, DD-13)");
 });
 
-test4("DAGNodeRow accepts an optional prUrl prop and renders an ExternalLink (icon=github, label=\"Pull Request\") on the final_pr row", () => {
-  assert.ok(/prUrl\??:\s*string\s*\|\s*null/.test(ROW_SOURCE),
-    "DAGNodeRow props must include optional prUrl: string | null");
-  assert.ok(/import\s+\{[^}]*\bExternalLink\b[^}]*\}\s+from\s+['"]@\/components\/documents['"]/.test(ROW_SOURCE),
-    "DAGNodeRow must import ExternalLink so the final_pr row can surface the PR link");
-  assert.ok(/nodeId\s*===\s*['"]final_pr['"]\s*&&\s*prUrl\s*!=\s*null/.test(ROW_SOURCE),
-    "ExternalLink must be gated on `nodeId === 'final_pr' && prUrl != null` so the link only renders on the Final PR row when the PR URL exists");
-  assert.ok(/<ExternalLink[^/>]*href=\{prUrl\}[^/>]*label="Pull Request"[^/>]*icon="github"/s.test(ROW_SOURCE)
-    || /<ExternalLink[^/>]*icon="github"[^/>]*label="Pull Request"[^/>]*href=\{prUrl\}/s.test(ROW_SOURCE)
-    || (/<ExternalLink/.test(ROW_SOURCE) && /href=\{prUrl\}/.test(ROW_SOURCE) && /label="Pull Request"/.test(ROW_SOURCE) && /icon="github"/.test(ROW_SOURCE)),
-    "ExternalLink must render with href={prUrl}, label=\"Pull Request\", icon=\"github\" — same shape as the project header link");
+const finalPrStepNode: StepNodeState = { kind: 'step', status: 'completed', doc_path: null, retries: 0 };
+
+test4("DAGNodeRow renders an ExternalLink (icon=github) on the final_pr row, one per repo carrying a PR", () => {
+  const single = renderToStaticMarkup(
+    createElement(DAGNodeRow, {
+      nodeId: 'final_pr',
+      node: finalPrStepNode,
+      currentNodePath: null,
+      onDocClick: () => {},
+      isFocused: false,
+      onFocusChange: () => {},
+      prLinks: [{ repoName: 'api', url: 'https://github.com/o/api/pull/9' }],
+    }),
+  );
+  assert.match(single, /href="https:\/\/github\.com\/o\/api\/pull\/9"/, 'renders the PR link on the final_pr row');
+  assert.ok(single.includes('>Pull Request<'), 'a single repo keeps the plain "Pull Request" label');
+
+  const multi = renderToStaticMarkup(
+    createElement(DAGNodeRow, {
+      nodeId: 'final_pr',
+      node: finalPrStepNode,
+      currentNodePath: null,
+      onDocClick: () => {},
+      isFocused: false,
+      onFocusChange: () => {},
+      prLinks: [
+        { repoName: 'api', url: 'https://github.com/o/api/pull/9' },
+        { repoName: 'ui', url: 'https://github.com/o/ui/pull/10' },
+      ],
+    }),
+  );
+  assert.match(multi, /href="https:\/\/github\.com\/o\/api\/pull\/9"/, 'first repo PR link renders');
+  assert.match(multi, /href="https:\/\/github\.com\/o\/ui\/pull\/10"/, 'second repo PR link renders');
+  assert.ok(multi.includes('>api Pull Request<'), 'multi-repo labels disambiguate by repo name');
+  assert.ok(multi.includes('>ui Pull Request<'), 'multi-repo labels disambiguate by repo name');
+
+  const nonFinalRow = renderToStaticMarkup(
+    createElement(DAGNodeRow, {
+      nodeId: 'phase_review',
+      node: finalPrStepNode,
+      currentNodePath: null,
+      onDocClick: () => {},
+      isFocused: false,
+      onFocusChange: () => {},
+      prLinks: [{ repoName: 'api', url: 'https://github.com/o/api/pull/9' }],
+    }),
+  );
+  assert.ok(!nonFinalRow.includes('<a '), 'the PR link is scoped to the final_pr row only');
+
+  const noLinks = renderToStaticMarkup(
+    createElement(DAGNodeRow, {
+      nodeId: 'final_pr',
+      node: finalPrStepNode,
+      currentNodePath: null,
+      onDocClick: () => {},
+      isFocused: false,
+      onFocusChange: () => {},
+      prLinks: [],
+    }),
+  );
+  assert.ok(!noLinks.includes('<a '), 'no PR link renders when no repo carries one');
 });
 
-test4("final_pr row is keyboard-activatable — Enter/Space opens prUrl in a new tab", () => {
-  assert.ok(/window\.open\s*\(\s*prUrl/.test(ROW_SOURCE),
-    "handleKeyDown must call window.open(prUrl, ...) so Enter/Space activates the PR link without breaking roving-tabindex");
-  assert.ok(/['"]_blank['"]/.test(ROW_SOURCE),
-    "PR link must open in a new tab via window.open(..., '_blank', ...)");
-  assert.ok(/noopener,?\s*noreferrer/.test(ROW_SOURCE),
-    "window.open must include noopener,noreferrer for safety parity with the anchor's rel attribute");
+test4("final_pr row is keyboard-activatable — Enter opens the first PR link in a new tab", () => {
+  const dom = new JSDOM('<!doctype html><div id="root"></div>');
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (globalThis as any).window = dom.window;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (globalThis as any).document = dom.window.document;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (globalThis as any).HTMLElement = dom.window.HTMLElement;
+
+  const opened: unknown[][] = [];
+  dom.window.open = ((...args: unknown[]) => { opened.push(args); return null; }) as typeof dom.window.open;
+
+  const container = dom.window.document.getElementById('root')!;
+  const root = createRoot(container);
+  act(() => {
+    root.render(createElement(DAGNodeRow, {
+      nodeId: 'final_pr',
+      node: finalPrStepNode,
+      currentNodePath: null,
+      onDocClick: () => {},
+      isFocused: true,
+      onFocusChange: () => {},
+      prLinks: [{ repoName: 'api', url: 'https://github.com/o/api/pull/9' }],
+    }));
+  });
+
+  const row = container.querySelector('[role="option"]') as HTMLElement;
+  const event = new dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+  act(() => { row.dispatchEvent(event); });
+
+  assert.equal(opened.length, 1, 'window.open called once on Enter');
+  assert.equal(opened[0][0], 'https://github.com/o/api/pull/9', 'opens the PR url');
+  assert.equal(opened[0][1], '_blank', 'opens in a new tab');
+  assert.match(String(opened[0][2]), /noopener/, 'carries noopener');
+  assert.match(String(opened[0][2]), /noreferrer/, 'carries noreferrer');
+
+  act(() => { root.unmount(); });
+});
+
+// Regression: a11y review comment on PR #43 (dag-node-row.tsx) — every
+// rendered PR anchor was removed from the tab order while Enter always
+// opened only prLinks[0], leaving the 2nd+ repo's PR mouse-only.
+test4("with multiple repos, every PR anchor joins the Tab order and the row defers to a focused anchor's own activation", () => {
+  const dom = new JSDOM('<!doctype html><div id="root"></div>');
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (globalThis as any).window = dom.window;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (globalThis as any).document = dom.window.document;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (globalThis as any).HTMLElement = dom.window.HTMLElement;
+
+  const opened: unknown[][] = [];
+  dom.window.open = ((...args: unknown[]) => { opened.push(args); return null; }) as typeof dom.window.open;
+
+  const container = dom.window.document.getElementById('root')!;
+  const root = createRoot(container);
+  act(() => {
+    root.render(createElement(DAGNodeRow, {
+      nodeId: 'final_pr',
+      node: finalPrStepNode,
+      currentNodePath: null,
+      onDocClick: () => {},
+      isFocused: true,
+      onFocusChange: () => {},
+      prLinks: [
+        { repoName: 'api', url: 'https://github.com/o/api/pull/9' },
+        { repoName: 'ui', url: 'https://github.com/o/ui/pull/10' },
+      ],
+    }));
+  });
+
+  const anchors = Array.from(container.querySelectorAll('a'));
+  assert.equal(anchors.length, 2, 'both repos\' PR anchors render');
+  for (const anchor of anchors) {
+    assert.equal(
+      anchor.getAttribute('tabindex'),
+      null,
+      'each PR anchor keeps the natural Tab order once there is more than one repo, so the 2nd+ repo is keyboard-reachable'
+    );
+  }
+
+  // Simulate the second anchor already holding real DOM focus (as Tab would
+  // leave it) and Enter being pressed there. The row's composite handler
+  // must step aside instead of hijacking the keystroke to open prLinks[0].
+  const event = new dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+  act(() => { anchors[1].dispatchEvent(event); });
+
+  assert.equal(
+    opened.length,
+    0,
+    'the row must not synthesize window.open for a keydown that targets a focused PR anchor directly — the anchor handles its own activation natively'
+  );
+
+  act(() => { root.unmount(); });
 });
 
 test4("aria-label is derived from the resolved badge {status,label} — not raw node.status", () => {

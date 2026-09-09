@@ -1,3 +1,5 @@
+import type { CompletionCommand } from './completion-commands.js';
+
 // Type Aliases
 
 export type NodeKind = 'step' | 'gate' | 'for_each_phase' | 'for_each_task' | 'conditional' | 'parallel';
@@ -194,6 +196,8 @@ export interface CorrectiveTaskEntry {
   doc_path?: string | null;   // ORIGINAL scope doc (task handoff / phase plan) the corrective re-runs against — copied from the hosting iteration at birth, immutable
   review_report_path?: string | null; // review report that requested this corrective (the completing review's doc_path)
   repos: RepoCommitEntry[];   // per-repo commit tracking, set by the task_completed mutation
+  origin?: 'operator';        // set only on a corrective the operator requested directly (e.g. from the
+                               // final-approval gate); absent means reviewer-driven — the common case
 }
 
 export interface IterationEntry {
@@ -284,22 +288,27 @@ export interface PipelineState {
 // Computed once at CLI entry via `resolvePathContext()` in `path-context.ts`,
 // which derives `scriptsDir` from the location of `path-context.ts` itself
 // (`cli/src/lib/pipeline-engine/` in source, the equivalent location in the
-// esbuild bundle) and `templatesDir` from `RADORCH_TEMPLATES_DIR` env var with
-// fallback to `~/.radorc/templates/`. Threading the resolved values down
-// avoids `fileURLToPath(import.meta.url)` walks inside the engine modules.
+// esbuild bundle), `templatesDir` from `RADORCH_TEMPLATES_DIR` env var with
+// fallback to `~/.radorc/templates/`, and `scriptPath` from `process.argv[1]`.
+// Threading the resolved values down avoids `fileURLToPath(import.meta.url)`
+// walks — and any `process` read — inside the engine modules.
 
 export interface PathContext {
   scriptsDir: string;      // absolute path of the engine source folder (`cli/src/lib/pipeline-engine/`)
   templatesDir: string;    // absolute path of `~/.radorc/templates/`
+  scriptPath: string;      // absolute path of the running radorch script
 }
 
 // Pipeline Result (engine output contract)
 //
-// `prompt` (catalog body + optional pre/post slots) and `completion_event`
-// (the action's resolved completion event name, or null for terminal actions)
-// sit inside `data` alongside `action` and `context` per FR-7. Both fields are
-// intentionally optional so failure envelopes (which set `error`) naturally
-// omit them.
+// `prompt` (catalog body + optional pre/post slots), `completion_event` (the
+// action's resolved completion event name, or null for terminal actions) and
+// `completion_commands` (one runnable command per way the action can finish by
+// signalling) sit inside `data` alongside `action` and `context` — they are NOT
+// nested inside `context`. All three are optional so failure envelopes (which
+// set `error`) naturally omit them; every success envelope carries
+// `completion_commands`, empty when there is nothing for the orchestrator to
+// signal.
 
 export interface PipelineResult {
   action: string | null;
@@ -307,6 +316,7 @@ export interface PipelineResult {
   prompt?: string;
   completion_event?: string | null;
   has_custom_instructions?: boolean;
+  completion_commands?: CompletionCommand[];
   error?: { message: string; event: string; field?: string };
 }
 
@@ -401,6 +411,12 @@ export interface IOAdapter {
   writeState(projectDir: string, state: PipelineState): void;
   readConfig(configPath?: string): OrchestrationConfig;
   readDocument(docPath: string): { frontmatter: Record<string, unknown>; content: string } | null;
+  /** Verbatim document text, frontmatter included. Null when the file is absent.
+   *  The parsed `readDocument` cannot round-trip a document — re-emitting its
+   *  frontmatter would reformat YAML the engine did not author — so an edit that
+   *  must preserve the rest of the file byte-for-byte reads through here. */
+  readDocumentRaw(docPath: string): string | null;
+  writeDocument(docPath: string, contents: string): void;
   ensureDirectories(projectDir: string): void;
 }
 

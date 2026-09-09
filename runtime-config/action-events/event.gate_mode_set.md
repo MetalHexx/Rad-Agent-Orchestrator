@@ -9,4 +9,4 @@ signal_payload:
     description: Selected gate mode — one of `task`, `phase`, or `autonomous`.
 ---
 
-Signal `gate_mode_set --gate-mode <chosen>` only after the operator has explicitly picked one of the three modes. Do not infer a value on ambiguous input. The selected mode determines whether per-task and per-phase gates pause for human approval downstream.
+Fires only after the operator has explicitly picked one of the three modes — never infer a value on ambiguous input. The selected mode determines whether per-task and per-phase gates pause for human approval downstream.

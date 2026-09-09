@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { WorkGraphService } from '../src/index.js';
+import { WorkGraphService, PROJECT_STATE_LABELS } from '../src/index.js';
 import type { Result } from '../src/index.js';
 
 function unwrap<T>(r: Result<T>): T {
@@ -62,6 +62,22 @@ describe('WorkGraphService structure writes', () => {
     // confirm rev did not bump by checking another write still returns revBefore+1
     const ok = unwrap(s.updateGroup(id, { name: 'Updated Name' }));
     expect(ok.rev).toBe(revBefore + 1);
+  });
+  it('updateGroup returns the group rolled up from its members, not an empty rollup', () => {
+    const dir = path.join(root, 'projects', 'MR-EXEC');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'state.json'), JSON.stringify({
+      project: { name: 'MR-EXEC' },
+      pipeline: { current_tier: 'execution' },
+      graph: { status: 'in_progress', nodes: { phase_loop: { status: 'in_progress' } } },
+    }));
+    const s = svc();
+    unwrap(s.createGroup({ name: 'Rollup', description: 'holds an in-flight project' }));
+    unwrap(s.addMember('group:rollup', 'MR-EXEC'));
+    const { node } = unwrap(s.updateGroup('group:rollup', { name: 'Rollup Renamed' }));
+    expect(node.name).toBe('Rollup Renamed');
+    expect(node.state).toBe('executing');
+    expect(node.stateLabel).toBe(PROJECT_STATE_LABELS.executing);
   });
   it('deletes a group, cascading its contains edges and never deleting projects', () => {
     const s = svc();

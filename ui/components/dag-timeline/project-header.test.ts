@@ -35,6 +35,8 @@ type SimulateProjectHeaderProps = Omit<ProjectHeaderProps, 'followMode' | 'onTog
   onToggleFollowMode?: () => void;
 };
 
+type ProjectViewMode = 'overview' | 'pipeline';
+
 interface FollowModeSwitchSim {
   id: "follow-mode-switch";
   checked: boolean;
@@ -61,6 +63,13 @@ function simulateProjectHeader(props: SimulateProjectHeaderProps) {
     className: "cursor-pointer",
     onCheckedChange: onCheckedChangeAdapter,
   };
+  // Mirrors the ToggleGroup's onValueChange guard in project-header.tsx: an
+  // empty array (re-clicking the already-active item) is ignored — there is
+  // no "neither" mode.
+  const onViewModeChange = props.onViewModeChange ?? (() => {});
+  const onToggleValueChange = (values: string[]) => {
+    if (values.length > 0) onViewModeChange(values[0] as ProjectViewMode);
+  };
   return {
     projectName: props.projectName,
     outerElement: "header",
@@ -68,20 +77,25 @@ function simulateProjectHeader(props: SimulateProjectHeaderProps) {
     ariaLabel: `Project ${props.projectName}`,
     row1Class: "flex flex-wrap items-center gap-3",
     nameClass: "text-lg font-semibold",
-    showTierBadge: !!props.tier,
-    tier: props.tier,
-    planningStatus: props.planningStatus,
-    executionStatus: props.executionStatus,
+    showTierBadge: !!props.state && props.stateLabel !== undefined,
+    state: props.state,
+    stateLabel: props.stateLabel,
     showGateModeBadge: props.gateMode !== undefined,
     gateMode: props.gateMode,
     showRow2,
     currentPhaseName: showRow2 ? props.currentPhaseName : null,
     showProgress: showRow2 && !!props.progress,
     progress: showRow2 ? props.progress : null,
-    followModeContainerClass: "ml-auto inline-flex items-center gap-2",
+    // The right-hand cluster now holds both Follow Mode and the view toggle;
+    // ml-auto lives here (moved off the old Follow Mode-only wrapper) so the
+    // whole cluster — not just Follow Mode — is pushed to the row's end.
+    rightClusterClass: "ml-auto inline-flex items-center gap-2",
     followModeLabelText: "Follow Mode",
     followModeLabelHtmlFor: "follow-mode-switch",
     followModeSwitch,
+    showFollowMode: props.viewMode === 'pipeline',
+    showToggle: props.viewMode !== undefined,
+    onToggleValueChange,
   };
 }
 
@@ -119,29 +133,29 @@ test('row 1 has flex flex-wrap items-center gap-3 (unified wrapping row)', () =>
   assert.ok(result.row1Class.includes("gap-3"), 'row1 should include "gap-3"');
 });
 
-test('PipelineTierBadge renders when tier is provided (planning, in_progress)', () => {
+test('PipelineTierBadge renders when state is provided (planning)', () => {
   const result = simulateProjectHeader({
     projectName: "Test",
-    tier: "planning",
-    planningStatus: "in_progress",
+    state: "planning",
+    stateLabel: "Planning",
   });
   assert.strictEqual(result.showTierBadge, true);
-  assert.strictEqual(result.tier, "planning");
-  assert.strictEqual(result.planningStatus, "in_progress");
+  assert.strictEqual(result.state, "planning");
+  assert.strictEqual(result.stateLabel, "Planning");
 });
 
-test('PipelineTierBadge renders when tier is provided (execution, in_progress)', () => {
+test('PipelineTierBadge renders when state is provided (executing)', () => {
   const result = simulateProjectHeader({
     projectName: "Test",
-    tier: "execution",
-    executionStatus: "in_progress",
+    state: "executing",
+    stateLabel: "Executing",
   });
   assert.strictEqual(result.showTierBadge, true);
-  assert.strictEqual(result.tier, "execution");
-  assert.strictEqual(result.executionStatus, "in_progress");
+  assert.strictEqual(result.state, "executing");
+  assert.strictEqual(result.stateLabel, "Executing");
 });
 
-test('PipelineTierBadge does not render when tier is omitted', () => {
+test('PipelineTierBadge does not render when state is omitted', () => {
   const result = simulateProjectHeader({ projectName: "Test" });
   assert.strictEqual(result.showTierBadge, false);
 });
@@ -234,7 +248,7 @@ test('Progress text is hidden when progress is undefined', () => {
   assert.strictEqual(result.showProgress, false);
 });
 
-test('header without tier or gateMode renders only projectName — no tier badge, no gate badge, no row 2', () => {
+test('header without state or gateMode renders only projectName — no tier badge, no gate badge, no row 2', () => {
   const result = simulateProjectHeader({ projectName: "LEGACY" });
   assert.strictEqual(result.showTierBadge, false);
   assert.strictEqual(result.showGateModeBadge, false);
@@ -242,13 +256,65 @@ test('header without tier or gateMode renders only projectName — no tier badge
   assert.strictEqual(result.projectName, "LEGACY");
 });
 
-// ─── Follow Mode populated container ─────────────────────────────────────────
+// ─── Right-hand cluster (Follow Mode + view toggle) ──────────────────────────
 
-test('Follow Mode container uses ml-auto and inline-flex gap-2 classes', () => {
+test('Right-hand cluster uses ml-auto and inline-flex gap-2 classes', () => {
   const result = simulateProjectHeader({ projectName: "Test" });
-  assert.ok(result.followModeContainerClass.includes("ml-auto"), 'container should include "ml-auto"');
-  assert.ok(result.followModeContainerClass.includes("inline-flex"), 'container should include "inline-flex"');
-  assert.ok(result.followModeContainerClass.includes("gap-2"), 'container should include "gap-2"');
+  assert.ok(result.rightClusterClass.includes("ml-auto"), 'cluster should include "ml-auto"');
+  assert.ok(result.rightClusterClass.includes("inline-flex"), 'cluster should include "inline-flex"');
+  assert.ok(result.rightClusterClass.includes("gap-2"), 'cluster should include "gap-2"');
+});
+
+test('Toggle is absent when viewMode is undefined', () => {
+  const result = simulateProjectHeader({ projectName: "Test" });
+  assert.strictEqual(result.showToggle, false);
+});
+
+test('Toggle renders when viewMode is "overview"', () => {
+  const result = simulateProjectHeader({ projectName: "Test", viewMode: "overview" });
+  assert.strictEqual(result.showToggle, true);
+});
+
+test('Toggle renders when viewMode is "pipeline"', () => {
+  const result = simulateProjectHeader({ projectName: "Test", viewMode: "pipeline" });
+  assert.strictEqual(result.showToggle, true);
+});
+
+test('Follow Mode is hidden when viewMode is undefined', () => {
+  const result = simulateProjectHeader({ projectName: "Test" });
+  assert.strictEqual(result.showFollowMode, false);
+});
+
+test('Follow Mode is hidden when viewMode is "overview"', () => {
+  const result = simulateProjectHeader({ projectName: "Test", viewMode: "overview" });
+  assert.strictEqual(result.showFollowMode, false);
+});
+
+test('Follow Mode renders when viewMode is "pipeline"', () => {
+  const result = simulateProjectHeader({ projectName: "Test", viewMode: "pipeline" });
+  assert.strictEqual(result.showFollowMode, true);
+});
+
+test('onValueChange([]) does not call onViewModeChange (empty-array guard — re-clicking the active item)', () => {
+  let calls = 0;
+  const result = simulateProjectHeader({
+    projectName: "Test",
+    viewMode: "pipeline",
+    onViewModeChange: () => { calls++; },
+  });
+  result.onToggleValueChange([]);
+  assert.strictEqual(calls, 0, 'an empty value array must be ignored — there is no "neither" mode');
+});
+
+test('onValueChange(["pipeline"]) calls onViewModeChange with "pipeline"', () => {
+  const received: string[] = [];
+  const result = simulateProjectHeader({
+    projectName: "Test",
+    viewMode: "overview",
+    onViewModeChange: (mode) => { received.push(mode); },
+  });
+  result.onToggleValueChange(["pipeline"]);
+  assert.deepStrictEqual(received, ["pipeline"]);
 });
 
 // ─── Follow Mode Switch wiring ───────────────────────────────────────────────
@@ -413,6 +479,26 @@ test('followModeTooltip on=false copy appears verbatim in source', () => {
   assert.ok(
     headerSource.includes("Follow mode is off. Click to re-engage and apply smart defaults."),
     'follow-mode off tooltip string missing from project-header.tsx',
+  );
+});
+
+test('portfolio kind-badge tooltip copy appears verbatim in source', () => {
+  assert.ok(
+    headerSource.includes(
+      "Portfolio: holds the design documents for a long-running initiative. It never executes — its iterations are separate projects beside it, not inside it.",
+    ),
+    'portfolio tooltip string missing from project-header.tsx',
+  );
+});
+
+test('badge selection branches on KIND_PRESENTATION[...].replacesStateBadge', () => {
+  assert.ok(
+    headerSource.includes('KIND_PRESENTATION'),
+    'project-header.tsx should import and use KIND_PRESENTATION to select the header badge',
+  );
+  assert.ok(
+    headerSource.includes('replacesStateBadge'),
+    'the replacesStateBadge flag should gate whether the kind badge replaces the state badge',
   );
 });
 

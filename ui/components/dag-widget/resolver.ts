@@ -11,6 +11,7 @@ import {
   derivePhaseProgress,
   deriveIterationTaskProgress,
 } from '@/components/dag-timeline/dag-timeline-helpers';
+import { selectPrLinks } from '@/components/dag-timeline/source-control-helpers';
 import { deriveWholeGraphProgress } from './states/shared';
 import type { CorrectiveScope, StateId, StateView, StateViewContext } from './types';
 import { fallbackView } from './states/fallback-view';
@@ -288,7 +289,7 @@ function getPhaseLoop(state: AnyProjectState): ForEachPhaseNodeState | undefined
 /**
  * Resolves the active view and its context from `focus ?? current_node_path`.
  * The context carries the derived essentials (resolved node, phase name /
- * progress, iteration, repos, prUrl) merged with the shell's presentational
+ * progress, iteration, repos, prLinks) merged with the shell's presentational
  * deps so views stay thin. Unmapped / unknown nodes resolve to the fallback
  * view; a registered-but-mapped id whose view is not yet in the registry also
  * falls back.
@@ -334,7 +335,7 @@ export function resolveStateView(
     taskProgress: activePhaseIteration ? deriveIterationTaskProgress(activePhaseIteration) : null,
     wholeGraphProgress: deriveWholeGraphProgress(state),
     repos,
-    prUrl: state.pipeline.source_control?.repos?.[0]?.pr_url ?? null,
+    prLinks: selectPrLinks(state.pipeline.source_control),
     onDocClick: deps.onDocClick,
     compareUrlByRepo: deps.compareUrlByRepo,
     projectName: deps.projectName,

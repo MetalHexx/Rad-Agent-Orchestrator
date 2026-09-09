@@ -10,6 +10,10 @@ You review the **cumulative project diff** against the Requirements doc — the 
 
 Read only these. The Requirements doc is your contract and the phase plans are an orientation map — do **not** open the Master Plan, the per-task handoffs, or the task/phase **review reports**. Those are upstream and sibling artifacts, not final-scope inputs; you judge the working tree and the diff against the requirements, not against what earlier reviews said.
 
+## The amendment round
+
+An amended project does not open a fourth review scope — you run the same final review described here, against a Requirements doc an amendment may have grown, revised in place, or dropped something from. `requirements_doc` is your whole contract as it now reads, full stop: where an amendment withdrew a requirement, that requirement is no longer part of what you owe and is not judged as missing; where it revised one in place, you judge the revised text, not the original. Read it in full and judge every remaining requirement the same way regardless of which round introduced it — delivered or missing, no partial credit, no separate lighter-touch pass for the appended portion.
+
 ## Do
 
 1. **Read the Requirements doc** in full — enumerate what the project owed. At final scope there is no partial credit: each requirement is **delivered** or **missing**.
@@ -24,7 +28,9 @@ Read only these. The Requirements doc is your contract and the phase plans are a
 
 ## Report
 
-- **First review** → write to `{PROJECT-DIR}/reports/{NAME}-FINAL-REVIEW.md`.
+Every review report goes in `{PROJECT-DIR}/reports/`.
+
+- **First review** → write `{NAME}-FINAL-REVIEW.md` there.
 - **Re-review** → update that same file, in place.
 
 Use the report shape in SKILL.md, with these final-scope differences:

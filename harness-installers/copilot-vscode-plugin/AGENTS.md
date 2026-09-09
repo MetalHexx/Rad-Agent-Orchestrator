@@ -1,135 +1,150 @@
-# copilot-vscode-plugin/
+# `harness-installers/copilot-vscode-plugin/`
 
-## Purpose
+The Copilot in VS Code marketplace channel. `build-scripts/build.js` produces a publishable plugin
+payload under `output/`; the source package (`@rad-orchestration/copilot-vscode-plugin-source`) is
+never published, and `npm pack` runs against `output/`.
 
-A self-contained npm package (`@rad-orchestration/copilot-vscode-plugin-source`) whose `npm run build` produces the publishable Copilot in VS Code marketplace plugin. The source package is never published; `npm pack` runs against `output/` after build.
+> **The shared plugin shape — the install-side guarantees and the
+> change-one-change-all-three obligation — lives in
+> [`../AGENTS.md`](../AGENTS.md#the-plugin-variants-are-near-copies-of-one-another).** Read it
+> before your first change in any plugin variant. This file carries only what is different here, and
+> this variant differs the most.
 
 ## How it works
 
-`build-scripts/build.js` exports `runBuild(opts)` and is the single entry point. It executes steps in fixed order, fail-fast. The build reads adapter output for the `copilot-vscode` harness, bundles the CLI via `emit-cli-bundle` and ships the resulting `radorch.mjs` to `output/skills/rad-orchestration/scripts/radorch.mjs` (no separate pipeline bundle is emitted), bundles the UI, esbuild-bundles `bootstrap.mjs` with `lib/install/*` inlined, runs `expand-tokens` (destination-token substitution only — no agent namespacing for VS Code either), copies `plugin.json` to `output/.claude-plugin/plugin.json` (Claude-format layout so VS Code injects `CLAUDE_PLUGIN_ROOT` for hook self-location), synthesizes `output/package.json`, and runs structural validation.
+| Path | Holds |
+|---|---|
+| [`build-scripts/`](./build-scripts/AGENTS.md) | `build.js`, `validate.js`, `synthesize-package-json.js` |
+| `.claude-plugin/plugin.json` | Plugin metadata in **Claude-format layout**, name `rad-orc-vscode`; its `version` is the authoritative version for the published package |
+| [`hooks/`](./hooks/AGENTS.md) | Hook sources and this variant's registrations. **Ships to end users** |
+| [`lib/install/`](./lib/install/AGENTS.md) | The install state machine plus `bake-paths.js`, inlined into `hooks/bootstrap.mjs` at build time |
+| `manifests/` | One hand-authored `v<version>.json` path catalog, covering `runtime-config/` only — the build merges the generated docs entries into the `output/` copy |
+| `output/` · `dogfood-marketplace/` | Gitignored |
 
-`opts.rootDir` is the repo root. Three optional boolean flags — `opts.skipAdapterEngine`, `opts.skipUiRunner`, and `opts.skipBootstrap` — let tests bypass slow or environment-dependent steps when exercising the build orchestrator against a synthetic fixture tree.
+What is different here, against the other two variants:
 
-## Source layout
-
-- `build-scripts/` — `build.js`, `validate.js`, `synthesize-package-json.js`; see `build-scripts/AGENTS.md`
-- `.claude-plugin/plugin.json` — plugin metadata in the Claude-format manifest location so VS Code detects this as a Claude-format plugin and injects `CLAUDE_PLUGIN_ROOT` for hook self-location; its `version` field is the authoritative version for the published package
-- `hooks/` — hook source; see `hooks/AGENTS.md`
-- `lib/install/` — install state machine; see `lib/install/AGENTS.md`
-- `manifests/` — per-version file manifests (`v*.json`)
-- `tests/` — build orchestration and hook tests
-- `output/` — gitignored build output; canonical npm-pack source
-
-## Inputs this package reads but does not own
-
-- `harness-adapters/output/copilot-vscode/` — compiled agents and skills produced by the adapter engine; agent filenames carry the `.agent.md` suffix for the VS Code harness
-- `runtime-config/` — `orchestration.yml` and `templates/` staged under the build's `_install-source/`; bootstrap hydrates to `~/.radorc/` then removes the staging dir
-- `cli/` and `ui/` at the repo root — `cli/` bundled via `emitCliBundle` to its canonical agent-visible location; `ui/` packed via `emitUiBundle` as a gzipped tarball at `_install-source/ui.tgz` (bootstrap extracts it to `~/.radorc/ui/` then removes the staging dir)
-- `harness-installers/shared/build-helpers/` — shared `emitCliBundle`, `emitHookBundle`, `emitUiBundle`, `expandTokens` helpers
-
-## Deltas vs the copilot-cli-plugin
-
-| Dimension | copilot-cli-plugin | copilot-vscode-plugin |
-|-----------|--------------------|-----------------------|
-| Hook event names | camelCase (`userPromptSubmitted`, `sessionStart`) | **PascalCase** (`UserPromptSubmit`, `SessionStart`) — VS Code's native form |
-| Hook dispatch layer | inline `node -e` shim in `hooks.json` reads `process.env.CLAUDE_PLUGIN_ROOT` (Claude Code injects it) | inline `node -e` shim in `hooks.json` reads `process.env.CLAUDE_PLUGIN_ROOT` (VS Code injects it when the manifest is at `.claude-plugin/plugin.json` — same mechanism the Claude plugin uses) |
-| Bootstrap env var | `COPILOT_CLI_PLUGIN_ROOT` | `COPILOT_VSCODE_PLUGIN_ROOT` |
-| Coexistence partners | two (`copilot-cli`, `copilot-vscode`) | three (`copilot-cli`, `copilot-vscode`, `copilot-cli-plugin`) |
-| Model identifier shape | standard CLI-shaped | `(copilot)`-suffixed — the shape VS Code's model resolver requires; adapter-emitted upstream, not build-side |
-| Install paths | single flat `~/.copilot/` path | OS-specific `agentPlugins/` paths; the runtime handles them automatically |
-| Manifest layout | root `plugin.json` (Copilot format — works for Copilot CLI which injects `%COPILOT_PLUGIN_ROOT%`) | `.claude-plugin/plugin.json` (Claude format — Copilot format has no documented hook root-discovery mechanism in VS Code per the agent-plugins docs format-vs-token table) |
-| Build step stderr prefix | `[build:copilot-cli-plugin]` | `[build:copilot-vscode-plugin]` |
-| Token target | `${COPILOT_CLI_PLUGIN_ROOT}` | `${COPILOT_VSCODE_PLUGIN_ROOT}` |
-
-## Why Claude-format manifest layout (and not Copilot format)
-
-VS Code's agent-plugin docs gate plugin-root discovery on the **format declared by the manifest layout**, not on the plugin's runtime target. The format-vs-token table in `code.visualstudio.com/docs/copilot/customization/agent-plugins`:
-
-| Format | Manifest path | Plugin-root token / env var |
+| | This variant | Elsewhere |
 |---|---|---|
-| Claude | `.claude-plugin/plugin.json` | `${CLAUDE_PLUGIN_ROOT}` (substituted in command/cwd/env fields AND injected as an env var on the hook process) |
-| OpenPlugin | `.plugin/plugin.json` | `${PLUGIN_ROOT}` (same mechanism) |
-| Copilot | `plugin.json` at root | **(Not defined)** — no token, no env var |
+| Plugin metadata | `.claude-plugin/plugin.json`, name `rad-orc-vscode` | root `plugin.json` in `copilot-cli-plugin/` |
+| Published package | `@rad-orchestration/copilot-vscode-plugin` | — |
+| Agent filenames | `agents/<name>.agent.md` | `<name>.md` in `claude-plugin/` |
+| Agent namespacing | none — `agentNames` is not passed to `expandTokens` | `rad-orc:<name>` in `claude-plugin/` only |
+| Token target | `${COPILOT_VSCODE_PLUGIN_ROOT}`, then **baked to an absolute path at install time** | left as a runtime token in both other variants |
+| Hook events | PascalCase — `UserPromptSubmit`, `SessionStart` | camelCase in `copilot-cli-plugin/` |
+| Hook dispatch | inline `node -e` shim reading `CLAUDE_PLUGIN_ROOT` | `hooks/launcher.cjs` in `copilot-cli-plugin/` |
+| Telemetry | shim ships, **nothing registers it** | registered in `claude-plugin/` only |
+| `install.json` key | `copilot-vscode-plugin`; coexistence partners `copilot-vscode`, `copilot-cli`, `copilot-cli-plugin` | see each variant |
+| Model identifier shape | `(copilot)`-suffixed, **emitted upstream by the adapter** — the build never rewrites a model id | — |
 
-Hook commands need to know their own install location to dispatch into the right `bootstrap.mjs` / `drift-check.mjs`. With **Copilot format** (root `plugin.json`), VS Code provides nothing — no env var, no `${…}` substitution, no documented anchor. Empirically confirmed during the iteration that introduced this layout: the hook command was spawned with `process.cwd()` = the workspace folder, no plugin-root env var was injected (only OTEL/telemetry vars surfaced), and `${CLAUDE_PLUGIN_ROOT}` literals in the command string survived untouched into PowerShell on Windows, which then mis-parsed them. There is no documented mechanism in VS Code for a Copilot-format plugin's hook to self-locate. Microsoft's docs explicitly mark Copilot format's plugin-root entry as **(Not defined)**.
+## Conventions
 
-To get VS Code to inject `CLAUDE_PLUGIN_ROOT` into the hook process, the plugin must be detected as Claude format — which requires `plugin.json` at `.claude-plugin/plugin.json`. That's what this installer ships. The hooks shim then reads `process.env.CLAUDE_PLUGIN_ROOT` and dynamic-imports the absolute file URL of the target `.mjs`, cross-platform (Windows/macOS/Linux).
+- **Keep the manifest in Claude-format layout.** See the hazard below; moving `plugin.json` to the
+  payload root to match the CLI sibling breaks hook dispatch outright.
+- **No agent namespacing.** `expandTokens` is called without `agentNames`.
+- **Nothing here reaches into a sibling installer.** The bake step, the three-partner coexistence
+  warning, and the manifest layout are all local to this package by design.
 
-The CLI-side sibling (`harness-installers/copilot-cli-plugin/`) keeps Copilot format because the Copilot CLI runtime **does** inject `%COPILOT_PLUGIN_ROOT%` per its own docs — the issue is specific to VS Code's hook dispatch for Copilot-format plugins. Each installer picks the format that gets it the discovery mechanism it needs for its target runtime; the two are independently packaged regardless.
+## Hazards
 
-## Why SKILL.md tokens are baked to absolute paths at install time
+### Claude-format layout is what makes hooks locatable, and it is not cosmetic
 
-The token-swap pipeline this installer shares with its Claude and Copilot CLI siblings:
+VS Code gates plugin-root discovery on the **format it infers from the manifest's location**, not on
+the plugin's runtime target. A manifest at `.claude-plugin/plugin.json` is detected as Claude format
+and gets `CLAUDE_PLUGIN_ROOT` injected into the hook process; a manifest at the payload root is
+detected as Copilot format, for which the documented plugin-root entry is *(not defined)* — no env
+var, no `${…}` substitution. Observed directly when this variant tried it: the hook was spawned with
+`process.cwd()` set to the workspace folder, no plugin-root variable in the environment, and
+`${CLAUDE_PLUGIN_ROOT}` surviving literally into PowerShell, which then mis-parsed it.
 
-1. Adapter source skill content (`harness-files/skills/**/SKILL.md`) carries the generic token `${PLUGIN_ROOT}`.
-2. `harness-adapters/` emits the same generic token unchanged (`bodyTokens: {}` for all three harness adapters).
-3. The installer's `expand-tokens` build step swaps `${PLUGIN_ROOT}` to its per-harness variant — this installer produces `${COPILOT_VSCODE_PLUGIN_ROOT}`, the Claude installer produces `${CLAUDE_PLUGIN_ROOT}`, the Copilot CLI installer produces `${COPILOT_CLI_PLUGIN_ROOT}`.
-4. The token is meant to be substituted by the harness runtime in the agent's chat-shell at the moment a SKILL.md bash block is invoked.
+The CLI sibling keeps the root-`plugin.json` layout because its own runtime *does* inject a plugin
+root for Copilot format. The two layouts are not interchangeable and neither is a style choice.
 
-Step 4 works for the Claude and Copilot CLI siblings because their runtimes populate the per-harness env var inside the agent's chat-shell. **VS Code doesn't.** The agent-plugins documentation's format-vs-token table covers env-var/token substitution only for *hook processes* (and only for Claude-format / OpenPlugin manifests). The agent's chat-shell — where bash blocks from `SKILL.md` actually execute — is a separate process with no plugin-root env var injected, regardless of manifest format. The literal `${COPILOT_VSCODE_PLUGIN_ROOT}` survives into the shell, where bash treats it as empty and PowerShell either treats it as empty or mis-parses it.
+### Skill tokens must be baked here, and only here
 
-To close the gap, this installer adds an install-time bake step. `hooks/bootstrap.mjs` calls `bakeAbsolutePaths(pluginRoot)` from `lib/install/bake-paths.js` after `runInstall()` succeeds and before the `hooks.json` self-uninstall. It walks `skills/**/*.md` and substitutes the token literal for the real absolute install path (forward-slashed so the result is quote-safe in both bash and PowerShell on Windows). The bake scope is `skills/` only — `hooks/bootstrap.mjs`, `hooks/drift-check.mjs`, and `hooks/AGENTS.md` reference the same token in their own env-var logic and prose and must not be substituted. The bake is idempotent: post-bake there are no token literals left, so subsequent runs no-op at the scan. Plugin upgrades naturally re-trigger the bake because the new tarball re-introduces the token via fresh `SKILL.md` files and the new `hooks.json` re-introduces `UserPromptSubmit`, restoring the cycle.
+`${PLUGIN_ROOT}` is meant to be expanded by the harness runtime at the moment a `SKILL.md` shell
+block runs. VS Code injects a plugin root only into **hook** processes — the agent's chat shell,
+where those blocks actually execute, gets nothing, whatever the manifest format. So the literal
+token would reach the shell and evaluate to empty.
 
-The Claude and Copilot CLI sibling installers don't need this and remain unchanged — they continue to rely on their runtimes' env-var injection. Encapsulation rule holds: this fix is local to `harness-installers/copilot-vscode-plugin/` (a new `lib/install/bake-paths.js` module + a wiring call in `hooks/bootstrap.mjs`); no imports or references cross between sibling installers.
+`lib/install/bake-paths.js` closes that gap: after `runInstall` succeeds, `bootstrap.mjs` rewrites
+the token to the real absolute install path across the payload's skill files. The other two variants
+do not need it and do not have it. Deleting it "for symmetry" breaks every command in every skill on
+this channel, with no build error.
 
-## Why the plugin's namespace is the satellite folder basename, not the plugin.json `name`
+**The bake reaches Markdown under `skills/` and nothing else.** A token written anywhere else in the
+payload — a hook file, an action-event file, a communication style, a tier template — ships literally
+to the user's disk, and nothing tests that.
 
-Empirically verified May 2026 and undocumented in VS Code's agent-plugins reference: VS Code's agent-plugin loader derives the chat namespace (`/<namespace>:<skill-name>`) from the **basename of the catalog entry's `source.path`** — the folder the payload gets cloned into under `~/.vscode/agent-plugins/github.com/<org>/<repo>/<basename>/`. It does NOT read this installer's `.claude-plugin/plugin.json` `name` field, and it does NOT use the catalog entry's `plugins[].name` (that's only the install identifier passed to `/plugin install <name>@<marketplace>`).
+### The plugin's chat namespace comes from a folder name, not from `plugin.json`
 
-The gap is invisible in practice because every entry in `github/copilot-plugins` and `github/awesome-copilot` happens to keep `plugins[].name == basename(source.path)`. `rai-ops-plugin-marketplace` was the first observed catalog where the two diverged, and that's the only reason this surfaced.
+VS Code's plugin loader derives the `/<namespace>:<skill>` prefix from the **basename of the catalog
+entry's `source.path`** — the folder the payload is cloned into — not from this package's
+`plugin.json` `name` and not from the catalog entry's `plugins[].name`. Claude Code and Copilot CLI
+both read the name from the manifest, so this quirk is VS-Code-only, and it stays invisible for as
+long as a catalog keeps `plugins[].name` equal to `basename(source.path)`.
 
-This is a VS-Code-only quirk. Claude Code reads namespace from `.claude-plugin/plugin.json` `name`, and Copilot CLI reads it from the top-level `plugin.json` `name` — both correctly resolve `/rad-orc:…` regardless of where the payload lives on disk.
+**A rename therefore moves several files at once**, and missing one leaves a stale path or a
+duplicate entry in the Agent Plugins panel:
 
-**Implication for renames.** Every one of these has to move together; missing any one of them leaves a stale path or a duplicate entry in the VS Code Agent Plugins panel:
+- the satellite payload folder
+- the catalog entry's `plugins[].name` **and** `source.path`
+- this package's `.claude-plugin/plugin.json` `name`
+- the hook error-prefix strings in `hooks/hooks.json`
+- the synthetic plugin trees built by `tests/*.test.mjs`
+- the release sync mapping in `.claude/skills/rad-release/scripts/sync-satellite-and-tag.mjs` —
+  its `PLUGINS[]` entries are `{src, harness}`, and the satellite destination is derived as
+  `<satellite>/<TOOL>/<harness>`
 
-- Satellite payload folder (e.g., `rai-ops-plugin-marketplace/rad-orc-vscode/`)
-- Catalog entry `plugins[].name` and `source.path` in `.github/plugin/marketplace.json`
-- Canonical `.claude-plugin/plugin.json` `name` (this installer)
-- Hook error-prefix strings in `hooks/hooks.json`
-- Test fixtures across `tests/*.test.mjs` that build the synthetic plugin tree
-- The rad-release sync mapping at `.claude/skills/rad-release/scripts/sync-satellite-and-tag.mjs` — its `PLUGINS[].dest` field determines where the next release writes the payload in the satellite
+The folder name `copilot-vscode-plugin/` is internal only. Build scripts and tests pin it, it never
+reaches users, and it deliberately differs from the satellite folder name.
 
-The canonical folder name `harness-installers/copilot-vscode-plugin/` is internal-only — build scripts and tests pin it, but it never reaches users. It intentionally diverges from the satellite folder name.
+### VS Code caches catalog data outside the cloned tree
 
-## VS Code caches plugin metadata in multiple layers — purge order for a clean reinstall
+After a satellite rename or republish, expect duplicate panel entries or a
+`Plugin source '<old-path>' not found after cloning` failure. Deleting the cloned marketplace tree is
+not enough — the Copilot Chat extension also keeps the fetched catalog, the per-marketplace list, the
+marketplace-to-path index, and a fetch-throttle timestamp in VS Code's global SQLite state, and it
+will trust those. **Close VS Code first** (it holds an exclusive lock on that database and file locks
+on the clones), then clear the cloned tree, the installed-plugin tracking file, and those state keys
+before reopening.
 
-After a satellite rename or republish, expect duplicate entries in the Agent Plugins panel and/or `Plugin source '<old-path>' not found after cloning` errors at install time. Both symptoms mean stale catalog data is cached somewhere outside the cloned payload tree. The file-system cache alone isn't enough; the SQLite caches below have to be cleaned too.
+## When a change here ripples
 
-**VS Code must be fully closed first** — open VS Code holds file locks on the cloned repos and an exclusive lock on the SQLite DB.
+- **Changed a build step, `validate.js`, or what the payload contains?** The other two plugin builds
+  run the same step sequence, and the structural guards in `shared/build-helpers/tests/` read every
+  builder's source text — a reordering here can fail on behalf of a builder you never opened.
+  Detail: [`build-scripts/AGENTS.md`](./build-scripts/AGENTS.md), [`../AGENTS.md`](../AGENTS.md)
 
-1. **Cloned marketplace tree** — `~/.vscode/agent-plugins/github.com/<org>/<repo>/` (delete recursively; VS Code re-clones on next open)
-2. **Installed-plugin tracking** — `~/.vscode/agent-plugins/installed.json` (remove the stale entry or reset to `{"version":1,"installed":[]}`)
-3. **VS Code global SQLite state** at `%APPDATA%/Code/User/globalStorage/state.vscdb`. The Copilot Chat extension caches catalog data under four keys outside the cloned tree, so a renamed catalog can survive a folder-cache wipe via these. Edit via Python's `sqlite3` module (the `sqlite3` CLI isn't on Windows by default):
-   - `chat.plugins.lastFetchedPlugins.v2` — flat list of all marketplace plugins with full source descriptors; filter out entries whose `marketplace` matches the renamed catalog
-   - `chat.plugins.marketplaces.githubCache.v1` — per-marketplace cached plugin list keyed by canonical ID; delete the entry for the renamed catalog so VS Code re-fetches
-   - `chat.plugins.marketplaces.index.v1` — marketplace-to-local-path index; same deletion
-   - `chat.plugins.lastUpdateCheck.v1` — fetch-throttle timestamp; delete to force a re-fetch on next open (otherwise VS Code will trust the cache)
-4. Optional but worth doing if Copilot CLI is also installed on the machine — `~/.copilot/plugin-data/<plugin>/` (Copilot CLI runtime data; VS Code cross-discovers it)
+- **Changed where `${PLUGIN_ROOT}` is written in canonical source?** The token travels
+  `harness-files/` → the adapters (which pass it through untouched) → this build's `expand-tokens`
+  → `bake-paths.js` at install time. A token introduced outside the payload's `skills/` Markdown
+  completes the first three hops and silently fails the fourth. Detail:
+  [`harness-files/AGENTS.md`](../../harness-files/AGENTS.md),
+  [`harness-adapters/AGENTS.md`](../../harness-adapters/AGENTS.md),
+  [`lib/install/AGENTS.md`](./lib/install/AGENTS.md)
 
-After all four purges, reopen VS Code; the Agent Plugins panel re-fetches the marketplace from scratch and shows a single clean entry per plugin.
+- **Renamed the plugin, the satellite folder, or the catalog entry?** See the namespace hazard above
+  — the release sync mapping and the marketplace catalog both have to move in the same change.
+  Detail: [`.claude/skills/rad-release/SKILL.md`](../../.claude/skills/rad-release/SKILL.md)
 
-## Seams
+## Commands
 
-- **Upstream**: `harness-adapters/` produces the agent and skill files this build copies. The `(copilot)`-suffixed model identifier shape is emitted there, not here — the build does not translate model identifiers.
-- **Downstream**: `npm pack` against `output/` produces the tarball submitted to the Copilot in VS Code marketplace. The build is the sole writer of `output/`.
+```
+node harness-installers/copilot-vscode-plugin/build-scripts/build.js
+npm test -w harness-installers/copilot-vscode-plugin
+```
 
-## Coding conventions
-
-- `build.js` calls each step through the local `step(name, fn)` wrapper which times and labels every phase; all step failures throw with a prefixed message.
-- Paths are always resolved via `path.resolve` / `path.join` from `rootDir`; no hardcoded absolute paths.
-- `output/` is wiped clean at the start of every build; the output tree is never partially updated.
-
-## Rules for making updates
-
-- Step order is load-bearing: adapter output must exist before `copy-agents`/`copy-skills`; bundles must exist before `expand-tokens`; `validate` must run last.
-- `validate.js`'s `REQUIRED_ARTIFACTS` list must stay in sync with what the build actually produces. Hook dispatch is the inline `node -e` shim in `hooks.json` — no separate launcher artifact is required.
-- Adding a new step: place it in the correct position in `runBuild`, update the step-count comment, and update `validate.js` if a new required artifact is introduced.
-- `synthesizePackageJson` hard-codes `name: '@rad-orchestration/copilot-vscode-plugin'`; changing the published package name requires updating it there.
-- Tests in `tests/` cover build orchestration end-to-end; run them after any build-script change.
+To exercise a real install, run the **`/rad-dogfood-plugin`** skill and pick `copilot-vscode`.
+**Never run `hooks/bootstrap.mjs` by hand against your own home directory** — it writes to
+`~/.radorc/`, stops a running dashboard, rewrites `hooks.json`, and bakes absolute paths into skill
+files. The suites inject a temp home.
 
 ## Further reading
 
-- `hooks/AGENTS.md` — hook lifecycle, inline-shim dispatch, and bundle/verbatim split
-- `lib/install/AGENTS.md` — install state machine modules
-- `build-scripts/AGENTS.md` — step sequence and validate gates
-- `harness-installers/shared/build-helpers/AGENTS.md` — shared helper signatures
+- [`../AGENTS.md`](../AGENTS.md) — the shared plugin shape, the manifest discipline, and the
+  cross-variant obligation
+- [`build-scripts/AGENTS.md`](./build-scripts/AGENTS.md) — this build's deltas and its gates
+- [`hooks/AGENTS.md`](./hooks/AGENTS.md) — registrations and the inline shim
+- [`lib/install/AGENTS.md`](./lib/install/AGENTS.md) — the install state machine and the bake step
+- [`harness-adapters/AGENTS.md`](../../harness-adapters/AGENTS.md) — where the `(copilot)`-suffixed
+  model identifiers come from

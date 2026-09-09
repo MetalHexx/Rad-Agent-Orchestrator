@@ -6,11 +6,13 @@ import { resolveTemplateName, snapshotTemplate } from './template-resolver.js';
 import { preRead } from './pre-reads.js';
 import { getMutation } from './mutations.js';
 import { walkDAG, resolveNodeStatePath, deriveCurrentNodePathFromMarkers } from './dag-walker.js';
-import { enrichActionContext } from './context-enrichment.js';
+import { enrichActionContext, repoNamesFromState } from './context-enrichment.js';
 import { resolveDocPaths } from './resolve-doc-paths.js';
-import { OUT_OF_BAND_EVENTS } from './constants.js';
+import { EVENTS, OUT_OF_BAND_EVENTS } from './constants.js';
 import { composeActionPrompt, composeOrphanRuntimeShape, NEXT_ACTION_PLACEHOLDER } from './composer.js';
 import { parseActionEventFile } from './action-event-loader.js';
+import type { ActionFrontmatter, EventFrontmatter } from './action-event-loader.js';
+import { buildCompletionCommands, buildSignalGuidance } from './completion-commands.js';
 import { userDataPaths } from '../paths.js';
 import type {
   PipelineState,
@@ -53,17 +55,12 @@ function resolveActionEventsRoot(): string {
 }
 
 /**
- * Cold-read the catalog action file's frontmatter (AD-6) and return its
- * `completion_event` field. Returns `null` if the action's completion event
- * is explicitly null in the catalog. Returns `undefined` if the catalog file
- * does not exist on disk — callers treat this as "skip prompt attachment"
+ * Cold-read the catalog action file's frontmatter. Returns `undefined` if the
+ * file does not exist on disk — callers treat this as "skip prompt attachment"
  * (the catalog will be populated incrementally; missing files must not break
  * success envelope routing). All other parse errors propagate.
  */
-function resolveCompletionEvent(
-  actionName: string,
-  _template: PipelineTemplate,
-): string | null | undefined {
+function readActionFrontmatter(actionName: string): ActionFrontmatter | undefined {
   const root = resolveActionEventsRoot();
   const filename = `action.${actionName}.md`;
   const filePath = path.join(root, filename);
@@ -73,8 +70,92 @@ function resolveCompletionEvent(
   if (parsed.kind !== 'action') {
     throw new Error(`Catalog file '${filePath}' parsed kind '${parsed.kind}' but action expected.`);
   }
-  const fm = parsed.frontmatter as { kind: 'action'; completion_event: string | null };
-  return fm.completion_event;
+  return parsed.frontmatter as ActionFrontmatter;
+}
+
+/** Every event the action can finish by signalling: its completion event first,
+ *  then each alternate outcome in declaration order. */
+function declaredEvents(fm: ActionFrontmatter): string[] {
+  if (fm.completion_event === null) return [];
+  return [fm.completion_event, ...(fm.alternate_outcomes ?? []).map(o => o.event)];
+}
+
+/**
+ * Read each named event's `signal_payload` from the same catalog root the
+ * composer reads. An action naming an event with no file on disk is a catalog
+ * error, reported by the file the operator has to author — the same failure the
+ * composer raises for a missing completion-event file, extended to the
+ * alternate outcomes the composer never reads.
+ */
+function resolveSignalPayloads(eventNames: string[]): Record<string, EventFrontmatter['signal_payload']> {
+  const root = resolveActionEventsRoot();
+  const payloads: Record<string, EventFrontmatter['signal_payload']> = {};
+  for (const eventName of eventNames) {
+    const filename = `event.${eventName}.md`;
+    const filePath = path.join(root, filename);
+    if (!fs.existsSync(filePath)) {
+      throw new Error(`Catalog validation: expected catalog file '${filename}' under '${root}'.`);
+    }
+    const parsed = parseActionEventFile(fs.readFileSync(filePath, 'utf8'), filename);
+    if (parsed.kind !== 'event') {
+      throw new Error(`Catalog file '${filePath}' parsed kind '${parsed.kind}' but event expected.`);
+    }
+    payloads[eventName] = (parsed.frontmatter as EventFrontmatter).signal_payload ?? {};
+  }
+  return payloads;
+}
+
+// Flag name → the enriched-context key carrying its value. The two names differ
+// (`--phase` reads context `phase_number`), so the mapping is declared rather
+// than derived. Filling these is what keeps a rendered command correct when the
+// engine's auto-resolution would otherwise have to guess.
+const KNOWN_FLAG_CONTEXT_KEYS: Record<string, string> = {
+  phase: 'phase_number',
+  task: 'task_number',
+};
+
+/** Flag-name → literal value for every flag the resolved context already
+ *  answers. A null or absent context value leaves the flag unknown. */
+function knownFlagValues(context: Record<string, unknown>): Record<string, string> {
+  const known: Record<string, string> = {};
+  for (const [flag, contextKey] of Object.entries(KNOWN_FLAG_CONTEXT_KEYS)) {
+    const value = context[contextKey];
+    if (typeof value === 'number' && Number.isFinite(value)) known[flag] = String(value);
+    else if (typeof value === 'string' && value.length > 0) known[flag] = value;
+  }
+  return known;
+}
+
+// Flags that exist only when the task was directed to commit. Hardcoded beside
+// KNOWN_FLAG_CONTEXT_KEYS rather than declared in the catalog for the same
+// reason: the fact that decides them already rides the resolved context, and a
+// catalog condition language would restate it and invite drift.
+const COMMIT_CONDITIONAL_FLAGS = ['branch', 'repos'];
+
+/**
+ * Flag names this invocation must not carry at all — contextually inapplicable,
+ * so the renderer drops them rather than emitting a `<fill-in: …>` marker the
+ * orchestrator would have to decide against the standing "never drop" rule.
+ *
+ * Both rules read the run context, not the schema. Schema-optionality only marks
+ * a flag as *eligible* to vary, and `--branch`/`--repos` on a normal commit task
+ * are the proof: also optional, and genuinely the orchestrator's to supply.
+ *
+ * - The engine-owned identity flags are the exact complement of `known`: the
+ *   engine is their only possible source, so unknown here means the value does
+ *   not exist. A final-scope corrective owns no phase and no task iteration; a
+ *   phase-scope corrective owns no task. Their catalog descriptions already
+ *   promise auto-resolution when omitted, so dropping them costs nothing.
+ * - The commit-conditional flags go when `should_commit` is explicitly false
+ *   (`source_control.auto_commit: never`). Strictly `=== false`, so an action
+ *   whose context carries no `should_commit` at all omits nothing. Note this is
+ *   config-derived, not "did a commit happen": a dispute-only corrective commits
+ *   nothing yet still reports `committed: false` per repo, so its flags stay.
+ */
+function omittedFlags(context: Record<string, unknown>, known: Record<string, string>): string[] {
+  const omit = Object.keys(KNOWN_FLAG_CONTEXT_KEYS).filter((flag) => !(flag in known));
+  if (context['should_commit'] === false) omit.push(...COMMIT_CONDITIONAL_FLAGS);
+  return omit;
 }
 
 /**
@@ -114,16 +195,18 @@ export function readOrphanPostContent(eventName: string): string | null {
 }
 
 /**
- * Attach `prompt` (composed catalog text) and `completion_event` (resolved
- * event name) to the engine's success envelope. Per FR-7 these fields live
- * inside `data` alongside `action` and `context` — they are NOT nested
- * inside `context`. Failure envelopes never reach this helper — they
- * construct their result inline with the `error: { ... }` field.
+ * Attach `prompt` (composed catalog text), `completion_event` (resolved event
+ * name) and `completion_commands` (one runnable command per way the action can
+ * finish by signalling) to the engine's success envelope. These fields live
+ * inside `data` alongside `action` and `context` — they are NOT nested inside
+ * `context`. Failure envelopes never reach this helper — they construct their
+ * result inline with the `error: { ... }` field.
  *
- * Skips attachment entirely when the action's catalog file does not exist
- * on disk; the envelope still surfaces `action` and the enriched context so
- * downstream consumers that do not depend on the composed prompt continue
- * to operate (catalog population proceeds independently of pipeline routing).
+ * Skips prompt composition entirely when there is no next action, and when the
+ * action's catalog file does not exist on disk; the envelope still surfaces
+ * `action`, the enriched context and an empty `completion_commands` so
+ * downstream consumers that do not depend on the composed prompt continue to
+ * operate (catalog population proceeds independently of pipeline routing).
  *
  * When the firing event is an orphan event with a non-empty custom-post
  * overlay, the orphan-post body is prepended under `## Step 1` via
@@ -131,19 +214,44 @@ export function readOrphanPostContent(eventName: string): string | null {
  * renumber from `## Step 2` via `composeActionPrompt({ startStep: 2 })`.
  * The success envelope's `has_custom_instructions` flag reflects whether the
  * orphan-post overlay (or any downstream overlay) contributed content.
+ *
+ * @param scriptPath - Absolute path of the running radorch script, from
+ *   `PathContext`. The renderer needs it to emit a cwd-independent command.
+ * @param repoNames - Repo names from state, for the repos-array skeleton.
  */
 export function attachPromptIfActionResolved(
   next: { action: string; context: Record<string, unknown> } | null,
   template: PipelineTemplate,
   firingEvent: string,
   projectDir: string,
+  scriptPath: string,
+  repoNames: string[],
 ): PipelineResult {
-  if (!next) return { action: null, context: {} };
-  next.context = resolveDocPaths(next.context, path.resolve(projectDir));
-  const completion_event = resolveCompletionEvent(next.action, template);
-  if (completion_event === undefined) {
-    return { action: next.action, context: next.context };
+  if (!next) return { action: null, context: {}, completion_commands: [] };
+  const resolvedProjectDir = path.resolve(projectDir);
+  next.context = resolveDocPaths(next.context, resolvedProjectDir);
+  const actionFm = readActionFrontmatter(next.action);
+  if (actionFm === undefined) {
+    return { action: next.action, context: next.context, completion_commands: [] };
   }
+  const completion_event = actionFm.completion_event;
+  const payloads = resolveSignalPayloads(declaredEvents(actionFm));
+  const known = knownFlagValues(next.context);
+  const omit = omittedFlags(next.context, known);
+  const completion_commands = buildCompletionCommands({
+    action: actionFm,
+    payloads,
+    scriptPath,
+    projectDir: resolvedProjectDir,
+    known,
+    omit,
+    repoNames,
+  });
+  // No command means nothing for the orchestrator to run, so the composed
+  // prompt falls back to the shape-only block.
+  const signalGuidance = completion_commands.length > 0
+    ? buildSignalGuidance(completion_commands, payloads, known)
+    : undefined;
   const catalogRoot = resolveActionEventsRoot();
   let prompt: string;
   let has_custom_instructions: boolean;
@@ -156,6 +264,7 @@ export function attachPromptIfActionResolved(
         completionEvent: completion_event,
         catalogRoot,
         startStep: 2,
+        signalGuidance,
       });
       prompt = orphanShape.prompt.replace(NEXT_ACTION_PLACEHOLDER, downstream.prompt);
       has_custom_instructions = true; // orphan-post admitted, regardless of downstream overlay
@@ -164,6 +273,7 @@ export function attachPromptIfActionResolved(
         actionName: next.action,
         completionEvent: completion_event,
         catalogRoot,
+        signalGuidance,
       });
       prompt = composed.prompt;
       has_custom_instructions = composed.has_custom_instructions;
@@ -173,6 +283,7 @@ export function attachPromptIfActionResolved(
       actionName: next.action,
       completionEvent: completion_event,
       catalogRoot,
+      signalGuidance,
     });
     prompt = composed.prompt;
     has_custom_instructions = composed.has_custom_instructions;
@@ -183,6 +294,7 @@ export function attachPromptIfActionResolved(
     prompt,
     completion_event,
     has_custom_instructions,
+    completion_commands,
   };
 }
 
@@ -230,6 +342,107 @@ function scaffoldState(
       nodes,
     },
   };
+}
+
+// ── Document path containment ────────────────────────────────────────────────
+
+/**
+ * Resolve a document path for filesystem access. An absolute path is taken as
+ * given; a relative one resolves against the project directory and may not
+ * climb out of it.
+ *
+ * @throws when a relative path escapes the project directory.
+ */
+function resolveContainedDocPath(docPath: string, projectDir: string): string {
+  if (path.isAbsolute(docPath)) return docPath;
+
+  const resolvedProjectDir = path.resolve(projectDir);
+  const resolved = path.resolve(resolvedProjectDir, docPath);
+  const relativeToProject = path.relative(resolvedProjectDir, resolved);
+
+  if (relativeToProject === '..' || relativeToProject.startsWith(`..${path.sep}`) || path.isAbsolute(relativeToProject)) {
+    throw new Error(`Document path escapes project directory: ${docPath}`);
+  }
+  return resolved;
+}
+
+// ── Operator change request → final review report finding ────────────────────
+
+/** Heading that both renders the operator's finding and tags it with the
+ *  corrective entry it births. The tag is what makes the append idempotent: the
+ *  report write and the state write are two operations, so a crash between them
+ *  is recovered by re-signalling, and the re-signal must not append twice. */
+function operatorFindingHeading(correctiveIndex: number): string {
+  return `### Finding — Operator change request (corrective ${correctiveIndex})`;
+}
+
+/**
+ * Insert a finding at the end of the report's `## Findings` section, or append
+ * that section when the report carries none. Everything outside the insertion
+ * point survives verbatim, including the report's own line endings — the
+ * reviewer owns this document and the engine is only adding to it.
+ */
+function withOperatorFinding(existing: string, heading: string, reason: string): string {
+  const eol = existing.includes('\r\n') ? '\r\n' : '\n';
+  const block = `${heading}${eol}${eol}${reason}${eol}`;
+
+  const findingsHeading = /^##[ \t]+Findings[ \t]*\r?$/m.exec(existing);
+  if (findingsHeading === null) {
+    const body = existing.replace(/\s+$/, '');
+    const prefix = body.length === 0 ? '' : `${body}${eol}${eol}`;
+    return `${prefix}## Findings${eol}${eol}${block}`;
+  }
+
+  const sectionStart = findingsHeading.index + findingsHeading[0].length;
+  const nextSection = /^##[ \t]/m.exec(existing.slice(sectionStart));
+  const insertAt = nextSection === null ? existing.length : sectionStart + nextSection.index;
+  const before = existing.slice(0, insertAt).replace(/\s+$/, '');
+  const after = existing.slice(insertAt);
+  return after.length === 0
+    ? `${before}${eol}${eol}${block}`
+    : `${before}${eol}${eol}${block}${eol}${after}`;
+}
+
+/**
+ * Compose the operator's objection as a finding on the running final review
+ * report. Returns the contents to commit, or null when the report already
+ * carries the finding for the corrective this request births.
+ *
+ * Called BEFORE the mutation so an unreadable report aborts the signal with
+ * nothing written; the returned contents are committed only once the post-walk
+ * validation has passed (see the out-of-band branch).
+ *
+ * @throws when `final_review.doc_path` names no report, or names one that is
+ *   not on disk. The running report is the contract — inventing one would hand
+ *   the coder a report the reviewer never wrote.
+ */
+function stageOperatorFinding(
+  state: PipelineState,
+  reason: string,
+  projectDir: string,
+  io: IOAdapter,
+): { docPath: string; contents: string } | null {
+  const node = state.graph.nodes['final_review'];
+  if (node === undefined || node.kind !== 'step' || typeof node.doc_path !== 'string' || node.doc_path.trim().length === 0) {
+    throw new Error(
+      'final_corrective_requested: final_review names no report, so there is no running final review ' +
+      'report to record the change request in. The request was not applied.'
+    );
+  }
+
+  const resolved = resolveContainedDocPath(node.doc_path, projectDir);
+  const existing = io.readDocumentRaw(resolved);
+  if (existing === null) {
+    throw new Error(
+      `final_corrective_requested: the final review report at '${node.doc_path}' is missing. The ` +
+      `running report is the contract for a corrective, so the request was not applied and no report ` +
+      `was created in its place.`
+    );
+  }
+
+  const heading = operatorFindingHeading((node.corrective_tasks ?? []).length + 1);
+  if (existing.includes(heading)) return null;
+  return { docPath: resolved, contents: withOperatorFinding(existing, heading, reason) };
 }
 
 // ── normalizeDocPath ────────────────────────────────────────────────────────────
@@ -281,21 +494,8 @@ export function processEvent(
     const loadedTemplate = loadTemplate(effectiveLoadPath);
     const { template, eventIndex } = loadedTemplate;
 
-    const wrappedReadDocument = (docPath: string) => {
-      if (path.isAbsolute(docPath)) {
-        return io.readDocument(docPath);
-      }
-
-      const resolvedProjectDir = path.resolve(projectDir);
-      const resolved = path.resolve(resolvedProjectDir, docPath);
-      const relativeToProject = path.relative(resolvedProjectDir, resolved);
-
-      if (relativeToProject === '..' || relativeToProject.startsWith(`..${path.sep}`) || path.isAbsolute(relativeToProject)) {
-        throw new Error(`Document path escapes project directory: ${docPath}`);
-      }
-
-      return io.readDocument(resolved);
-    };
+    const wrappedReadDocument = (docPath: string) =>
+      io.readDocument(resolveContainedDocPath(docPath, projectDir));
 
     // ── Start event (pre-index routing) ────────────────────────────────
     if (event === 'start') {
@@ -347,11 +547,21 @@ export function processEvent(
           template,
           event,
           projectDir,
+          pathContext.scriptPath,
+          repoNamesFromState(scaffolded),
         );
       } else {
         const walkerResult = walkDAG(state, template, config, wrappedReadDocument);
 
         state.project.updated = new Date().toISOString();
+
+        // Derive current_node_path from in_progress markers AFTER the walker has
+        // advanced any newly-activated nodes — the honesty tripwire below is a
+        // post-recompute invariant, and resume is a post-walk validate site like
+        // any other. Falls back to the echoed cursor when no concrete in_progress
+        // leaf exists (terminal / gate-pending states).
+        state.graph.current_node_path =
+          deriveCurrentNodePathFromMarkers(state) ?? state.graph.current_node_path;
 
         const validationErrors = validateState(null, state, config, template);
         if (validationErrors.length > 0) {
@@ -378,6 +588,8 @@ export function processEvent(
           template,
           event,
           projectDir,
+          pathContext.scriptPath,
+          repoNamesFromState(state),
         );
       }
     }
@@ -396,7 +608,7 @@ export function processEvent(
     // ── Out-of-band event routing (pre-index) ──────────────────────────
     if (OUT_OF_BAND_EVENTS.has(event)) {
       const mutation = getMutation(event);
-      // Defensive guard: all 6 OUT_OF_BAND_EVENTS are unconditionally registered in mutations.ts,
+      // Defensive guard: every OUT_OF_BAND_EVENTS entry is unconditionally registered in mutations.ts,
       // so this branch is currently unreachable. Retained as a safety net against future deregistration.
       if (!mutation) {
         return {
@@ -414,6 +626,18 @@ export function processEvent(
           path.basename(projectDir),
         );
       }
+
+      // Composed before the mutation so an unreadable report aborts with nothing
+      // written; committed after the post-walk validation, because both validate
+      // sites below return an error envelope with no state written at all — an
+      // append made here would outlive a corrective that was never born. A blank
+      // reason is left to the mutation to reject, so its error is not masked by
+      // a report problem the operator cannot act on yet.
+      const operatorReason = (normalizedContext.reason ?? '').trim();
+      const stagedFinding = event === EVENTS.FINAL_CORRECTIVE_REQUESTED && operatorReason.length > 0
+        ? stageOperatorFinding(state, operatorReason, projectDir, io)
+        : null;
+
       const mutationResult = mutation(state, normalizedContext, config, template);
       const mutatedState = mutationResult.state;
 
@@ -449,6 +673,14 @@ export function processEvent(
         };
       }
 
+      // Report first, state second. The two cannot be one atomic write, and this
+      // is the recoverable order: a crash in between leaves a finding whose
+      // corrective was never born, which re-signalling completes — the finding's
+      // corrective-index tag makes the second append a no-op.
+      if (stagedFinding !== null) {
+        io.writeDocument(stagedFinding.docPath, stagedFinding.contents);
+      }
+
       io.writeState(projectDir, mutatedState);
 
       const enrichedContext = walkerResult
@@ -466,6 +698,8 @@ export function processEvent(
         template,
         event,
         projectDir,
+        pathContext.scriptPath,
+        repoNamesFromState(mutatedState),
       );
     }
 
@@ -592,7 +826,14 @@ export function processEvent(
       }
     }
 
-    return attachPromptIfActionResolved(nextAction ?? null, template, event, projectDir);
+    return attachPromptIfActionResolved(
+      nextAction ?? null,
+      template,
+      event,
+      projectDir,
+      pathContext.scriptPath,
+      repoNamesFromState(mutatedState),
+    );
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     return {

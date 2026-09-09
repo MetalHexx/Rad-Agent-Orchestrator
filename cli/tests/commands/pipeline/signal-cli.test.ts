@@ -31,7 +31,7 @@ function captureStdout(): { chunks: string[]; restore: () => void } {
 }
 
 describe('radorch pipeline signal (FR-1, FR-2)', () => {
-  it('emits the canonical envelope with data = { action, context, prompt, completion_event } on success', async () => {
+  it('emits the canonical envelope with data = { action, context, prompt, completion_event, completion_commands } on success', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pipe-cli-'));
     fs.copyFileSync(path.join(REPO_TEMPLATES_DIR, 'medium.yml'), path.join(dir, 'template.yml'));
     const cap = captureStdout();
@@ -43,9 +43,11 @@ describe('radorch pipeline signal (FR-1, FR-2)', () => {
     } finally { cap.restore(); }
     const env = JSON.parse(cap.chunks.join(''));
     expect(env.ok).toBe(true);
-    // Per FR-7, success envelopes carry prompt and completion_event alongside
-    // action and context (top-level on data, not nested inside context).
-    expect(Object.keys(env.data).sort()).toEqual(['action', 'completion_event', 'context', 'has_custom_instructions', 'prompt']);
+    // Success envelopes carry prompt, completion_event and completion_commands
+    // alongside action and context (top-level on data, not nested inside context).
+    expect(Object.keys(env.data).sort()).toEqual(
+      ['action', 'completion_commands', 'completion_event', 'context', 'has_custom_instructions', 'prompt'],
+    );
   });
 
   it('emits ok:false with data.event and error.type=user_error on an unknown event', async () => {

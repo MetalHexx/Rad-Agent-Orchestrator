@@ -380,3 +380,114 @@ describe('explosion renders the new phase/task body shape', () => {
     expect(taskRaw).toContain('_(none yet — appended at runtime)_');
   });
 });
+
+describe('explosion enforces per-phase task numbering restart', () => {
+  it('rejects a phase whose first task is not T01', () => {
+    const { projectDir, masterPlanPath } = makeProject();
+    fs.writeFileSync(masterPlanPath,
+      '## P01: First\n\n### P01-T01: A\nb\n\n' +
+      '## P02: Second\n\n### P02-T04: C\nd\n', 'utf8');
+    try {
+      explodeMasterPlan({ projectDir, masterPlanPath, projectName: 'X', nowIso: '2026-05-22T00:00:00.000Z' });
+    } catch (err) {
+      expect(err).toBeInstanceOf(ParseError);
+      const detail = (err as ParseError).toDetail();
+      expect(Object.keys(detail).sort()).toEqual(['expected', 'found', 'line', 'message']);
+      expect(detail.expected).toContain('P02');
+      expect(detail.found).toContain('P02-T04');
+      return;
+    }
+    throw new Error('expected a ParseError for the wrong-start phase');
+  });
+
+  it('rejects an internal gap in a phase\'s task numbering', () => {
+    const { projectDir, masterPlanPath } = makeProject();
+    fs.writeFileSync(masterPlanPath,
+      '## P01: First\n\n### P01-T01: A\nb\n\n### P01-T03: C\nd\n', 'utf8');
+    try {
+      explodeMasterPlan({ projectDir, masterPlanPath, projectName: 'X', nowIso: '2026-05-22T00:00:00.000Z' });
+    } catch (err) {
+      expect(err).toBeInstanceOf(ParseError);
+      const detail = (err as ParseError).toDetail();
+      expect(Object.keys(detail).sort()).toEqual(['expected', 'found', 'line', 'message']);
+      expect(detail.expected).toContain('P01');
+      expect(detail.found).toContain('P01-T03');
+      return;
+    }
+    throw new Error('expected a ParseError for the mid-phase gap');
+  });
+
+  it('explodes a valid multi-phase plan whose second phase correctly restarts at T01', () => {
+    const { projectDir, masterPlanPath } = makeProject();
+    fs.writeFileSync(masterPlanPath,
+      '## P01: First\n\n### P01-T01: A\nb\n### P01-T02: B\nc\n\n' +
+      '## P02: Second\n\n### P02-T01: C\nd\n### P02-T02: D\ne\n', 'utf8');
+    const result = explodeMasterPlan({ projectDir, masterPlanPath, projectName: 'X', nowIso: '2026-05-22T00:00:00.000Z' });
+    expect(result.emittedTaskFiles).toHaveLength(4);
+  });
+
+  it('still explodes a task-less phase without tripping the numbering guard', () => {
+    const { projectDir, masterPlanPath } = makeProject();
+    fs.writeFileSync(masterPlanPath,
+      '## P01: First\nno tasks yet\n\n## P02: Second\n\n### P02-T01: A\nb\n', 'utf8');
+    const result = explodeMasterPlan({ projectDir, masterPlanPath, projectName: 'X', nowIso: '2026-05-22T00:00:00.000Z' });
+    expect(result.emittedPhaseFiles).toHaveLength(2);
+    expect(result.emittedTaskFiles).toHaveLength(1);
+  });
+
+  it('leaves phases/ and tasks/ untouched when the numbering guard rejects the plan', () => {
+    const { projectDir, masterPlanPath } = makeProject();
+    fs.writeFileSync(masterPlanPath,
+      '## P01: First\n\n### P01-T01: A\nb\n', 'utf8');
+    explodeMasterPlan({ projectDir, masterPlanPath, projectName: 'X', nowIso: '2026-05-22T00:00:00.000Z' });
+    const phasesBefore = fs.readdirSync(path.join(projectDir, 'phases')).sort();
+    const tasksBefore = fs.readdirSync(path.join(projectDir, 'tasks')).sort();
+
+    fs.writeFileSync(masterPlanPath,
+      '## P01: First\n\n### P01-T01: A\nb\n\n## P02: Second\n\n### P02-T04: C\nd\n', 'utf8');
+    try {
+      explodeMasterPlan({ projectDir, masterPlanPath, projectName: 'X', nowIso: '2026-05-22T01:00:00.000Z' });
+    } catch (err) {
+      expect(err).toBeInstanceOf(ParseError);
+      expect(fs.readdirSync(path.join(projectDir, 'phases')).sort()).toEqual(phasesBefore);
+      expect(fs.readdirSync(path.join(projectDir, 'tasks')).sort()).toEqual(tasksBefore);
+      return;
+    }
+    throw new Error('expected a ParseError that leaves phases/ and tasks/ unmodified');
+  });
+});
+
+describe("explosion's purpose-extraction heuristic", () => {
+  it('extracts a genuine one-line purpose unchanged', () => {
+    const { projectDir, masterPlanPath } = makeProject();
+    fs.writeFileSync(masterPlanPath,
+      '## P01: First\n\n### P01-T01: A\nWires the API to the new backend.\n**Complexity:** simple\n**Target repo:** backend\n', 'utf8');
+    const result = explodeMasterPlan({ projectDir, masterPlanPath, projectName: 'X', nowIso: '2026-05-22T00:00:00.000Z' });
+    const phaseRaw = fs.readFileSync(result.emittedPhaseFiles[0]!, 'utf8');
+    expect(phaseRaw).toContain('| T01 | backend | simple | Wires the API to the new backend. |');
+  });
+
+  it('does not leak a colon-less bold section label as the purpose when no purpose paragraph exists', () => {
+    const { projectDir, masterPlanPath } = makeProject();
+    fs.writeFileSync(masterPlanPath,
+      '## P01: First\n\n### P01-T01: A\n**Complexity:** simple\n**Target repo:** backend\n**Files**\n- Create: `a.ts`\n', 'utf8');
+    const result = explodeMasterPlan({ projectDir, masterPlanPath, projectName: 'X', nowIso: '2026-05-22T00:00:00.000Z' });
+    const phaseRaw = fs.readFileSync(result.emittedPhaseFiles[0]!, 'utf8');
+    expect(phaseRaw).toContain('| T01 | backend | simple | — |');
+    expect(phaseRaw).not.toContain('**Files**');
+  });
+
+  it('joins a hard-wrapped purpose paragraph into the full first sentence instead of truncating it', () => {
+    const { projectDir, masterPlanPath } = makeProject();
+    fs.writeFileSync(masterPlanPath,
+      '## P01: First\n\n### P01-T01: A\n' +
+      'Stop the parser from truncating a hard-wrapped paragraph\n' +
+      'into a fragment of the intended purpose sentence.\n' +
+      '**Complexity:** simple\n**Target repo:** backend\n', 'utf8');
+    const result = explodeMasterPlan({ projectDir, masterPlanPath, projectName: 'X', nowIso: '2026-05-22T00:00:00.000Z' });
+    const phaseRaw = fs.readFileSync(result.emittedPhaseFiles[0]!, 'utf8');
+    expect(phaseRaw).toContain(
+      '| T01 | backend | simple | Stop the parser from truncating a hard-wrapped paragraph into a fragment of the intended purpose sentence. |'
+    );
+  });
+});

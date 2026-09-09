@@ -267,6 +267,31 @@ async function run() {
     assert.strictEqual(projectsLink!.props?.['aria-current'], 'page', 'deep project URL keeps the Projects tab active');
   });
 
+  await test('Docs control is present, labeled for a screen reader, and links to /docs', () => {
+    const AppHeaderMocked = loadAppHeaderWithMockedNav();
+    const tree = AppHeaderMocked({ sseStatus: 'connected', onReconnect: () => {}, onConfigClick: () => {}, navLinks: [] });
+    const docsButton = findByAriaLabel(tree, 'Docs') as
+      | { props?: { render?: { props?: { href?: string } } } }
+      | null;
+    assert.notStrictEqual(docsButton, null, 'Expected a control labeled "Docs" in the header');
+    const rendered = docsButton!.props?.render;
+    assert.ok(rendered, 'Docs control must compose a next/link via the render prop (this Button has no asChild)');
+    assert.strictEqual(rendered!.props?.href, '/docs', 'Docs control must link to /docs');
+  });
+
+  await test('Docs control renders unconditionally, unlike Configuration', () => {
+    const AppHeaderMocked = loadAppHeaderWithMockedNav();
+    const tree = AppHeaderMocked({ sseStatus: 'connected', onReconnect: () => {}, onConfigClick: undefined, navLinks: [] });
+    const docsButton = findByAriaLabel(tree, 'Docs');
+    assert.notStrictEqual(docsButton, null, 'Docs control must render even when onConfigClick is undefined');
+  });
+
+  await test('Docs control appears immediately before the Configuration button in source', () => {
+    const docsIdx = sourceText.indexOf('aria-label="Docs"');
+    const configIdx = sourceText.indexOf('aria-label="Configuration"');
+    assert.ok(docsIdx > 0 && configIdx > docsIdx, 'Docs control must appear before the Configuration button');
+  });
+
   await test('nav links include Instruction Editor between Process Editor and Config (DD-12)', async () => {
     const shellSource = readFileSync(join(__dirname, 'app-header-shell.tsx'), 'utf-8');
     const peIdx = shellSource.indexOf('"Process Editor"');

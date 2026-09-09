@@ -47,9 +47,12 @@ const ALLOWED_NEW_ONLY = new Set([
   // to bootstrap.mjs (the uninstall side-effect is removed in the new design).
   'hooks/bootstrap.mjs',
   // Current in-tree per-version manifest entry. Renamed on each release bump
-  // (e.g. v1.0.0-alpha.13.json → v1.0.0-alpha.13.json); update this allowlist
-  // entry to match when bumping. Same role as legacy's versioned manifest.
-  'manifests/v1.0.0-alpha.13.json',
+  // (v<previous>.json → v<current>.json); update this allowlist entry to match
+  // when bumping. Same role as legacy's versioned manifest. The example is
+  // deliberately written with placeholders rather than concrete versions —
+  // this file is on the release engine's hardcoded-literal sweep list, which
+  // would rewrite both sides of a concrete example to the same value.
+  'manifests/v1.0.0-alpha.14.json',
 ]);
 
 // Prefix-based allow patterns for new-only files.

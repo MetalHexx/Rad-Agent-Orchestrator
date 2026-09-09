@@ -85,7 +85,13 @@ export function seedCatalog(
     fs.writeFileSync(path.join(projectDir, `${TEMPLATE_ID}.yml`), body, 'utf8');
   }
 
-  const pathContext: PathContext = { scriptsDir: projectDir, templatesDir: projectDir };
+  const pathContext: PathContext = {
+    scriptsDir: projectDir,
+    templatesDir: projectDir,
+    // Deterministic stand-in for process.argv[1] so rendered completion
+    // commands are assertable.
+    scriptPath: path.join(projectDir, 'radorch.mjs'),
+  };
   return { root, projectDir, pathContext, templateId: TEMPLATE_ID };
 }
 
@@ -126,6 +132,7 @@ export function makeTestIO(opts: MakeTestIOOpts = {}): TestIO {
   }
   let written: PipelineState | null = null;
   let count = 0;
+  const documents = new Map<string, string>();
   const initial: PipelineState | null = opts.stateMissing
     ? null
     : null; // both branches return null — seedCatalog scaffolds a fresh project (state===null on disk).
@@ -134,6 +141,8 @@ export function makeTestIO(opts: MakeTestIOOpts = {}): TestIO {
     writeState: (_dir, state) => { written = state; count++; },
     readConfig: () => DEFAULT_CONFIG,
     readDocument: (_docPath) => null,
+    readDocumentRaw: (docPath) => documents.get(docPath) ?? null,
+    writeDocument: (docPath, contents) => { documents.set(docPath, contents); },
     ensureDirectories: (_projectDir) => { /* no-op: seedCatalog already created the temp dir */ },
     lastWrittenState: () => {
       if (!written) throw new Error('writeState never called');

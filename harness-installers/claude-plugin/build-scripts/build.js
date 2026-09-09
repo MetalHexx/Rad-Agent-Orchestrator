@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 // build.js — Single entry point for the Claude marketplace plugin build.
-// 14 steps in fixed order. Fail-fast on any step.
+// Fixed step order, fail-fast on any step.
 
 import fs from 'node:fs';
 import path from 'node:path';
 import { execSync } from 'node:child_process';
+import { stageDocsCorpus } from '../../shared/build-helpers/docs-corpus.js';
 import { emitCliBundle } from '../../shared/build-helpers/emit-cli-bundle.js';
 import { emitHookBundle } from '../../shared/build-helpers/emit-hook-bundle.js';
 import { emitUiBundle } from '../../shared/build-helpers/emit-ui-bundle.js';
@@ -84,6 +85,35 @@ export async function runBuild(opts) {
     );
   });
 
+  // communication-styles staging. Source:
+  // runtime-config/communication-styles/ → output/_install-source/communication-styles/.
+  // The `custom/` directory ships as an empty folder — never user-authored
+  // files inside the slot, mirroring copy-action-events.
+  await step('copy-communication-styles', () => {
+    const customSep = `${path.sep}custom${path.sep}`;
+    const filter = (src) => {
+      if (!src.includes(customSep)) return true;
+      return src.endsWith(`${path.sep}custom`);
+    };
+    fs.cpSync(
+      path.join(greenfield, 'runtime-config/communication-styles'),
+      path.join(out, '_install-source/communication-styles'),
+      { recursive: true, filter },
+    );
+  });
+
+  // Documentation corpus staging. README.md, docs/, and assets/ mirror into
+  // output/_install-source/docs/. The manifest entries the helper returns are
+  // carried to merge-docs-manifest below rather than re-walking the tree.
+  let docsManifestEntries = [];
+  await step('copy-docs-corpus', () => {
+    ({ manifestEntries: docsManifestEntries } = stageDocsCorpus({
+      repoRoot: root,
+      target: path.join(out, '_install-source/docs'),
+      sourcePrefix: '_install-source/docs',
+    }));
+  });
+
   // Build the library dist before any step that bundles the CLI or the UI:
   // the UI's `next build` resolves the by-name import through the workspace
   // symlink against dist, and the by-name CLI bundle depends on dist too (AD-5).
@@ -93,6 +123,7 @@ export async function runBuild(opts) {
         '@rad-orchestration/repo-registry',
         '@rad-orchestration/work-graph',
         '@rad-orchestration/telemetry',
+        '@rad-orchestration/terminal-launch',
       ]) {
         execSync(`npm run build -w ${pkg}`, { cwd: root, stdio: 'inherit', shell: process.platform === 'win32' });
       }
@@ -194,6 +225,25 @@ export async function runBuild(opts) {
     fs.mkdirSync(path.join(out, 'manifests'), { recursive: true });
     for (const f of fs.readdirSync(src)) {
       if (/^v.+\.json$/.test(f)) fs.copyFileSync(path.join(src, f), path.join(out, 'manifests', f));
+    }
+  });
+
+  // Docs entries are generated, never hand-authored: the committed
+  // manifests/v<version>.json catalogs runtime-config/ only. Merging them into
+  // the copies under output/manifests/ keeps a generated payload out of the
+  // source tree while giving run-install.js the full catalog it installs from.
+  await step('merge-docs-manifest', () => {
+    const manifestsOut = path.join(out, 'manifests');
+    for (const f of fs.readdirSync(manifestsOut)) {
+      if (!/^v.+\.json$/.test(f)) continue;
+      const abs = path.join(manifestsOut, f);
+      const manifest = JSON.parse(fs.readFileSync(abs, 'utf8'));
+      // Drop any hand-authored docs entry first — a duplicate is neither
+      // missing nor orphaned, so the parity gate would not catch it.
+      const authored = (manifest.files ?? [])
+        .filter((e) => !e.sourcePath.startsWith('_install-source/docs/'));
+      manifest.files = [...authored, ...docsManifestEntries];
+      fs.writeFileSync(abs, `${JSON.stringify(manifest, null, 2)}\n`);
     }
   });
 

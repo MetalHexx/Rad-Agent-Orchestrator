@@ -1,53 +1,121 @@
-# build-helpers/
+# `harness-installers/shared/build-helpers/`
 
-## Purpose
+The mechanical steps every installer build reaches for: bundling, packing, token substitution, and
+one parity check. Packaged as `@rad-orchestration/build-helpers` (private) so it can hold its own
+`esbuild` and `tar` dependencies — callers still import the files by relative path, never by package
+name.
 
-Four mechanical helpers that installer build scripts use to emit bundles and run transforms. Published as `@rad-orchestration/build-helpers` (private). Every installer-specific value flows in as a parameter; no file here hard-codes installer names, destination paths, or token maps.
+## How it works
 
-## Helpers
+One helper per file, each exporting a single named function taking one `opts` object:
 
-**`expandTokens(opts)` — `expand-tokens.js`**
+| File | Export | Does |
+|---|---|---|
+| `docs-corpus.js` | `stageDocsCorpus` | Enumerates and stages the shipped documentation corpus (`README.md`, `docs/`, `assets/`), holding the one exclusion rule `standard/`, `claude-plugin/`, `copilot-cli-plugin/`, and `copilot-vscode-plugin/` all share |
+| `expand-tokens.js` | `expandTokens` | Walks a tree; substitutes `tokenMap` and applies agent-namespacing in text files, copies everything else verbatim |
+| `emit-cli-bundle.js` | `emitCliBundle` | esbuild bundles a CLI entry point to a single ESM file, chmod `0o755` |
+| `emit-ui-bundle.js` | `emitUiBundle` | Runs the Next.js standalone build, packs it into one gzipped tarball |
+| `emit-hook-bundle.js` | `emitHookBundle` | Bundles a plugin's `bootstrap.mjs`, copies its verbatim hook files, stages the shared shims |
+| `manifest-parity.js` | `checkInstallSourceParity` | Compares a plugin's built payload against its built manifest catalog, both directions |
 
-`opts: { source: string, target: string, tokenMap: Record<string,string>, agentNames?: string[] }`
+`stageDocsCorpus` is the first helper every builder calls — `standard/` and all three plugin
+variants stage the same corpus, so the enumeration and the exclusion rule live here exactly once
+rather than as separate copies that would have to agree.
 
-Walks `source` recursively. Text files (extensions in `TEXT_EXTS`: `.md .txt .js .mjs .cjs .ts .tsx .json .yml .yaml .sh .css .html`) get token substitution via `substituteTokens` and optional agent namespacing via `applyNamespacing`; binary files are copied verbatim. `agentNames` drives the namespacing rewrite that prefixes bare agent names with `rad-orc:` in dispatch contexts (`**<name>**`, `<name> agent(s)`, `<name> spawn(s)`, `subagent_type: <name>`, and comma-separated lists). For back-compat the rewrite also normalizes already-prefixed `rad-orchestration:<name>` occurrences to `rad-orc:<name>`. The `TEXT_EXTS` set mirrors the list in `harness-adapters/engine/index.js` — keep the two in sync.
+The convention is that `__tests__/` holds the per-helper behaviour suites and `tests/` holds
+structural guards that read every builder's source text. Both are live, and CI runs them as separate
+steps. The convention has a known deviation: `tests/emit-hook-bundle.test.mjs` calls `emitHookBundle`
+directly, so it is a behaviour suite sitting on the structural-guard side. Place a new suite by the
+convention, not by that precedent.
 
-**`emitCliBundle(opts)` — `emit-cli-bundle.js`**
+`emitHookBundle` and `checkInstallSourceParity` are plugin-shaped and are not used by the standard
+installer — see the installer-blindness note in [`../AGENTS.md`](../AGENTS.md).
 
-`opts: { source: string, target: string, entryPoint?: string, mode?: number }`
+## Conventions
 
-Bundles `entryPoint` (default `${source}/src/bin/radorch.ts`) to a single ESM file at `target` using esbuild (`platform: node`, `format: esm`, `target: node20`). Creates parent directories of `target`. Applies `mode` (default `0o755`) via `fs.chmodSync`; chmod is silently a no-op on Windows.
+- **One `opts` object per export.** No positional parameters, no global state, no module-level side
+  effects.
+- **I/O stays inside the paths it was handed.** A helper never reads or writes outside them. Most
+  take a `source`/`target` pair; `checkInstallSourceParity` takes an `outputDir` and reads only under
+  it. The parameter names vary, the containment rule does not.
+- **esbuild and tar failures propagate as throws.** Callers wrap them in their `step()` helper, which
+  is what produces the `[build:<variant>] step "<name>" failed: …` message. Do not catch and
+  degrade here.
+- **`TEXT_EXTS` in `expand-tokens.js` mirrors the list in `harness-adapters/engine/index.js`.** The
+  two decide independently which files get read as text; they must agree, and nothing checks that
+  they do.
 
-**`emitUiBundle(opts)` — `emit-ui-bundle.js`**
+## Hazards
 
-`opts: { source: string, target: string, runner?: () => Promise<void> }`
+### `absWorkingDir` in `emitCliBundle` is load-bearing for byte-determinism
 
-Invokes `runner` (default: `npm run build-standalone` inside `source`) to produce a Next.js standalone build, then packs `source/.next/standalone`, `source/.next/static`, and `source/public` into a single gzipped tarball written to `target` (a `.tgz` file path, not a directory). Removes `source/.next/` and the temporary staging dir after packing. Tests inject a no-op `runner` via `opts.runner` to skip the actual build. The tarball shape is load-bearing: both the satellite repo's `.gitignore` (strips `node_modules/` and `.next/`) and `npm pack` (hardcoded `node_modules/` strip) would erase the UI runtime from a loose tree, so we ship one opaque blob that installers extract at hydrate time. `portable: true` strips OS-specific metadata so the tarball hashes deterministically across Win/macOS/Linux builds.
+esbuild labels bundled modules with paths relative to its working directory. Those labels are
+cosmetic but they land in the output bytes, so without the pin the same source produces a different
+bundle depending on whether the build ran from the repo root or from an `npm run -w <workspace>`
+cwd. Do not remove the pin or "simplify" it to `process.cwd()`. Nothing downstream is watching for
+it: the manifests are hashless path catalogs, the drift gate compares paths, and `validate.js`
+checks a size budget — no gate hashes the bundle, so this pin is what holds its reproducibility.
 
-**`emitHookBundle(opts)` — `emit-hook-bundle.js`**
+### `emitUiBundle` deletes `<source>/.next/` when it finishes
 
-`opts: { source: string, target: string, sharedHooksDir?: string, libRoot?: string }`
+Packing is destructive to the build output it just consumed. A caller that stubs the `next build`
+runner and then runs against a tree a real build already cleaned finds nothing to pack and writes a
+near-empty tarball over a good one. The standard builder's `skipUiBundle` flag exists precisely to
+avoid that path — see [`../../standard/build-scripts/AGENTS.md`](../../standard/build-scripts/AGENTS.md).
 
-Bundles `${source}/bootstrap.mjs` (with `lib/install/*` inlined by esbuild) to `${target}/bootstrap.mjs`. Copies `drift-check.mjs`, `hooks.json`, `launcher.cjs`, and `AGENTS.md` from `source` to `target` verbatim if they exist. The single-source `session-preamble.mjs` shim (AD-8) is staged from `sharedHooksDir` when provided — not the plugin `source` tree — falling back to `source` when the option is absent. `libRoot` defaults to `${source}/../lib` and is the esbuild module resolution root for the inlined dependencies.
+### The tarball shape is the point
 
-## Installer-blindness contract
+The UI is shipped as one opaque `.tgz` rather than a loose tree because both `npm pack` and the
+satellite repo's `.gitignore` strip `node_modules/` and `.next/`, which would erase the UI runtime
+in transit. `portable: true` strips OS-specific metadata so the tarball hashes identically across
+Windows, macOS, and Linux builds. Neither of those is a detail you can drop.
 
-No function in this folder may reference:
-- Installer package names (`claude-plugin`, `standard`, etc.)
-- Destination paths (`~/.radorc/`, `${CLAUDE_PLUGIN_ROOT}`, etc.)
-- Specific token keys or agent names
+### `emitHookBundle` stages **both** shims, not just the preamble
 
-All such values are supplied by the caller.
+The verbatim-copy list it reads from the plugin's own `hooks/` is
+`drift-check.mjs`, `hooks.json`, `launcher.cjs`, `AGENTS.md`. Separately, it copies
+`session-preamble.mjs` **and** `telemetry-capture.mjs` from `sharedHooksDir`, falling back to the
+plugin `source` when that option is absent. Adding a per-plugin hook file means extending the
+verbatim list here; adding a shared shim means extending the shim list.
 
-## Coding conventions
+## When a change here ripples
 
-- Every exported function accepts a single `opts` object.
-- All I/O is scoped to the `source` and `target` paths passed in; no writes outside those trees.
-- esbuild failures propagate as thrown errors; callers (build scripts) catch them through the `step()` wrapper.
-- No global state; no module-level side effects.
+- **Changed a helper's parameter shape or return value?** Nothing resolves these imports until that
+  build or suite runs, so a missed caller surfaces as a CI failure in a variant you never opened —
+  and **the caller set is not the same for every helper**, so grep for the export you changed rather
+  than assuming every variant's `build-scripts/build.js` imports it. The plugin-shaped pair above is where
+  that bites: `emitHookBundle` has no standard-builder caller, and `checkInstallSourceParity` is
+  reached from no builder at all, only each plugin variant's
+  `tests/manifest-payload-parity.test.mjs`. Detail: [`../AGENTS.md`](../AGENTS.md)
 
-## Rules for making updates
+- **Changed `TEXT_EXTS`, or anything else that decides which files are read as text?** The adapter
+  engine keeps its own copy of the same list and applies it one pass earlier. If the two disagree, a
+  file is transformed on one side of the pipeline and copied byte-for-byte on the other, with no
+  error. Change both. Detail: [`../../../harness-adapters/AGENTS.md`](../../../harness-adapters/AGENTS.md)
 
-- Changing `TEXT_EXTS` in `expand-tokens.js` requires the same change in `harness-adapters/engine/index.js` to keep token-processing scope in sync.
-- `emitHookBundle`'s per-plugin verbatim-copy list (`['drift-check.mjs', 'hooks.json', 'launcher.cjs', 'AGENTS.md']`) must match what each plugin's `hooks/` actually ships; update here when adding new verbatim hook files. `session-preamble.mjs` is staged separately from `sharedHooksDir` (AD-8 single-source) and is not in this list.
-- Tests in `__tests__/` cover each helper; run them after any signature or behavior change.
+- **Changed what `emitCliBundle` writes, or where?** Its target lands inside the per-harness tree
+  that `emit-manifest.js` walks, so a changed filename or nesting level means a regenerated standard
+  manifest in the same change — run the build and commit the diff. The manifests carry no per-file
+  hash, so changing the bundle's *contents* produces no diff and trips nothing. `emitUiBundle`'s
+  tarball is written outside that tree and `ui/` is excluded from the manifest besides, so it has no
+  manifest obligation at all; neither output appears in the plugin variants' manifests, which
+  catalog what `runtime-config/` ships plus the generated documentation corpus. Detail:
+  [`../../standard/AGENTS.md`](../../standard/AGENTS.md)
+
+## Commands
+
+Both suites, from the repo root:
+
+```
+node --test harness-installers/shared/build-helpers/__tests__/*.test.mjs
+node --test harness-installers/shared/build-helpers/tests/*.test.mjs
+```
+
+Then the builds that consume them — see [`../../AGENTS.md`](../../AGENTS.md).
+
+## Further reading
+
+- [`../AGENTS.md`](../AGENTS.md) — the installer-blindness rule and where it currently does not hold
+- [`../../standard/build-scripts/AGENTS.md`](../../standard/build-scripts/AGENTS.md) — the caller
+  that drives these helpers over every harness in one pass
+- [`../../AGENTS.md`](../../AGENTS.md) — the variants, and the manifest discipline

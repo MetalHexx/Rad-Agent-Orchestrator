@@ -1,105 +1,129 @@
-# shared/hooks/
+# `harness-installers/shared/hooks/`
 
-## Purpose
+The single source for both hook shims that run **on the end user's machine**. Every installer variant
+stages these same files into its own `hooks/` output; nothing re-implements them, and nothing
+here knows which variant it was copied into.
 
-Single source for the preamble hook shim shared across all installer variants.
-Code here is installer-agnostic — it carries no harness-specific names, paths,
-or config values.
+> **What the preamble hook is for, and the per-harness stdout contract it satisfies, live in
+> [`docs/internals/ambient-awareness.md`](../../../docs/internals/ambient-awareness.md).** Read it
+> before changing what `serializeForStdout` emits or adding a harness branch. Not needed to fix a
+> parse path or add a captured field.
 
-## Contents
+## How it works
 
-- `session-preamble.mjs` — the preamble hook shim. See below.
-- `telemetry-capture.mjs` — the telemetry capture hook shim. See below.
-- `tests/session-preamble.test.mjs` — Node built-in test runner suite for the preamble shim.
-- `tests/telemetry-capture.test.mjs` — Node built-in test runner suite for the telemetry capture shim.
+- `session-preamble.mjs` — runs the bundled CLI's `session-context` subcommand and returns the
+  rendered ambient-awareness and communication-style block as `additionalContext`.
+- `telemetry-capture.mjs` — reads a hook payload on stdin and spawns `radorch telemetry capture`.
+- `tests/` — one `node:test` suite per shim.
 
-## session-preamble.mjs — preamble hook shim
+Both shims resolve the CLI bundle the same way: from `CLAUDE_PLUGIN_ROOT` or
+`COPILOT_PLUGIN_ROOT` when a plugin injected one, otherwise from this file's own location one level
+up from `hooks/` — which is what makes the same file work under `~/.claude/` and `~/.copilot/`
+without knowing which it is in.
 
-Exports a single pure function `buildHookOutput({ run? })`. Called by the
-harness session-start hook entry point in each installer variant.
+**Registration is not owned here.** Each variant decides which events the shims are wired to, in its
+own `hooks/hooks.json`; for the standard installer's Claude harness, the wiring is written into the
+user's `settings.json` at install time. Copying a shim into a variant's output does not make it fire.
 
-### What it does
+## Conventions
 
-1. Runs the bundled CLI's `session-context` subcommand (injectable via `run`).
-2. Parses the canonical envelope `{ ok, data, error }` from stdout.
-3. Returns `{ additionalContext }`:
-   - **ok:true** → `data.preamble` text is surfaced as `additionalContext`.
-   - **ok:false, non-zero status, or unparseable stdout** → a clear one-line
-     notice that ambient awareness did not load (including the error message
-     when present). The hook never fails silently and never throws.
+- **Node built-ins only.** No third-party imports, no YAML parser. `telemetry-capture.mjs` reads
+  `orchestration.yml` with a line scanner that mirrors the CLI's own gate logic rather than parsing
+  it. A dependency added here would have to exist on the user's machine, and nothing installs one.
+- **Never throw, never block, never exit non-zero.** The preamble degrades to a one-line "ambient
+  awareness did not load" notice on any failure; the capture shim swallows everything and forces
+  `process.exit(0)` in a `finally`. Session start must not be delayed or broken by either.
+- **Check the telemetry gate first.** `readTelemetryEnabled` runs before stdin is read and before
+  anything is spawned. Absent, `false`, or an unreadable file all mean off.
+- **Pure functions, injectable side effects.** `buildHookOutput` takes an injectable `run`; the
+  parsers take their input as a string. Tests never spawn a real process.
+- **The direct-run guard is deliberate, and both shims express the same condition.** The guarded
+  block fires when `argv[1]` is the shim itself *or* is undefined (the plugin's
+  `node -e "import(…)"` launch form), and stays inert when a test imports the module. The code
+  differs: `telemetry-capture.mjs` compares URLs and calls a `main()`, `session-preamble.mjs`
+  compares resolved paths and inlines the body. Do not simplify either to an
+  `import.meta.main`-style check.
+- **The sanctioned env vars are `CLAUDE_PLUGIN_ROOT`, `COPILOT_PLUGIN_ROOT`, and `COPILOT_CLI`.**
+  Do not introduce another, and do not reference a destination path belonging to one variant.
 
-### Harness context-channel contract
+### The harness discriminator is per-function, not global
 
-The `additionalContext` key is the cross-harness context-channel:
+`serializeForStdout` branches on **`COPILOT_CLI=1` alone** — Claude Code and Copilot in VS Code are
+deliberately not told apart, because both set `CLAUDE_PLUGIN_ROOT` and `VSCODE_PID` is present
+whenever Claude runs in a VS Code terminal. `parseSessionIdentity` uses a **wider** test: `COPILOT_CLI=1`
+**or** `COPILOT_PLUGIN_ROOT` present without `CLAUDE_PLUGIN_ROOT`. Do not unify them on the
+assumption that one discriminator serves the file.
 
-| Harness | Hook event | Context key |
-|---|---|---|
-| Claude Code | `SessionStart` | `additionalContext` |
-| Copilot (VS Code plugin) | session hook | `additionalContext` |
-| Copilot CLI plugin | session hook | `additionalContext` / `hookSpecificOutput` |
+## Hazards
 
-### Dual radorch.mjs resolution (AD-10)
+### These suites run in no CI workflow
 
-The shim resolves the bundled CLI two ways:
+`tests/session-preamble.test.mjs` and `tests/telemetry-capture.test.mjs` are not wired into any job
+in `.github/workflows/`, and no workspace `npm test` reaches them — `shared/` is not a package. A
+change here can land fully green. Run them yourself:
 
-1. **Plugin delivery** — `CLAUDE_PLUGIN_ROOT` (Claude / Copilot-VSCode) or `COPILOT_PLUGIN_ROOT` (Copilot CLI) is set; radorch path:
-   `${CLAUDE_PLUGIN_ROOT|COPILOT_PLUGIN_ROOT}/skills/rad-orchestration/scripts/radorch.mjs`
-2. **Standard delivery** — both env vars are absent; radorch path is derived relative to this hook file's location (harnessRoot = directory one level up from `hooks/`):
-   `<harnessRoot>/skills/rad-orchestration/scripts/radorch.mjs`
-   This allows the same hook to work under any harness root (e.g., `~/.claude/`, `~/.copilot/`).
+```
+node --test harness-installers/shared/hooks/tests/*.test.mjs
+```
 
-Any spawn failure resolves to the notice path — the hook never blocks or
-delays session start.
+### A CLI rename fails here silently, on a user's machine
 
-## telemetry-capture.mjs — telemetry hook shim
+Both shims call `radorch` by exact subcommand string — `session-context` and `telemetry capture` —
+and read fields out of the envelope's `data`. Nothing resolves those strings at build time. A rename
+produces no build error, no test failure, and no visible runtime failure: the preamble prints its
+"did not load" notice and exits 0, and the capture shim swallows the spawn result entirely.
 
-Installed by every harness variant. Invoked by Claude's hook runtime on `PostToolUse` (matcher `Agent`), `Stop`, and `SessionEnd` events (the three-event telemetry set). Single-source here (AD-8); each installer copies it into its own `hooks/` directory at build time.
+### The `PostToolUse` telemetry entry carries no `matcher`
 
-### Built-ins only
+It fires on **every** tool, not only `Agent`, so main-agent spend is harvested mid-turn rather than
+only at `Stop`. This was a deliberate broadening; the added per-tool fires are non-blocking because
+the CLI detaches a background worker. Any doc or comment claiming `matcher: "Agent"` is stale.
 
-Uses only Node built-in modules (`node:child_process`, `node:fs`, `node:os`, `node:path`, `node:url`). No third-party dependencies, no YAML parser (AD-4, NFR-2).
+### Copying a shim into a variant is not registering it
 
-### Startup contract
+`telemetry-capture.mjs` is staged into every variant's `hooks/` output, but only the Claude channels
+register it — the Claude plugin's `hooks.json` and, for the standard installer, the entries written
+into `~/.claude/settings.json`. Neither Copilot variant's `hooks.json` wires it to any event. Do not
+read "the shim ships everywhere" as "telemetry runs everywhere".
 
-1. **Gate checked first (default-off, AD-4/AD-5)** — reads `~/.radorc/orchestration.yml` using a built-in-only line scanner that mirrors the CLI's `readTelemetryEnabled` logic. If `telemetry.enabled` is absent, `false`, or the file is missing, the shim exits immediately with code 0. No further work is done.
-2. **stdin read** — reads the full hook payload from stdin (fd 0) as UTF-8. Failures silently default to an empty string.
-3. **Event parsing (`parseHookEvent`)** — parses the JSON payload into a structured event object. snake_case fields are preferred (`hook_event_name`, `session_id`, `cwd`, `transcript_path`, `tool_name`, `agent_transcript_path`, `agent_id`, `agent_type`, `tool_use_id`); camelCase aliases are accepted for `hookEventName`. Nested `tool_response` fields (`agent_id`, `agent_type`, `agent_transcript_path`, `tool_use_id`) are read from `tool_response.*` when the top-level field is absent. Recognized events: `PostToolUse`, `Stop`, `SessionEnd`, `SubagentStop`, `SubagentStart`, `PreToolUse`. Any `hook_event_name` not in this set normalizes to `Stop`.
-4. **CLI args built (`toCaptureArgs`)** — builds the `telemetry capture --event <name> [--session …] [--cwd …] …` argument list from the parsed event. Each flag is only appended when the corresponding value is non-empty.
-5. **Synchronous spawn** — runs `radorch.mjs telemetry capture …` via `spawnSync` with a hard 10 000 ms `SIGKILL` timeout (AD-6). `stdio: 'ignore'`. Failures are caught and swallowed.
-6. **Always exit 0** — the `finally { process.exit(0) }` block ensures the shim never returns non-zero regardless of capture success or failure (NFR-1).
+## When a change here ripples
 
-### radorch.mjs resolution
+- **Changed which subcommand a shim calls, or which envelope fields it reads?** The command surface
+  belongs to `cli/`, and the failure is silent on a user's machine with no build error anywhere.
+  `cli/AGENTS.md` already declares the edge in the other direction — keep both sides naming the same
+  commands. Detail: [`cli/AGENTS.md`](../../../cli/AGENTS.md)
 
-Same dual-resolution strategy as `session-preamble.mjs` (AD-10):
+- **Changed `parseHookEvent`, `toCaptureArgs`, or what the capture shim spawns?** The argument list
+  is the wire format into `radorch telemetry capture`, and the shim sits on the agent's critical
+  path — anything that makes capture synchronous or slow is felt in every tool call of every
+  session. Detail: [`lib/telemetry/AGENTS.md`](../../../lib/telemetry/AGENTS.md)
 
-1. **Plugin delivery** — `CLAUDE_PLUGIN_ROOT` or `COPILOT_PLUGIN_ROOT` is set → `${ROOT}/skills/rad-orchestration/scripts/radorch.mjs`
-2. **Standard delivery** — both vars absent → one level up from `hooks/` → `<harnessRoot>/skills/rad-orchestration/scripts/radorch.mjs`
+- **Changed `readTelemetryEnabled`'s parsing, or the config shape it depends on?** It hand-scans
+  `~/.radorc/orchestration.yml` for `telemetry.enabled` rather than parsing YAML, so a change to how
+  that section is nested or named turns the gate off for everyone with no error. The shipped file
+  and the CLI's own reader must move with it. Detail:
+  [`runtime-config/AGENTS.md`](../../../runtime-config/AGENTS.md)
 
-### Direct-run guard
+- **Changed what a shim needs from its environment, or added a hook event?** Registration lives in
+  each variant — every plugin's `hooks/hooks.json` and the standard installer's `settings.json` merge.
+  A shim that expects a value nobody wires up fails silently by contract. Detail:
+  [`../../standard/AGENTS.md`](../../standard/AGENTS.md), [`../../AGENTS.md`](../../AGENTS.md)
 
-The shim's `main()` runs when launched directly (`node telemetry-capture.mjs` → `argv[1]` is the shim) or via the plugin's `node -e "import(…)"` form (where `argv[1]` is `undefined`). When imported by tests, `argv[1]` is the test file path, so the guard is false and `main()` stays inert. This mirrors `session-preamble.mjs`.
+## Commands
 
-### Exported symbols (for testing)
+```
+node --test harness-installers/shared/hooks/tests/*.test.mjs
+```
 
-- `readTelemetryEnabled(root: string): boolean` — reads `orchestration.yml` in `root`; default-off.
-- `parseHookEvent(stdin: string): EventObject` — parses raw stdin JSON to a structured event.
-- `toCaptureArgs(evt: EventObject): string[]` — builds the `radorch` CLI argument list.
+Changes here reach your own machine only through a build and a reinstall — run the
+`/rad-dogfood-harness` skill. Nothing here is hot-reloaded.
 
-## Coding conventions
+## Further reading
 
-- `buildHookOutput` is a pure function; all inputs flow through parameters.
-- No global state; no side effects outside what `run` performs.
-- `run` defaults to `spawnSync`; tests inject a synchronous stub.
-
-## Rules for making updates
-
-- This directory is the single source for both the preamble shim (`session-preamble.mjs`) and the telemetry capture shim (`telemetry-capture.mjs`). Do not duplicate either inside individual installer variant trees.
-- Installer-specific hook entry points (in each `harness-installers/<variant>/hooks/`)
-  import or bundle these shims; they do not re-implement them.
-- Any change to the `buildHookOutput` signature is a breaking change for all
-  callers. Locate every import before modifying the signature.
-- Any change to `parseHookEvent`, `toCaptureArgs`, or `readTelemetryEnabled` must be reflected in `tests/telemetry-capture.test.mjs` and may require updating `harness-installers/standard/AGENTS.md` and `harness-installers/claude-plugin/AGENTS.md` if the documented behavior changes.
-- Do not reference installer names, harness-specific destination paths that belong
-  to a single installer variant, or unsanctioned env vars. The sanctioned harness-specific env vars for plugin path delivery are:
-  - `CLAUDE_PLUGIN_ROOT` (Claude Code / Copilot-VSCode harnesses)
-  - `COPILOT_PLUGIN_ROOT` (Copilot CLI harness)
+- [`docs/internals/ambient-awareness.md`](../../../docs/internals/ambient-awareness.md) — what the
+  preamble carries, the harness serialization contract, and the other `SessionStart` hook
+- [`docs/internals/communication-style.md`](../../../docs/internals/communication-style.md) — the
+  second block the preamble renders
+- [`cli/AGENTS.md`](../../../cli/AGENTS.md) — the commands both shims call, and the envelope
+- [`lib/telemetry/AGENTS.md`](../../../lib/telemetry/AGENTS.md) — what consumes the capture events
+- [`../AGENTS.md`](../AGENTS.md) — why this folder is runtime and its sibling is build time

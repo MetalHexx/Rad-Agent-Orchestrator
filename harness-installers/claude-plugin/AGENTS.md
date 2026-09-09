@@ -1,94 +1,123 @@
-# claude-plugin/
+# `harness-installers/claude-plugin/`
 
-## Purpose
+The Claude marketplace channel. `build-scripts/build.js` produces a publishable plugin payload under
+`output/`; the source package (`@rad-orchestration/claude-plugin-source`) is never published, and
+`npm pack` runs against `output/`.
 
-A self-contained npm package (`@rad-orchestration/claude-plugin-source`) whose `npm run build` produces the publishable Claude marketplace plugin. The source package is never published; `npm pack` runs against `output/` after build.
+> **The shared plugin shape — the install-side guarantees and the
+> change-one-change-all-three obligation — lives in
+> [`../AGENTS.md`](../AGENTS.md#the-plugin-variants-are-near-copies-of-one-another).** Read it
+> before your first change in any plugin variant. This file carries only what is different here.
 
 ## How it works
 
-`build-scripts/build.js` exports `runBuild(opts)` and is the single entry point. It executes 13 steps in fixed order, fail-fast:
+| Path | Holds |
+|---|---|
+| `build-scripts/` | `build.js`, `validate.js`, `synthesize-package-json.js`, and `parity-check.js` |
+| `.claude-plugin/plugin.json` | Plugin metadata; its `version` is the authoritative version for the published package |
+| [`hooks/`](./hooks/AGENTS.md) | Hook sources, and the registrations for this harness. **Ships to end users** |
+| [`lib/install/`](./lib/install/AGENTS.md) | The install state machine, inlined into `hooks/bootstrap.mjs` at build time |
+| `manifests/` | One hand-authored `v<version>.json` path catalog, covering `runtime-config/` only — the build merges the generated docs entries into the `output/` copy |
+| `output/` · `dogfood-marketplace/` | Gitignored build payload and the ephemeral local marketplace |
 
-1. **adapter-engine** — runs `harness-adapters/engine/build.js --harness=claude` (skippable in tests via `opts.skipAdapterEngine`)
-2. **clean-output** — wipes `output/`
-3. **copy-agents** / **copy-skills** — copies adapter output from `harness-adapters/output/claude/`
-4. **copy-runtime-config** — stages `runtime-config/orchestration.yml` and `runtime-config/templates/` under `_install-source/` (not the plugin root) so the bootstrap hook can hydrate them to `~/.radorc/` and then delete the staging dir, leaving no shadow copy
-5. **emit-cli-bundle** — bundles `cli/src/` into `radorch.mjs` via `emitCliBundle` and ships it to `output/skills/rad-orchestration/scripts/radorch.mjs`
-6. **prune-scripts-sources** — removes `.ts` sources, tests, and tooling from `output/skills/rad-orchestration/scripts/`; retains only `.js`, `.mjs`, and `.gitignore`
-7. **emit-ui-bundle** — builds Next.js standalone via `emitUiBundle`
-8. **emit-hook-bundle** — bundles `hooks/bootstrap.mjs` and copies verbatim files via `emitHookBundle`
-9. **expand-tokens** — substitutes `${SKILLS_ROOT}` and `${PLUGIN_ROOT}` tokens and applies agent namespacing (`rad-orc:<name>`) via `expandTokens`; runs through a staging dir to avoid mid-walk read-after-write
-10. **copy-plugin-manifest** — copies `.claude-plugin/plugin.json` verbatim
-11. **synthesize-package-json** — merges wrapper `package.json` with `plugin.json`; `plugin.json.version` always wins; writes to `output/package.json`
-12. **copy-manifest-catalog** — copies `manifests/v*.json` to `output/manifests/`
-13. **validate** — calls `validatePluginTree` to confirm required artifacts, agent presence, version manifest, and size budget
+There is no `build-scripts/AGENTS.md` here. `build-scripts/build.js` names each step in execution
+order and runs the same sequence in all three plugin variants; what differs per variant is small
+enough to list below.
 
-`opts.rootDir` is the repo root. `opts.greenfieldRel` (default `'.'`) names the relative path to the greenfield folder; tests pass `'.'` to use a synthetic fixture tree.
+What is different here, against the other two variants:
 
-## Source layout
-
-- `build-scripts/` — `build.js`, `validate.js`, `synthesize-package-json.js`, `parity-check.js`
-- `.claude-plugin/plugin.json` — plugin metadata; its `version` field is the authoritative version for the published package
-- `hooks/` — hook source; see `hooks/AGENTS.md`
-- `lib/install/` — install state machine; see `lib/install/AGENTS.md`
-- `manifests/` — per-version file manifests (`v*.json`)
-- `output/` — gitignored build output; canonical npm-pack source
-- `dogfood-marketplace/` — gitignored ephemeral marketplace tree created and managed by the `rad-test-claude-plugin` skill for local `/plugin install` testing; see "Dogfood install" below
-
-## Dogfood install
-
-`output/` is the npm-pack source — what real installs eventually pull from the marketplace. But Claude Code's `/plugin install` cannot consume `output/` directly. Per [Anthropic's marketplace spec](https://code.claude.com/docs/en/plugin-marketplaces), a plugin's `source` in `marketplace.json` must be one of: a relative-path string starting with `./` (resolving to a subpath of the marketplace root), or an object form (`github`, `url`, `git-subdir`, `npm`). Parent-directory traversal (`../`) and absolute paths are explicitly rejected.
-
-So the dogfood marketplace stages the plugin as a `./<subpath>` of its own root:
-
-```
-dogfood-marketplace/
-├── .claude-plugin/
-│   └── marketplace.json         # source: "./plugins/rad-orc"
-└── plugins/
-    └── rad-orc/                 # copy of output/
-```
-
-The `.agents/skills/rad-test-claude-plugin/SKILL.md` skill is the operational entry point. It builds, copies `output/` into `plugins/rad-orc/`, writes `marketplace.json`, and hands off `/plugin marketplace add` + `/plugin install` commands. The layout intentionally matches the legacy `rad-test-plugin-release` prompt's layout so both dogfood channels feel the same.
-
-The copy is per-skill-invocation. Iterating means re-running the skill after each build — `output/` is the truth, the marketplace tree is a derived snapshot.
-
-## Coding conventions
-
-- `build.js` calls each step through the local `step(name, fn)` wrapper which times and labels every phase; all step failures throw with a prefixed message.
-- Paths are always resolved via `path.resolve` / `path.join` from `rootDir`; no hardcoded absolute paths.
-- `output/` is wiped clean at the start of every build; the output tree is never partially updated.
-
-## Telemetry hook wiring (FR-14)
-
-Telemetry hooks are declared statically in `hooks/hooks.json` and deployed verbatim into `output/hooks/hooks.json` by the `emit-hook-bundle` build step. The plugin runtime registers them when Claude Code loads the plugin.
-
-### Three-event set in hooks.json
-
-| Hook event | `matcher` | Shim invoked |
+| | This variant | The Copilot variants |
 |---|---|---|
-| `PostToolUse` | `Agent` | `telemetry-capture.mjs` |
-| `Stop` | _(none)_ | `telemetry-capture.mjs` |
-| `SessionEnd` | _(none)_ | `telemetry-capture.mjs` |
+| Plugin metadata | `.claude-plugin/plugin.json`, name `rad-orc` | `plugin.json` at the payload root (CLI) · `.claude-plugin/plugin.json`, name `rad-orc-vscode` (VS Code) |
+| Published package | `@rad-orchestration/claude-plugin` | `@rad-orchestration/copilot-{cli,vscode}-plugin` |
+| Agent filenames | `agents/<name>.md` | `agents/<name>.agent.md` |
+| Agent namespacing | `rad-orc:<name>` — the only variant that passes `agentNames` to `expandTokens` | none |
+| Token target | `${CLAUDE_PLUGIN_ROOT}` | `${COPILOT_CLI_PLUGIN_ROOT}` · `${COPILOT_VSCODE_PLUGIN_ROOT}` |
+| Telemetry | **registers** the telemetry shim, as in `standard/` | shim ships, nothing wires it |
+| `~/.radorc/telemetry/` protection | present, as in `standard/` | absent |
+| `install.json` key | `claude-plugin`, coexistence partner `claude` | see each variant's file |
 
-Each entry's command is the standard plugin dynamic-import launcher (`node -e "const r=process.env.CLAUDE_PLUGIN_ROOT||''; ...import(...telemetry-capture.mjs)"`) — the same pattern used by all other plugin hooks to resolve the shim relative to `CLAUDE_PLUGIN_ROOT`. The `PostToolUse` entry carries `"matcher": "Agent"` so it fires only on `Agent`-type tool calls.
+## Conventions
 
-### source ↔ output parity
+- **`validatePluginTree`'s `REQUIRED_ARTIFACTS` is the contract with the build.** Add a step that
+  emits a new required artifact and add it to the list in the same change; `validate` runs last, so
+  a mismatch costs a full build to discover.
+- **`synthesizePackageJson` hardcodes the published name and the `files` allowlist.** Anything the
+  build starts emitting outside those top-level folders is silently absent from the tarball.
+- **`build-scripts/parity-check.js` is a retired one-shot.** It diffed this payload against the
+  pre-greenfield plugin output during migration. Its only driver is
+  `tests/parity-validation.test.mjs`, which skips unless `RUN_PARITY=1`, so no CI job ever runs it.
+  Do not treat a green run of it as a gate, and do not extend it.
 
-`hooks/hooks.json` (source) and `output/hooks/hooks.json` (build artifact) must be identical. The `emit-hook-bundle` step copies `hooks.json` verbatim to `output/hooks/`. If you edit `hooks/hooks.json` you must rebuild (`node build-scripts/build.js`) to update `output/hooks/hooks.json`. The parity test (`tests/hooks-output-parity.test.mjs`) builds the hook bundle into a throwaway target and asserts the emitted `hooks.json` equals the committed source. Day-to-day the simplest check is `diff hooks/hooks.json output/hooks/hooks.json`.
+## Hazards
 
-### telemetry-capture.mjs shim
+### Telemetry runs on this plugin channel and neither Copilot one
 
-`telemetry-capture.mjs` is single-source from `harness-installers/shared/hooks/telemetry-capture.mjs` (AD-8). The `emit-hook-bundle` build step copies it (along with `session-preamble.mjs`) from `sharedHooksDir` into `output/hooks/`. Do not create a plugin-local copy; always update the shim in `harness-installers/shared/hooks/`.
+`hooks/hooks.json` here wires `PostToolUse`, `Stop`, and `SessionEnd` to `telemetry-capture.mjs`.
+Neither Copilot variant's `hooks.json` wires it to any event, even though every build stages the
+shim. **Never write parity language into a doc, a comment, or a release note** — "the shim ships
+everywhere" is not "telemetry runs everywhere".
 
-### `telemetry/` sacred-folder skip
+The `PostToolUse` entry deliberately carries **no `matcher`**: it fires on every tool, not only
+`Agent`, so main-agent spend is harvested mid-turn rather than only at `Stop`. Any doc or comment
+claiming a matcher is stale.
 
-The plugin installer does not write to `~/.radorc/telemetry/`. The sacred-folder skip is enforced by the plugin's own `lib/install/remove-files.js` (it resolves `paths.telemetry` and `continue`s on `dest === telemetryResolved || isUnder(telemetryResolved, dest)`). Per AD-10 each installer carries its own independent copy of this protection. Plugin hooks never write directly to `~/.radorc/telemetry/`; writing is performed by the CLI's `telemetry capture` subcommand invoked inside the shim.
+### The `~/.radorc/telemetry/` skip is absent from both Copilot plugin variants
 
-## Rules for making updates
+`lib/install/user-data-paths.js` here returns a `telemetry` key and `lib/install/remove-files.js`
+skips anything resolving under it, guarded by `tests/telemetry-sacred-folder.test.mjs`. The standard
+installer carries the same pair; `copilot-cli-plugin/` and `copilot-vscode-plugin/` carry neither
+half. Do not describe it as a protection every installer variant has.
 
-- Step order is load-bearing: adapter output must exist before `copy-agents`/`copy-skills`; bundles must exist before `expand-tokens`; `validate` must run last.
-- `validatePluginTree`'s `REQUIRED_ARTIFACTS` list in `validate.js` must stay in sync with what the build actually produces.
-- Adding a new step: place it in the correct position in `runBuild`, update the step-count comment, and update `validate.js` if a new required artifact is introduced.
-- `synthesizePackageJson` hard-codes `name: '@rad-orchestration/claude-plugin'`; changing the published package name requires updating it there.
-- Tests in `tests/` cover the build orchestration end-to-end; run them after any build-script change.
-- Adding or changing a telemetry hook event: edit `hooks/hooks.json`, rebuild, and verify `output/hooks/hooks.json` is updated. If the `PostToolUse` matcher or the three-event set changes, update this AGENTS.md and `harness-installers/standard/AGENTS.md` to keep documentation in sync.
+### This variant's extra suites guard this variant only
+
+`tests/hooks-output-parity.test.mjs`, `tests/hooks-shim.test.mjs`,
+`tests/telemetry-sacred-folder.test.mjs`, `tests/build-e2e.test.mjs`, and
+`tests/parity-validation.test.mjs` exist nowhere else. `hooks-output-parity` in particular reads like
+*the* source↔output parity gate for plugin hook bundles and is not — it builds this plugin's hook
+bundle into a throwaway target and compares `hooks.json`. A Copilot variant's `hooks.json` drifting
+from its output is caught by nothing.
+
+### `.expand-staging/` is not gitignored here
+
+The `expand-tokens` step writes `.expand-staging/` in this folder and removes it on success. This
+variant's `.gitignore` does not list it, and the release flow stages with `git add -A`. See the
+hazard in [`../AGENTS.md`](../AGENTS.md).
+
+## When a change here ripples
+
+- **Changed a build step, `validate.js`, or what the payload contains?** The two Copilot builders run
+  the same step sequence and the structural guards in `shared/build-helpers/tests/` read every
+  builder's source text, so a reordering here can fail on behalf of a builder you never opened.
+  Detail: [`../AGENTS.md`](../AGENTS.md),
+  [`../shared/build-helpers/AGENTS.md`](../shared/build-helpers/AGENTS.md)
+
+- **Changed which hook events are registered, or which shim an entry dispatches to?**
+  `session-preamble.mjs` and `telemetry-capture.mjs` are not authored here — they are single-sourced
+  in `shared/hooks/` and staged by `emitHookBundle`, and they fail silently by contract. Fix a shim
+  in `shared/hooks/` rather than in this variant, and rebuild — `node
+  harness-installers/claude-plugin/build-scripts/build.js` — before you test, since `output/hooks/`
+  is only restaged by a build. Detail: [`hooks/AGENTS.md`](./hooks/AGENTS.md),
+  [`../shared/hooks/AGENTS.md`](../shared/hooks/AGENTS.md)
+
+## Commands
+
+```
+node harness-installers/claude-plugin/build-scripts/build.js
+npm test -w harness-installers/claude-plugin
+```
+
+To exercise a real install, run the **`/rad-dogfood-plugin`** skill and pick `claude`. **Never run
+`hooks/bootstrap.mjs` by hand against your own home directory** — it writes to `~/.radorc/`, stops a
+running dashboard, and can rewrite a `hooks.json` you care about. The suites inject a temp home.
+
+## Further reading
+
+- [`../AGENTS.md`](../AGENTS.md) — the shared plugin shape, the manifest discipline, and the
+  cross-variant obligation
+- [`hooks/AGENTS.md`](./hooks/AGENTS.md) — what this variant registers, and the shim contract
+- [`lib/install/AGENTS.md`](./lib/install/AGENTS.md) — the install state machine
+- [`../shared/build-helpers/AGENTS.md`](../shared/build-helpers/AGENTS.md) — the helpers this build
+  calls
+- [`docs/internals/system-architecture.md`](../../docs/internals/system-architecture.md#from-canonical-source-to-your-machine)
+  — how canonical source reaches a user's machine

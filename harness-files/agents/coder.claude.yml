@@ -2,7 +2,7 @@ name: coder
 description: "Execute coding tasks from self-contained Task Handoff documents. Use when implementing code, writing tests, running builds, creating files, modifying source code, or executing implementation steps from a task handoff. Reads only the Task Handoff — produces code and tests."
 model: sonnet
 user-invocable: false
-tools: Read, Grep, Glob, Edit, Write, Bash, TodoWrite
+tools: Read, Grep, Glob, Edit, Write, Bash, TodoWrite, mcp__plugin_playwright_playwright__*, mcp__plugin_chrome-devtools-mcp_chrome-devtools__*, mcp__claude-in-chrome__*
 allowedTools:
   - Read
   - Grep
@@ -11,6 +11,9 @@ allowedTools:
   - Write
   - Bash
   - TodoWrite
+  - mcp__plugin_playwright_playwright__*
+  - mcp__plugin_chrome-devtools-mcp_chrome-devtools__*
+  - mcp__claude-in-chrome__*
 skills:
   - rad-execute-coding-task
   - rad-source-control

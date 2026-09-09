@@ -33,3 +33,28 @@ it('keeps an aged saved session but prunes an aged non-saved one (FR-10, AD-5)',
   expect(fs.existsSync(path.join(root, 'usage', 'usage-2026-05-01-sUnsaved.ndjson'))).toBe(false);
   expect(fs.existsSync(path.join(root, 'transcripts', 'sUnsaved'))).toBe(false);
 });
+
+it('unions caller-supplied exempt ids with the saved index, sparing all three artifacts', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'exempt-union-'));
+  const sink = new NdjsonSink({ root });
+  const sessions = ['sSaved', 'sProject', 'sNeither'];
+  for (const s of sessions) {
+    sink.write([rec(s, s, '2026-05-01')]);                             // all aged
+    fs.mkdirSync(path.join(root, 'transcripts', s), { recursive: true });
+    fs.writeFileSync(path.join(root, 'transcripts', s, 'main.json'), '{}');
+    fs.mkdirSync(path.join(root, 'checkpoints'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'checkpoints', `${s}.json`), '{}');
+  }
+  saveSession(root, { sessionId: 'sSaved', snapshot: SNAP });
+
+  pruneAgedPartitions({ root, maxAgeDays: 14, now: new Date('2026-06-15T12:00:00Z'), exemptSessionIds: ['sProject'] });
+
+  for (const s of ['sSaved', 'sProject']) {
+    expect(fs.existsSync(path.join(root, 'usage', `usage-2026-05-01-${s}.ndjson`))).toBe(true);
+    expect(fs.existsSync(path.join(root, 'checkpoints', `${s}.json`))).toBe(true);
+    expect(fs.existsSync(path.join(root, 'transcripts', s))).toBe(true);
+  }
+  expect(fs.existsSync(path.join(root, 'usage', 'usage-2026-05-01-sNeither.ndjson'))).toBe(false);
+  expect(fs.existsSync(path.join(root, 'checkpoints', 'sNeither.json'))).toBe(false);
+  expect(fs.existsSync(path.join(root, 'transcripts', 'sNeither'))).toBe(false);
+});

@@ -12,6 +12,8 @@ const FORBIDDEN_TOKENS = [
   'strict-and-final',
   'strict and final',
   'strict and terminal',
+  'authoring subagent',
+  'add phases or tasks',
 ];
 
 const SKIP_PATTERNS = [
@@ -43,6 +45,12 @@ function walkDirectory(dir, callback) {
 test('no forbidden corrective-cycle claims in canonical source', () => {
   const offenders = [];
 
+  // Deliberately excludes the repo root and `ui/` AGENTS.md files: both carry
+  // legitimate uses of this vocabulary elsewhere in the same files (e.g. the
+  // root's per-module ownership prose, the UI's own state/badge language), so
+  // a corpus-wide token would trip over them. Their amendment-surface sections
+  // are covered by review instead, the same way the merge core's `.ts`
+  // doc-comments are.
   const diresToScan = [
     join(repoRoot, 'harness-files', 'skills'),
     join(repoRoot, 'runtime-config', 'action-events'),

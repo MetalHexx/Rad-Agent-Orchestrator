@@ -79,6 +79,22 @@ function makeFixture(root) {
   fs.writeFileSync(path.join(aeDir, 'action.spawn_coder.md'), '# spawn_coder\n');
   fs.writeFileSync(path.join(aeDir, 'event.task_completed.md'), '# task_completed\n');
 
+  // runtime-config/communication-styles/ — shipped style files + empty custom/ slot.
+  const csDir = path.join(rcDir, 'communication-styles');
+  fs.mkdirSync(path.join(csDir, 'custom'), { recursive: true });
+  for (const style of ['direct.md', 'caveman.md', 'high-level.md', 'socratic.md']) {
+    fs.writeFileSync(path.join(csDir, style), `# ${style}\n`);
+  }
+
+  // Documentation corpus — README.md, docs/, assets/ at the fixture root
+  // (repoRoot == root for the copy-docs-corpus build step). Minimal: enough
+  // for the step to succeed.
+  fs.writeFileSync(path.join(root, 'README.md'), '# fixture repo\n');
+  fs.mkdirSync(path.join(root, 'docs'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'docs/getting-started.md'), '# getting started\n');
+  fs.mkdirSync(path.join(root, 'assets'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'assets/diagram.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+
   // cli/ source — esbuild needs a real entry to bundle.
   const cliBin = path.join(root, 'cli/src/bin');
   fs.mkdirSync(cliBin, { recursive: true });
@@ -107,7 +123,7 @@ function makeFixture(root) {
     path.join(installerSrc, 'package.json'),
     JSON.stringify({
       name: '@rad-orchestration/standard-source',
-      version: '1.0.0-alpha.13',
+      version: '1.0.0-alpha.14',
       private: true,
       type: 'module',
       description: 'Standard installer source wrapper (fixture).',

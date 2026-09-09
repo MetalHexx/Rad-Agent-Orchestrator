@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import type { GateEvent, GateErrorResponse } from "@/types/state";
+import type { GateEvent, GateErrorResponse, GateApproveResponse } from "@/types/state";
 
 /** Structured error object surfaced by the hook. */
 export interface UseApproveGateError {
@@ -11,7 +11,7 @@ export interface UseApproveGateError {
 
 interface UseApproveGateReturn {
   /** Invoke the gate approval API. Never throws — errors captured in `error` state. */
-  approveGate: (projectName: string, event: GateEvent) => Promise<boolean>;
+  approveGate: (projectName: string, event: GateEvent) => Promise<GateApproveResponse | null>;
   /** True while the API call is in flight. */
   isPending: boolean;
   /** Structured error with message and optional raw pipeline detail, or null. */
@@ -29,7 +29,7 @@ export function useApproveGate(): UseApproveGateReturn {
   }, []);
 
   const approveGate = useCallback(
-    async (projectName: string, event: GateEvent): Promise<boolean> => {
+    async (projectName: string, event: GateEvent): Promise<GateApproveResponse | null> => {
       setIsPending(true);
       setError(null);
 
@@ -44,7 +44,14 @@ export function useApproveGate(): UseApproveGateReturn {
         );
 
         if (res.ok) {
-          return true;
+          try {
+            return (await res.json()) as GateApproveResponse;
+          } catch {
+            // A 200 whose body will not parse is still a landed approval —
+            // treat it as success (never null), or the dialog would stay
+            // open on an approval that actually succeeded.
+            return { success: true, action: "" };
+          }
         }
 
         try {
@@ -56,13 +63,13 @@ export function useApproveGate(): UseApproveGateReturn {
           });
         }
 
-        return false;
+        return null;
       } catch {
         setError({
           message:
             "Network error. Please check your connection and try again.",
         });
-        return false;
+        return null;
       } finally {
         setIsPending(false);
       }

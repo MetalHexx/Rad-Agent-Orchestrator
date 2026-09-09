@@ -12,6 +12,9 @@ export type SourceControlAction = 'always' | 'ask' | 'never';
 /** Source control provider (currently fixed) */
 export type SourceControlProvider = 'github';
 
+/** Ambient awareness verbosity enum values */
+export type AmbientVerbosity = 'verbose' | 'minimal' | 'silent' | 'off';
+
 /** Complete orchestration.yml schema — all sections required for the editor */
 export interface OrchestrationConfig {
   version: string;
@@ -28,8 +31,10 @@ export interface OrchestrationConfig {
     auto_pr: SourceControlAction;
   };
   default_template?: string;
+  ambient_awareness?: { verbosity: AmbientVerbosity };
   telemetry?: { enabled: boolean };
   ui?: { port: number };
+  communication_style?: { enabled: boolean; selected: string };
 }
 
 /** Editor mode */

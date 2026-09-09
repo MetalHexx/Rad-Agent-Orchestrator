@@ -1,63 +1,140 @@
-# hooks/
+# `harness-installers/copilot-vscode-plugin/hooks/`
 
-## Purpose
+The hook sources for the Copilot in VS Code plugin, and `hooks.json` — the file that decides which of
+them ever fire, and the only place path resolution happens.
 
-Two hooks that ship inside the Copilot in VS Code plugin payload and manage install lifecycle and drift detection. They bridge VS Code Copilot's hook system and the install state machine in `lib/install/`.
+> **This folder is published.** `emitHookBundle` copies `hooks.json`, `drift-check.mjs`, and **this
+> `AGENTS.md`** verbatim into `output/hooks/`, and `hooks/` is in the tarball's `files` list, so
+> everything here lands on a stranger's machine. No OS usernames, no org handles, no internal
+> hostnames, no ticket keys. Same rule the root `AGENTS.md` states for `docs/`.
 
 ## How it works
 
-**`bootstrap.mjs` — `UserPromptSubmit` hook**
+`hooks.json` is the whole registration surface for this variant. Event names are **PascalCase** —
+VS Code's native form, and deliberately not the camelCase the Copilot CLI sibling uses:
 
-Runs on the user's first prompt after plugin installation. Calls `runInstall({ pluginRoot, radHome })` from `lib/install/run-install.js`. **On success**, immediately calls `bakeAbsolutePaths(pluginRoot)` from `lib/install/bake-paths.js` to substitute the `${COPILOT_VSCODE_PLUGIN_ROOT}` token in every `skills/**/*.md` file with the real absolute install path (forward-slashed). Then atomically rewrites the plugin's own `hooks/hooks.json` (tmp + rename) to delete its `UserPromptSubmit` entry — so the hook never fires again until the next plugin upgrade ships a fresh `hooks.json` with `UserPromptSubmit` restored. `SessionStart` (drift-check) stays in place. **On failure** (either `runInstall` or `bakeAbsolutePaths` throws), `hooks.json` is left untouched and the bootstrap exits 1 (non-blocking for VS Code per NFR-12) — VS Code's normal hook dispatch fires bootstrap again on the next prompt, naturally retrying.
+| Event | Dispatches to | Authored |
+|---|---|---|
+| `UserPromptSubmit` | `bootstrap.mjs` | here |
+| `SessionStart` | `drift-check.mjs`, then `session-preamble.mjs` | here · [`shared/hooks/`](../../shared/hooks/AGENTS.md) |
 
-The bake step is VS Code-specific: VS Code injects the plugin-root env var only into hook processes (per the agent-plugins format-vs-token table), not into the agent's chat-shell where bash blocks from SKILL.md execute. The Claude and Copilot CLI siblings don't need a bake — their runtimes populate the env var in the chat-shell. See the root `AGENTS.md` "Why SKILL.md tokens are baked to absolute paths at install time" section for the full rationale.
+Each command string is an **inline `node -e` shim** that reads `process.env.CLAUDE_PLUGIN_ROOT` —
+the variable VS Code injects when it detects the plugin as Claude format, which is why the manifest
+lives at `.claude-plugin/plugin.json`. The shim normalizes a leading `/<drive>/…` path form on
+Windows, then dynamic-imports the target through an absolute file URL. If the variable is empty it
+prints a diagnostic listing the plugin-, Copilot-, Claude-, and VS-Code-shaped environment keys it
+did find and exits non-zero — that is the signal the plugin is being detected as the wrong format.
 
-Idempotency lives in `hooks.json` itself (no marker file). A best-effort `fs.unlinkSync` removes the legacy `~/.radorc/.copilot-vscode-plugin-bootstrap.json` marker file from the prior idempotency design so upgraded installs don't leave an orphan.
+`session-preamble.mjs` and `telemetry-capture.mjs` are **single-sourced** in `shared/hooks/` and
+staged into `output/hooks/` by the build. They are not in this folder and must never be copied into
+it — fix them at the source.
 
-The prior design used a marker file with the rationale that "VS Code's cache-and-read semantics make mid-session hooks.json mutations unreliable." Empirical reality contradicted that: the Claude plugin sibling (which auto-loads in VS Code via cross-discovery) and the Copilot CLI sibling both rewrite hooks.json successfully. The self-uninstall pattern matches both siblings.
+`bootstrap.mjs` runs the install, bakes the plugin-root token across the payload's skill files, then
+removes its own registration. `drift-check.mjs` is persistent and never self-uninstalls. What the
+install and the bake actually do is [`../lib/install/AGENTS.md`](../lib/install/AGENTS.md).
 
-Path-resolution: `bootstrap.mjs` derives the plugin root from its own `import.meta.url` and publishes `COPILOT_VSCODE_PLUGIN_ROOT` to the process environment before calling downstream modules. `RAD_HOME` is optional (tests override it; production falls back to `~/.radorc`).
+## Conventions
 
-**`drift-check.mjs` — `SessionStart` hook**
+- **`bootstrap.mjs` is bundled; everything else here is copied verbatim.** esbuild inlines
+  `../lib/install/*` into a single self-contained `output/hooks/bootstrap.mjs`, so new imports need
+  no build-script change. `drift-check.mjs` gets no such treatment — **Node built-ins only**, or it
+  ships broken.
+- **No `${…}` patterns and no backslash literals in the command string.** PowerShell reads `${VAR}`
+  as its own expansion and chokes on the inner JS braces; backslashes collapse differently at each
+  escaping layer. Env-var lookup plus forward slashes is the only shape that survives every shell.
+- **Event names stay PascalCase.** Do not downcase them to match the CLI sibling.
+- **`bootstrap.mjs` and `drift-check.mjs` self-resolve their plugin root** from `import.meta.url` and publish
+  `COPILOT_VSCODE_PLUGIN_ROOT` for downstream modules, honouring an existing value so tests can
+  redirect at a fixture root. The shim is where this folder's hook dispatch reads
+  `CLAUDE_PLUGIN_ROOT`; the staged `session-preamble.mjs` and `telemetry-capture.mjs` read it too, to
+  resolve the CLI bundle.
 
-Persistent — never self-uninstalls. Reads `package.json` at the plugin root for `pkg.version` (the delivering version, synthesized from `.claude-plugin/plugin.json` at build time) and `${RAD_HOME}/install.json` for the installed version, found at `installed.harnesses['copilot-vscode-plugin'].version`. Writes a single line to stdout when the two differ; VS Code injects that line as conversation context. Silent on match or when either version is unavailable. Must remain dependency-free.
+## Hazards
 
-Derives the plugin root from its own `import.meta.url` and publishes `COPILOT_VSCODE_PLUGIN_ROOT` in the same way as `bootstrap.mjs`.
+### `selfUninstall` deletes exactly one key, matched exactly
 
-**`hooks.json`**
+On success `bootstrap.mjs` reads `hooks/hooks.json`, deletes `hooks.UserPromptSubmit`, and renames a
+tmp file into place; `SessionStart` must survive so the drift check keeps running. The delete is a
+literal property lookup: rename or re-case the event on either side and it silently no-ops, the entry
+survives, and the bootstrap re-runs a full install — including the bake — on every prompt of every
+session. Nothing errors, because the install is idempotent.
 
-Registers both hooks with VS Code's hook system. Event names are **PascalCase** (`UserPromptSubmit`, `SessionStart`) — VS Code's native form. This is the explicit casing contrast with the CLI plugin's camelCase `userPromptSubmitted` / `sessionStart`.
+The next upgrade ships a fresh `hooks.json` with `UserPromptSubmit` restored, which is what makes the
+install re-run once per version.
 
-Each entry's command string is an **inline `node -e` shim** that reads `process.env.CLAUDE_PLUGIN_ROOT` — the env var VS Code injects when it detects the plugin as Claude format (via the `.claude-plugin/plugin.json` manifest layout). The shim normalizes Cygwin-style `/c/...` paths on Windows, then dynamic-`import()`s the absolute file URL of the target `.mjs`.
+### The bake runs between install and self-uninstall, and a throw skips both
 
-The plugin ships in Claude-format layout precisely so this works: the VS Code agent-plugins docs format-vs-token table marks Copilot format's plugin-root token as **(Not defined)** — Copilot-format plugins have no documented mechanism for hooks to self-locate. Claude format gets `${CLAUDE_PLUGIN_ROOT}` token substitution AND `CLAUDE_PLUGIN_ROOT` env-var injection on every supported OS, so the env-var path is cross-platform.
+`bootstrap.mjs` calls `bakeAbsolutePaths` after `runInstall` succeeds and before `selfUninstall`. If
+either throws, `hooks.json` is left intact and the hook retries on the next prompt. Reordering the
+two would leave a payload whose skills carry an unexpanded token and whose bootstrap will never fire
+again.
 
-If `CLAUDE_PLUGIN_ROOT` is empty, the shim emits a stderr diagnostic listing every `process.env` key matching `/PLUGIN|COPILOT|CLAUDE|VSCODE/i` and exits with code 2. That should never fire under normal operation (VS Code 1.110+ injecting CLAUDE_PLUGIN_ROOT for Claude format is GA-stable); if it does, the plugin is being detected as a different format and the manifest layout needs investigation.
+### There is deliberately no launcher
 
-The shim is the single path-resolution point; downstream `bootstrap.mjs` / `drift-check.mjs` derive the plugin root independently via `import.meta.url` and publish `COPILOT_VSCODE_PLUGIN_ROOT`. No `${…}` patterns in the JSON-embedded command string — those interact badly with PowerShell on Windows (it interprets `${VAR}` as PowerShell variable expansion and crashes the parser on the inner JS braces). Env-var-only is the safe shape.
+A `launcher.cjs` dispatcher — the CLI sibling's approach — cannot work here: a relative
+`node hooks/launcher.cjs …` resolves against the working directory, which VS Code sets to the
+workspace folder, so the launcher would have to be located before its own location logic could run.
+The inline shim carries its env-var lookup on the command line instead. Do not "simplify" this into a
+launcher.
 
-Inline shims are used rather than a `launcher.cjs` dispatcher because the dispatcher itself would have to be self-locatable — and a relative `node hooks/launcher.cjs ...` resolves against `process.cwd()` (the workspace folder, not the plugin root), so the launcher can't be loaded before its own path-resolution logic runs. The inline shim sidesteps this chicken-and-egg by carrying its own env-var lookup directly on the command line.
+### Raw stdout is discarded by this runtime
 
-## Build treatment
+`drift-check.mjs` cannot just print. It emits
+`{"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": …}}` — the **nested**
+shape VS Code requires, and not the bare top-level key the Copilot CLI sibling uses. The same split
+governs `session-preamble.mjs`'s output; see
+[`docs/internals/ambient-awareness.md`](../../../docs/internals/ambient-awareness.md).
 
-- `bootstrap.mjs` is bundled by `emitHookBundle`: esbuild inlines `lib/install/*` dependencies, producing a single self-contained file. It is never shipped as separate source modules.
-- `drift-check.mjs`, `hooks.json`, and this `AGENTS.md` are copied verbatim by `emitHookBundle`.
+### Telemetry ships here and is wired to nothing
 
-## Coding conventions
+`telemetry-capture.mjs` is staged into `output/hooks/` by every plugin build. This variant's
+`hooks.json` registers no telemetry event. Do not write parity language on the strength of the shim
+shipping.
 
-- `bootstrap.mjs` uses a top-level `async main()` with `process.exit(await main())` so the hook exits with the correct code.
-- The self-uninstall `hooks.json` rewrite uses write-to-tmp then `fs.renameSync` (atomic; same pattern `lib/install/` uses for state files).
-- `drift-check.mjs` is synchronous and has no external dependencies — it must stay that way so it ships verbatim without bundling.
-- The inline shim in `hooks.json` carries no backslash literals — per the JSON-embedded `node -e` quoting rules, those would have to be double-escaped and have burned us before. Keep the shim using forward slashes and `path.platform`-aware string concatenation only.
-- Scripts resolve their plugin root via `import.meta.url`; they never rely on a CWD-relative path.
+### A shim failure is invisible by design
 
-## Rules for making updates
+`session-preamble.mjs` degrades to a one-line "ambient awareness did not load" notice and exits 0. A
+wrong path, a renamed subcommand, or an unregistered event produces no build error and no test
+failure.
 
-- If `bootstrap.mjs` gains new `lib/install/` imports, `emit-hook-bundle` in `build-scripts/build.js` handles them automatically via esbuild — no build-script change needed.
-- Changes to `hooks.json` hook names or event types must match VS Code Copilot's hook system contract. Event names are **PascalCase** — do not silently downcase them to match the CLI plugin.
-- `drift-check.mjs` must remain dependency-free (Node built-ins only) so it can ship verbatim.
-- `selfUninstall` in `bootstrap.mjs` deletes the `UserPromptSubmit` key only; `SessionStart` must remain intact for the drift-check.
+## When a change here ripples
 
-## Seam to lib/install/
+- **Changed `hooks.json` — an event, a dispatch target, or the shim string?** It is copied verbatim
+  into `output/hooks/` at build time, so nothing changes until a rebuild, and unlike the Claude
+  variant there is no source↔output parity suite here to notice a stale build. The
+  `[rad-orc-vscode]` error prefix is inlined in each `node -e` dispatch in this file — not in a
+  shared shim — so a plugin rename lands here. Detail: [`../AGENTS.md`](../AGENTS.md)
 
-`bootstrap.mjs` imports modules from `lib/install/` at source time; esbuild inlines them into the bundled artifact at build time. `lib/install/` is the only folder this hook directory imports from.
+- **Changed what a shared shim expects from its environment, or which subcommand it calls?**
+  `session-preamble.mjs` belongs to `shared/hooks/`, is wired by each plugin variant's own
+  `hooks.json` plus the standard installer's `settings.json` merge, and fails silently on a user's
+  machine. Change the shim in `shared/hooks/`, then confirm this variant's `hooks.json` and that
+  merge still name the same command.
+  Detail: [`../../shared/hooks/AGENTS.md`](../../shared/hooks/AGENTS.md),
+  [`cli/AGENTS.md`](../../../cli/AGENTS.md)
+
+- **Added a per-plugin file to this folder?** `emitHookBundle` copies a hardcoded list —
+  `drift-check.mjs`, `hooks.json`, `launcher.cjs`, `AGENTS.md` — and silently skips anything else. A
+  new file here never reaches `output/`. Detail:
+  [`../../shared/build-helpers/AGENTS.md`](../../shared/build-helpers/AGENTS.md)
+
+## Commands
+
+```
+node --test harness-installers/copilot-vscode-plugin/tests/bootstrap.test.mjs
+node --test harness-installers/copilot-vscode-plugin/tests/drift-check.test.mjs
+npm test -w harness-installers/copilot-vscode-plugin
+```
+
+**Never run `bootstrap.mjs` directly against your own home directory.** It writes into `~/.radorc/`,
+stops a running dashboard, rewrites a `hooks.json`, and bakes absolute paths into skill files. Use
+the suites, which inject a temp home, or the `/rad-dogfood-plugin` skill.
+
+## Further reading
+
+- [`../../shared/hooks/AGENTS.md`](../../shared/hooks/AGENTS.md) — the shim this variant registers
+  but does not own
+- [`../lib/install/AGENTS.md`](../lib/install/AGENTS.md) — what `bootstrap.mjs` runs, and the bake
+- [`docs/internals/ambient-awareness.md`](../../../docs/internals/ambient-awareness.md) — the
+  per-harness stdout contract the drift line and the preamble both obey
+- [`../AGENTS.md`](../AGENTS.md) — this variant's deltas, and why the manifest layout is what it is

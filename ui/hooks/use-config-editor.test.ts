@@ -11,12 +11,8 @@
  *   3. Behavioral tests via direct function invocation where possible
  */
 import assert from 'node:assert';
-import type {
-  OrchestrationConfig,
-  ConfigValidationErrors,
-} from '@/types/config';
+import type { OrchestrationConfig } from '@/types/config';
 import { validateConfig } from '@/lib/config-validator';
-import { stringifyYaml } from '@/lib/yaml-parser';
 
 /* ------------------------------------------------------------------ */
 /*  Test fixtures                                                      */
@@ -50,11 +46,11 @@ let failed = 0;
 function test(name: string, fn: () => void) {
   try {
     fn();
-    console.log(`  \u2713 ${name}`);
+    console.log(`  ✓ ${name}`);
     passed++;
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
-    console.error(`  \u2717 ${name}\n    ${msg}`);
+    console.error(`  ✗ ${name}\n    ${msg}`);
     failed++;
   }
 }
@@ -119,37 +115,25 @@ test('updateField: deep clone does not mutate original', () => {
 });
 
 /* ------------------------------------------------------------------ */
-/*  Dirty tracking logic                                               */
+/*  Dirty tracking logic — config JSON only, no mode/raw branch        */
 /* ------------------------------------------------------------------ */
 
-test('isDirty: false when config matches baseline (form mode)', () => {
+test('isDirty: false when config matches baseline', () => {
   const config = makeValidConfig();
   const baseline = JSON.stringify(config);
   assert.strictEqual(JSON.stringify(config) !== baseline, false);
 });
 
-test('isDirty: true when config differs from baseline (form mode)', () => {
+test('isDirty: true when config differs from baseline', () => {
   const config = makeValidConfig();
   const baseline = JSON.stringify(config);
   const modified = updateFieldOnObject(config, 'limits.max_retries_per_task', 12);
   assert.strictEqual(JSON.stringify(modified) !== baseline, true);
 });
 
-test('isDirty: false when rawYaml matches baseline (raw mode)', () => {
-  const rawYaml = 'version: "4"\n';
-  const baseline = rawYaml;
-  assert.strictEqual(rawYaml !== baseline, false);
-});
-
-test('isDirty: true when rawYaml differs from baseline (raw mode)', () => {
-  const rawYaml: string = 'version: "5"\n';
-  const baseline: string = 'version: "4"\n';
-  assert.strictEqual(rawYaml !== baseline, true);
-});
-
 test('isDirty: false when config is null', () => {
   const config: OrchestrationConfig | null = null;
-  const isDirty = config !== null ? JSON.stringify(config) !== '' : false;
+  const isDirty = config !== null && JSON.stringify(config) !== '';
   assert.strictEqual(isDirty, false);
 });
 
@@ -172,55 +156,14 @@ test('updateField with valid value produces no errors for that field', () => {
 });
 
 /* ------------------------------------------------------------------ */
-/*  Mode switching serialization                                       */
+/*  Save request body construction — always mode: 'form'               */
 /* ------------------------------------------------------------------ */
 
-test('setMode to raw when dirty: stringifyYaml produces valid YAML', () => {
+test('save always sends request body with mode "form" and config', () => {
   const config = makeValidConfig();
-  const yaml = stringifyYaml(config);
-  assert.ok(typeof yaml === 'string');
-  assert.ok(yaml.length > 0);
-  assert.ok(yaml.includes('max_retries_per_task'));
-});
-
-test('setMode to raw when clean: rawYaml stays as original', () => {
-  const originalRawYaml = 'version: "4"\nlimits:\n  max_retries_per_task: 10\n';
-  const config = makeValidConfig();
-  const baseline = JSON.stringify(config);
-  const formDirty = JSON.stringify(config) !== baseline;
-  // When not dirty, rawYaml should remain the original
-  const rawYaml = formDirty ? stringifyYaml(config) : originalRawYaml;
-  assert.strictEqual(rawYaml, originalRawYaml);
-});
-
-test('setMode to raw when dirty: rawYaml gets serialized from config', () => {
-  const config = makeValidConfig();
-  const baseline = JSON.stringify(config);
-  const modified = updateFieldOnObject(config, 'limits.max_retries_per_task', 12);
-  const formDirty = JSON.stringify(modified) !== baseline;
-  assert.ok(formDirty);
-  const rawYaml = formDirty ? stringifyYaml(modified) : '';
-  assert.ok(rawYaml.includes('max_retries_per_task: 12'));
-});
-
-/* ------------------------------------------------------------------ */
-/*  Save request body construction                                     */
-/* ------------------------------------------------------------------ */
-
-test('save in form mode: request body has mode and config', () => {
-  const config = makeValidConfig();
-  const mode = 'form' as const;
-  const body = mode === 'form' ? { mode, config } : { mode, rawYaml: '' };
+  const body = { mode: 'form' as const, config };
   assert.strictEqual(body.mode, 'form');
   assert.ok('config' in body);
-});
-
-test('save in raw mode: request body has mode and rawYaml', () => {
-  const rawYaml = 'version: "4"\n';
-  const mode: string = 'raw';
-  const body = mode === 'form' ? { mode, config: null } : { mode, rawYaml };
-  assert.strictEqual(body.mode, 'raw');
-  assert.ok('rawYaml' in body);
 });
 
 test('save in form mode with validation errors: should not proceed', () => {
@@ -244,48 +187,46 @@ test('after save success: new baseline matches saved config', () => {
 });
 
 /* ------------------------------------------------------------------ */
-/*  formDirtyOnSwitch logic                                            */
+/*  Style options — a failed fetch degrades to [] without loadError    */
 /* ------------------------------------------------------------------ */
 
-test('formDirtyOnSwitch: false initially', () => {
-  // When the hook initializes, formDirtyOnSwitch defaults to false
-  const formDirtyOnSwitch = false; // mirrors useState(false)
-  assert.strictEqual(formDirtyOnSwitch, false);
+test('a failed communication-styles fetch resolves styleOptions to [] without setting loadError', async () => {
+  let styleOptions: { value: string; label: string }[] = [{ value: 'stale', label: 'Stale' }];
+  let loadError: string | null = null;
+
+  async function fetchStyleOptions(fetchImpl: () => Promise<Response>) {
+    try {
+      const res = await fetchImpl();
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = (await res.json()) as { styles: { path: string; title: string }[] };
+      styleOptions = json.styles.map((s) => ({ value: s.path, label: s.title }));
+    } catch {
+      styleOptions = [];
+      // loadError is deliberately left untouched — the panel keeps working
+      // with every other field editable when only the catalog fetch fails.
+    }
+  }
+
+  await fetchStyleOptions(async () => { throw new Error('network down'); });
+  assert.deepStrictEqual(styleOptions, []);
+  assert.strictEqual(loadError, null);
 });
 
-test('formDirtyOnSwitch: true when switching to raw with dirty form', () => {
-  const config = makeValidConfig();
-  const baseline = JSON.stringify(config);
-  const modified = updateFieldOnObject(config, 'limits.max_retries_per_task', 12);
-  // Simulate setMode("raw") logic
-  const formDirty = JSON.stringify(modified) !== baseline;
-  assert.strictEqual(formDirty, true);
-  // This is the value setFormDirtyOnSwitch would receive
-  const formDirtyOnSwitch = formDirty;
-  assert.strictEqual(formDirtyOnSwitch, true);
-});
+test('a successful communication-styles fetch maps entries to {value, label} pairs', async () => {
+  let styleOptions: { value: string; label: string }[] = [];
 
-test('formDirtyOnSwitch: false when switching to raw with clean form', () => {
-  const config = makeValidConfig();
-  const baseline = JSON.stringify(config);
-  // Simulate setMode("raw") logic with unmodified config
-  const formDirty = config !== null && JSON.stringify(config) !== baseline;
-  assert.strictEqual(formDirty, false);
-  const formDirtyOnSwitch = formDirty;
-  assert.strictEqual(formDirtyOnSwitch, false);
-});
+  async function fetchStyleOptions(fetchImpl: () => Promise<{ ok: boolean; json: () => Promise<unknown> }>) {
+    const res = await fetchImpl();
+    if (!res.ok) throw new Error('bad response');
+    const json = (await res.json()) as { styles: { path: string; title: string }[] };
+    styleOptions = json.styles.map((s) => ({ value: s.path, label: s.title }));
+  }
 
-test('formDirtyOnSwitch: resets to false when switching back to form', () => {
-  const config = makeValidConfig();
-  const baseline = JSON.stringify(config);
-  const modified = updateFieldOnObject(config, 'limits.max_retries_per_task', 12);
-  // First switch to raw — dirty
-  const formDirty = JSON.stringify(modified) !== baseline;
-  let formDirtyOnSwitch = formDirty;
-  assert.strictEqual(formDirtyOnSwitch, true);
-  // Now switch back to form — setMode("form") sets formDirtyOnSwitch to false
-  formDirtyOnSwitch = false;
-  assert.strictEqual(formDirtyOnSwitch, false);
+  await fetchStyleOptions(async () => ({
+    ok: true,
+    json: async () => ({ styles: [{ path: 'custom/formal.md', title: 'Formal' }] }),
+  }));
+  assert.deepStrictEqual(styleOptions, [{ value: 'custom/formal.md', label: 'Formal' }]);
 });
 
 /* ------------------------------------------------------------------ */
@@ -312,14 +253,15 @@ test('dismissSaveError: clears saveError to null', () => {
 /*  UseConfigEditorReturn type verification                            */
 /* ------------------------------------------------------------------ */
 
-test('UseConfigEditorReturn includes formDirtyOnSwitch and dismissSaveError', () => {
-  // Type-level verification: if this compiles, both fields exist on the interface.
-  // We verify at runtime by checking the module exports compile with the new fields.
+test('UseConfigEditorReturn includes styleOptions and no longer includes mode/rawYaml', () => {
+  // Type-level verification: if this compiles, the shape matches.
   type AssertHasField<T, K extends keyof T> = K;
-  // These lines cause a compile error if the fields don't exist on the interface
-  type _CheckDirty = AssertHasField<import('./use-config-editor').UseConfigEditorReturn, 'formDirtyOnSwitch'>;
-  type _CheckDismiss = AssertHasField<import('./use-config-editor').UseConfigEditorReturn, 'dismissSaveError'>;
-  // Runtime: the module loaded successfully above, which means the interface compiles
+  type AssertLacksField<T, K> = K extends keyof T ? never : K;
+  // These lines cause a compile error if the fields don't match the interface.
+  type _CheckStyleOptions = AssertHasField<import('./use-config-editor').UseConfigEditorReturn, 'styleOptions'>;
+  type _CheckNoMode = AssertLacksField<import('./use-config-editor').UseConfigEditorReturn, 'mode'>;
+  type _CheckNoRawYaml = AssertLacksField<import('./use-config-editor').UseConfigEditorReturn, 'rawYaml'>;
+  // Runtime: the module loaded successfully above, which means the interface compiles.
   assert.ok(true);
 });
 

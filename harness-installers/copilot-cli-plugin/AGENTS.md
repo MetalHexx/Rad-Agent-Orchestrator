@@ -1,66 +1,106 @@
-# copilot-cli-plugin/
+# `harness-installers/copilot-cli-plugin/`
 
-## Purpose
+The Copilot CLI marketplace channel. `build-scripts/build.js` produces a publishable plugin payload
+under `output/`; the source package (`@rad-orchestration/copilot-cli-plugin-source`) is never
+published, and `npm pack` runs against `output/`.
 
-A self-contained npm package (`@rad-orchestration/copilot-cli-plugin-source`) whose `npm run build` produces the publishable Copilot CLI marketplace plugin. The source package is never published; `npm pack` runs against `output/` after build.
+> **The shared plugin shape — the install-side guarantees and the
+> change-one-change-all-three obligation — lives in
+> [`../AGENTS.md`](../AGENTS.md#the-plugin-variants-are-near-copies-of-one-another).** Read it
+> before your first change in any plugin variant. This file carries only what is different here.
 
 ## How it works
 
-`build-scripts/build.js` exports `runBuild(opts)` and is the single entry point. It executes steps in fixed order, fail-fast. The build reads adapter output for the `copilot-cli` harness, bundles the CLI via `emit-cli-bundle` and ships the resulting `radorch.mjs` to `output/skills/rad-orchestration/scripts/radorch.mjs` (no separate pipeline bundle is emitted), bundles the UI, esbuild-bundles the bootstrap hook with `lib/install/*` inlined, runs `expand-tokens` (token substitution only — no agent namespacing for Copilot CLI), copies `plugin.json` to the output payload root (not under a `.claude-plugin/` subfolder), synthesizes `output/package.json`, and runs structural validation.
+| Path | Holds |
+|---|---|
+| [`build-scripts/`](./build-scripts/AGENTS.md) | `build.js`, `validate.js`, `synthesize-package-json.js` |
+| `plugin.json` | Plugin metadata **at the package root**, name `rad-orc`, with a `"hooks": "hooks/hooks.json"` pointer; its `version` is the authoritative version for the published package |
+| [`hooks/`](./hooks/AGENTS.md) | Hook sources, `launcher.cjs`, and this variant's registrations. **Ships to end users** |
+| [`lib/install/`](./lib/install/AGENTS.md) | The install state machine, inlined into `hooks/bootstrap.mjs` at build time |
+| `manifests/` | One hand-authored `v<version>.json` path catalog, covering `runtime-config/` only — the build merges the generated docs entries into the `output/` copy |
+| `output/` · `dogfood-marketplace/` · `.expand-staging/` | Gitignored |
 
-`opts.rootDir` is the repo root. `opts.greenfieldRel` (default `'.'`) names the relative path to the greenfield folder; tests pass `'.'` to use a synthetic fixture tree.
+What is different here, against the other two variants:
 
-## Source layout
+| | This variant | Elsewhere |
+|---|---|---|
+| Plugin metadata | `plugin.json` at the payload root — Copilot format | `.claude-plugin/plugin.json` in both other variants |
+| Published package | `@rad-orchestration/copilot-cli-plugin` | — |
+| Agent filenames | `agents/<name>.agent.md` | `<name>.md` in `claude-plugin/` |
+| Agent namespacing | none — `agentNames` is not passed to `expandTokens` | `rad-orc:<name>` in `claude-plugin/` only |
+| Token target | `${COPILOT_CLI_PLUGIN_ROOT}` | `${CLAUDE_PLUGIN_ROOT}` · `${COPILOT_VSCODE_PLUGIN_ROOT}` |
+| Hook events | camelCase — `userPromptSubmitted`, `sessionStart` | PascalCase in both other variants |
+| Hook dispatch | `node hooks/launcher.cjs <target>.mjs`, resolving through `COPILOT_PLUGIN_ROOT` | inline `node -e` shims reading `CLAUDE_PLUGIN_ROOT` |
+| Telemetry | shim ships, **nothing registers it** | registered in `claude-plugin/` only |
+| `install.json` key | `copilot-cli-plugin`; coexistence partners `copilot-cli`, `copilot-vscode` | see each variant |
 
-- `build-scripts/` — `build.js`, `validate.js`, `synthesize-package-json.js`; see `build-scripts/AGENTS.md`
-- `plugin.json` — plugin metadata at the package root (not nested under `.claude-plugin/`); its `version` field is the authoritative version for the published package
-- `hooks/` — hook source; see `hooks/AGENTS.md`
-- `lib/install/` — install state machine; see `lib/install/AGENTS.md`
-- `manifests/` — per-version file manifests (`v*.json`)
-- `tests/` — build orchestration and hook tests
-- `output/` — gitignored build output; canonical npm-pack source
+The `plugin.json` layout is deliberate: the Copilot CLI runtime injects `COPILOT_PLUGIN_ROOT` into
+the hook process for a Copilot-format plugin, which is exactly what `launcher.cjs` reads. The VS Code
+sibling cannot use this layout — see [`../copilot-vscode-plugin/AGENTS.md`](../copilot-vscode-plugin/AGENTS.md).
 
-## Inputs this package reads but does not own
+## Conventions
 
-- `harness-adapters/output/copilot-cli/` — compiled agents and skills produced by the adapter engine; agent filenames carry the `.agent.md` suffix for the Copilot CLI harness
-- `runtime-config/` — `orchestration.yml` and `templates/` staged under the build's `_install-source/`; bootstrap hydrates to `~/.radorc/` then removes the staging dir
-- `cli/` and `ui/` at the repo root — bundled via `emitCliBundle` and `emitUiBundle`
-- `harness-installers/shared/build-helpers/` — shared `emitCliBundle`, `emitHookBundle`, `emitUiBundle`, `expandTokens` helpers
+- **Keep this variant Copilot-format.** Moving `plugin.json` under `.claude-plugin/` to match a
+  sibling changes how the runtime detects the plugin and which root variable it injects.
+- **No agent namespacing.** `expandTokens` is called without `agentNames`, so it performs token
+  substitution only. Adding the argument would rewrite agent references the Copilot CLI does not
+  resolve.
+- **`validatePluginTree`'s `REQUIRED_ARTIFACTS` is the contract with the build.** `validate` runs
+  last, so a mismatch costs a full build to discover.
 
-## Deltas vs the claude-plugin
+## Hazards
 
-| Dimension | claude-plugin | copilot-cli-plugin |
-|-----------|---------------|--------------------|
-| Plugin manifest location | `.claude-plugin/plugin.json` | `plugin.json` at package root |
-| Agent filename suffix | `.md` | `.agent.md` |
-| Agent namespacing | `rad-orc:<name>` injected by `expand-tokens` | No namespacing — `expand-tokens` is a no-op for that transform |
-| Bootstrap idempotency | `selfUninstall` rewrites `hooks.json` in-place | Marker file at `~/.radorc/.copilot-cli-plugin-bootstrap.json` — mid-session `hooks.json` rewrites are unsafe under Copilot CLI's cache-and-read semantics |
-| Coexistence partners | warns on `harnesses.claude` | warns on both `harnesses['copilot-cli']` and `harnesses['copilot-vscode']` |
-| Build step stderr prefix | `[build:claude-plugin]` | `[build:copilot-cli-plugin]` |
-| Validate gate 3 | namespaced-token check | omitted (no namespacing) |
+### Telemetry ships here and is wired to nothing
 
-## Seams
+`emitHookBundle` stages `telemetry-capture.mjs` into `output/hooks/` for every variant, and this
+variant's `hooks.json` registers no telemetry event. Do not write parity language into a doc, a
+comment, or a release note on the strength of the shim shipping.
 
-- **Upstream**: `harness-adapters/` produces the agent and skill files this build copies. Changes to the adapter's output layout or filename conventions flow through here.
-- **Downstream**: `npm pack` against `output/` produces the tarball submitted to the Copilot CLI marketplace. The build is the sole writer of `output/`.
+### `drift-check.mjs` does not simply write a line to stdout
 
-## Coding conventions
+Copilot CLI discards a hook's raw stdout. Under `COPILOT_CLI=1` the drift line is emitted as
+`{"additionalContext": …}` — a **bare** top-level key, which is this runtime's shape and not the
+nested one the other two variants use. Off-CLI it falls back to a raw line, which is what the tests
+see. A statement about "the drift check prints a line" is true only of `claude-plugin/`.
 
-- `build.js` calls each step through the local `step(name, fn)` wrapper which times and labels every phase; all step failures throw with a prefixed message.
-- Paths are always resolved via `path.resolve` / `path.join` from `rootDir`; no hardcoded absolute paths.
-- `output/` is wiped clean at the start of every build; the output tree is never partially updated.
+### This variant's `hooks.json` depends on a file the build does not gate
 
-## Rules for making updates
+Every command string dispatches through `hooks/launcher.cjs`. `emitHookBundle` copies it verbatim
+from a hardcoded list, and `REQUIRED_ARTIFACTS` does not name it — so renaming or removing it passes
+`validate` and fails on a user's machine at the first prompt.
 
-- Step order is load-bearing: adapter output must exist before `copy-agents`/`copy-skills`; bundles must exist before `expand-tokens`; `validate` must run last.
-- `validate.js`'s `REQUIRED_ARTIFACTS` list must stay in sync with what the build actually produces. Gate 3 (namespaced-token check) is intentionally absent.
-- Adding a new step: place it in the correct position in `runBuild`, update the step-count comment, and update `validate.js` if a new required artifact is introduced.
-- `synthesizePackageJson` hard-codes `name: '@rad-orchestration/copilot-cli-plugin'`; changing the published package name requires updating it there.
-- Tests in `tests/` cover build orchestration end-to-end; run them after any build-script change.
+## When a change here ripples
+
+- **Changed a build step, `validate.js`, or what the payload contains?** The other two plugin builds
+  run the same step sequence, and the structural guards in `shared/build-helpers/tests/` read every
+  builder's source text — a reordering here can fail on behalf of a builder you never opened.
+  Detail: [`build-scripts/AGENTS.md`](./build-scripts/AGENTS.md), [`../AGENTS.md`](../AGENTS.md)
+
+- **Changed which hook events are registered, or how a command resolves its root?**
+  `session-preamble.mjs` is single-sourced in `shared/hooks/`, is dispatched here through
+  `launcher.cjs`, and fails silently by contract — the session simply loads without ambient
+  awareness. Fix the shim in `shared/hooks/` rather than in this variant, and rebuild — `node
+  harness-installers/copilot-cli-plugin/build-scripts/build.js` — before you test, since
+  `output/hooks/` is only restaged by a build. Detail: [`hooks/AGENTS.md`](./hooks/AGENTS.md),
+  [`../shared/hooks/AGENTS.md`](../shared/hooks/AGENTS.md)
+
+## Commands
+
+```
+node harness-installers/copilot-cli-plugin/build-scripts/build.js
+npm test -w harness-installers/copilot-cli-plugin
+```
+
+To exercise a real install, run the **`/rad-dogfood-plugin`** skill and pick `copilot-cli`. **Never
+run `hooks/bootstrap.mjs` by hand against your own home directory** — it writes to `~/.radorc/`,
+stops a running dashboard, and rewrites `hooks.json`. The suites inject a temp home.
 
 ## Further reading
 
-- `hooks/AGENTS.md` — hook lifecycle and bundle/verbatim split
-- `lib/install/AGENTS.md` — install state machine modules
-- `build-scripts/AGENTS.md` — step sequence and validate gates
-- `harness-installers/shared/build-helpers/AGENTS.md` — shared helper signatures
+- [`../AGENTS.md`](../AGENTS.md) — the shared plugin shape, the manifest discipline, and the
+  cross-variant obligation
+- [`build-scripts/AGENTS.md`](./build-scripts/AGENTS.md) — this build's deltas and its gates
+- [`hooks/AGENTS.md`](./hooks/AGENTS.md) — registrations and the launcher
+- [`lib/install/AGENTS.md`](./lib/install/AGENTS.md) — the install state machine
+- [`../shared/build-helpers/AGENTS.md`](../shared/build-helpers/AGENTS.md) — the helpers this build
+  calls

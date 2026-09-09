@@ -25,6 +25,23 @@ function makeUpstream() {
   fs.writeFileSync(join(root, 'runtime-config/action-events/README.md'), '# action-events\n');
   fs.writeFileSync(join(root, 'runtime-config/action-events/action.spawn_coder.md'), '# spawn_coder\n');
   fs.writeFileSync(join(root, 'runtime-config/action-events/event.task_completed.md'), '# task_completed\n');
+  // runtime-config/communication-styles/ — shipped style files + empty custom/ slot.
+  fs.mkdirSync(join(root, 'runtime-config/communication-styles/custom'), { recursive: true });
+  for (const style of ['direct.md', 'caveman.md', 'high-level.md', 'socratic.md']) {
+    fs.writeFileSync(join(root, `runtime-config/communication-styles/${style}`), `# ${style}\n`);
+  }
+  // Documentation corpus — README.md, docs/, assets/ at the fixture root
+  // (repoRoot == root for the copy-docs-corpus build step), including a page
+  // under each excluded prefix.
+  fs.writeFileSync(join(root, 'README.md'), '# fixture repo\n');
+  fs.mkdirSync(join(root, 'docs/internals/private'), { recursive: true });
+  fs.mkdirSync(join(root, 'docs/research'), { recursive: true });
+  fs.writeFileSync(join(root, 'docs/getting-started.md'), '# getting started\n');
+  fs.writeFileSync(join(root, 'docs/internals/system-architecture.md'), '# internals\n');
+  fs.writeFileSync(join(root, 'docs/internals/private/fork-divergence.md'), '# private\n');
+  fs.writeFileSync(join(root, 'docs/research/some-research.md'), '# research\n');
+  fs.mkdirSync(join(root, 'assets'), { recursive: true });
+  fs.writeFileSync(join(root, 'assets/diagram.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
   // cli/ source synthetic
   fs.mkdirSync(join(root, 'cli/src/bin'), { recursive: true });
   fs.writeFileSync(join(root, 'cli/src/bin/radorch.ts'), 'console.log("radorch");\n');

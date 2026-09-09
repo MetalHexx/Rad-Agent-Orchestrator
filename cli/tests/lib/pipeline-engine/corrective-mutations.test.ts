@@ -214,6 +214,7 @@ describe('code_review_completed — corrective-of-a-corrective parent finalizati
     expect(cts[1].status).toBe('not_started');
     expect(cts[1].doc_path).toBe(PHASE_PLAN_DOC);
     expect(cts[1].review_report_path).toBe(REVIEW_REPORT_PATH);
+    expect(cts[1].origin).toBeUndefined();
     expect(result.mutations_applied.some(m => /finalized superseded corrective_task\[1\].*scope=phase/.test(m))).toBe(true);
   });
 
@@ -375,8 +376,9 @@ describe('code_review_completed — corrective birth is v6-schema-valid', () => 
 // hosts lives on `graph.nodes.final_review.corrective_tasks`, windowed by
 // `corrective_budget_origin`. These cover the four final_review_completed
 // verdict arms, the stale-snapshot halt, budget exhaustion measured against
-// the window, final_rejected's window reset, and code_review_completed's
-// final-scope branch (checked before phase/task resolution).
+// the window, the operator change request's fresh window, final_rejected's
+// halt, and code_review_completed's final-scope branch (checked before
+// phase/task resolution).
 
 function withFinalReviewDef(hostsCorrectives: boolean): PipelineTemplate {
   const base = tmpl as unknown as { id: string; version: string; description: string; nodes: unknown[] };
@@ -452,6 +454,7 @@ function finalReviewFullState(finalReviewOverrides: Record<string, unknown> = {}
 
 const finalReviewCompleted = getMutation('final_review_completed')!;
 const finalRejected = getMutation('final_rejected')!;
+const finalCorrectiveRequested = getMutation('final_corrective_requested')!;
 
 describe('final_review_completed — verdict routing (final-scope corrective host)', () => {
   it('changes_requested births a final-scope corrective within budget', () => {
@@ -471,6 +474,7 @@ describe('final_review_completed — verdict routing (final-scope corrective hos
     expect(entry.doc_path).toBeNull();
     expect(entry.review_report_path).toBe(FINAL_REVIEW_REPORT);
     expect(entry.repos).toEqual([]);
+    expect(entry.origin).toBeUndefined();
     expect(Object.keys(entry.nodes)).toEqual(['task_gate', 'task_executor', 'code_review']);
     expect(validateStateSchema(result.state)).toEqual([]);
   });
@@ -525,37 +529,115 @@ describe('final_review_completed — verdict routing (final-scope corrective hos
   });
 });
 
-describe('final_rejected — empties the corrective budget window without discarding history', () => {
-  it('advances corrective_budget_origin to the current length, preserves entries, clears verdict, and the next corrective reads as attempt one', () => {
+describe('final_corrective_requested — the operator\'s objection becomes a corrective in a fresh window', () => {
+  const OPERATOR_REASON = 'The migration path is undocumented and I want it covered before we ship.';
+
+  it('empties the budget window without discarding history, and births the operator\'s corrective against the running report', () => {
     const cfg2 = { limits: { max_retries_per_task: 2 } } as unknown as OrchestrationConfig;
-    const stateBeforeRejection = finalReviewFullState({
+    // A spent window: two agent-driven correctives already at the ceiling, so a
+    // request that drew on the same window would halt instead of birthing.
+    const state = finalReviewFullState({
       status: 'completed',
+      doc_path: FINAL_REVIEW_REPORT,
       verdict: 'changes_requested',
       corrective_tasks: [finalCorrectiveEntry(1, 'completed'), finalCorrectiveEntry(2, 'completed')],
     });
 
-    const rejectedResult = finalRejected(stateBeforeRejection, {}, cfg2, tmplFinalHost);
-    const node = rejectedResult.state.graph.nodes.final_review as unknown as StepNodeState;
-    expect(node.status).toBe('not_started');
-    expect(node.doc_path).toBeNull();
-    expect(node.verdict).toBeNull();
-    expect(node.corrective_tasks).toHaveLength(2);
-    expect(node.corrective_budget_origin).toBe(2);
-    expect(validateStateSchema(rejectedResult.state)).toEqual([]);
-
-    // A fresh changes_requested now reads the window as empty (origin=2,
-    // length=2) — attempt one of the ceiling again — and births entry index 3,
-    // globally contiguous with the two preserved entries.
-    const nextResult = finalReviewCompleted(
-      rejectedResult.state,
-      { verdict: 'changes_requested', doc_path: FINAL_REVIEW_REPORT } as unknown as Partial<EventContext>,
+    const result = finalCorrectiveRequested(
+      state,
+      { reason: OPERATOR_REASON } as unknown as Partial<EventContext>,
       cfg2,
       tmplFinalHost,
     );
-    const nextNode = nextResult.state.graph.nodes.final_review as unknown as StepNodeState;
-    expect(nextNode.corrective_tasks).toHaveLength(3);
-    expect(nextNode.corrective_tasks![2].index).toBe(3);
-    expect(nextResult.state.graph.status).not.toBe('halted');
+
+    const node = result.state.graph.nodes.final_review as unknown as StepNodeState;
+    expect(result.state.graph.status).not.toBe('halted');
+    expect(node.status).toBe('in_progress');
+    expect(node.corrective_budget_origin).toBe(2);
+    expect(node.corrective_tasks).toHaveLength(3);
+
+    const born = node.corrective_tasks![2];
+    expect(born.index).toBe(3);
+    expect(born.reason).toBe(OPERATOR_REASON);
+    expect(born.injected_after).toBe('final_review');
+    expect(born.review_report_path).toBe(FINAL_REVIEW_REPORT);
+    expect(born.doc_path).toBeNull();
+    expect(born.origin).toBe('operator');
+    expect(Object.keys(born.nodes)).toEqual(['task_gate', 'task_executor', 'code_review']);
+    expect(result.state.pipeline.current_tier).toBe('review');
+    expect(validateStateSchema(result.state)).toEqual([]);
+  });
+
+  it('leaves the agent budget intact inside the window it opens: a failing coder still halts at the ceiling', () => {
+    const cfg1 = { limits: { max_retries_per_task: 1 } } as unknown as OrchestrationConfig;
+    const requested = finalCorrectiveRequested(
+      finalReviewFullState({ status: 'completed', doc_path: FINAL_REVIEW_REPORT }),
+      { reason: OPERATOR_REASON } as unknown as Partial<EventContext>,
+      cfg1,
+      tmplFinalHost,
+    );
+    const requestedNode = requested.state.graph.nodes.final_review as unknown as StepNodeState;
+    expect(requestedNode.corrective_tasks).toHaveLength(1);
+
+    // The request's own corrective fills its one-deep window; the agent review
+    // that follows finds nothing left to spend.
+    requestedNode.corrective_tasks![0].nodes.code_review.status = 'in_progress';
+    const escalated = codeReviewCompleted(
+      requested.state,
+      { verdict: 'changes_requested', doc_path: 'reports/final-cr-1.md' } as unknown as Partial<EventContext>,
+      cfg1,
+      tmplFinalHost,
+    );
+    expect(escalated.state.graph.status).toBe('halted');
+    expect(escalated.state.pipeline.halt_reason ?? '').toMatch(/max_retries_per_task=1/);
+  });
+
+  it('rejects a blank objection rather than birthing a corrective with nothing to work from', () => {
+    expect(() => finalCorrectiveRequested(
+      finalReviewFullState({ status: 'completed', doc_path: FINAL_REVIEW_REPORT }),
+      { reason: '  ' } as unknown as Partial<EventContext>,
+      cfg,
+      tmplFinalHost,
+    )).toThrow(/reason/i);
+  });
+});
+
+describe('final_rejected — halts on the operator\'s reason', () => {
+  it('halts the graph and the tier, marks the final review node halted, and leaves corrective history untouched', () => {
+    const state = finalReviewFullState({
+      status: 'completed',
+      doc_path: FINAL_REVIEW_REPORT,
+      verdict: 'changes_requested',
+      corrective_tasks: [finalCorrectiveEntry(1, 'completed')],
+    });
+
+    const result = finalRejected(
+      state,
+      { reason: 'Scope drifted from what I asked for' } as unknown as Partial<EventContext>,
+      cfg,
+      tmplFinalHost,
+    );
+
+    expect(result.state.graph.status).toBe('halted');
+    expect(result.state.pipeline.current_tier).toBe('halted');
+    expect(result.state.pipeline.halt_reason ?? '').toMatch(/Scope drifted from what I asked for/);
+
+    const node = result.state.graph.nodes.final_review as unknown as StepNodeState;
+    expect(node.status).toBe('halted');
+    expect(node.doc_path).toBe(FINAL_REVIEW_REPORT);
+    expect(node.corrective_tasks).toHaveLength(1);
+    expect(node.corrective_budget_origin).toBeUndefined();
+    expect(validateStateSchema(result.state)).toEqual([]);
+  });
+
+  it('falls back on an empty reason rather than halting with a blank explanation', () => {
+    const result = finalRejected(
+      finalReviewFullState({ status: 'completed' }),
+      { reason: '' } as unknown as Partial<EventContext>,
+      cfg,
+      tmplFinalHost,
+    );
+    expect(result.state.pipeline.halt_reason ?? '').toMatch(/No reason provided/);
   });
 });
 

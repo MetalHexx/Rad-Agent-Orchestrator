@@ -2,6 +2,8 @@
 
 import type { ProjectSummary } from "@/types/components";
 import { PipelineTierBadge, WarningBadge } from "@/components/badges";
+import { ProjectKindBadge } from "@/components/badges/project-kind-badge";
+import { KIND_PRESENTATION } from "@/components/badges/project-kind-presentation";
 
 interface ProjectListItemProps {
   project: ProjectSummary;
@@ -35,13 +37,14 @@ export function ProjectListItem({
     >
       <span className="truncate">{project.name}</span>
       {project.hasMalformedState ? (
+        // A malformed state.json is an error affordance, not a project-state
+        // report — this row stays on WarningBadge rather than switching to
+        // the pipeline badge (ProjectHeader's error view is a separate branch).
         <WarningBadge message="Malformed state" />
+      ) : KIND_PRESENTATION[project.project_type ?? 'standard'].replacesStateBadge ? (
+        <ProjectKindBadge projectType={project.project_type} />
       ) : (
-        <PipelineTierBadge
-          tier={project.tier}
-          planningStatus={project.planningStatus}
-          executionStatus={project.executionStatus}
-        />
+        <PipelineTierBadge state={project.state} label={project.stateLabel} />
       )}
     </button>
   );

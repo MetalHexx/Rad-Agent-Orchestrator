@@ -3,7 +3,7 @@
 # never enter git so contributors never accidentally commit build artifacts.
 output/
 # Ephemeral local dogfood marketplace staged by the
-# .agents/skills/rad-test-claude-plugin skill. Holds marketplace.json plus a
+# .claude/skills/rad-dogfood-plugin skill. Holds marketplace.json plus a
 # copy of output/ at plugins/rad-orc/ — Claude Code's marketplace
 # spec requires the plugin live as a ./<subpath> of the marketplace root.
 # Recreated by re-running the skill; user removes the dir to clean up.

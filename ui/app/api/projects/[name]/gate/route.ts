@@ -4,11 +4,28 @@ import child_process from 'node:child_process';
 import type { GateApproveResponse, GateErrorResponse } from '@/types/state';
 import { resolveProjectDir } from '@/lib/path-resolver';
 import { readProjectState } from '@/lib/fs-reader';
+import { detectPortfolio } from '@/lib/portfolio-detect';
 
 export const dynamic = 'force-dynamic';
 
 const ALLOWED_GATE_EVENTS: ReadonlySet<string> = new Set(['plan_approved', 'final_approved']);
 const PROJECT_NAME_PATTERN = /^[A-Z0-9][A-Z0-9._-]*$/;
+
+/**
+ * `detectPortfolio` is documented to never throw, but the approval this
+ * guards has already landed by the time it runs, and this call sits inside
+ * the route's outer `try`, whose `catch` returns a blanket 500. A throw
+ * escaping here would turn a landed approval into a 500 — the exact
+ * inversion this detection exists to avoid — so the promise is enforced
+ * locally rather than trusted.
+ */
+async function safeDetectPortfolio(projectName: string): ReturnType<typeof detectPortfolio> {
+  try {
+    return await detectPortfolio(projectName);
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Thin Promise wrapper around child_process.execFile that defers to
@@ -138,8 +155,13 @@ export async function POST(
     }
 
     if (parsed.ok === true) {
+      const portfolio = event === 'final_approved' ? await safeDetectPortfolio(name) : null;
       return NextResponse.json(
-        { success: true, action: parsed.data?.action ?? '' } satisfies GateApproveResponse,
+        {
+          success: true,
+          action: parsed.data?.action ?? '',
+          ...(portfolio ? { portfolio: { name: portfolio.name } } : {}),
+        } satisfies GateApproveResponse,
         { status: 200 },
       );
     }

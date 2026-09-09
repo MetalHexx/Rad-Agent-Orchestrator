@@ -14,7 +14,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { processEvent } from '../../../../src/lib/pipeline-engine/engine.js';
-import { readState, writeState, readConfig, readDocument, ensureDirectories } from '../../../../src/lib/pipeline-engine/state-io.js';
+import { readState, writeState, readConfig, readDocument, readDocumentRaw, writeDocument, ensureDirectories } from '../../../../src/lib/pipeline-engine/state-io.js';
 import type { PipelineResult, EventContext, IOAdapter } from '../../../../src/lib/pipeline-engine/types.js';
 import type { World } from './world.js';
 
@@ -109,7 +109,7 @@ export const EVENT_CHAINS: Record<string, ChainStep[]> = {
 };
 
 function makeFilesystemIO(): IOAdapter {
-  return { readState, writeState, readConfig, readDocument, ensureDirectories };
+  return { readState, writeState, readConfig, readDocument, readDocumentRaw, writeDocument, ensureDirectories };
 }
 
 /**

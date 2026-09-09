@@ -18,6 +18,7 @@ import path from 'node:path';
  *   telemetry: string,
  *   logs: string,
  *   actionEvents: string,
+ *   communicationStyles: string,
  * }}
  */
 export function userDataPaths(opts = {}) {
@@ -33,6 +34,7 @@ export function userDataPaths(opts = {}) {
     telemetry: path.join(root, 'telemetry'),
     logs: path.join(root, 'logs'),
     actionEvents: path.join(root, 'action-events'),
+    communicationStyles: path.join(root, 'communication-styles'),
     uiPidFile: path.join(root, 'runtime', 'ui.pid'),
   };
 }

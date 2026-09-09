@@ -1,70 +1,116 @@
-# lib/install/
+# `harness-installers/copilot-cli-plugin/lib/install/`
 
-## Purpose
+Everything in the Copilot CLI plugin channel that touches a user's disk. `hooks/bootstrap.mjs` is the
+only importer; esbuild inlines this whole folder into the bundled hook, so nothing here ships as a
+file a user could see or a test could resolve at runtime.
 
-Install state machine for the Copilot CLI plugin. `bootstrap.mjs` imports these modules at build time; esbuild inlines them into the bundled hook. No file in this folder ships as a standalone artifact in the plugin payload.
+> **The install-side rules that hold across all three plugin variants** — `user-config` seed-once,
+> the `custom/` refusal, the pre-flight UI stop, and the single-manifest upgrade gap — are in
+> [`../../../AGENTS.md`](../../../AGENTS.md) — the near-copies section and the manifest hazards.
+> Read that first; this file carries what is specific to this variant.
 
 ## How it works
 
-**`run-install.js` — `runInstall(opts)`**
+`run-install.js` is the entry point.
 
-Entry point. `opts` shape: `{ pluginRoot: string, radHome?: string, force?: boolean, stderr?: (msg:string)=>void }`.
+Where files land: every manifest entry in this channel destinates under `${RAD_HOME}/…`. The plugin's
+own `agents/` and `skills/` are not installed anywhere — the harness reads them in place from the
+plugin root, which is why the manifests catalog only what
+[`runtime-config/`](../../../../runtime-config/AGENTS.md) and the shipped documentation corpus
+contribute.
 
-Flow:
-1. Resolves paths via `userDataPaths({ radHome })`.
-2. Reads `${pluginRoot}/plugin.json` for `deliveringVersion` (falls back to `${pluginRoot}/package.json` if `plugin.json` is absent or has no `version` field).
-3. Reads `install.json` via `readInstallJson`; passes it through `migrateInstallJson` to lift any legacy shape into the current unversioned `harnesses`-keyed shape.
-4. Checks for the pipeline sentinel at `${pluginRoot}/skills/rad-orchestration/scripts/radorch.mjs`.
-5. Emits a coexistence warning if `ij.harnesses['copilot-cli']` **or** `ij.harnesses['copilot-vscode']` is present alongside `copilot-cli-plugin` (bidirectional, names every partner present in the warning message).
-6. **Same-version fast path**: if prior version matches delivering version and sentinel exists and `!opts.force`, logs `noop` and returns.
-7. **Downgrade noop**: if `cmpSemver(deliveringVersion, installedVersionBefore) < 0` and `!opts.force`, logs `downgrade-noop` and returns.
-8. **Upgrade or fresh install**: reads the prior manifest from the persisted snapshot at `paths.manifestSnapshot` when present (the new payload does not carry old-version manifest files), falling back to `loadManifest(pluginRoot, priorVersion)` for backward compatibility with installs that predate the snapshot; removes prior manifest files via `removeManifestFiles`, installs new files via `installManifestFiles` (sourcePaths read from `${pluginRoot}/_install-source/...`), extracts `${pluginRoot}/_install-source/ui.tgz` to `paths.ui` if present (the UI ships as a gzipped tarball so `node_modules/` and `.next/` survive the satellite `.gitignore` and `npm pack`'s hardcoded `node_modules` strip), then deletes `${pluginRoot}/_install-source/` so no shadow of `~/.radorc/` state (orchestration.yml, templates, ui) remains at the plugin install root. Persists the new manifest to `paths.manifestSnapshot`, writes updated `ij` via `writeInstallJson`, and returns `action: 'upgrade-complete'` or `'fresh-install'`.
-9. Logs every outcome (including errors) via `appendInstallLog`.
+What is different here, against the sibling variants:
 
-Returns `{ action, deliveringVersion, installedVersionBefore }`.
+- **Install key `copilot-cli-plugin`**, written by `buildCopilotCliPluginEntry`.
+- **Coexistence probe names both standard-installer Copilot keys** — `copilot-cli` and
+  `copilot-vscode` — and lists every partner present in one warning.
+- **`migrateInstallJson` exists here**, lifting legacy flat or `state_schema_version`-tagged registry
+  shapes into the `harnesses`-keyed shape. The VS Code variant has no equivalent because its install
+  key postdates those shapes.
+- **The delivering version comes from the payload's root `plugin.json`**, falling back to
+  `package.json`. This is the one variant whose build actually writes `plugin.json` at the payload
+  root, so the first read is the one that fires.
+- **There is no `telemetry` key** in `user-data-paths.js` and no telemetry skip in `remove-files.js`.
+  `claude-plugin/` and the standard installer both carry that protection; `copilot-vscode-plugin/`
+  does not have it either.
 
-**`install-json.js`**
+## Conventions
 
-- `readInstallJson(file)` — reads and parses; returns `null` if absent.
-- `writeInstallJson(file, value)` — atomic write-then-rename (`${file}.tmp-<pid>-<timestamp>`); strips `state_schema_version` from every write.
-- `isCurrentShape(ij)` — returns `true` if `ij.harnesses` is a non-null object (structural detection; no version field consulted).
-- `migrateInstallJson(ij, installKey)` — lifts legacy flat or versioned shapes into current shape; drops `state_schema_version`.
-- `buildCopilotCliPluginEntry(version)` — returns `{ version, channel: 'copilot-cli-plugin', installed_at, last_writer_version }`.
+- **Everything is path-injected.** `radHome` arrives as a parameter and flows through
+  `userDataPaths({ radHome })`. Nothing in this folder reads the environment — env reads happen in
+  `hooks/bootstrap.mjs` only, which is what lets the suites run against a temp home.
+- **`install.json` is the answer to "is this installed?"** Never infer it from files on disk.
+  `loadRegistry` degrades a missing, unreadable, or shape-drifted file to `{ harnesses: {} }` rather
+  than throwing.
+- **State files are written tmp-then-rename.** `writeInstallJson` and the `hooks.json` rewrite in
+  `bootstrap.mjs` both do. Manifest-driven copying is not atomic — it goes entry by entry.
+- **Log writes never propagate.** `appendInstallLog` wraps its whole body and swallows.
+- **`userDataPaths` is where this folder constructs a `~/.radorc/` sub-path.** Add new ones there,
+  never inline in a caller. Outside this folder, `hooks/drift-check.mjs` builds its own. There is no
+  marker-file path and no manifest-snapshot path — the manifest is always read from the payload's own
+  `manifests/` folder.
 
-**`install-files.js` — `installManifestFiles(manifest, pluginRoot, opts)`**
+## Hazards
 
-Iterates `manifest.files`. For each entry, expands `${RAD_HOME}` tokens in `entry.destinationPath` via `paths.root`, guards against destination escape (`!dest.startsWith(paths.root)` throws — NFR-1), creates parent dirs, and copies.
+### `ui-stop.js` sends a real SIGTERM to the user's dashboard
 
-**`remove-files.js` — `removeManifestFiles(manifest, opts)`**
+Exercising an install here against a live machine kills a dashboard you are using, and one that will
+not die aborts the install outright. This file is currently byte-identical in all three plugin
+variants and shares no code with `cli/`'s own `ui stop`. Detail:
+[`../../../AGENTS.md`](../../../AGENTS.md#the-plugin-variants-are-near-copies-of-one-another)
 
-Removes every non-`user-config` entry. Skips paths under `paths.projects`. After removals, prunes empty parent directories upward toward `paths.root`.
+### The containment guard is written differently in each variant
 
-**`install-log.js` — `appendInstallLog(file, { action, deliveringVersion, installedVersionBefore }, opts)`**
+`installManifestFiles` here rejects an escaping destination with
+`startsWith(resolvedRoot + path.sep)`. `claude-plugin/` uses a `path.relative` test instead, and that
+is the prescribed idiom — the standard installer documents it as such. Before "aligning" any of them,
+read the variant you are actually in.
 
-Best-effort append (entire body is in a `try/catch`; never throws). Valid `action` values are the six members of `INSTALL_LOG_ACTIONS`: `fresh-install`, `upgrade-complete`, `noop`, `downgrade-noop`, `cancelled-modified-files`, `error`. Each log line is a JSON object with `at`, `channel`, `action`, `delivering_version`, `installed_version_before`.
+### `cmpSemver` is local to this file and is not the sibling's
 
-**`catalog.js` — `loadManifest(pluginRoot, version)`**
+Each plugin variant carries its own version comparator with its own prerelease handling. A change to
+downgrade behaviour here changes nothing in the other two, and a statement about downgrade behaviour
+that is written once for "the plugin installers" is wrong somewhere.
 
-Reads `${pluginRoot}/manifests/v${version}.json`. Throws if absent. The manifest is always read from the new payload's bundled catalog because Copilot CLI's flat install path has no peer per-version directory from a prior install.
+## When a change here ripples
 
-**`user-data-paths.js` — `userDataPaths(opts)`**
+- **Changed the manifest shape, a destination token, or which paths are protected?** The catalog
+  this folder reads is **hand-authored for the `runtime-config/` half** — no drift gate — and
+  uninstall removes only what one records. The documentation-corpus half is generated: the build's
+  `merge-docs-manifest` step folds it into the `output/manifests/` copy the install actually loads,
+  and the committed file never carries it. `../../tests/manifest-payload-parity.test.mjs` compares
+  the built `_install-source/` tree against that built catalog in both directions and is the only
+  thing that catches a mismatch. Detail: [`runtime-config/AGENTS.md`](../../../../runtime-config/AGENTS.md),
+  [`../../../AGENTS.md`](../../../AGENTS.md)
 
-Returns a path bundle derived from `opts.radHome ?? path.join(os.homedir(), '.radorc')`: `root`, `installJson`, `orchestrationYml`, `templates`, `ui`, `projects`, `logs`, `installLog`, `bootstrapMarker` (path to `~/.radorc/.copilot-cli-plugin-bootstrap.json`), `manifestSnapshot` (path to `~/.radorc/.copilot-cli-plugin-manifest.json`).
+- **Changed `install.json`'s shape, the entry builder, or the coexistence probe?** The standard
+  installer and the two sibling plugins write the same file, and `cli/` reads it to report what is
+  installed. A shape change on one side is invisible until a user has two channels installed. Detail:
+  [`../../../standard/lib/install/AGENTS.md`](../../../standard/lib/install/AGENTS.md),
+  [`cli/AGENTS.md`](../../../../cli/AGENTS.md)
 
-## Coding conventions
+- **Fixed a bug in any file here?** The other two plugin variants carry their own copy of the same
+  module and nothing links them — no shared module, no cross-variant test — so the fix reaches one
+  release channel and the same bug ships on the other two. Open the sibling files, decide per
+  variant whether the fix applies, and say which ones you cleared. Detail:
+  [`../../../AGENTS.md`](../../../AGENTS.md)
 
-- Atomic writes only: `writeInstallJson` and the marker-file write in `bootstrap.mjs` both use write-to-tmp then `fs.renameSync`. No in-place overwrites of state files.
-- Log writes are best-effort: `appendInstallLog` wraps its entire body in `try/catch` and never propagates failures to the caller.
-- Destination escape guard: every file copy in `installManifestFiles` checks that the resolved destination starts with `paths.root` before writing.
-- No global state: all context flows through function parameters; `radHome` is always injected, never read from the environment inside this folder (env reads happen in `bootstrap.mjs` only).
-- Shape detection is structural: `isCurrentShape` checks for the presence of `harnesses`, not a version literal.
-- Coexistence warning names both potential partners (`copilot-cli`, `copilot-vscode`) — not just one.
+## Commands
 
-## Rules for making updates
+```
+npm test -w harness-installers/copilot-cli-plugin
+node --test harness-installers/copilot-cli-plugin/tests/run-install.test.mjs
+```
 
-- The six `INSTALL_LOG_ACTIONS` values are a closed set. Adding a new action requires updating the `Set` in `install-log.js` and ensuring callers pass the new string.
-- `migrateInstallJson` handles known legacy shapes. A new legacy shape needs a new branch; do not silently discard unknown shapes.
-- `userDataPaths` is the single source of truth for all `~/.radorc/` sub-paths. Add new paths here rather than constructing them ad-hoc in callers.
-- All modules are imported by `bootstrap.mjs` and bundled by esbuild; they must stay ESM compatible (`"type": "module"` in the parent `package.json`). Do not introduce dynamic `require` calls.
-- Tests in `tests/` exercise this module; run them after any change here.
-- The prior-manifest lookup prefers the persisted manifest snapshot at `paths.manifestSnapshot`; falls back to `loadManifest(pluginRoot, priorVersion)` only for backward compatibility. Never attempt to read from a peer per-version directory — Copilot CLI's flat install path has no such peer.
+**Never exercise a change against your real home directory.** `~/.radorc/` is not sandboxed, the
+removal paths delete, and `ui-stop.js` will kill a dashboard you are using. Every suite here injects
+a temp home; do the same.
+
+## Further reading
+
+- [`../../../AGENTS.md`](../../../AGENTS.md) — the shared plugin install shape and its hazards
+- [`../../hooks/AGENTS.md`](../../hooks/AGENTS.md) — the hook that calls `runInstall`
+- [`../../../standard/lib/install/AGENTS.md`](../../../standard/lib/install/AGENTS.md) — the other
+  channel writing the same `install.json`
+- [`runtime-config/AGENTS.md`](../../../../runtime-config/AGENTS.md) — the only source these
+  manifests catalog

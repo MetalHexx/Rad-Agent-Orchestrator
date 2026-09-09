@@ -7,6 +7,7 @@ import { makeV6State } from '../../helpers/state-factory.js';
 import type { PipelineState, OrchestrationConfig } from '../../../src/lib/pipeline-engine/types.js';
 import { userDataPaths } from '../../../src/lib/paths.js';
 import { writeLocal } from '@rad-orchestration/repo-registry';
+import { createGitFixture } from './helpers/git-fixture.js';
 
 // Module-boundary mock: resolveRequirementsDoc (context-enrichment.ts) reads real
 // paths via userDataPaths() + WorkGraphService, so isolate it here rather than
@@ -33,6 +34,71 @@ function mockUserDataPathsRoot(root: string): void {
     bootstrapLock: path.join(root, 'runtime', 'bootstrap.lock'),
     actionEvents: path.join(root, 'action-events'),
   });
+}
+
+interface FixtureRepoSpec {
+  /** Repo name recorded in `pipeline.source_control.repos[]`. */
+  name: string;
+  /** One entry per commit, applied in chronological order. */
+  commitFiles: Record<string, string>[];
+}
+
+/**
+ * Binds one or more real, independent git fixtures as the resolved worktree
+ * path for the given repo names — the three-part recipe `buildReposArray`'s
+ * worktree resolution actually requires: a `state.json` seeded on disk under
+ * a fresh mocked `~/.radorc` root, `writeLocal` registering each repo's local
+ * clone path, and `in_place: true` on each source-control repo entry (without
+ * it, resolution falls back to the convention worktree path instead of the
+ * bound fixture). Returns the created fixtures keyed by repo name and the
+ * `pipeline.source_control` object callers embed into their own state.
+ */
+function bindFixtureRepos(
+  projectName: string,
+  specs: FixtureRepoSpec[],
+): {
+  fixtures: Record<string, ReturnType<typeof createGitFixture>>;
+  sourceControl: Record<string, unknown>;
+  cleanup: () => void;
+} {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ce-final-review-'));
+  mockUserDataPathsRoot(root);
+
+  const fixtures: Record<string, ReturnType<typeof createGitFixture>> = {};
+  const localPaths: Record<string, string> = {};
+  const repos = specs.map(spec => {
+    const fixture = createGitFixture({
+      commits: spec.commitFiles.map((files, i) => ({ message: `${spec.name}-${i}`, files })),
+    });
+    fixtures[spec.name] = fixture;
+    localPaths[spec.name] = fixture.repoPath;
+    return { name: spec.name, branch: 'radorch/test', base_branch: 'main', remote_url: null, compare_url: null, pr_url: null, in_place: true };
+  });
+
+  const sourceControl = {
+    worktree_name: projectName,
+    auto_commit: 'always',
+    auto_pr: 'always',
+    repos,
+  };
+
+  const projectDir = path.join(root, 'projects', projectName);
+  fs.mkdirSync(projectDir, { recursive: true });
+  fs.writeFileSync(path.join(projectDir, 'state.json'), JSON.stringify({
+    project: { name: projectName },
+    pipeline: { source_control: sourceControl },
+    graph: { nodes: {} },
+  }));
+  writeLocal({ root, localPaths });
+
+  return {
+    fixtures,
+    sourceControl,
+    cleanup: () => {
+      for (const fixture of Object.values(fixtures)) fixture.cleanup();
+      fs.rmSync(root, { recursive: true, force: true });
+    },
+  };
 }
 
 // Minimal runtime input for spawn_master_plan — that branch only reads `action`
@@ -195,29 +261,46 @@ describe('corrective-aware resolvers (FR-1, FR-2, NFR-1)', () => {
 
 const cfg = { limits: {} } as unknown as OrchestrationConfig;
 
-import { validateBaseShaChronology } from '../../../src/lib/pipeline-engine/context-enrichment.js';
+import { validateCommitsReachableFromHead } from '../../../src/lib/pipeline-engine/context-enrichment.js';
 
-describe('project_base_sha chronology invariant (FR-7, NFR-4)', () => {
-  it('rejects a base SHA whose chronological position is not earliest (FR-7)', () => {
-    // Traversal order picks the poisoned P04 hash first, but git says it is #12.
-    const commits = ['1436cd63', '64f9c236', 'e9d71bc5'];
-    const ordinal = new Map([['64f9c236', 1], ['e9d71bc5', 5], ['1436cd63', 12]]);
-    const err = validateBaseShaChronology(commits, ordinal);
-    expect(err).toMatch(/base.*sha|chronolog/i);
+describe('commit-range reachability against git history', () => {
+  it('rejects a commit that is not reachable from HEAD', () => {
+    // 'deadbeef' never resolved in the ordinal map — git history doesn't contain it.
+    const commits = ['64f9c236', 'deadbeef', 'e9d71bc5'];
+    const ordinal = new Map([['64f9c236', 1], ['e9d71bc5', 5]]);
+    const err = validateCommitsReachableFromHead(commits, ordinal);
+    expect(err).toMatch(/deadbeef/);
   });
 
-  it('accepts a base SHA that is the chronologically earliest (FR-7)', () => {
+  it('accepts a commit range where every commit resolves in the ordinal map', () => {
     const commits = ['64f9c236', 'e9d71bc5', '1436cd63'];
     const ordinal = new Map([['64f9c236', 1], ['e9d71bc5', 5], ['1436cd63', 12]]);
-    expect(validateBaseShaChronology(commits, ordinal)).toBeNull();
+    expect(validateCommitsReachableFromHead(commits, ordinal)).toBeNull();
+  });
+
+  it('rejects an abbreviated commit whose prefix matches more than one full SHA, instead of silently picking one', () => {
+    // 'abc1234' is a genuine prefix of both full SHAs below — an ambiguous
+    // abbreviation must be rejected, not resolved to whichever the map
+    // iterates first (mirroring git's own refusal to resolve ambiguous
+    // abbreviated object names).
+    const commits = ['abc1234'];
+    const ordinal = new Map([
+      ['abc1234000000000000000000000000000000aa', 3],
+      ['abc1234000000000000000000000000000000bb', 7],
+    ]);
+    const err = validateCommitsReachableFromHead(commits, ordinal, 'fake-api');
+    expect(err).toMatch(/ambiguous/i);
+    expect(err).toContain('fake-api');
+    expect(err).toContain('abc1234');
   });
 });
 
-describe('spawn_final_reviewer base/head SHA derivation — ≤1 commit short-circuit (FR-7, NFR-4)', () => {
-  // With 0–1 collected commit hashes a chronology violation is impossible, so
-  // the enrichment must not depend on `git` (the rev-list invocation is skipped).
-  // worktree_path points at a throwaway non-git directory to prove the path does
-  // not require a git repository when there is nothing to order.
+describe('spawn_final_reviewer base/head SHA derivation — 0–1 commit repos', () => {
+  // With 0 collected commit hashes there is nothing to validate or order, so
+  // the enrichment must not depend on `git` (the rev-list invocation is
+  // skipped entirely). worktree_path points at a throwaway non-git directory
+  // to prove the path does not require a git repository when there are no
+  // commits at all.
   function finalReviewState(commitHash: string | null): PipelineState {
     const s = makeV6State({ taskRepos: [{ name: 'backend', commit_hash: commitHash }] });
     const mutable = s as unknown as { pipeline: Record<string, unknown> };
@@ -243,13 +326,49 @@ describe('spawn_final_reviewer base/head SHA derivation — ≤1 commit short-ci
     expect(out.error).toBeUndefined();
   });
 
-  it('returns the single commit as both base and head per repo with no error (one commit)', () => {
-    const out = enrichActionContext(makeEnrichmentInput('spawn_final_reviewer', finalReviewState('abc12345')));
-    expect(Array.isArray(out.repos)).toBe(true);
-    const repo = (out.repos as Array<Record<string, unknown>>)[0];
-    expect(repo.project_base_sha).toBe('abc12345');
-    expect(repo.project_head_sha).toBe('abc12345');
-    expect(out.error).toBeUndefined();
+  // A single accumulated commit still runs the same git-read + reachability
+  // check as a multi-commit repo — only the reorder step is skipped for it —
+  // so this must be exercised against a real fixture repo, not a fabricated
+  // hash at a non-git path.
+  it('returns the single commit as both base and head per repo, validated against real git history (one commit)', () => {
+    const { fixtures, sourceControl, cleanup } = bindFixtureRepos('test-project', [
+      { name: 'backend', commitFiles: [{ 'f.txt': '1' }] },
+    ]);
+    try {
+      const [c0] = fixtures['backend'].commits;
+      const s = makeV6State({ taskRepos: [{ name: 'backend', commit_hash: c0.sha }] });
+      const mutable = s as unknown as { pipeline: Record<string, unknown> };
+      mutable.pipeline = { ...mutable.pipeline, source_control: sourceControl };
+
+      const out = enrichActionContext(makeEnrichmentInput('spawn_final_reviewer', s as unknown as PipelineState));
+      expect(Array.isArray(out.repos)).toBe(true);
+      const repo = (out.repos as Array<Record<string, unknown>>)[0];
+      expect(repo.project_base_sha).toBe(c0.sha);
+      expect(repo.project_head_sha).toBe(c0.sha);
+      expect(out.error).toBeUndefined();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('rejects a single accumulated commit that is not reachable from a real repo\'s HEAD', () => {
+    const { sourceControl, cleanup } = bindFixtureRepos('test-project', [
+      { name: 'backend', commitFiles: [{ 'f.txt': '1' }] },
+    ]);
+    try {
+      const bogusSha = 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef';
+      const s = makeV6State({ taskRepos: [{ name: 'backend', commit_hash: bogusSha }] });
+      const mutable = s as unknown as { pipeline: Record<string, unknown> };
+      mutable.pipeline = { ...mutable.pipeline, source_control: sourceControl };
+
+      const out = enrichActionContext(makeEnrichmentInput('spawn_final_reviewer', s as unknown as PipelineState));
+      expect(typeof out.error).toBe('string');
+      expect(out.error as string).toContain('backend');
+      expect(out.error as string).toContain(bogusSha);
+      expect(out).not.toHaveProperty('repos');
+    } finally {
+      cleanup();
+    }
   });
 });
 
@@ -628,11 +747,15 @@ describe('spawn_phase_reviewer per-repo SHA grouping (FR-3)', () => {
   });
 });
 
-describe('per-repo chronology and final SHAs (FR-3, FR-4)', () => {
+describe('per-repo commit-range ordering against real git history', () => {
   const DEFAULT_CONFIG = { limits: {} } as unknown as OrchestrationConfig;
 
-  function buildTwoRepoProjectWithCommits(): PipelineState {
-    // api: [a1, a2], ui: [u1, u2] — two phases, each with one task iteration carrying two repos
+  function twoRepoState(
+    projectName: string,
+    sourceControl: Record<string, unknown>,
+    apiHashes: [string, string],
+    uiHashes: [string, string],
+  ): PipelineState {
     return {
       graph: {
         nodes: {
@@ -656,8 +779,8 @@ describe('per-repo chronology and final SHAs (FR-3, FR-4)', () => {
                         status: 'completed',
                         doc_path: null,
                         repos: [
-                          { name: 'fake-api', commit_hash: 'a1' },
-                          { name: 'fake-ui', commit_hash: 'u1' },
+                          { name: 'fake-api', commit_hash: apiHashes[0] },
+                          { name: 'fake-ui', commit_hash: uiHashes[0] },
                         ],
                         corrective_tasks: [],
                         nodes: {},
@@ -682,8 +805,8 @@ describe('per-repo chronology and final SHAs (FR-3, FR-4)', () => {
                         status: 'completed',
                         doc_path: null,
                         repos: [
-                          { name: 'fake-api', commit_hash: 'a2' },
-                          { name: 'fake-ui', commit_hash: 'u2' },
+                          { name: 'fake-api', commit_hash: apiHashes[1] },
+                          { name: 'fake-ui', commit_hash: uiHashes[1] },
                         ],
                         corrective_tasks: [],
                         nodes: {},
@@ -696,69 +819,358 @@ describe('per-repo chronology and final SHAs (FR-3, FR-4)', () => {
           },
         },
       },
-      pipeline: {
-        gate_mode: null,
-        current_tier: 'execution',
-        halt_reason: null,
-        source_control: {
-          worktree_name: 'MULTI-REPO-5',
-          auto_commit: 'always',
-          auto_pr: 'always',
-          repos: [
-            { name: 'fake-api', branch: 'radorch/MULTI-REPO-5', base_branch: 'main', remote_url: null, compare_url: null, pr_url: null },
-            { name: 'fake-ui', branch: 'radorch/MULTI-REPO-5', base_branch: 'main', remote_url: null, compare_url: null, pr_url: null },
-          ],
-        },
-      },
-      project: { name: 'MULTI-REPO-5' },
+      pipeline: { gate_mode: null, current_tier: 'execution', halt_reason: null, source_control: sourceControl },
+      project: { name: projectName },
     } as unknown as PipelineState;
   }
 
-  it('final reviewer groups base/head SHAs per repo (FR-3)', () => {
-    const state = buildTwoRepoProjectWithCommits(); // api: [a1,a2], ui: [u1,u2]
-    const ctx = enrichActionContext({ action: 'spawn_final_reviewer', walkerContext: {}, state, config: DEFAULT_CONFIG, cliContext: {} });
-    expect(ctx.repos).toEqual([
-      expect.objectContaining({ name: 'fake-api', project_base_sha: 'a1', project_head_sha: 'a2' }),
-      expect.objectContaining({ name: 'fake-ui', project_base_sha: 'u1', project_head_sha: 'u2' }),
+  it('final reviewer groups base/head SHAs per repo', () => {
+    const { fixtures, sourceControl, cleanup } = bindFixtureRepos('CE-FINAL-GROUPING', [
+      { name: 'fake-api', commitFiles: [{ 'api.txt': '1' }, { 'api.txt': '2' }] },
+      { name: 'fake-ui', commitFiles: [{ 'ui.txt': '1' }, { 'ui.txt': '2' }] },
     ]);
+    try {
+      const [apiC0, apiC1] = fixtures['fake-api'].commits;
+      const [uiC0, uiC1] = fixtures['fake-ui'].commits;
+      const state = twoRepoState('CE-FINAL-GROUPING', sourceControl, [apiC0.sha, apiC1.sha], [uiC0.sha, uiC1.sha]);
+      const ctx = enrichActionContext({ action: 'spawn_final_reviewer', walkerContext: {}, state, config: DEFAULT_CONFIG, cliContext: {} });
+      expect(ctx.repos).toEqual([
+        expect.objectContaining({ name: 'fake-api', project_base_sha: apiC0.sha, project_head_sha: apiC1.sha }),
+        expect.objectContaining({ name: 'fake-ui', project_base_sha: uiC0.sha, project_head_sha: uiC1.sha }),
+      ]);
+    } finally {
+      cleanup();
+    }
   });
 
-  it('validateBaseShaChronology names the offending repo on a per-repo violation (FR-4)', () => {
-    const ordinal = new Map([['aaaa1111', 2], ['bbbb2222', 1]]);
-    const err = validateBaseShaChronology(['aaaa1111', 'bbbb2222'], ordinal, 'fake-api');
+  it('validateCommitsReachableFromHead names the offending repo on a per-repo violation', () => {
+    // 'aaaa1111' has no entry in the ordinal map — unreachable from HEAD.
+    const ordinal = new Map([['bbbb2222', 1]]);
+    const err = validateCommitsReachableFromHead(['aaaa1111', 'bbbb2222'], ordinal, 'fake-api');
     expect(err).toMatch(/fake-api/);
   });
 
-  it('final reviewer range extends over a step-hosted final corrective, appended last (P02-T01)', () => {
-    const state = buildTwoRepoProjectWithCommits(); // api: [a1,a2], ui: [u1,u2]
-    // A prior final corrective hosted on `final_review`, chronologically after
-    // every phase/task commit in the run.
-    (state.graph.nodes as Record<string, unknown>).final_review = {
-      kind: 'step',
-      status: 'completed',
-      doc_path: '/fake/final-review.md',
-      retries: 0,
-      hosts_correctives: true,
-      corrective_tasks: [
-        {
-          index: 1,
-          status: 'completed',
-          reason: 'final review requested changes',
-          injected_after: 'final_review',
-          nodes: {},
-          repos: [
-            { name: 'fake-api', commit_hash: 'a3' },
-            { name: 'fake-ui', commit_hash: 'u3' },
-          ],
-          doc_path: '/fake/final-corrective-handoff.md',
-        },
-      ],
-    };
-    const ctx = enrichActionContext({ action: 'spawn_final_reviewer', walkerContext: {}, state, config: DEFAULT_CONFIG, cliContext: {} });
-    expect(ctx.repos).toEqual([
-      expect.objectContaining({ name: 'fake-api', project_base_sha: 'a1', project_head_sha: 'a3' }),
-      expect.objectContaining({ name: 'fake-ui', project_base_sha: 'u1', project_head_sha: 'u3' }),
+  it('final reviewer range extends over a step-hosted final corrective genuinely last in real history', () => {
+    const { fixtures, sourceControl, cleanup } = bindFixtureRepos('CE-CORRECTIVE-LAST', [
+      { name: 'fake-api', commitFiles: [{ 'api.txt': '1' }, { 'api.txt': '2' }, { 'api.txt': '3' }] },
+      { name: 'fake-ui', commitFiles: [{ 'ui.txt': '1' }, { 'ui.txt': '2' }, { 'ui.txt': '3' }] },
     ]);
+    try {
+      const [apiC0, apiC1, apiC2] = fixtures['fake-api'].commits;
+      const [uiC0, uiC1, uiC2] = fixtures['fake-ui'].commits;
+      const state = twoRepoState('CE-CORRECTIVE-LAST', sourceControl, [apiC0.sha, apiC1.sha], [uiC0.sha, uiC1.sha]);
+      // A prior final corrective hosted on `final_review`, whose commit is
+      // genuinely the newest in real git history (fixture commit index 2) —
+      // walk order and real history agree, so the range is unchanged.
+      (state.graph.nodes as Record<string, unknown>).final_review = {
+        kind: 'step',
+        status: 'completed',
+        doc_path: '/fake/final-review.md',
+        retries: 0,
+        hosts_correctives: true,
+        corrective_tasks: [
+          {
+            index: 1,
+            status: 'completed',
+            reason: 'final review requested changes',
+            injected_after: 'final_review',
+            nodes: {},
+            repos: [
+              { name: 'fake-api', commit_hash: apiC2.sha },
+              { name: 'fake-ui', commit_hash: uiC2.sha },
+            ],
+            doc_path: '/fake/final-corrective-handoff.md',
+          },
+        ],
+      };
+      const ctx = enrichActionContext({ action: 'spawn_final_reviewer', walkerContext: {}, state, config: DEFAULT_CONFIG, cliContext: {} });
+      expect(ctx.repos).toEqual([
+        expect.objectContaining({ name: 'fake-api', project_base_sha: apiC0.sha, project_head_sha: apiC2.sha }),
+        expect.objectContaining({ name: 'fake-ui', project_base_sha: uiC0.sha, project_head_sha: uiC2.sha }),
+      ]);
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+describe('spawn_final_reviewer corrects the head across an amendment that reopens phase_loop', () => {
+  const DEFAULT_CONFIG = { limits: {} } as unknown as OrchestrationConfig;
+
+  it('yields the later phase commit as project_head_sha when a completed final corrective precedes it in real history', () => {
+    const { fixtures, sourceControl, cleanup } = bindFixtureRepos('CE-AMEND-HEAD', [
+      { name: 'my-repo', commitFiles: [{ 'f.txt': '0' }, { 'f.txt': '1' }, { 'f.txt': '2' }] },
+    ]);
+    try {
+      // Real chronological order: c0 (oldest) → c1 → c2 (newest). c1 is a final
+      // corrective that already completed; c2 is a later phase's commit, added
+      // by an amendment that reopened `phase_loop` after that corrective ran —
+      // so walk order places c2 before c1, even though c2 is chronologically
+      // the newest commit in the repo.
+      const [c0, c1, c2] = fixtures['my-repo'].commits;
+      const state = {
+        graph: {
+          nodes: {
+            phase_loop: {
+              kind: 'for_each_phase',
+              status: 'completed',
+              iterations: [
+                {
+                  index: 0,
+                  status: 'completed',
+                  doc_path: null,
+                  repos: [],
+                  corrective_tasks: [],
+                  nodes: {
+                    task_loop: {
+                      kind: 'for_each_task',
+                      status: 'completed',
+                      iterations: [
+                        { index: 0, status: 'completed', doc_path: null, repos: [{ name: 'my-repo', commit_hash: c0.sha }], corrective_tasks: [], nodes: {} },
+                      ],
+                    },
+                  },
+                },
+                {
+                  index: 1,
+                  status: 'completed',
+                  doc_path: null,
+                  repos: [],
+                  corrective_tasks: [],
+                  nodes: {
+                    task_loop: {
+                      kind: 'for_each_task',
+                      status: 'completed',
+                      iterations: [
+                        { index: 0, status: 'completed', doc_path: null, repos: [{ name: 'my-repo', commit_hash: c2.sha }], corrective_tasks: [], nodes: {} },
+                      ],
+                    },
+                  },
+                },
+              ],
+            },
+            final_review: {
+              kind: 'step',
+              status: 'completed',
+              doc_path: '/fake/final-review.md',
+              retries: 0,
+              hosts_correctives: true,
+              corrective_tasks: [
+                {
+                  index: 1,
+                  status: 'completed',
+                  reason: 'final review requested changes',
+                  injected_after: 'final_review',
+                  nodes: {},
+                  repos: [{ name: 'my-repo', commit_hash: c1.sha }],
+                  doc_path: '/fake/final-corrective-handoff.md',
+                },
+              ],
+            },
+          },
+        },
+        pipeline: { gate_mode: null, current_tier: 'execution', halt_reason: null, source_control: sourceControl },
+        project: { name: 'CE-AMEND-HEAD' },
+      } as unknown as PipelineState;
+
+      const ctx = enrichActionContext({ action: 'spawn_final_reviewer', walkerContext: {}, state, config: DEFAULT_CONFIG, cliContext: {} });
+      expect(ctx.repos).toEqual([
+        expect.objectContaining({ name: 'my-repo', project_base_sha: c0.sha, project_head_sha: c2.sha }),
+      ]);
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+describe('spawn_final_reviewer rejects an unreadable or unlocatable commit range', () => {
+  const DEFAULT_CONFIG = { limits: {} } as unknown as OrchestrationConfig;
+
+  function twoCommitPhaseState(projectName: string, repoName: string, sourceControl: Record<string, unknown>, hashes: [string, string]): PipelineState {
+    return {
+      graph: {
+        nodes: {
+          phase_loop: {
+            kind: 'for_each_phase',
+            status: 'completed',
+            iterations: [
+              {
+                index: 0,
+                status: 'completed',
+                doc_path: null,
+                repos: [],
+                corrective_tasks: [],
+                nodes: {
+                  task_loop: {
+                    kind: 'for_each_task',
+                    status: 'completed',
+                    iterations: [
+                      { index: 0, status: 'completed', doc_path: null, repos: [{ name: repoName, commit_hash: hashes[0] }], corrective_tasks: [], nodes: {} },
+                      { index: 1, status: 'completed', doc_path: null, repos: [{ name: repoName, commit_hash: hashes[1] }], corrective_tasks: [], nodes: {} },
+                    ],
+                  },
+                },
+              },
+            ],
+          },
+        },
+      },
+      pipeline: { gate_mode: null, current_tier: 'execution', halt_reason: null, source_control: sourceControl },
+      project: { name: projectName },
+    } as unknown as PipelineState;
+  }
+
+  it('names the repo and the path when the repo history cannot be read', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ce-final-review-'));
+    const notAGitRepo = fs.mkdtempSync(path.join(os.tmpdir(), 'ce-not-a-repo-'));
+    try {
+      mockUserDataPathsRoot(root);
+      const projectName = 'CE-UNREADABLE-HISTORY';
+      const repoName = 'backend';
+
+      const sourceControl = {
+        worktree_name: projectName,
+        auto_commit: 'always',
+        auto_pr: 'always',
+        repos: [{ name: repoName, branch: 'radorch/test', base_branch: 'main', remote_url: null, compare_url: null, pr_url: null, in_place: true }],
+      };
+      const projectDir = path.join(root, 'projects', projectName);
+      fs.mkdirSync(projectDir, { recursive: true });
+      fs.writeFileSync(path.join(projectDir, 'state.json'), JSON.stringify({
+        project: { name: projectName },
+        pipeline: { source_control: sourceControl },
+        graph: { nodes: {} },
+      }));
+      writeLocal({ root, localPaths: { [repoName]: notAGitRepo } });
+
+      const state = twoCommitPhaseState(projectName, repoName, sourceControl, ['aaaaaaa', 'bbbbbbb']);
+      const ctx = enrichActionContext({ action: 'spawn_final_reviewer', walkerContext: {}, state, config: DEFAULT_CONFIG, cliContext: {} });
+
+      expect(typeof ctx.error).toBe('string');
+      expect(ctx.error as string).toContain(repoName);
+      expect(ctx.error as string).toContain(notAGitRepo);
+      expect(ctx.error as string).toMatch(/confirm|re-run/i);
+      expect(ctx).not.toHaveProperty('repos');
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+      fs.rmSync(notAGitRepo, { recursive: true, force: true });
+    }
+  });
+
+  it('names the repo and the commit when a commit is not reachable from a real repo\'s HEAD', () => {
+    const { fixtures, sourceControl, cleanup } = bindFixtureRepos('CE-UNLOCATABLE', [
+      { name: 'backend', commitFiles: [{ 'f.txt': '0' }, { 'f.txt': '1' }] },
+    ]);
+    try {
+      const bogusSha = 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef';
+      const state = twoCommitPhaseState('CE-UNLOCATABLE', 'backend', sourceControl, [fixtures['backend'].commits[0].sha, bogusSha]);
+      const ctx = enrichActionContext({ action: 'spawn_final_reviewer', walkerContext: {}, state, config: DEFAULT_CONFIG, cliContext: {} });
+
+      expect(typeof ctx.error).toBe('string');
+      expect(ctx.error as string).toContain('backend');
+      expect(ctx.error as string).toContain(bogusSha);
+      expect(ctx.error as string).toContain(fixtures['backend'].repoPath);
+      expect(ctx.error as string).toMatch(/confirm|re-run/i);
+      expect(ctx).not.toHaveProperty('repos');
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('halts naming the repo when its worktree path cannot be resolved, instead of falling back to the process cwd', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ce-final-review-'));
+    try {
+      mockUserDataPathsRoot(root);
+      // No `writeLocal` registration for 'backend' — resolveWorktrees finds no
+      // matching entry, so buildReposArray leaves this repo's path as ''.
+      const s = makeV6State({ taskRepos: [{ name: 'backend', commit_hash: 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef' }] });
+      const mutable = s as unknown as { pipeline: Record<string, unknown> };
+      mutable.pipeline = {
+        ...mutable.pipeline,
+        source_control: {
+          worktree_name: 'test-project',
+          auto_commit: 'always',
+          auto_pr: 'always',
+          repos: [{ name: 'backend', branch: 'radorch/test', base_branch: 'main', remote_url: null, compare_url: null, pr_url: null }],
+        },
+      };
+
+      const out = enrichActionContext(makeEnrichmentInput('spawn_final_reviewer', s as unknown as PipelineState));
+
+      expect(typeof out.error).toBe('string');
+      expect(out.error as string).toContain('backend');
+      expect(out.error as string).not.toContain(process.cwd());
+      expect(out).not.toHaveProperty('repos');
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('spawn_final_reviewer commit-range derivation is independent of stored hash width', () => {
+  const DEFAULT_CONFIG = { limits: {} } as unknown as OrchestrationConfig;
+
+  function twoCommitState(projectName: string, repoName: string, sourceControl: Record<string, unknown>, hashes: [string, string]): PipelineState {
+    return {
+      graph: {
+        nodes: {
+          phase_loop: {
+            kind: 'for_each_phase',
+            status: 'completed',
+            iterations: [
+              {
+                index: 0,
+                status: 'completed',
+                doc_path: null,
+                repos: [],
+                corrective_tasks: [],
+                nodes: {
+                  task_loop: {
+                    kind: 'for_each_task',
+                    status: 'completed',
+                    iterations: [
+                      { index: 0, status: 'completed', doc_path: null, repos: [{ name: repoName, commit_hash: hashes[0] }], corrective_tasks: [], nodes: {} },
+                      { index: 1, status: 'completed', doc_path: null, repos: [{ name: repoName, commit_hash: hashes[1] }], corrective_tasks: [], nodes: {} },
+                    ],
+                  },
+                },
+              },
+            ],
+          },
+        },
+      },
+      pipeline: { gate_mode: null, current_tier: 'execution', halt_reason: null, source_control: sourceControl },
+      project: { name: projectName },
+    } as unknown as PipelineState;
+  }
+
+  it('derives the same commit range for 7-character and 8-or-longer stored hashes', () => {
+    const { fixtures, sourceControl, cleanup } = bindFixtureRepos('CE-HASH-WIDTH', [
+      { name: 'backend', commitFiles: [{ 'f.txt': '0' }, { 'f.txt': '1' }] },
+    ]);
+    try {
+      const [c0, c1] = fixtures['backend'].commits;
+
+      const shortState = twoCommitState('CE-HASH-WIDTH', 'backend', sourceControl, [c0.sha.slice(0, 7), c1.sha.slice(0, 7)]);
+      const shortCtx = enrichActionContext({ action: 'spawn_final_reviewer', walkerContext: {}, state: shortState, config: DEFAULT_CONFIG, cliContext: {} });
+      const shortRepo = (shortCtx.repos as Array<Record<string, unknown>>)[0];
+      expect(shortCtx.error).toBeUndefined();
+      expect(shortRepo.project_base_sha).toBe(c0.sha.slice(0, 7));
+      expect(shortRepo.project_head_sha).toBe(c1.sha.slice(0, 7));
+
+      const wideState = twoCommitState('CE-HASH-WIDTH', 'backend', sourceControl, [c0.sha.slice(0, 10), c1.sha.slice(0, 10)]);
+      const wideCtx = enrichActionContext({ action: 'spawn_final_reviewer', walkerContext: {}, state: wideState, config: DEFAULT_CONFIG, cliContext: {} });
+      const wideRepo = (wideCtx.repos as Array<Record<string, unknown>>)[0];
+      expect(wideCtx.error).toBeUndefined();
+      expect(wideRepo.project_base_sha).toBe(c0.sha.slice(0, 10));
+      expect(wideRepo.project_head_sha).toBe(c1.sha.slice(0, 10));
+
+      // Both widths identify the same underlying commits as base/head.
+      expect(c0.sha.startsWith(shortRepo.project_base_sha as string)).toBe(true);
+      expect(c1.sha.startsWith(shortRepo.project_head_sha as string)).toBe(true);
+    } finally {
+      cleanup();
+    }
   });
 });
 
@@ -830,6 +1242,35 @@ describe('execute_task surfaces complexity and should_commit to the coder spawn'
     state.pipeline.source_control!.auto_commit = 'never';
     const ctx = enrichActionContext({ action: 'execute_task', walkerContext: {}, state, config: DEFAULT_CONFIG, cliContext: {} });
     expect(ctx.should_commit).toBe(false);
+  });
+
+  // The identity nulls the completion-command renderer keys off (R6). Asserted
+  // here at the enrichment seam so the two corrective scopes are separated by an
+  // executed test rather than by reading the sentinel block: only the phase scope
+  // loses its task number.
+  function correctiveEntry(): Record<string, unknown> {
+    return { index: 1, status: 'in_progress', reason: 'r', doc_path: '/fake/corrective.md', nodes: {}, repos: [] };
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const phaseIterOf = (s: PipelineState): any => (s as any).graph.nodes.phase_loop.iterations[0];
+
+  it('nulls task_number and stamps the P{NN}-PHASE sentinel for a phase-scope corrective', () => {
+    const state = execStateWithComplexity('standard');
+    phaseIterOf(state).corrective_tasks = [correctiveEntry()];
+    const ctx = enrichActionContext({ action: 'execute_task', walkerContext: {}, state, config: DEFAULT_CONFIG, cliContext: {} });
+    expect(ctx.phase_number).toBe(1);
+    expect(ctx.task_number).toBeNull();
+    expect(ctx.task_id).toBe('P01-PHASE');
+  });
+
+  it('keeps the real task_number for a task-scope corrective', () => {
+    const state = execStateWithComplexity('standard');
+    phaseIterOf(state).nodes.task_loop.iterations[0].corrective_tasks = [correctiveEntry()];
+    const ctx = enrichActionContext({ action: 'execute_task', walkerContext: {}, state, config: DEFAULT_CONFIG, cliContext: {} });
+    expect(ctx.phase_number).toBe(1);
+    expect(ctx.task_number).toBe(1);
+    expect(ctx.task_id).toBe('P01-T01');
   });
 });
 
@@ -952,8 +1393,8 @@ describe('final-scope corrective sentinel — absent phase identity, no handoff_
   });
 
   /**
-   * After a `final_rejected` reopen, `corrective_budget_origin` advances past
-   * spent history entries. `corrective_index` must read window-relative
+   * When a fresh window opens, `corrective_budget_origin` advances past spent
+   * history entries. `corrective_index` must read window-relative
    * (entry.index - budgetOrigin), never the raw ever-growing index.
    */
   function stateWithWindowedFinalCorrective(): PipelineState {
@@ -980,13 +1421,13 @@ describe('final-scope corrective sentinel — absent phase identity, no handoff_
     return base;
   }
 
-  it('execute_task at final scope reports corrective_index window-relative after a final_rejected budget-origin advance', () => {
+  it('execute_task at final scope reports corrective_index window-relative after a budget-origin advance', () => {
     const state = stateWithWindowedFinalCorrective();
     const ctx = enrichActionContext({ action: 'execute_task', walkerContext: {}, state, config: DEFAULT_CONFIG, cliContext: {} });
     expect(ctx.corrective_index).toBe(1);
   });
 
-  it('spawn_code_reviewer at final scope reports corrective_index window-relative after a final_rejected budget-origin advance', () => {
+  it('spawn_code_reviewer at final scope reports corrective_index window-relative after a budget-origin advance', () => {
     const state = stateWithWindowedFinalCorrective();
     const ctx = enrichActionContext({ action: 'spawn_code_reviewer', walkerContext: {}, state, config: DEFAULT_CONFIG, cliContext: {} });
     expect(ctx.corrective_index).toBe(1);

@@ -1,29 +1,27 @@
 "use client";
 import * as React from "react";
-import { FolderGit2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { KIND_PRESENTATION } from "@/components/badges/project-kind-presentation";
+import type { ProjectKind } from '@/types/components';
 
 interface ProjectKindBadgeProps {
-  projectType?: 'standard' | 'side-project';
+  projectType?: ProjectKind;
 }
 
 export const ProjectKindBadge = React.forwardRef<HTMLSpanElement, ProjectKindBadgeProps>(
   function ProjectKindBadge({ projectType }, ref) {
-    // Side-project only — standard (and absent) project types render nothing.
-    if ((projectType ?? 'standard') !== 'side-project') return null;
+    const presentation = KIND_PRESENTATION[projectType ?? 'standard'];
+    if (!presentation.variant) return null;
+    const { label, variant, icon: Icon } = presentation;
     return (
       <Badge
         ref={ref}
-        variant="outline"
-        className="gap-1.5 border-transparent"
-        style={{
-          backgroundColor: 'color-mix(in srgb, var(--kind-side-project) 15%, transparent)',
-          color: 'var(--kind-side-project)',
-        }}
-        aria-label="Project kind: Side Project"
+        variant={variant}
+        className="gap-1.5"
+        aria-label={`Project kind: ${label}`}
       >
-        <FolderGit2 />
-        Side Project
+        {Icon && <Icon />}
+        {label}
       </Badge>
     );
   },

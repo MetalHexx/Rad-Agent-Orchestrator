@@ -18,6 +18,6 @@ export const projectListCommand = defineCommand({
     const svc = new WorkGraphService({ root: userDataPaths().root });
     const projects = svc.listProjects({ status: flags.status as NodeStatus | undefined, groupId: flags.group });
     if (!ctx.ux.json) ctx.stderr.write(renderProjectTable(projects) + '\n');
-    return { projects: projects.map((p) => ({ name: p.name, status: p.status, tier: p.tier, sourceControlInitialized: p.sourceControlInitialized })) };
+    return { projects: projects.map((p) => ({ name: p.name, state: p.state, stateLabel: p.stateLabel, status: p.status, tier: p.tier, sourceControlInitialized: p.sourceControlInitialized })) };
   },
 });

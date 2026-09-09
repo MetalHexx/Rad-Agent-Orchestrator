@@ -7,7 +7,7 @@ Prompt-harness regression for the repo-skill discovery feature (FR-15, FR-16, FR
 The repo-skill discovery path from fixture root to planner spawn:
 
 ```
-radorch skill list --repo-root <repo-root>  (folded into the CLI; shared module reused by the pipeline runtime)
+radorch skill list --repo <registered-repo-name>  (folded into the CLI; shared module reused by the pipeline runtime)
   → spawn_master_plan prompt contains ## Repository Skills Available
     → @planner inlines skill context into Master Plan steps
       → plan_approval_gate  ← HALT

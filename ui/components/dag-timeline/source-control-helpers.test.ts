@@ -3,8 +3,10 @@ import {
   resolveLocationKind,
   resolveRepoFolderPath,
   buildCommitChip,
+  selectPrLinks,
   LOCATION_KIND_LABEL,
 } from './source-control-helpers';
+import type { SourceControlRepo, V5SourceControlState } from '@/types/state';
 
 // resolveLocationKind (FR-10)
 assert.equal(resolveLocationKind('side-project', false), 'side-project');
@@ -44,5 +46,32 @@ assert.equal(noBase.linkable, false);
 assert.equal(LOCATION_KIND_LABEL.worktree, 'Worktree');
 assert.equal(LOCATION_KIND_LABEL['in-place'], 'In-place · main clone');
 assert.equal(LOCATION_KIND_LABEL['side-project'], 'Local · side-project');
+
+// selectPrLinks — repo-aware PR derivation (replaces the repos[0] pin)
+function repo(name: string, pr_url: string | null): SourceControlRepo {
+  return { name, branch: 'b', base_branch: 'main', remote_url: null, compare_url: null, pr_url };
+}
+function sc(repos: SourceControlRepo[]): V5SourceControlState {
+  return { worktree_path: '/tmp/x', auto_commit: 'never', auto_pr: 'never', repos };
+}
+
+assert.deepEqual(selectPrLinks(null), []);
+assert.deepEqual(selectPrLinks(undefined), []);
+assert.deepEqual(selectPrLinks(sc([])), []);
+assert.deepEqual(selectPrLinks(sc([repo('api', null)])), []);
+assert.deepEqual(selectPrLinks(sc([repo('api', 'https://github.com/o/api/pull/4')])), [
+  { repoName: 'api', url: 'https://github.com/o/api/pull/4' },
+]);
+assert.deepEqual(
+  selectPrLinks(sc([repo('api', null), repo('ui', 'https://github.com/o/ui/pull/5')])),
+  [{ repoName: 'ui', url: 'https://github.com/o/ui/pull/5' }],
+);
+assert.deepEqual(
+  selectPrLinks(sc([repo('api', 'https://github.com/o/api/pull/4'), repo('ui', 'https://github.com/o/ui/pull/5')])),
+  [
+    { repoName: 'api', url: 'https://github.com/o/api/pull/4' },
+    { repoName: 'ui', url: 'https://github.com/o/ui/pull/5' },
+  ],
+);
 
 console.log('source-control-helpers ✓');

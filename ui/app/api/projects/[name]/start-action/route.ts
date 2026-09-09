@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { discoverProjects } from '@/lib/fs-reader';
 import os from 'node:os';
 import path from 'node:path';
-import { invokeLaunchClaudeProject } from '@/lib/launch-claude-project-invoke';
+import { launchTerminal } from '@rad-orchestration/terminal-launch';
 
 export const dynamic = 'force-dynamic';
 
@@ -79,14 +79,24 @@ export async function POST(
 
   // 4. Compose prompt server-side and invoke launcher (FR-4, FR-5, AD-3, AD-4)
   const prompt = composePrompt(action, name);
-  const workspaceRoot = path.join(os.homedir(), '.radorc');
-  const result = await invokeLaunchClaudeProject({ workspaceRoot, prompt });
+  const result = launchTerminal({
+    agent: 'claude',
+    cwd: path.join(os.homedir(), '.radorc'),
+    prompt,
+    permissionMode: 'auto',
+  });
 
-  if (!result.success) {
-    // NFR-3: do not echo absolute paths or env values; surface launcher
-    // message verbatim (launcher never includes cwd-level detail).
+  if (!result.ok) {
+    // Do not echo absolute paths or env values. The shared launcher's cwd
+    // check reports "Launch directory no longer exists: <cwd>" — the only
+    // one of its error shapes that carries this route's cwd — so that one
+    // is replaced with a path-free equivalent; every other launcher error
+    // (a missing terminal binary, a spawn failure) never mentions cwd.
+    const message = result.error?.startsWith('Launch directory no longer exists')
+      ? 'Launch directory no longer exists.'
+      : result.error ?? 'Launcher failed.';
     return NextResponse.json(
-      { success: false, error: result.error ?? 'Launcher failed.' },
+      { success: false, error: message },
       { status: 500 }
     );
   }

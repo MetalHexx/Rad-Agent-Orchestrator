@@ -29,6 +29,8 @@ function fx(overrides: Partial<ProjectSummary>): ProjectSummary {
   return {
     name: 'p',
     tier: 'not_initialized',
+    state: 'not_initialized',
+    stateLabel: 'Not Initialized',
     hasState: false,
     hasMalformedState: false,
     planningStatus: undefined,
@@ -39,6 +41,7 @@ function fx(overrides: Partial<ProjectSummary>): ProjectSummary {
 }
 
 const URGENT_FIRST: SortConfig = { primary: 'status', primaryDir: 'asc', secondary: 'name', secondaryDir: 'asc' };
+const DONE_FIRST: SortConfig = { primary: 'status', primaryDir: 'desc', secondary: 'name', secondaryDir: 'asc' };
 
 console.log('\nuse-sort-config — production-module smoke test\n');
 
@@ -100,6 +103,53 @@ test('FR-14 — undefined planningStatus sorts as Planning (slot 5) against prod
   // p_planning (slot 5) and p_undef (slot 5 after fix) tie on status; alphabetical secondary breaks → p_planning before p_undef.
   // Both then sort before p_ns (slot 7).
   assert.deepStrictEqual(sorted.map(p => p.name), ['p_planning', 'p_undef', 'p_ns']);
+});
+
+// A portfolio root carries no pipeline state of its own — it gets a dedicated
+// bucket rather than falling to the bottom of the list. Relative ordering is
+// asserted against realistic mixed lists, not raw priority integers, so a
+// future slot insertion does not have to rewrite these assertions.
+test('a portfolio root sorts below Not Started and above Complete in Urgent first', () => {
+  const fxHalted = fx({ name: 'halted', tier: 'halted' });
+  const fxNotStarted = fx({ name: 'not-started', tier: 'planning', planningStatus: 'not_started' });
+  const fxPortfolio = fx({ name: 'portfolio', project_type: 'portfolio' });
+  const fxComplete = fx({ name: 'complete', tier: 'complete' });
+  const fxNotInit = fx({ name: 'not-init', tier: 'not_initialized' });
+
+  const shuffled = [fxComplete, fxNotInit, fxPortfolio, fxHalted, fxNotStarted];
+  const sorted = [...shuffled].sort((a, b) => compareSortConfig(a, b, URGENT_FIRST));
+  assert.deepStrictEqual(
+    sorted.map(p => p.name),
+    ['halted', 'not-started', 'portfolio', 'complete', 'not-init'],
+  );
+});
+
+test('a portfolio root sorts below Halted and above Not Initialized in Done first', () => {
+  const fxHalted = fx({ name: 'halted', tier: 'halted' });
+  const fxNotStarted = fx({ name: 'not-started', tier: 'planning', planningStatus: 'not_started' });
+  const fxPortfolio = fx({ name: 'portfolio', project_type: 'portfolio' });
+  const fxComplete = fx({ name: 'complete', tier: 'complete' });
+  const fxNotInit = fx({ name: 'not-init', tier: 'not_initialized' });
+
+  const shuffled = [fxComplete, fxNotInit, fxPortfolio, fxHalted, fxNotStarted];
+  const sorted = [...shuffled].sort((a, b) => compareSortConfig(a, b, DONE_FIRST));
+  assert.deepStrictEqual(
+    sorted.map(p => p.name),
+    ['complete', 'not-started', 'halted', 'portfolio', 'not-init'],
+  );
+});
+
+test('Not Initialized stays pinned to the bottom in both directions with a portfolio row present', () => {
+  const fixtures = [
+    fx({ name: 'not-init', tier: 'not_initialized' }),
+    fx({ name: 'portfolio', project_type: 'portfolio' }),
+    fx({ name: 'executing', tier: 'execution', executionStatus: 'in_progress' }),
+    fx({ name: 'complete', tier: 'complete' }),
+  ];
+  const ascSorted = [...fixtures].sort((a, b) => compareSortConfig(a, b, URGENT_FIRST));
+  const descSorted = [...fixtures].sort((a, b) => compareSortConfig(a, b, DONE_FIRST));
+  assert.strictEqual(ascSorted[ascSorted.length - 1].name, 'not-init', 'asc: Not Initialized must be last');
+  assert.strictEqual(descSorted[descSorted.length - 1].name, 'not-init', 'desc: Not Initialized must be last');
 });
 
 if (failed === 0) {

@@ -62,7 +62,11 @@ export function buildWorld(spec: WorldSpec): World {
   }
   const prevTemplatesEnv = process.env['RADORCH_TEMPLATES_DIR'];
   process.env['RADORCH_TEMPLATES_DIR'] = projectDir;
-  const pathContext: PathContext = { scriptsDir: projectDir, templatesDir: projectDir };
+  const pathContext: PathContext = {
+    scriptsDir: projectDir,
+    templatesDir: projectDir,
+    scriptPath: path.join(projectDir, 'radorch.mjs'),
+  };
   return {
     projectDir,
     configPath,

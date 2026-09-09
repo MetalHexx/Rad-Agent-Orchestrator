@@ -257,8 +257,8 @@ function checkCorrectiveEntriesTerminal(nodes: Record<string, NodeState>, path: 
     }
     // Gate on the STEP's own status (not the iteration/for-each): a completed
     // step host (e.g. final_review) may hold only terminal corrective entries.
-    // A host reset to not_started (final_rejected re-opening a fresh round)
-    // is not gated here and must pass even while holding completed entries.
+    // A host re-opened for a fresh round is not gated here and must pass even
+    // while holding completed entries.
     if (node.status === 'completed') {
       for (const ct of stepCorrectives(node)) {
         if (ct.status !== 'completed' && ct.status !== 'skipped') {

@@ -1,9 +1,16 @@
 import type { PipelineTier, PlanningStatus, ExecutionStatus, GraphStatus } from './state';
+import type { ProjectKind, ProjectState } from '@rad-orchestration/work-graph';
+
+export type { ProjectKind, ProjectState };
 
 /** Sidebar project entry */
 export interface ProjectSummary {
   name: string;
   tier: PipelineTier | 'not_initialized';
+  /** The one canonical answer to "what state is this project in?" — see `@rad-orchestration/work-graph#deriveProjectState`. */
+  state: ProjectState;
+  /** Always `PROJECT_STATE_LABELS[state]` — the only user-visible state word every badge renders. */
+  stateLabel: string;
   hasState: boolean;
   hasMalformedState: boolean;
   errorMessage?: string;
@@ -13,7 +20,7 @@ export interface ProjectSummary {
   lastUpdated?: string;   // ISO 8601; from state.project.updated; undefined for uninitialized projects
   /** Schema version: 'v5', 'v6', or undefined for uninitialized projects */
   schemaVersion?: 'v5' | 'v6';
-  project_type?: 'standard' | 'side-project';
+  project_type?: ProjectKind;
   // NEW — added for DAG-VIEW-5; consumed by classifyStatus only
   graphStatus?: GraphStatus | 'not_initialized';
 }

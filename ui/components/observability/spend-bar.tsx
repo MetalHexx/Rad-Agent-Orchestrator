@@ -1,5 +1,4 @@
 import * as React from 'react';
-import { cn } from '@/lib/utils';
 import { modelColor } from '@/lib/observability/model-color';
 import { formatUsd } from '@/lib/observability/spend-display';
 import type { SpendSegment } from '@/lib/observability/subagent-tree';

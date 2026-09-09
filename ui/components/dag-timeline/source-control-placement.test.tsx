@@ -29,7 +29,7 @@ const html = renderToStaticMarkup(
     compareUrlByRepo: {},
     projectName: 'TEST-PROJECT',
     phaseLoopStatus: 'not_started',
-    prUrl: null,
+    prLinks: [],
     afterPlanningSlot: createElement('div', { 'data-testid': 'sc-slot' }),
   })
 );

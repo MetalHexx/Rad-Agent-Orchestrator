@@ -9,7 +9,8 @@ import path from 'node:path';
 import os from 'node:os';
 import { getConfigPath, readConfig, readConfigWithRaw, writeConfig } from './fs-reader';
 import { parseYaml, stringifyYaml } from './yaml-parser';
-import type { OrchestrationConfig } from '@/types/config';
+import { validateConfig } from './config-validator';
+import type { OrchestrationConfig, ConfigValidationErrors } from '@/types/config';
 
 let passed = 0;
 let failed = 0;
@@ -145,6 +146,157 @@ async function run() {
       } finally {
         await rm(fakeHome, { recursive: true, force: true });
       }
+    });
+
+    // ── readConfigWithRaw() communication_style hydration ─────────────────
+
+    console.log('\nreadConfigWithRaw() — communication_style hydration');
+
+    const readHydratedConfig = async (
+      yamlBody: string,
+    ): Promise<{ config: OrchestrationConfig; rawYaml: string }> => {
+      const fakeHome = await mkdtemp(path.join(os.tmpdir(), 'fs-reader-config-rw-hydrate-'));
+      try {
+        const radorcDir = path.join(fakeHome, '.radorc');
+        await mkdir(radorcDir, { recursive: true });
+        const configFile = path.join(radorcDir, 'orchestration.yml');
+        await fsWriteFile(configFile, yamlBody);
+        let result!: { config: OrchestrationConfig; rawYaml: string };
+        await withFakeHome(fakeHome, async () => {
+          result = await readConfigWithRaw();
+        });
+        return result;
+      } finally {
+        await rm(fakeHome, { recursive: true, force: true });
+      }
+    };
+
+    await test('absent communication_style section hydrates to both defaults, rawYaml untouched', async () => {
+      const { config, rawYaml } = await readHydratedConfig(MINIMAL_CONFIG_YAML);
+      assert.deepStrictEqual(config.communication_style, { enabled: false, selected: 'high-level.md' });
+      assert.strictEqual(rawYaml, MINIMAL_CONFIG_YAML);
+    });
+
+    await test('enabled-only section keeps enabled and defaults selected', async () => {
+      const yamlBody = `${MINIMAL_CONFIG_YAML}communication_style:\n  enabled: true\n`;
+      const { config, rawYaml } = await readHydratedConfig(yamlBody);
+      assert.deepStrictEqual(config.communication_style, { enabled: true, selected: 'high-level.md' });
+      assert.strictEqual(rawYaml, yamlBody);
+    });
+
+    await test('selected-only section keeps selected and defaults enabled', async () => {
+      const yamlBody = `${MINIMAL_CONFIG_YAML}communication_style:\n  selected: caveman.md\n`;
+      const { config, rawYaml } = await readHydratedConfig(yamlBody);
+      assert.deepStrictEqual(config.communication_style, { enabled: false, selected: 'caveman.md' });
+      assert.strictEqual(rawYaml, yamlBody);
+    });
+
+    await test('complete, well-typed section reads back unchanged', async () => {
+      const yamlBody = `${MINIMAL_CONFIG_YAML}communication_style:\n  enabled: true\n  selected: caveman.md\n`;
+      const { config, rawYaml } = await readHydratedConfig(yamlBody);
+      assert.deepStrictEqual(config.communication_style, { enabled: true, selected: 'caveman.md' });
+      assert.strictEqual(rawYaml, yamlBody);
+    });
+
+    await test('scalar communication_style hydrates to both defaults', async () => {
+      const yamlBody = `${MINIMAL_CONFIG_YAML}communication_style: not-a-section\n`;
+      const { config } = await readHydratedConfig(yamlBody);
+      assert.deepStrictEqual(config.communication_style, { enabled: false, selected: 'high-level.md' });
+    });
+
+    await test('null communication_style hydrates to both defaults', async () => {
+      const yamlBody = `${MINIMAL_CONFIG_YAML}communication_style: null\n`;
+      const { config } = await readHydratedConfig(yamlBody);
+      assert.deepStrictEqual(config.communication_style, { enabled: false, selected: 'high-level.md' });
+    });
+
+    await test('array communication_style hydrates to both defaults', async () => {
+      const yamlBody = `${MINIMAL_CONFIG_YAML}communication_style:\n  - enabled\n  - selected\n`;
+      const { config } = await readHydratedConfig(yamlBody);
+      assert.deepStrictEqual(config.communication_style, { enabled: false, selected: 'high-level.md' });
+    });
+
+    await test('off-type values (enabled: "yes", selected: "") hydrate to both defaults', async () => {
+      const yamlBody = `${MINIMAL_CONFIG_YAML}communication_style:\n  enabled: "yes"\n  selected: ""\n`;
+      const { config } = await readHydratedConfig(yamlBody);
+      assert.deepStrictEqual(config.communication_style, { enabled: false, selected: 'high-level.md' });
+    });
+
+    await test('hydrated section-less config with Enabled toggled on validates clean (unreadable-catalog path, no knownStylePaths)', async () => {
+      const { config } = await readHydratedConfig(MINIMAL_CONFIG_YAML);
+      config.communication_style = { ...config.communication_style!, enabled: true };
+      const errors: ConfigValidationErrors = validateConfig(config);
+      assert.strictEqual(errors['communication_style.enabled'], undefined);
+      assert.strictEqual(errors['communication_style.selected'], undefined);
+    });
+
+    await test('hydrated section-less config with Enabled toggled on validates clean (readable catalog containing the default)', async () => {
+      const { config } = await readHydratedConfig(MINIMAL_CONFIG_YAML);
+      config.communication_style = { ...config.communication_style!, enabled: true };
+      const errors: ConfigValidationErrors = validateConfig(config, ['high-level.md', 'caveman.md']);
+      assert.strictEqual(errors['communication_style.enabled'], undefined);
+      assert.strictEqual(errors['communication_style.selected'], undefined);
+    });
+
+    await test('hydrated section-less config with Enabled toggled on validates clean (readable catalog omitted, empty list)', async () => {
+      const { config } = await readHydratedConfig(MINIMAL_CONFIG_YAML);
+      config.communication_style = { ...config.communication_style!, enabled: true };
+      const errors: ConfigValidationErrors = validateConfig(config, []);
+      assert.strictEqual(errors['communication_style.enabled'], undefined);
+      assert.strictEqual(errors['communication_style.selected'], undefined);
+    });
+
+    // ── readConfigWithRaw() ambient_awareness hydration ───────────────────
+
+    console.log('\nreadConfigWithRaw() — ambient_awareness hydration');
+
+    await test('absent ambient_awareness section hydrates to the minimal default, rawYaml untouched', async () => {
+      const { config, rawYaml } = await readHydratedConfig(MINIMAL_CONFIG_YAML);
+      assert.deepStrictEqual(config.ambient_awareness, { verbosity: 'minimal' });
+      assert.strictEqual(rawYaml, MINIMAL_CONFIG_YAML);
+    });
+
+    await test('a known verbosity level reads back unchanged', async () => {
+      const yamlBody = `${MINIMAL_CONFIG_YAML}ambient_awareness:\n  verbosity: silent\n`;
+      const { config, rawYaml } = await readHydratedConfig(yamlBody);
+      assert.deepStrictEqual(config.ambient_awareness, { verbosity: 'silent' });
+      assert.strictEqual(rawYaml, yamlBody);
+    });
+
+    await test('an unrecognized verbosity value hydrates to the minimal default', async () => {
+      const yamlBody = `${MINIMAL_CONFIG_YAML}ambient_awareness:\n  verbosity: chatty\n`;
+      const { config } = await readHydratedConfig(yamlBody);
+      assert.deepStrictEqual(config.ambient_awareness, { verbosity: 'minimal' });
+    });
+
+    await test('a missing verbosity key hydrates to the minimal default', async () => {
+      const yamlBody = `${MINIMAL_CONFIG_YAML}ambient_awareness: {}\n`;
+      const { config } = await readHydratedConfig(yamlBody);
+      assert.deepStrictEqual(config.ambient_awareness, { verbosity: 'minimal' });
+    });
+
+    await test('scalar ambient_awareness hydrates to the minimal default', async () => {
+      const yamlBody = `${MINIMAL_CONFIG_YAML}ambient_awareness: not-a-section\n`;
+      const { config } = await readHydratedConfig(yamlBody);
+      assert.deepStrictEqual(config.ambient_awareness, { verbosity: 'minimal' });
+    });
+
+    await test('null ambient_awareness hydrates to the minimal default', async () => {
+      const yamlBody = `${MINIMAL_CONFIG_YAML}ambient_awareness: null\n`;
+      const { config } = await readHydratedConfig(yamlBody);
+      assert.deepStrictEqual(config.ambient_awareness, { verbosity: 'minimal' });
+    });
+
+    await test('array ambient_awareness hydrates to the minimal default', async () => {
+      const yamlBody = `${MINIMAL_CONFIG_YAML}ambient_awareness:\n  - verbosity\n`;
+      const { config } = await readHydratedConfig(yamlBody);
+      assert.deepStrictEqual(config.ambient_awareness, { verbosity: 'minimal' });
+    });
+
+    await test('hydrated section-less config validates clean', async () => {
+      const { config } = await readHydratedConfig(MINIMAL_CONFIG_YAML);
+      const errors: ConfigValidationErrors = validateConfig(config);
+      assert.strictEqual(errors['ambient_awareness.verbosity'], undefined);
     });
 
     // ── writeConfig() tests ───────────────────────────────────────────────

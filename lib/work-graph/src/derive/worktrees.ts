@@ -13,7 +13,9 @@ export interface ResolveDeps {
   exec?: GitExec;
 }
 
-const defaultExec: GitExec = (file, args, opts) =>
+// Exported (within-library only — not in the facade barrel) so delete-project.ts
+// can resolve the same default executor `resolveWorktrees` uses.
+export const defaultExec: GitExec = (file, args, opts) =>
   execFileSync(file, args, { cwd: opts.cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }) as unknown as string;
 
 function listWorktrees(exec: GitExec, cwd: string): Map<string, string | null> {
@@ -27,6 +29,25 @@ function listWorktrees(exec: GitExec, cwd: string): Map<string, string | null> {
     else if (line.trim() === '') cur = null;
   }
   return out;
+}
+
+/**
+ * The workspace folder a project's worktrees live under: the shared
+ * `worktree_name` from state when set, otherwise the project's own name.
+ */
+export function resolveWorktreeName(
+  projectName: string,
+  deps: Pick<ResolveDeps, 'projectsDir'>,
+): string {
+  const statePath = path.join(deps.projectsDir, projectName, 'state.json');
+  if (!fs.existsSync(statePath)) return projectName;
+  try {
+    const sc = JSON.parse(fs.readFileSync(statePath, 'utf8'))?.pipeline?.source_control;
+    const shared = typeof sc?.worktree_name === 'string' && sc.worktree_name !== '' ? sc.worktree_name : null;
+    return shared ?? projectName;
+  } catch {
+    return projectName;
+  }
 }
 
 export function resolveWorktrees(projectName: string, deps: ResolveDeps): WorktreeRef[] {
@@ -59,11 +80,10 @@ export function resolveWorktrees(projectName: string, deps: ResolveDeps): Worktr
   // FR-3: worktree reuse is derived from a shared `worktree_name` read from
   // state.pipeline.source_control, never stored. It defaults to the project name;
   // a child running inside a parent's worktree carries the parent's name here.
-  const sharedName = typeof sc.worktree_name === 'string' && sc.worktree_name !== '' ? sc.worktree_name : null;
-  const worktreeName = sharedName ?? projectName;
-  // Genuine reuse: the shared name came from source_control and differs from the folder name.
+  const worktreeName = resolveWorktreeName(projectName, deps);
+  // Genuine reuse: the resolved name came from source_control and differs from the folder name.
   const repoResolvedVia: WorktreeRef['resolvedVia'] =
-    sharedName !== null && sharedName !== projectName ? 'shared-worktree-name' : 'convention';
+    worktreeName !== projectName ? 'shared-worktree-name' : 'convention';
   // A repo bound in place has no managed worktree: it resolves to the operator's
   // registered clone. With no registry entry the convention path stands in — this
   // derivation is a read on a hot path and must not become a failure point.

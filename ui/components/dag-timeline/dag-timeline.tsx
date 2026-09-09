@@ -7,6 +7,7 @@ import { DAGLoopNode } from './dag-loop-node';
 import { DAGFinalReviewPanel } from './dag-final-review-panel';
 import { isLoopNode, groupNodesBySection, NODE_SECTION_MAP, RETIRED_PLANNING_NODE_IDS, shouldRenderTimelineRow, buildIterationItemValue } from './dag-timeline-helpers';
 import type { CompatibleNodeState } from './dag-timeline-helpers';
+import type { PrLink } from './source-control-helpers';
 import { DAGSectionGroup } from './dag-section-group';
 
 interface DAGTimelineProps {
@@ -22,9 +23,10 @@ interface DAGTimelineProps {
   projectName: string;
   /** Top-level phase_loop.status for FR-2 Execute Plan visibility (AD-2). */
   phaseLoopStatus?: NodeStatus;
-  /** PR URL from state.pipeline.source_control.pr_url; surfaced on the
-   *  `final_pr` row only (Completion section). */
-  prUrl?: string | null;
+  /** Every repo carrying a live pull request, derived from
+   *  state.pipeline.source_control.repos; surfaced on the `final_pr` row
+   *  only (Completion section). */
+  prLinks?: PrLink[];
   /** Optional render slot injected above the Execution section group. Used
    *  to position the Source Control panel in the correct on-screen order —
    *  Planning now lives in its own card above DAGTimeline, so this slot
@@ -110,7 +112,7 @@ function derivePrefixAccordionKeys(compoundKey: string): string[] {
   return result.reverse();
 }
 
-export function DAGTimeline({ nodes, currentNodePath, onDocClick, expandedLoopIds, onAccordionChange, compareUrlByRepo, projectName, phaseLoopStatus, prUrl, afterPlanningSlot, state }: DAGTimelineProps) {
+export function DAGTimeline({ nodes, currentNodePath, onDocClick, expandedLoopIds, onAccordionChange, compareUrlByRepo, projectName, phaseLoopStatus, prLinks, afterPlanningSlot, state }: DAGTimelineProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const groups = groupNodesBySection(nodes);
   const unmatchedEntries = Object.entries(nodes).filter(
@@ -265,7 +267,7 @@ export function DAGTimeline({ nodes, currentNodePath, onDocClick, expandedLoopId
           isFocused={focusedRowKey === nodeId}
           onFocusChange={handleFocusChange}
           phaseLoopStatus={phaseLoopStatus}
-          prUrl={prUrl}
+          prLinks={prLinks}
         />
       )}
     </div>

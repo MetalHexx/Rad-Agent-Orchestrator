@@ -12,4 +12,4 @@ signal_payload:
     description: Brief operator-supplied reason. Drives the corrective cycle's framing.
 ---
 
-This event fires when the human rejects either a task gate or a phase gate. Signal `gate_rejected --gate-type <task|phase> --reason "<reason>"` only when the operator explicitly declined. Capture the operator's reason verbatim so the corrective handoff downstream can frame the cycle around the operator's concern; the `gate-type` field tells the orchestrator whether to route into a task-scope or phase-scope corrective cycle.
+Fires only on an explicit operator decline of a task gate or a phase gate. Capture the operator's reason verbatim so the corrective handoff downstream can frame the cycle around their concern; the `gate-type` field tells the orchestrator whether to route into a task-scope or phase-scope corrective cycle.

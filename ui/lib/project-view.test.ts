@@ -23,6 +23,7 @@ function inputFor(overrides: Partial<ProjectViewInput> = {}): ProjectViewInput {
     selectedName: 'beta',
     tier: 'execution',
     schemaVersion: 'v5',
+    projectType: undefined,
     hasMalformedState: false,
     ownedState: null,
     ownedError: null,
@@ -114,6 +115,15 @@ test('a malformed summary is overridden by a successful, settled, owned retry', 
     stateSettledFor: 'beta',
   }));
   assert.equal(view, 'plan');
+});
+
+test('a portfolio root with an owned, settled state resolves to launch, never plan', () => {
+  const view = selectProjectView(inputFor({
+    projectType: 'portfolio',
+    ownedState: { owner: 'beta', state: stateFor('beta') },
+    stateSettledFor: 'beta',
+  }));
+  assert.equal(view, 'launch');
 });
 
 test('an unsettled selected project resolves to loading rather than guessing at launch', () => {

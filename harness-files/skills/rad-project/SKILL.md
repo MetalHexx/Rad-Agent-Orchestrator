@@ -16,7 +16,8 @@ The work-graph is a live map of the projects in the system — what exists, what
 - **Organize when it's messy.** Offer to group related work and capture how projects relate.
 - **Keep the structure honest.** Use real group names and descriptions, accurate links — no junk.
 - **Report crisply.** Answer "what's going on" without dumping raw data.
-- **Know the boundary.** Surface and organize; don't create projects, run the pipeline, or manage worktree lifecycle.
+- **Delete deliberately.** Stop the dashboard first via `/rad-ui-stop` — its file watchers hold open handles on the very project folders you're about to remove, and no command-line delete can make another process release a handle it's already holding. Run `project delete --id <project-id> --preview`, show the user what will be removed and what is protected, and delete only on approval. Then start the dashboard again via `/rad-ui-start` — always, whether or not the delete fully succeeded — so a failed delete never leaves the user with the dashboard down.
+- **Know the boundary.** Surface, organize, and delete projects on request; don't create projects, run the pipeline, or manage worktree lifecycle.
 
 # No-args behavior
 

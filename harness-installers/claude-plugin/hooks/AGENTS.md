@@ -1,42 +1,119 @@
-# hooks/
+# `harness-installers/claude-plugin/hooks/`
 
-## Purpose
+The hook sources for the Claude plugin, and `hooks.json` — the file that decides which of them ever
+fire. Registration is owned here; the shims themselves mostly are not.
 
-Two hooks that ship inside the Claude plugin payload and manage install lifecycle and drift detection. They are the bridge between Claude's hook system and the install state machine in `lib/install/`.
+> **This folder is published.** `emitHookBundle` copies `hooks.json`, `drift-check.mjs`, and **this
+> `AGENTS.md`** verbatim into `output/hooks/`, and `hooks/` is in the tarball's `files` list, so
+> everything here lands on a stranger's machine. No OS usernames, no org handles, no internal
+> hostnames, no ticket keys. Same rule the root `AGENTS.md` states for `docs/`.
 
 ## How it works
 
-**`bootstrap.mjs` — `UserPromptSubmit` hook**
+`hooks.json` is the whole registration surface for this variant:
 
-Runs once on the user's first prompt after plugin installation. Calls `runInstall({ pluginRoot, radHome })` from `lib/install/run-install.js`. On success, calls `selfUninstall(pluginRoot)`: reads `hooks/hooks.json`, deletes the `UserPromptSubmit` entry, and atomically renames a `.tmp` file into place so the hook never fires again. On failure, leaves `hooks.json` intact so the user can retry. Reads `CLAUDE_PLUGIN_ROOT` from the environment; `RAD_HOME` is optional (tests override it; production falls back to `~/.radorc`).
+| Event | Dispatches to | Authored |
+|---|---|---|
+| `UserPromptSubmit` | `bootstrap.mjs` | here |
+| `SessionStart` | `drift-check.mjs`, then `session-preamble.mjs` | here · [`shared/hooks/`](../../shared/hooks/AGENTS.md) |
+| `PostToolUse`, `Stop`, `SessionEnd` | `telemetry-capture.mjs` | [`shared/hooks/`](../../shared/hooks/AGENTS.md) |
 
-`selfUninstall` refuses to mutate `hooks.json` unless `pluginRoot` is under `~/.claude/plugins/cache/` — the directory Claude Code owns and re-copies on `/plugin update`. This protects `"source": "directory"` dogfood marketplaces from accidental clobber if `bootstrap.mjs` ever runs with `CLAUDE_PLUGIN_ROOT` pointed at the marketplace tree (manual `node bootstrap.mjs`, stray test fixture, prior dogfood session quirk). Tests that intentionally run against `os.tmpdir()` fixtures override the guard via `RAD_BOOTSTRAP_SELFUNINSTALL_ALLOW_NONCACHE=1`.
+`session-preamble.mjs` and `telemetry-capture.mjs` are **single-sourced** in `shared/hooks/` and
+staged into `output/hooks/` by the build. They are not in this folder and must never be copied into
+it — fix them at the source.
 
-**`drift-check.mjs` — `SessionStart` hook**
+Every command string is an inline `node -e` shim that reads `process.env.CLAUDE_PLUGIN_ROOT`,
+normalizes a leading `/<drive>/…` form to `<DRIVE>:/…`, writes it back to the environment, and
+dynamic-imports the target through `pathToFileURL`.
 
-Persistent — never self-uninstalls. Reads `${CLAUDE_PLUGIN_ROOT}/package.json` for `pkg.version` (the delivering version) and `${RAD_HOME}/install.json` for the installed version, found at `installed.harnesses['claude-plugin'].version` or the legacy `installed.package_version` field. Writes a single line to stdout when the two differ; Claude injects that line as conversation context. Silent on match or when either version is unavailable.
+`bootstrap.mjs` runs the install and then removes its own registration; `drift-check.mjs` is
+persistent and never self-uninstalls. What `bootstrap.mjs` actually installs is
+[`../lib/install/AGENTS.md`](../lib/install/AGENTS.md).
 
-**`hooks.json`**
+## Conventions
 
-Registers both hooks with Claude's hook system. Each command is an inline `node -e "..."` shim that reads `process.env.CLAUDE_PLUGIN_ROOT`, normalizes a leading `/<drive>/...` form into `<DRIVE>:/...` (Claude Code substitutes `${CLAUDE_PLUGIN_ROOT}` Unix-style on Windows; native Node can't load `/c/foo/bar.mjs`), writes the normalized value back to the env, then dynamic-imports `${pluginRoot}/hooks/bootstrap.mjs` (UserPromptSubmit) or `${pluginRoot}/hooks/drift-check.mjs` (SessionStart) via `pathToFileURL`. The shim contains no backslash literals — every cross-shell escaping level (JSON decode, bash double-quote, `cmd /d /s /c`) tends to collapse them differently, and forward slashes work everywhere Node accepts paths.
+- **`bootstrap.mjs` is bundled; everything else here is copied verbatim.** esbuild inlines
+  `../lib/install/*` into a single self-contained `output/hooks/bootstrap.mjs`, so new imports need
+  no build-script change. `drift-check.mjs` gets no such treatment — **Node built-ins only**, or it
+  ships broken.
+- **No backslash literals in the inline shim.** Every escaping layer between `hooks.json` and the
+  spawned process (JSON decode, shell quoting, `cmd /d /s /c`) collapses them differently. Forward
+  slashes work everywhere Node accepts a path. `tests/hooks-shim.test.mjs` pins the shape and runs
+  the live command string through both `bash -c` and the OS-default shell.
+- **`bootstrap.mjs` and `drift-check.mjs` take their roots from the environment**, never from a
+  working-directory-relative path.
+- **Registration is per-variant.** `copilot-cli-plugin/` is the one that differs in mechanism — its
+  event names are camelCase and its commands dispatch through `hooks/launcher.cjs`.
+  `copilot-vscode-plugin/` uses PascalCase names too and reads the same `CLAUDE_PLUGIN_ROOT`, but
+  registers only `UserPromptSubmit` and `SessionStart` — no telemetry events — wraps each entry
+  differently, never writes the normalized root back to the environment, and carries its own
+  not-injected diagnostic. Copying an entry between any two of them still does not work.
 
-`tests/hooks-shim.test.mjs` is the regression guard. It pins the shim shape (no backslash literals, both targets correct) and spawns the live command string through both `bash -c` and the OS-default shell against a fixture plugin root — catches shell-quoting regressions without requiring a plugin reinstall.
+## Hazards
 
-## Build treatment
+### `selfUninstall` deletes exactly one key, matched exactly
 
-- `bootstrap.mjs` is bundled by `emitHookBundle`: esbuild inlines `lib/install/*` dependencies, producing a single self-contained file. It is never shipped as separate source modules.
-- `drift-check.mjs`, `hooks.json`, and this `AGENTS.md` are copied verbatim by `emitHookBundle`.
+On success `bootstrap.mjs` reads `hooks/hooks.json`, deletes `hooks.UserPromptSubmit`, and renames a
+tmp file into place. The delete is a literal property lookup: rename or re-case the event on either
+side and it silently no-ops, the entry survives, and the bootstrap re-runs a full install on **every
+prompt of every session**. Nothing errors — the install is idempotent, so the symptom is latency, not
+a failure.
 
-## Coding conventions
+It also refuses to touch `hooks.json` at all unless the plugin root is under the harness's own plugin
+cache directory, so a dogfood marketplace tree staged elsewhere is never clobbered.
 
-- `bootstrap.mjs` uses a top-level `async main()` with `process.exit(await main())` so the hook exits with the correct code.
-- The atomic rename for `selfUninstall` follows the same write-then-rename pattern used throughout `lib/install/`: write to a `.tmp-<pid>-<timestamp>` file, then `fs.renameSync`.
-- `drift-check.mjs` is synchronous and has no external dependencies — it must stay that way so it ships verbatim without bundling.
-- Both hooks read env vars (`CLAUDE_PLUGIN_ROOT`, `RAD_HOME`) only; they never read from relative paths that would vary by working directory.
+### The telemetry entries are Claude-only, and `PostToolUse` carries no matcher
 
-## Rules for making updates
+This is the only variant whose `hooks.json` registers `telemetry-capture.mjs`. The shim is staged
+into every plugin payload; neither Copilot variant wires it to an event. Do not write parity
+language anywhere on the strength of the shim shipping.
 
-- If `bootstrap.mjs` gains new `lib/install/` imports, the build step `emit-hook-bundle` in `build-scripts/build.js` handles them automatically via esbuild bundling — no build-script change needed.
-- Changes to `hooks.json` hook names or event types must match Claude's hook system contract; test with `tests/bootstrap.test.mjs` and `tests/drift-check.test.mjs`. Changes to the inline shim itself must keep `tests/hooks-shim.test.mjs` green — that suite runs the live command string through `bash -c` and the OS-default shell, which is what catches shell-quoting regressions before they ship.
-- `drift-check.mjs` must remain dependency-free (Node built-ins only) so it can ship verbatim.
-- Do not add synchronous file operations in `bootstrap.mjs` outside of `selfUninstall`; the install itself is async via `runInstall`.
+The `PostToolUse` entry deliberately has **no `matcher`** — it fires on every tool. Any doc or
+comment claiming `matcher: "Agent"` is stale.
+
+### A shim failure is invisible by design
+
+`session-preamble.mjs` degrades to a one-line "ambient awareness did not load" notice and exits 0;
+`telemetry-capture.mjs` swallows everything and forces exit 0. A wrong path, a renamed subcommand, or
+an unregistered event produces no build error, no test failure, and nothing a user would report.
+
+## When a change here ripples
+
+- **Changed `hooks.json` — an event, a dispatch target, or the shim string?** `output/hooks/hooks.json`
+  is a verbatim copy, so the change only reaches anything after a rebuild, and
+  `tests/hooks-output-parity.test.mjs` fails until source and emitted output agree. Detail:
+  [`../AGENTS.md`](../AGENTS.md)
+
+- **Changed what a shared shim expects from its environment, or which subcommand it calls?**
+  `session-preamble.mjs` and `telemetry-capture.mjs` belong to `shared/hooks/`, are wired by this
+  variant's `hooks.json` and by the standard installer's `settings.json` merge, and fail
+  silently on a user's machine. Change the shim in `shared/hooks/`, then confirm this variant's
+  `hooks.json` and that merge still name the same command. Detail:
+  [`../../shared/hooks/AGENTS.md`](../../shared/hooks/AGENTS.md),
+  [`cli/AGENTS.md`](../../../cli/AGENTS.md)
+
+- **Added a per-plugin file to this folder?** `emitHookBundle` copies a hardcoded list —
+  `drift-check.mjs`, `hooks.json`, `launcher.cjs`, `AGENTS.md` — and silently skips anything else. A
+  new file here never reaches `output/`. Detail:
+  [`../../shared/build-helpers/AGENTS.md`](../../shared/build-helpers/AGENTS.md)
+
+## Commands
+
+```
+node --test harness-installers/claude-plugin/tests/hooks-shim.test.mjs
+node --test harness-installers/claude-plugin/tests/hooks-output-parity.test.mjs
+npm test -w harness-installers/claude-plugin
+```
+
+**Never run `bootstrap.mjs` directly against your own home directory.** It writes into `~/.radorc/`,
+stops a running dashboard, and rewrites a `hooks.json`. Use the suites, which inject a temp home, or
+the `/rad-dogfood-plugin` skill.
+
+## Further reading
+
+- [`../../shared/hooks/AGENTS.md`](../../shared/hooks/AGENTS.md) — the shims this variant
+  registers but does not own
+- [`../lib/install/AGENTS.md`](../lib/install/AGENTS.md) — what `bootstrap.mjs` runs
+- [`docs/internals/ambient-awareness.md`](../../../docs/internals/ambient-awareness.md) — what the
+  `SessionStart` preamble carries
+- [`../AGENTS.md`](../AGENTS.md) — this variant's deltas

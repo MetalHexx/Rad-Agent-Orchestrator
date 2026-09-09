@@ -91,7 +91,8 @@ export function unsaveSession(root: string, sessionId: string): void {
   writeIndex(root, index);
 }
 
-function sessionUsageDates(root: string, sessionId: string): string[] {
+/** The usage partition dates a session has rows on. Exported for reuse inside the library. */
+export function sessionUsageDates(root: string, sessionId: string): string[] {
   let files: string[]; try { files = fs.readdirSync(path.join(root, 'usage')); } catch { return []; }
   const dates = new Set<string>();
   for (const f of files) {

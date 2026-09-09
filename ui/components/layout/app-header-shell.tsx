@@ -17,6 +17,7 @@ const NAV_LINKS: NavLink[] = [
   { label: "Instruction Editor", href: "/action-events" },
   { label: "Observability", href: "/observability" },
   { label: "Brainstorm POC", href: "/brainstorm-poc" },
+  { label: "Work Graph POC", href: "/work-graph-poc" },
 ];
 
 // ─── Props ───────────────────────────────────────────────────────────────────

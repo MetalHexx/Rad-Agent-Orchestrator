@@ -19,7 +19,10 @@ describe('pipeline signal end-to-end via the built bundle', () => {
     ], { cwd: repoRoot, env: { ...process.env, RADORCH_NO_LOG: '1', RADORCH_TEMPLATES_DIR: TEMPLATES_DIR, RADORCH_ACTION_EVENTS_DIR: ACTION_EVENTS_DIR } });
     const env = JSON.parse(stdout);
     expect(env.ok).toBe(true);
-    // Per FR-7, success envelopes carry top-level prompt and completion_event.
-    expect(Object.keys(env.data).sort()).toEqual(['action', 'completion_event', 'context', 'has_custom_instructions', 'prompt']);
+    // Success envelopes carry prompt, completion_event and completion_commands
+    // at the top level of data.
+    expect(Object.keys(env.data).sort()).toEqual(
+      ['action', 'completion_commands', 'completion_event', 'context', 'has_custom_instructions', 'prompt'],
+    );
   }, 60_000);
 });

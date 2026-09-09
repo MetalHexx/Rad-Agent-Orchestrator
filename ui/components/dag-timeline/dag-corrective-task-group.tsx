@@ -5,6 +5,7 @@ import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from '@/
 import { NodeStatusBadge } from './node-status-badge';
 import { DocumentLink } from '@/components/documents';
 import { RetryBadge } from '@/components/badges';
+import { OperatorBadge } from '@/components/badges';
 import { deriveIterationBadgeLabel, buildCorrectiveItemValue, resolveStageBadge, resolveTaskCardClasses } from './dag-timeline-helpers';
 import { CommitChips } from './commit-chips';
 import { deriveRetryBudget } from '@/lib/max-retries-resolver';
@@ -129,7 +130,8 @@ function CorrectiveRow({
   // resolver — null for a spent-window entry (predates budgetOrigin).
   const retryBudget = deriveRetryBudget(entry, state, budgetOrigin);
   // FR-15: commit rendering is now solely CommitChips; hasAnyTrailing includes repos presence.
-  const hasAnyTrailing = hasHandoff || hasReport || retryBudget !== null || (entry.repos != null && entry.repos.length > 0);
+  const hasAnyTrailing = hasHandoff || hasReport || retryBudget !== null ||
+    (entry.repos != null && entry.repos.length > 0) || entry.origin === 'operator';
   // FR-9 / FR-10 / DD-8 — chevron is gated on entry.corrective_tasks.length > 0.
   const hasNested = nestedCorrectives.length > 0;
   const isCorrected = entry.status === 'completed' &&
@@ -177,6 +179,7 @@ function CorrectiveRow({
           Corrected
         </span>
       )}
+      {entry.origin === 'operator' && <OperatorBadge />}
       {retryBudget !== null && (
         <RetryBadge attempt={retryBudget.attempt} max={retryBudget.max} />
       )}

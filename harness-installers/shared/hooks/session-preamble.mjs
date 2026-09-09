@@ -19,6 +19,7 @@
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import fs from 'node:fs';
 
 const NOTICE_PREFIX = 'rad-orchestration ambient awareness did not load';
 
@@ -38,10 +39,48 @@ export function resolveRadorch() {
   return path.join(harnessRoot, 'skills', 'rad-orchestration', 'scripts', 'radorch.mjs');
 }
 
+/** Coerces a possibly-absent, possibly-wrong-typed field to a string, defaulting to ''. */
+function asIdentityString(v) {
+  return typeof v === 'string' ? v : '';
+}
+
+/**
+ * Pure, injectable parser for the session-start hook payload delivered on stdin.
+ * Never throws. Unparseable / absent stdin, a non-object top-level value (e.g. a
+ * bare `null` or number), and non-string identity fields all degrade to empty
+ * strings rather than throwing or leaking a non-string into the downstream
+ * `spawnSync` argv.
+ *
+ * @param {string} stdin
+ * @param {NodeJS.ProcessEnv} [env]
+ * @returns {{ sessionId: string, cwd: string, harness: 'claude' | 'copilot' }}
+ */
+export function parseSessionIdentity(stdin, env = process.env) {
+  let p;
+  try { p = JSON.parse(stdin || '{}'); } catch { p = {}; }
+  if (typeof p !== 'object' || p === null) p = {};
+  const sessionId = asIdentityString(p.session_id) || asIdentityString(p.sessionId);
+  const cwd = asIdentityString(p.cwd);
+  let harness = 'claude';
+  if (env.COPILOT_CLI === '1') harness = 'copilot';
+  else if (env.COPILOT_PLUGIN_ROOT && !env.CLAUDE_PLUGIN_ROOT) harness = 'copilot';
+  return { sessionId, cwd, harness };
+}
+
 function defaultRun() {
   try {
     const radorch = resolveRadorch();
-    return spawnSync(process.execPath, [radorch, 'session-context'], { encoding: 'utf8' });
+    let stdin = '';
+    if (!process.stdin.isTTY) {
+      try { stdin = fs.readFileSync(0, 'utf8'); } catch { stdin = ''; }
+    }
+    const { sessionId, cwd, harness } = parseSessionIdentity(stdin);
+    const args = ['session-context'];
+    const push = (flag, val) => { if (val) args.push(flag, val); };
+    push('--session', sessionId);
+    push('--cwd', cwd);
+    push('--harness', harness);
+    return spawnSync(process.execPath, [radorch, ...args], { encoding: 'utf8' });
   } catch (err) {
     return { status: 1, stdout: '' };
   }

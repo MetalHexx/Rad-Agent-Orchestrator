@@ -2,7 +2,10 @@
 // Covers plan_rejected, gate_rejected, and final_rejected events (FR-3, FR-9, DD-2).
 // All three route through pipelineSignalCommand as out-of-band events (AD-4, AD-11).
 // NFR-5: if the state schema changes, update the seeded states below accordingly.
-import { describe, it, beforeEach, afterEach } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
+import { describe, it, beforeEach, afterEach, expect } from 'vitest';
+import { deriveProjectState } from '@rad-orchestration/work-graph';
 import { buildWorld } from '../helpers/world.js';
 import { captureEnvelope } from '../helpers/capture.js';
 import { assertEnvelopeStateSideFiles } from '../helpers/assert.js';
@@ -189,7 +192,7 @@ describe('gate_rejected event (FR-3, FR-9, DD-2)', () => {
 });
 
 describe('final_rejected event (FR-3, FR-9, DD-2)', () => {
-  it('final_rejected resets final_review and final_approval_gate and preserves pipeline.halt_reason = null', async () => {
+  it('final_rejected halts the pipeline on the operator reason, marks the final review node halted, and re-spawns nothing', async () => {
     const w = buildWorld({
       template: { id: 'syn-exec', body: EXECUTION_TEMPLATE_BODY },
       state: atFinalApprovalGateState,
@@ -199,21 +202,39 @@ describe('final_rejected event (FR-3, FR-9, DD-2)', () => {
     cleanups.push(w.cleanup);
     const env = await captureEnvelope(async () => {
       await runCommand(pipelineSignalCommand, {
-        argv: ['--event', 'final_rejected', '--project-dir', w.projectDir, '--config', w.configPath],
+        argv: [
+          '--event', 'final_rejected',
+          '--reason', 'Scope drifted from what I asked for',
+          '--project-dir', w.projectDir,
+          '--config', w.configPath,
+        ],
         env: { ...process.env, RADORCH_NO_LOG: '1', RADORCH_TEMPLATES_DIR: w.projectDir },
         isTTY: false, stderr: process.stderr,
       });
     });
     assertEnvelopeStateSideFiles(env, {
       projectDir: w.projectDir,
-      envelope: { ok: true },
+      envelope: { ok: true, data: { action: 'display_halted' } },
       state: {
-        graph: { template_id: 'syn-exec' },
-        pipeline: { halt_reason: null },
+        graph: {
+          template_id: 'syn-exec',
+          status: 'halted',
+          nodes: { final_review: { status: 'halted' } },
+        },
+        pipeline: {
+          current_tier: 'halted',
+          halt_reason: 'Final review rejected by the operator: Scope drifted from what I asked for',
+        },
       },
       sideFiles: [],
     });
-    // FR-4, FR-23 — remediation action's completion event resolved from catalog.
+    // FR-4, FR-5, FR-23 — display_halted is terminal, so the envelope carries
+    // no completion event and no command.
     assertPromptForEnvelopeAction(env);
+
+    // The halt is visible to every surface that asks "what state is this
+    // project in?" through the single derivation, not just to the engine.
+    const onDisk = JSON.parse(fs.readFileSync(path.join(w.projectDir, 'state.json'), 'utf8'));
+    expect(deriveProjectState(onDisk).state).toBe('halted');
   });
 });

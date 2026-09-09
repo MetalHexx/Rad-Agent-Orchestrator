@@ -63,6 +63,22 @@ function makeFixture() {
   fs.writeFileSync(path.join(aeDir, 'action.spawn_coder.md'), '# spawn_coder\n');
   fs.writeFileSync(path.join(aeDir, 'event.task_completed.md'), '# task_completed\n');
 
+  // runtime-config/communication-styles/ — shipped style files + empty custom/ slot.
+  const csDir = path.join(rcDir, 'communication-styles');
+  fs.mkdirSync(path.join(csDir, 'custom'), { recursive: true });
+  for (const style of ['direct.md', 'caveman.md', 'high-level.md', 'socratic.md']) {
+    fs.writeFileSync(path.join(csDir, style), `# ${style}\n`);
+  }
+
+  // Documentation corpus — README.md, docs/, assets/ at the fixture root
+  // (repoRoot == root for the copy-docs-corpus build step). Minimal: enough
+  // for the step to succeed.
+  fs.writeFileSync(path.join(root, 'README.md'), '# fixture repo\n');
+  fs.mkdirSync(path.join(root, 'docs'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'docs/getting-started.md'), '# getting started\n');
+  fs.mkdirSync(path.join(root, 'assets'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'assets/diagram.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+
   // cli/ source — synthetic. esbuild needs a real entry to bundle, but the
   // unit test skips emitCliBundle by virtue of the helper being called and
   // tolerating a trivial entry. We don't skip it: we provide a real entry.
@@ -96,7 +112,7 @@ function makeFixture() {
     path.join(installerSrc, 'package.json'),
     JSON.stringify({
       name: '@rad-orchestration/standard-source',
-      version: '1.0.0-alpha.13',
+      version: '1.0.0-alpha.14',
       private: true,
       type: 'module',
       description: 'Standard installer source wrapper.',
@@ -167,7 +183,7 @@ test('runBuild produces output/<harness>/ per harness and shared output/ui/', as
       assert.ok(!fs.existsSync(path.join(hOut, 'skills/rad-orchestration/scripts/stray.ts')),
         `${h}: stray.ts pruned`);
       // Per-harness manifest copy-forward (FR-25, AD-4).
-      assert.ok(fs.existsSync(path.join(hOut, 'manifests/v1.0.0-alpha.13.json')),
+      assert.ok(fs.existsSync(path.join(hOut, 'manifests/v1.0.0-alpha.14.json')),
         `${h}: per-harness manifest copied forward`);
     }
 

@@ -6,8 +6,9 @@ import { userDataPaths } from './user-data-paths.js';
  *  with ~/.radorc/projects/ always skipped.
  *
  *  FR-20 defensive guard: refuses any manifest entry that targets a path under
- *  ${RAD_HOME}/action-events/custom/. The shipped manifest must never list one;
- *  if one ever appears, abort before touching disk. */
+ *  a protected catalog's ${RAD_HOME}/<catalog>/custom/ slot (action-events,
+ *  communication-styles). The shipped manifest must never list one; if one
+ *  ever appears, abort before touching disk. */
 export function removeManifestFiles(manifest, opts = {}) {
   const paths = userDataPaths(opts);
   // Resolve both anchors once so containment checks survive mixed separators
@@ -22,13 +23,16 @@ export function removeManifestFiles(manifest, opts = {}) {
   };
 
   // FR-20 defensive guard.
-  const customSegment = `${path.sep}action-events${path.sep}custom${path.sep}`;
+  const PROTECTED_CUSTOM_SEGMENTS = ['action-events', 'communication-styles']
+    .map((cat) => `${path.sep}${cat}${path.sep}custom${path.sep}`);
   for (const entry of manifest.files ?? []) {
     const dest = path.resolve(entry.destinationPath.replaceAll('${RAD_HOME}', paths.root));
-    if (dest.includes(customSegment)) {
+    const guardedSegment = PROTECTED_CUSTOM_SEGMENTS.find((segment) => dest.includes(segment));
+    if (guardedSegment) {
+      const catalog = guardedSegment.split(path.sep).filter(Boolean)[0];
       throw new Error(
-        `uninstall safety: manifest entry '${entry.sourcePath ?? entry.destinationPath}' targets an ` +
-        `action-events/custom/ payload. Refusing to proceed.`,
+        `uninstall safety: manifest entry '${entry.sourcePath ?? entry.destinationPath}' targets a ` +
+        `${catalog}/custom/ payload. Refusing to proceed.`,
       );
     }
   }

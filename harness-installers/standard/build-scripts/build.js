@@ -69,6 +69,7 @@ export async function runBuild(opts) {
   const { emitCliBundle } = await import('../../shared/build-helpers/emit-cli-bundle.js');
   const { emitUiBundle } = await import('../../shared/build-helpers/emit-ui-bundle.js');
   const { expandTokens } = await import('../../shared/build-helpers/expand-tokens.js');
+  const { stageDocsCorpus } = await import('../../shared/build-helpers/docs-corpus.js');
 
   // Step 0 — adapter engine, once per harness. Skipped in unit tests.
   if (!opts.skipAdapterEngine) {
@@ -123,6 +124,31 @@ export async function runBuild(opts) {
     }
   });
 
+  // Per-harness communication-styles staging. Ships the four canonical style
+  // files; the `custom/` directory ships as an empty folder — any
+  // user-authored content inside it is excluded, mirroring copy-action-events.
+  await step('copy-communication-styles', () => {
+    const csSrc = path.join(greenfield, 'runtime-config/communication-styles');
+    const customSep = `${path.sep}custom${path.sep}`;
+    const filter = (src) => {
+      if (!src.includes(customSep)) return true;
+      return src.endsWith(`${path.sep}custom`);
+    };
+    for (const h of HARNESSES) {
+      fs.cpSync(csSrc, path.join(out, h, 'communication-styles'), { recursive: true, filter });
+    }
+  });
+
+  // Per-harness documentation corpus staging: README.md, docs/, and assets/
+  // from the repo root, mirroring the repo's own root-to-docs/ relationship
+  // so shipped cross-links resolve unchanged. `repoRoot: root` — README.md,
+  // docs/, and assets/ are repo-root artifacts, same as cli/ and ui/.
+  await step('copy-docs-corpus', () => {
+    for (const h of HARNESSES) {
+      stageDocsCorpus({ repoRoot: root, target: path.join(out, h, 'docs') });
+    }
+  });
+
   // Build the library dist before any step that bundles the CLI or the UI:
   // the UI's `next build` resolves the by-name import through the workspace
   // symlink against dist, and the by-name CLI bundle depends on dist too (AD-5).
@@ -132,6 +158,7 @@ export async function runBuild(opts) {
         '@rad-orchestration/repo-registry',
         '@rad-orchestration/work-graph',
         '@rad-orchestration/telemetry',
+        '@rad-orchestration/terminal-launch',
       ]) {
         execSync(`npm run build -w ${pkg}`, { cwd: root, stdio: 'inherit', shell: process.platform === 'win32' });
       }

@@ -7,7 +7,7 @@ This skill defines a **document-driven agent orchestration system** built on the
 - **Brainstorm an idea**: Use `rad-brainstorm` skill to collaboratively explore and refine a project idea and scribe the Requirements doc (via `rad-create-plans`) before starting the pipeline.
 - **Start project planning**: Use the `rad-plan` skill once a Requirements doc exists. It consumes the approved requirements and builds the Master Plan + audit.
 - **Execute a project plan**: Use the `rad-execute` skill to run the execution pipeline for a project when a plan is ready for execution.
-- **Continue a project**: You can pick up from where a project left off by signaling the `radorch.mjs` script and signal the `start` event.  See the `references/pipeline-guide.md`.
+- **Continue a project**: Use the `rad-execute` skill to pick up a project already underway, including after a compaction or restart.
 
 >Note:  You should urge a user to go through brainstorming before planning if their idea is still vague.  The brainstorming process is designed to help them clarify their idea and give the main agent more to work with when it comes time to author the formal plans.
 

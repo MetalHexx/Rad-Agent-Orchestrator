@@ -39,6 +39,66 @@
           "description": "Project kind enum. Absent means standard (a project predating the field). standard = ordinary registered-repo project; side-project = local-only side-project.",
           "type": "string",
           "enum": ["standard", "side-project"]
+        },
+        "amendments": {
+          "title": "Applied Amendments",
+          "description": "Ordered record of every amendment applied to this project. Absent on a project that has never been amended.",
+          "type": "array",
+          "items": {
+            "title": "Amendment Record",
+            "description": "One applied amendment: its index, the document that authored it, when it landed, and what it added.",
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["index", "doc_path", "applied"],
+            "properties": {
+              "index": {
+                "title": "Amendment Index",
+                "description": "1-based index of the amendment, matching its document's amendment: frontmatter key.",
+                "type": "integer",
+                "minimum": 1
+              },
+              "doc_path": {
+                "title": "Amendment Doc Path",
+                "description": "Project-relative path to the amendment document.",
+                "type": "string"
+              },
+              "applied": {
+                "title": "Applied Timestamp",
+                "description": "ISO 8601 timestamp of the apply transaction that landed this amendment.",
+                "type": "string"
+              },
+              "adds_phases": {
+                "title": "Phases Added",
+                "description": "Merged phase ids this amendment introduced, e.g. [\"P04\"].",
+                "type": "array",
+                "items": { "type": "string" }
+              },
+              "adds_tasks": {
+                "title": "Tasks Added",
+                "description": "Merged task ids this amendment introduced, e.g. [\"P02-T05\"].",
+                "type": "array",
+                "items": { "type": "string" }
+              },
+              "revises_tasks": {
+                "title": "Tasks Revised",
+                "description": "Task ids this amendment restated in place, at the merged ids the plan now numbers them, e.g. [\"P02-T05\"].",
+                "type": "array",
+                "items": { "type": "string" }
+              },
+              "drops_tasks": {
+                "title": "Tasks Dropped",
+                "description": "Task ids this amendment removed, in the numbering the plan held before this merge, e.g. [\"P02-T05\"].",
+                "type": "array",
+                "items": { "type": "string" }
+              },
+              "drops_phases": {
+                "title": "Phases Dropped",
+                "description": "Phase ids this amendment removed, in the numbering the plan held before this merge, e.g. [\"P04\"].",
+                "type": "array",
+                "items": { "type": "string" }
+              }
+            }
+          }
         }
       }
     },
@@ -214,7 +274,7 @@
         },
         "corrective_budget_origin": {
           "title": "Corrective Budget Window Origin",
-          "description": "Number of corrective entries that precede the current retry-budget window. Absent reads as 0. Advanced when a human rejects at the final approval gate so a fresh round starts at attempt one.",
+          "description": "Number of corrective entries that precede the current retry-budget window. Absent reads as 0. Advanced when a human requests a change at the final approval gate, so the request's own corrective starts at attempt one and the budget measures only the agent work that request triggers.",
           "type": "integer",
           "minimum": 0
         }
@@ -410,6 +470,12 @@
           "description": "Authoring complexity signal for task iterations (simple|standard|complex). Absent on phase iterations.",
           "type": "string",
           "enum": ["simple", "standard", "complex"]
+        },
+        "amendment": {
+          "title": "Introducing Amendment",
+          "description": "1-based index of the amendment that introduced this iteration. Absent on planned work.",
+          "type": "integer",
+          "minimum": 1
         }
       }
     },
@@ -469,6 +535,12 @@
               "commit_hash": { "oneOf": [{ "type": "string" }, { "type": "null" }] }
             }
           }
+        },
+        "origin": {
+          "title": "Corrective Origin",
+          "description": "Set only when this corrective was requested by the operator directly (e.g. at the final-approval gate). Absent means reviewer-driven — the common case.",
+          "type": "string",
+          "enum": ["operator"]
         }
       }
     },

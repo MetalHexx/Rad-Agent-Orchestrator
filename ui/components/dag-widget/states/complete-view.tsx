@@ -35,7 +35,9 @@ export function deriveVerdictTone(verdict: string | null): { label: string; cssV
  * (shared with Final Review) from the top-level `final_review` node, rather
  * than the resolved current node, since `graph.status === 'completed'` wins
  * resolution regardless of the active node. Controls surface the report and
- * — when present — the PR link; no commit chip at this milestone.
+ * one link per repo carrying a pull request (`ctx.prLinks`), labelled with
+ * the repo name once there is more than one; no commit chip at this
+ * milestone.
  */
 export const completeView: StateView = {
   id: 'complete',
@@ -58,9 +60,14 @@ export const completeView: StateView = {
         <ControlsSlot>
           <CardControlsRow>
             <DocButton path={docPath} label="Report" onDocClick={ctx.onDocClick} iconCssVar={TIER_CSS_VAR} />
-            {ctx.prUrl !== null && (
-              <ExternalLinkButton href={ctx.prUrl} label={parsePrLabel(ctx.prUrl)} iconCssVar={TIER_CSS_VAR} />
-            )}
+            {ctx.prLinks.map((link) => (
+              <ExternalLinkButton
+                key={link.repoName}
+                href={link.url}
+                label={ctx.prLinks.length > 1 ? `${link.repoName} ${parsePrLabel(link.url)}` : parsePrLabel(link.url)}
+                iconCssVar={TIER_CSS_VAR}
+              />
+            ))}
           </CardControlsRow>
         </ControlsSlot>
       </>

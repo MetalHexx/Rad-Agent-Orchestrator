@@ -96,14 +96,14 @@ test('idle (no activePulse): active cell carries grey ring, no lavender glow cla
   assert.ok(!html.includes('active-doc-glow-cell'), 'active-doc-glow-cell must not appear');
   // Stage overlay must NOT carry the pulse class when the doc is not being written
   assert.ok(!html.includes('live-pulse-stage'), 'stage overlay has no live-pulse-stage when idle');
-  // Active cell carries the grey ring
+  // Active cell carries the grey ring, and every cell has a consistent border
   assert.ok(html.includes('ring-ring'), 'active cell carries ring-ring grey ring');
-  assert.ok(html.includes('border-ring'), 'active cell carries border-ring grey ring');
+  assert.ok(html.includes('border-border'), 'every cell carries the neutral border-border');
   // Active cell is the selected tab
   assert.ok(html.includes('aria-selected="true"'), 'active cell has aria-selected="true"');
 });
 
-test('writing (activePulse contains active file): stage pulses lavender, lavender frame on cell, grey ring absent (Fix 5)', () => {
+test('writing (activePulse contains active file): stage pulses lavender, lavender frame on cell, grey ring present (Fix 5)', () => {
   const html = render({
     ...base,
     activePath: 'DEMO-WIREFRAME-X.html',
@@ -113,17 +113,66 @@ test('writing (activePulse contains active file): stage pulses lavender, lavende
   assert.ok(html.includes('live-pulse-stage'), 'stage overlay carries live-pulse-stage while writing');
   // The active cell's ActivePulse wrapper is active — renders live-pulse-frame (lavender)
   assert.ok(html.includes('live-pulse-frame'), 'active cell ActivePulse wrapper carries live-pulse-frame');
-  // The grey selection ring (ring-2 ring-ring) must NOT appear on the selected tab cell.
-  // We locate the aria-selected cell's opening tag and confirm it lacks ring-2.
+  // The grey selection ring (ring-2 ring-ring) must appear on the selected tab cell even while pulsing.
+  // We locate the aria-selected cell's opening tag and confirm it carries ring-2.
   // (focus-visible:ring-ring appears on every cell as a focus style — we only care about
-  // the persistent selection ring-2 which is not added when pulsing.)
+  // the persistent selection ring-2 which is now added regardless of pulsing.)
   const currentCellMatch = html.match(/data-filmstrip-cell[^>]*aria-selected="true"[^>]*class="([^"]+)"/);
   assert.ok(currentCellMatch, 'aria-selected cell found in markup');
   const cellClasses = currentCellMatch![1];
-  // The grey selection ring adds "ring-2 ring-ring border-ring" as a group.
+  // The grey selection ring adds "ring-2 ring-ring" as a group.
   // focus-visible:ring-2 and focus-visible:ring-ring are focus styles present on every cell
   // and are not the selection ring — check specifically for the standalone selection pattern.
-  assert.ok(!cellClasses.includes('ring-2 ring-ring'), 'grey selection ring-2 ring-ring is absent on active-pulsing cell (lavender supersedes)');
+  assert.ok(cellClasses.includes('ring-2 ring-ring'), 'grey selection ring-2 ring-ring is present on active-pulsing cell alongside lavender glow');
+});
+
+test('active and pulsing cell carries both selection ring and lavender glow without interference (P02-T02 composition)', () => {
+  const html = render({
+    ...base,
+    activePath: 'DEMO-WIREFRAME-X.html',
+    activePulse: new Set(['DEMO-WIREFRAME-X.html']),
+  });
+  // Find the active-and-pulsing cell
+  const currentCellMatch = html.match(/data-filmstrip-cell[^>]*aria-selected="true"[^>]*class="([^"]+)"/);
+  assert.ok(currentCellMatch, 'aria-selected cell found in markup');
+  const cellClasses = currentCellMatch![1];
+  // Must carry the selection ring
+  assert.ok(cellClasses.includes('ring-2 ring-ring'), 'active-pulsing cell carries selection ring');
+  // Must carry the glow animation via its ActivePulse wrapper
+  assert.ok(html.includes('live-pulse-frame'), 'active-pulsing cell ActivePulse carries live-pulse-frame');
+});
+
+test('every filmstrip cell carries the same neutral border regardless of active/pulsing state (P02-T02 no jitter)', () => {
+  const html = render({
+    ...base,
+    activePath: 'DEMO-WIREFRAME-X.html',
+    activePulse: new Set(['DEMO-BRAINSTORM.html']),
+  });
+  // Count cells with border-border (should be all 3)
+  const cells = (html.match(/data-filmstrip-cell="true"[^>]*class="([^"]+)"/g) ?? []);
+  assert.equal(cells.length, 3, 'three filmstrip cells rendered');
+  const allCarryNeutralBorder = cells.every(c => c.includes('border-border'));
+  assert.ok(allCarryNeutralBorder, 'every cell carries border-border regardless of state');
+  // Verify no cell has border-2 or border-ring (the old switching behavior)
+  const anyBorder2 = cells.some(c => c.includes('border-2'));
+  assert.ok(!anyBorder2, 'no cell carries the old border-2 switching behavior');
+});
+
+test('filmstrip scroll container has enough vertical padding to clear the pulse glow reach (P02-T02 no clipping)', () => {
+  const html = render({ ...base, activePath: 'DEMO-WIREFRAME-X.html' });
+  // Locate the strip container's opening tag and check for vertical padding
+  const stripMatch = html.match(/role="tablist"[^>]*class="([^"]+)"/);
+  assert.ok(stripMatch, 'strip container found');
+  const stripClasses = stripMatch![1];
+  const pyMatch = stripClasses.match(/\bpy-(\d+)\b/);
+  assert.ok(pyMatch, 'strip container carries a scale-based py- class');
+  const paddingPx = Number(pyMatch![1]) * 4; // Tailwind's default spacing scale: 1 unit = 0.25rem = 4px
+  // .live-pulse-frame-kf (globals.css) peaks at `box-shadow: 0 0 22px 4px ...` — a
+  // blur+spread reach of ~26px past the cell's own edge. The padding must clear that
+  // reach (with headroom for the glow to visibly breathe) or the scroll container's
+  // own overflow-y clip boundary (forced to `auto` by `overflow-x-auto`) cuts it off.
+  const glowReachPx = 22 + 4;
+  assert.ok(paddingPx > glowReachPx, `padding (${paddingPx}px) must exceed the glow's reach (${glowReachPx}px)`);
 });
 
 test('renders a label caption for every filmstrip cell (DD-8)', () => {

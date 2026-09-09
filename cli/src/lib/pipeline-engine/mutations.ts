@@ -1372,34 +1372,120 @@ mutationRegistry.set(EVENTS.GATE_REJECTED, (state, context, _config, _template):
   return { state: cloned, mutations_applied };
 });
 
-// ── final_rejected mutation ───────────────────────────────────────────────────
+// ── final_corrective_requested mutation ───────────────────────────────────────
 
-mutationRegistry.set(EVENTS.FINAL_REJECTED, (state, _context, _config, _template): MutationResult => {
+mutationRegistry.set(EVENTS.FINAL_CORRECTIVE_REQUESTED, (state, context, config, template): MutationResult => {
   const cloned = structuredClone(state);
   const mutations_applied: string[] = [];
 
-  const finalReviewNode = resolveNodeState(cloned, 'final_review', 'top') as StepNodeState;
-  finalReviewNode.status = 'not_started';
-  mutations_applied.push('set final_review.status = not_started');
-  finalReviewNode.doc_path = null;
-  mutations_applied.push('set final_review.doc_path = null');
-  // A node reset to not_started must not keep tinting the card with a stale verdict.
-  finalReviewNode.verdict = null;
-  mutations_applied.push('set final_review.verdict = null');
+  const reason = typeof context.reason === 'string' ? context.reason.trim() : '';
+  if (reason.length === 0) {
+    throw new Error(
+      'final_corrective_requested requires --reason: the confirmed write-up is the whole content ' +
+      'of the request — it becomes the review report\'s finding and the corrective\'s reason.'
+    );
+  }
 
-  // Entries are preserved untouched (audit history), but the budget window is
-  // emptied by advancing the origin to the current length — the seam that
-  // makes the walker's windowed corrective check see a clean slate on
-  // re-review instead of a stale completed corrective (see P01-T04).
-  const origin = (finalReviewNode.corrective_tasks ?? []).length;
-  finalReviewNode.corrective_budget_origin = origin;
-  mutations_applied.push(`set final_review.corrective_budget_origin = ${origin}`);
+  const node = resolveNodeState(cloned, 'final_review', 'top') as StepNodeState;
 
-  const finalGateNode = resolveNodeState(cloned, 'final_approval_gate', 'top');
-  finalGateNode.status = 'not_started';
+  const stepDef = findStepNodeDef(template.nodes, 'final_review');
+  if (stepDef?.hosts_correctives !== true) {
+    node.status = 'halted';
+    cloned.graph.status = 'halted';
+    cloned.pipeline.halt_reason =
+      `The operator requested a change at the final approval gate, but the running template's ` +
+      `'final_review' node declares no corrective host (hosts_correctives is not true). This project ` +
+      `is running a per-project template snapshot that predates final-scope corrective support; the ` +
+      `snapshot does not self-heal. Add 'hosts_correctives: true' to that project's own template ` +
+      `snapshot, or accept that this project has no final-scope corrective path.`;
+    mutations_applied.push('set final_review.status = halted (stale template snapshot: no hosts_correctives)');
+    mutations_applied.push('set graph.status = halted');
+    mutations_applied.push('set pipeline.halt_reason (stale template snapshot)');
+    return { state: cloned, mutations_applied };
+  }
+
+  node.corrective_tasks ??= [];
+
+  // An operator request is new information, not a failed retry, so it must not
+  // draw down the budget an agent loop spends. Advancing the origin to the
+  // current length opens a fresh window, leaving the gate to measure only the
+  // agent work this request triggers.
+  const budgetOrigin = node.corrective_tasks.length;
+  node.corrective_budget_origin = budgetOrigin;
+  mutations_applied.push(`set final_review.corrective_budget_origin = ${budgetOrigin}`);
+
+  const birth = buildCorrectiveBirth({
+    correctiveTasks: node.corrective_tasks,
+    maxRetries: config.limits.max_retries_per_task,
+    budgetOrigin,
+    scopeDocPath: null,
+    scopeDocRequired: false,
+    reviewReportPath: node.doc_path,
+    injectedAfter: 'final_review',
+    reason,
+    template,
+  });
+
+  if (!birth.ok) {
+    node.status = 'halted';
+    cloned.graph.status = 'halted';
+    cloned.pipeline.halt_reason = birth.haltReason;
+    mutations_applied.push('set final_review.status = halted (corrective budget exhausted)');
+    mutations_applied.push('set graph.status = halted');
+    mutations_applied.push('set pipeline.halt_reason (corrective budget exhausted)');
+    return { state: cloned, mutations_applied };
+  }
+
+  const entry = birth.entry;
+  entry.origin = 'operator';
+  node.corrective_tasks.push(entry);
+  mutations_applied.push(`injected final corrective task ${entry.index} (operator change request)`);
+  mutations_applied.push(`set final_corrective_task[${entry.index}].review_report_path = ${entry.review_report_path ?? 'null'}`);
+
+  // The host completed when its report landed; re-opening it is what puts the
+  // new entry back in the walker's path instead of the approval gate.
+  node.status = 'in_progress';
+  mutations_applied.push('set final_review.status = in_progress');
+
+  // Stand the gate down while the corrective runs, the way plan_rejected stands
+  // plan_approval_gate down. Resetting status (not just gate_active) is what
+  // lets the walker's not_started arm re-arm the gate once the corrective closes
+  // and final_review completes again.
+  const gateNode = resolveNodeState(cloned, 'final_approval_gate', 'top') as GateNodeState;
+  gateNode.status = 'not_started';
   mutations_applied.push('set final_approval_gate.status = not_started');
-  (finalGateNode as GateNodeState).gate_active = false;
+  gateNode.gate_active = false;
   mutations_applied.push('set final_approval_gate.gate_active = false');
+
+  cloned.pipeline.current_tier = 'review';
+  mutations_applied.push('set pipeline.current_tier = review');
+
+  return { state: cloned, mutations_applied };
+});
+
+// ── final_rejected mutation ───────────────────────────────────────────────────
+
+mutationRegistry.set(EVENTS.FINAL_REJECTED, (state, context, _config, _template): MutationResult => {
+  const cloned = structuredClone(state);
+  const mutations_applied: string[] = [];
+
+  cloned.pipeline.current_tier = 'halted';
+  mutations_applied.push('set pipeline.current_tier = halted');
+
+  cloned.graph.status = 'halted';
+  mutations_applied.push('set graph.status = halted');
+
+  // Intentional: use || (not ??) so that an empty-string reason also falls back
+  // to the default, matching gate_rejected.
+  const reason = context.reason || 'No reason provided';
+  cloned.pipeline.halt_reason = `Final review rejected by the operator: ${reason}`;
+  mutations_applied.push(`set pipeline.halt_reason = Final review rejected by the operator: ${reason}`);
+
+  // Marking the node halted is what makes the halted node identifiable — the
+  // amendment path reads it to know this halt is recoverable.
+  const finalReviewNode = resolveNodeState(cloned, 'final_review', 'top') as StepNodeState;
+  finalReviewNode.status = 'halted';
+  mutations_applied.push('set final_review.status = halted');
 
   return { state: cloned, mutations_applied };
 });

@@ -14,6 +14,25 @@ function extractMasterPlanDocPath(state: unknown): string | undefined {
   return typeof mp.doc_path === 'string' ? mp.doc_path : undefined;
 }
 
+/** Frontmatter minus the two keys the engine owns outright. Node identity comes
+ *  from state — or from an explicit `--phase` / `--task` on the signal — and
+ *  never from a document: a reviewer-authored `phase: P01` would otherwise land
+ *  in the event context and steer node resolution to a node the engine never
+ *  selected. Only these two go. `verdict`, `exit_criteria_met`, `total_phases`
+ *  and `total_tasks` have no source but the document; `reason` does have a
+ *  `--reason` flag, which still wins the merge, so it needs no strip either.
+ *
+ *  `repos` is deliberately left in. A master plan's frontmatter carries one, so
+ *  it is the same shape of hazard — a document asserting a fact the engine owns
+ *  — but no merge-capable event's mutation reads `context.repos` today, so
+ *  stripping it would be speculative. Revisit if one ever does. */
+function stripEngineOwnedIdentity(frontmatter: Record<string, unknown>): Record<string, unknown> {
+  const rest = { ...frontmatter };
+  delete rest.phase;
+  delete rest.task;
+  return rest;
+}
+
 export function preRead(
   event: string,
   context: Partial<EventContext>,
@@ -56,7 +75,10 @@ export function preRead(
       };
     }
 
-    const enrichedContext = { ...doc.frontmatter, ...context } as Record<string, unknown>;
+    const enrichedContext = {
+      ...stripEngineOwnedIdentity(doc.frontmatter),
+      ...context,
+    } as Record<string, unknown>;
     const validationError = validateFrontmatter(event, enrichedContext, resolvedPath);
     if (validationError) {
       return {
@@ -108,7 +130,10 @@ export function preRead(
     };
   }
 
-  const enrichedContext = { ...doc.frontmatter, ...context } as Partial<EventContext>;
+  const enrichedContext = {
+    ...stripEngineOwnedIdentity(doc.frontmatter),
+    ...context,
+  } as Partial<EventContext>;
 
   const validationError = validateFrontmatter(event, enrichedContext as Record<string, unknown>, resolvedPath);
   if (validationError) {

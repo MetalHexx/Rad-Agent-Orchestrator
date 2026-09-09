@@ -31,6 +31,7 @@ const FIXTURE_SCRIPTS_DIR = path.resolve(__dirname, '..', '..', '..', '..', 'src
 export const TEST_PATH_CONTEXT: PathContext = {
   scriptsDir: FIXTURE_SCRIPTS_DIR,
   templatesDir: path.resolve(ORCH_ROOT, 'runtime-config', 'templates'),
+  scriptPath: path.resolve(ORCH_ROOT, 'cli', 'radorch.mjs'),
 };
 
 export const DEFAULT_CONFIG: OrchestrationConfig = {
@@ -83,6 +84,12 @@ export function createMockIO(initialState: PipelineState | null = null): MockIO 
     },
     readDocument(docPath: string): { frontmatter: Record<string, unknown>; content: string } | null {
       return DOC_STORE[docPath.replace(/\\/g, '/')] ?? null;
+    },
+    readDocumentRaw(docPath: string): string | null {
+      return DOC_STORE[docPath.replace(/\\/g, '/')]?.content ?? null;
+    },
+    writeDocument(docPath: string, contents: string): void {
+      DOC_STORE[docPath.replace(/\\/g, '/')] = { frontmatter: {}, content: contents };
     },
     ensureDirectories(projectDir: string): void {
       ensureDirCalls.push(projectDir);
@@ -173,6 +180,12 @@ export function createMockIOWithConfig(
     },
     readDocument(docPath: string): { frontmatter: Record<string, unknown>; content: string } | null {
       return DOC_STORE[docPath.replace(/\\/g, '/')] ?? null;
+    },
+    readDocumentRaw(docPath: string): string | null {
+      return DOC_STORE[docPath.replace(/\\/g, '/')]?.content ?? null;
+    },
+    writeDocument(docPath: string, contents: string): void {
+      DOC_STORE[docPath.replace(/\\/g, '/')] = { frontmatter: {}, content: contents };
     },
     ensureDirectories(projectDir: string): void {
       ensureDirCalls.push(projectDir);

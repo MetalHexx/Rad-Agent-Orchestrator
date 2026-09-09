@@ -62,8 +62,48 @@ export function computeFitScale(containerWidth: number, designWidth: number): nu
   return containerWidth / designWidth;
 }
 
-export function StageIframe({ projectName, fileName, onLoad, reloadKey }: { projectName: string; fileName: string; onLoad?: () => void; reloadKey?: number }) {
+/** Read this iframe's own scroll offset via the window-level API — correct
+ *  regardless of whether the artifact's own CSS scrolls `html` or `body`
+ *  (the `?chrome=scroll` injection only styles the scrollbar, it doesn't pin
+ *  which element scrolls). Degrades to 0 if the origin is ever unusable. */
+export function readIframeScrollTop(el: HTMLIFrameElement | null): number {
+  try {
+    return el?.contentWindow?.scrollY ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
+/** Apply a scroll offset to this iframe's own window. Silent no-op on any
+ *  access error — the reader lands at the top, which is today's behavior. */
+export function applyIframeScrollTop(el: HTMLIFrameElement | null, top: number): void {
+  try {
+    el?.contentWindow?.scrollTo(0, top);
+  } catch {
+    // Origin access failed — leave the reader at the top (today's behavior).
+  }
+}
+
+export function StageIframe({
+  projectName,
+  fileName,
+  onLoad,
+  reloadKey,
+  initialScrollTop,
+  iframeRef,
+}: {
+  projectName: string;
+  fileName: string;
+  onLoad?: () => void;
+  reloadKey?: number;
+  /** Applied to this iframe's own scroll offset inside its load handler, BEFORE
+   *  the caller's onLoad runs — so it lands while the slot is still hidden. */
+  initialScrollTop?: number;
+  /** Lets the parent read this slot's current scroll offset. */
+  iframeRef?: React.RefObject<HTMLIFrameElement | null>;
+}) {
   const containerRef = React.useRef<HTMLDivElement>(null);
+  const localIframeRef = React.useRef<HTMLIFrameElement | null>(null);
   const [size, setSize] = React.useState({ width: 0, height: 0 });
   React.useEffect(() => {
     const el = containerRef.current;
@@ -87,10 +127,19 @@ export function StageIframe({ projectName, fileName, onLoad, reloadKey }: { proj
         transformOrigin: "top left",
       }
     : { width: "100%", height: "100%" };
+  const setIframeEl = (el: HTMLIFrameElement | null) => {
+    localIframeRef.current = el;
+    if (iframeRef) (iframeRef as React.MutableRefObject<HTMLIFrameElement | null>).current = el;
+  };
+  const handleLoad = () => {
+    if (initialScrollTop !== undefined) applyIframeScrollTop(localIframeRef.current, initialScrollTop);
+    onLoad?.();
+  };
   return (
     <div ref={containerRef} className="h-full w-full overflow-hidden">
       <iframe
         key={fileName}
+        ref={setIframeEl}
         src={src}
         title={fileName}
         // allow-same-origin (without allow-scripts) so the injected scrollbar CSS is
@@ -103,7 +152,7 @@ export function StageIframe({ projectName, fileName, onLoad, reloadKey }: { proj
         // iframe loads visibly) never flashes white before content paints (DD-8).
         className="border-0 bg-background"
         style={style}
-        onLoad={onLoad}
+        onLoad={handleLoad}
       />
     </div>
   );

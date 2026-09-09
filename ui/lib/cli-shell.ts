@@ -119,7 +119,7 @@ function spawnWithStdin(
  * stdout for diagnostics.
  *
  * This helper never throws — every failure mode (missing env var, spawn
- * failure, non-zero exit without parseable envelope, unparseable stdout) is
+ * failure, non-zero exit without parseable envelope, or unparseable stdout) is
  * surfaced as a `{ ok: false, error: { type: 'system_error', message } }`
  * envelope. Callers map envelopes to HTTP status codes themselves.
  */
@@ -138,7 +138,10 @@ export async function runCli<T>(opts: CliShellOpts): Promise<CliResult<T>> {
       stdout = r.stdout;
       stderr = r.stderr;
     } else {
-      const r = await execFileP(process.execPath, argv, { encoding: 'utf-8', cwd: opts.cwd });
+      const r = await execFileP(process.execPath, argv, {
+        encoding: 'utf-8',
+        cwd: opts.cwd,
+      });
       stdout = r.stdout;
       stderr = r.stderr;
     }

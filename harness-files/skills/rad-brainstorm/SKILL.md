@@ -58,10 +58,11 @@ A loose flow, not a checklist — let it breathe.
    *Repo Targets* below). If it's feeling too large — phases, stages, incremental delivery —
    consider splitting into a series: **read
    [references/project-series.md](./references/project-series.md)** for when and how.
-4. **Scribe the requirements.** Once goals converge, **offer** to scribe — then hand off to
-   **`/rad-create-plans` (`requirements` mode)**, which the **same main agent follows inline**
-   to author the draft REQUIREMENTS doc. Offer, don't impose; the draft is the living document,
-   scribed progressively as consensus forms.
+4. **Scribe the requirements.** Once goals converge, **offer** to scribe — then, immediately
+   before handing off to **`/rad-create-plans` (`requirements` mode)**, record the session (see
+   *Recording the Session* below), and hand off to the **same main agent**, which **follows
+   inline** to author the draft REQUIREMENTS doc. Offer, don't impose; the draft is the living
+   document, scribed progressively as consensus forms.
 5. **Link to the dashboard.** After the REQUIREMENTS doc lands, offer to open it in the dashboard via
    **`/rad-ui-start`** (use the `data.url` it returns) — never a `file://` tab.
 6. **Make it visual.** When something's worth *seeing*, offer a visual — see *Offer Visuals* below.
@@ -73,6 +74,31 @@ A loose flow, not a checklist — let it breathe.
    rush — keep brainstorming if they want; just watch for the project outgrowing a single plan (step 3).
    - If the user does not accept and wants to keep brainstorming, jump to step 2.  Your permission to
    scribe resets and you re-offer when you feel you've re-converged.
+9. **Route an earlier save request to `/rad-session`.** When the user asks to save this session
+   or this conversation *before* Step 4's handoff — mid-brainstorm, nothing converged yet —
+   **invoke `/rad-session`** — it owns the activity vocabulary and the CLI call, so this workflow
+   neither restates it nor teaches it. A project that doesn't exist yet is created by the save
+   itself, so a brainstorm about something still unscoped can be recorded without first scribing
+   a requirements document. Step 4's own save is the normal path for a converged stretch; this
+   step is for a save asked for ahead of that point.
+
+## Recording the Session
+Brainstorming is free-form conversation, not a pipeline action-event, so there's no engine seam
+to hook automatically the way `spawn_master_plan` is — Step 4's handoff into requirements
+scribing records the session directly instead, the same way `rad-execute` and `rad-amend` record
+theirs at their own seams:
+
+```
+node "${PLUGIN_ROOT}/skills/rad-orchestration/scripts/radorch.mjs" session save --project <PROJECT> --session <ID> --harness <claude|copilot> --cwd <cwd> --name "<name>" --description "<the goals agreed>" --type requirements
+```
+
+Supply `--name`; a first save fails without it. `--description` is 1–2 sentences, high-level —
+see rad-session's Save section. If the response carries a conflict, relay the message to the
+operator verbatim and do not retry against a different project.
+
+This fires once, at Step 4, whether or not anyone asked — it is the normal path. **Skip it** only
+if Step 9 already ran an on-request save for this same still-unconverged stretch of work: that
+save already covers it, and firing again here would double-record it.
 
 ## Repo Targets
 Every brainstorm establishes a proposed working repo set. **Invoke the `/rad-repo` skill
@@ -134,6 +160,8 @@ Each row is an instruction: when the concern applies, go use the skill or doc na
 | find/scope/register repos & repo-groups | **invoke** `/rad-repo` |
 | generate any visual (summary, mockup, diagram) | **invoke** `/rad-visual-docs` |
 | turn requirements into a plan | **invoke** `/rad-plan` |
+| save this session / this conversation, before Step 4's handoff | **invoke** `/rad-session` |
+| record the session at the requirements handoff | **see** *Recording the Session* above |
 
 ## Loading Instructions
 - **Always read** `collaboration.md` — your core workflow.

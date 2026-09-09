@@ -51,7 +51,7 @@ export const graphLinkCommand = defineCommand({
     to: { description: 'Target node id (project id or group id)', required: true },
   },
   flags: {
-    type: { description: 'Edge type. Known: spawned-from (side missions), follows (iteration series). Unknown types are accepted and rendered generically.', type: 'string' as const },
+    type: { description: 'Edge type. follows (this project follows another in a series — asserts an ordering), depends-on (this project is blocked by another — asserts an ordering), spawned-from (this project branched off another — asserts origin only, no ordering). Ordering types shape the graph layout; others are decoration — drawn, but exerting no ordering force. Unrecognised types are accepted and treated as decoration.', type: 'string' as const },
   },
   handler: async ({ args, flags, ctx }: { args: Args; flags: Flags; ctx: CommandContext }) => {
     if (!args.from || !args.to || !flags.type) throw new UserError('--from, --to, and --type are required');
@@ -69,7 +69,7 @@ export const graphUnlinkCommand = defineCommand({
     to: { description: 'Target node id (project id or group id)', required: true },
   },
   flags: {
-    type: { description: 'Edge type to remove. Known: spawned-from (side missions), follows (iteration series). Unknown types are accepted.', type: 'string' as const },
+    type: { description: 'Edge type to remove. follows (this project follows another in a series — asserts an ordering), depends-on (this project is blocked by another — asserts an ordering), spawned-from (this project branched off another — asserts origin only, no ordering). Ordering types shape the graph layout; others are decoration — drawn, but exerting no ordering force.', type: 'string' as const },
   },
   handler: async ({ args, flags, ctx: _ctx }: { args: Args; flags: Flags; ctx: CommandContext }) => {
     if (!args.from || !args.to || !flags.type) throw new UserError('--from, --to, and --type are required');

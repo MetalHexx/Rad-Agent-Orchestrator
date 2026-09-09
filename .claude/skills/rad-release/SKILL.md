@@ -18,7 +18,16 @@ Using the harness question tool (`AskUserQuestion` on Claude Code), present the 
 
 1. **Target version** — show the `currentVersion` gathered in step 1 and the `lastReleaseTag` (or "none yet" when `null`). Suggest the next version. **Release-in-place is the common case:** the previous release's post-release dev bump (step 10) already advanced the in-tree version, so if there is no `v{currentVersion}` tag yet, offer **releasing `currentVersion` as-is** as the default — this selects the no-re-bump path in step 3. Otherwise (the tree is at an already-released version), suggest the next pre-release counter (`-alpha.N` / `-beta.N`) or, if stable, a patch bump. Ask the operator to confirm or supply a different target.
 
-2. **Merge to main** — if `currentBranch` is not `main`, ask whether the operator wants to squash-merge to `main` after the release commit lands (step 7). This is an up-front question collected before any mutation, not a mid-flow approval gate. Two mid-flow approval gates follow: CHANGELOG approval in step 5 and post-release dev-bump confirmation in step 10.
+2. **How the release commit reaches `main`** — **`main` is protected by a repository ruleset (`Require code owner review on default branch`) carrying a `pull_request` rule, so nobody can push to it directly.** The release commit therefore never lands on `main` by a direct push, and step 6 must never commit while standing on `main`.
+
+   If `currentBranch` is `main`, say so and create `release/v{version}` before any mutation — the bump, the build, and the commit all happen there. If `currentBranch` is already a non-`main` branch, use it as the release branch. Then ask the operator how the branch should reach `main`:
+
+   - **Agent opens and merges the PR** — the skill runs `gh pr create` and, once checks pass, `gh pr merge --squash`.
+   - **Operator merges** — the skill pushes the branch, prints the PR URL, and stops before **steps 8 and 9** so the operator can review and merge, then resumes. The satellite sync must not run against an unmerged release branch: it publishes built payloads to the marketplace users install from, so syncing before the merge would ship a tree that might never land.
+
+   Confirm the ruleset is still in force before choosing (`gh api repos/{owner}/{repo}/rulesets`) rather than assuming — if it has been removed, the direct-commit-on-`main` path is available again and worth offering.
+
+This is an up-front question collected before any mutation, not a mid-flow approval gate. Two mid-flow approval gates follow: CHANGELOG approval in step 5 and post-release dev-bump confirmation in step 10.
 
 Both answers are carried forward into subsequent gates.
 
@@ -26,7 +35,7 @@ Both answers are carried forward into subsequent gates.
 
 If the confirmed target **equals** `currentVersion` (the release-in-place path from step 2), **skip the bump entirely** — every carrier already holds the target version, and the engine deliberately refuses a `from === to` no-op. Proceed straight to step 4.
 
-Otherwise invoke `node .claude/skills/rad-release/scripts/bump-version.mjs --from <currentVersion> --to <new>` where `<currentVersion>` is the value gathered in step 1 and `<new>` is the target confirmed in step 2. Both flags are required — the engine fails fast if either is missing so the operator cannot accidentally bump from an assumed prior. This performs the lockstep bump across all carrier locations: wrapper `package.json` files (version field **and** any intra-repo `@rad-orchestration/*` dependency pin, kept in lockstep so `npm install` still resolves), plugin authoritative version sources, a hardcoded-literal sweep, and the two version fields in each nested per-workspace lockfile (`cli`, `ui`, `harness-adapters/engine`). Per-version manifest catalog files (under `MANIFEST_DIRS`) are deliberately **not** touched by this step — the installer's upgrade path requires every prior version's manifest to stay bundled (AD-4) so upgraders can resolve whatever version they're currently on, so those files accumulate rather than get renamed; the new version's manifest is emitted fresh by the build step (step 4) alongside every manifest already checked into the repo. A final re-grep halts loudly on any stray copy of the prior version left after the sweep — the guard excludes the graph-subsystem sandbox fixture (`prompt-tests/_handoff-sandbox/**`), incidental test/doc fixtures, and any historical manifest catalog file (which permanently and correctly retains its own version literal), none of which are release carriers.
+Otherwise invoke `node .claude/skills/rad-release/scripts/bump-version.mjs --from <currentVersion> --to <new>` where `<currentVersion>` is the value gathered in step 1 and `<new>` is the target confirmed in step 2. Both flags are required — the engine fails fast if either is missing so the operator cannot accidentally bump from an assumed prior. This performs the lockstep bump across all carrier locations: wrapper `package.json` files (version field **and** any intra-repo `@rad-orchestration/*` dependency pin, kept in lockstep so `npm install` still resolves), plugin authoritative version sources, a hardcoded-literal sweep, and the two version fields in each nested per-workspace lockfile (`cli`, `ui`, `harness-adapters/engine`). The standard installer's per-version manifest catalog files (under `STANDARD_MANIFEST_DIRS`) are deliberately **not** touched by this step — its upgrade path requires every prior version's manifest to stay bundled so upgraders can resolve whatever version they're currently on, so those files accumulate rather than get renamed. The plugin variants are the opposite case: each keeps a single manifest, so the files under `PLUGIN_MANIFEST_DIRS` **are** renamed forward here, `v<from>.json` to `v<to>.json`, with the internal `version` field rewritten. For the standard channel the new version's manifest is emitted fresh by the build step (step 4) alongside every manifest already checked into the repo. A final re-grep halts loudly on any stray copy of the prior version left after the sweep — the guard excludes the graph-subsystem sandbox fixture (`prompt-tests/_handoff-sandbox/**`), incidental test/doc fixtures, and any historical manifest catalog file (which permanently and correctly retains its own version literal), none of which are release carriers.
 
 ## Step 4 — Build + validate
 
@@ -52,21 +61,29 @@ await commitRelease({ repoRoot, version, approvedChangelog });
 
 `commitRelease` prepends the approved entry above the previous most-recent `## v` block in `CHANGELOG.md`, then runs `git add -A` followed by exactly one `git commit -m "chore: bump version to v{version}"`. This single commit bundles every bumped carrier, every renamed manifest catalog (already `git mv`'d by step 3), the regenerated per-harness manifest files, the rewritten nested lockfiles, and the approved CHANGELOG body (atomicity). No second `git commit` invocation is permitted anywhere in the release flow between step 3 and step 7. (On the release-in-place path there is no bump, so this commit lands just the CHANGELOG entry.)
 
-## Step 7 — Squash-merge to main
+## Step 7 — Land the release branch on main via pull request
 
-Only executed when the operator answered **yes** to the merge-to-main question in step 2. Run the three commands below verbatim from the repo root (no separate module — inline shell invocation):
+`main`'s `pull_request` ruleset means a squash-merge performed locally cannot be pushed. The release branch reaches `main` through a real PR, using the route the operator chose in step 2.
 
-```sh
-git checkout main
-git merge --squash <releaseBranch>
-git commit -m "chore: release v<version>"
+Push the branch and open the PR from the repo root:
+
+```
+git push -u origin <releaseBranch>
+gh pr create --base main --head <releaseBranch> --title "chore: release v<version>" --body "<summary>"
 ```
 
-Where `<releaseBranch>` is the branch name captured in step 1 and `<version>` is the target version confirmed in step 2. The squash collapses the entire release branch into one logical commit on `main`. If the operator answered no in step 2, skip this step entirely and proceed to step 8.
+Then, per the step 2 answer:
+
+- **Agent opens and merges** — wait for required checks, then `gh pr merge --squash --delete-branch`. If a check fails, halt and surface it; never merge past a red check.
+- **Operator merges** — print the PR URL and **stop**. Do not proceed to step 8 or 9. Resume only when the operator confirms the PR is merged.
+
+Once the PR is merged, `git checkout main && git pull` so the tag in step 9 is applied to the squashed commit that actually landed. **Tagging the local release branch instead of the merged `main` commit produces a tag CI will build from a tree that never landed** — always re-point to `main` first.
+
+The code-owner rule means the release PR needs the code owner's approval like any other. A release driven by the code owner still requires the PR; GitHub forbids self-approval, and the ruleset's bypass covers only the `pull_request` path.
 
 ## Step 8 — Sync built plugin artifacts into satellite
 
-Invoke `syncSatelliteAndTag` from `node .claude/skills/rad-release/scripts/sync-satellite-and-tag.mjs` with the operator-confirmed `satelliteRoot`. At skill start-time, if the sibling path `../rad-orc-marketplace` is not a git checkout, prompt the operator via the harness question tool for the absolute path to their local satellite clone. The module replaces each of the three plugin payload directories (`claude-plugin`, `copilot-cli-plugin`, `rad-orc-vscode`) wholesale from the freshly built `output/` trees, then rewrites both marketplace catalogs shape-aware: the Claude catalog (`.claude-plugin/marketplace.json`) uses the nested `git-subdir` shape and gets each `plugins[*].source.ref` pinned to the new `v{version}` tag (Claude Code honors install-time refs); the Copilot catalog (`.github/plugin/marketplace.json`) uses the flat / `pluginRoot` shape required for VS Code Copilot install-persistence and gets each `plugins[*].version` field bumped to the bare new version — VS Code Copilot has no install-time tag-pin, so installs always pull the freshest payload from satellite `main` on its 24-hour update cycle, and the `version` field is surfaced in the Plugins UI for display only. Finally, it commits the satellite with `release: v{version}`. Any non-zero spawn exit halts the flow with the failing operation surfaced.
+Invoke `syncSatelliteAndTag` from `node .claude/skills/rad-release/scripts/sync-satellite-and-tag.mjs` with the operator-confirmed `satelliteRoot`. At skill start-time, if the sibling path `../rai-ops-plugin-marketplace` is not a git checkout, prompt the operator via the harness question tool for the absolute path to their local satellite clone. The module first reads the satellite's `origin` URL and hard-stops if it names a public remote, before anything is written. It then replaces the three rad-orc-owned payload directories (`rad-orc/claude`, `rad-orc/copilot-cli`, `rad-orc/copilot-vscode`) wholesale from the freshly built `output/` trees, then rewrites both marketplace catalogs shape-aware — touching only entries whose payload path's first segment is `rad-orc`, so a co-tenant tool's folder and catalog entry are left alone (entries whose shape yields no owner are skipped and reported to the operator when the sync finishes). The Claude catalog (`.claude-plugin/marketplace.json`) uses the nested `git-subdir` shape and gets the rad-orc `source.ref` pinned to the new `v{version}` tag (Claude Code honors install-time refs); the Copilot catalog (`.github/plugin/marketplace.json`) uses the flat / `pluginRoot` shape required for VS Code Copilot install-persistence and gets the rad-orc `version` field bumped to the bare new version — VS Code Copilot has no install-time tag-pin, so installs always pull the freshest payload from satellite `main` on its 24-hour update cycle, and the `version` field is surfaced in the Plugins UI for display only. Finally, it commits the satellite with `release: v{version}`. Any non-zero spawn exit halts the flow with the failing operation surfaced.
 
 ## Step 9 — Tag and push (triggers CI publish + Release)
 

@@ -7,7 +7,16 @@ import { access, constants } from 'node:fs/promises';
 import { getConfigPath, readConfigWithRaw, writeConfig } from '@/lib/fs-reader';
 import { parseYaml, stringifyYaml } from '@/lib/yaml-parser';
 import { validateConfig } from '@/lib/config-validator';
+import { listStyleCatalog, resolveStyleCatalogRoot } from '@/lib/communication-styles-fs';
 import type { ConfigPutRequest } from '@/types/config';
+
+function knownStylePaths(): string[] | undefined {
+  try {
+    return listStyleCatalog(resolveStyleCatalogRoot()).map((s) => s.path);
+  } catch {
+    return undefined;
+  }
+}
 
 export async function GET() {
   try {
@@ -47,7 +56,7 @@ export async function PUT(request: Request) {
 
     let errors;
     try {
-      errors = validateConfig(body.config);
+      errors = validateConfig(body.config, knownStylePaths());
     } catch {
       return NextResponse.json(
         { error: 'Invalid config structure' },

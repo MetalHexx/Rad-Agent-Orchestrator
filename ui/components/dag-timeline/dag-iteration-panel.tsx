@@ -6,6 +6,7 @@ import { DAGNodeRow } from './dag-node-row';
 import { DAGCorrectiveTaskGroup } from './dag-corrective-task-group';
 import { DAGLoopNode } from './dag-loop-node';
 import { DocumentLink } from '@/components/documents';
+import { AmendmentBadge } from '@/components/badges';
 import { ProgressBar } from '@/components/execution/progress-bar';
 import { NodeStatusBadge } from './node-status-badge';
 import { isLoopNode, parsePhaseNameFromDocPath, parseTaskNameFromDocPath, buildIterationItemValue, deriveIterationTaskProgress, deriveIterationBadgeLabel, shouldRenderTimelineRow, resolveStageBadge, resolveTaskCardClasses } from './dag-timeline-helpers';
@@ -170,6 +171,9 @@ export function DAGIterationPanel({
                   cssVar={phaseStageBadge.cssVar}
                   iconOnly={iteration.status === 'completed'}
                 />
+                {iteration.amendment != null && (
+                  <AmendmentBadge index={iteration.amendment} />
+                )}
                 <span className={isFallback ? 'text-sm italic text-muted-foreground truncate min-w-0' : 'text-sm font-medium truncate min-w-0'}>
                   {iterationName}
                 </span>
@@ -367,6 +371,9 @@ export function DAGIterationPanel({
         cssVar={taskCssVar}
         iconOnly={iteration.status === 'completed'}
       />
+      {iteration.amendment != null && (
+        <AmendmentBadge index={iteration.amendment} />
+      )}
       <span className={isFallback ? 'text-sm italic text-muted-foreground truncate min-w-0' : 'text-sm font-medium truncate min-w-0'}>
         {iterationName}
       </span>

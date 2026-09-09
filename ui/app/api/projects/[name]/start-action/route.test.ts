@@ -1,10 +1,15 @@
+import { test, mock, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
-import path from 'node:path';
 import os from 'node:os';
+import path from 'node:path';
+import fs from 'node:fs';
+import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import child_process from 'node:child_process';
+import { EventEmitter } from 'node:events';
 import type { NextRequest } from 'next/server';
+import { withHomedir } from '../../../../../lib/test-helpers.js';
+import { POST } from './route.js';
 
-// --- Fixtures ---------------------------------------------------------
 const VALID_YAML = `version: "4"
 limits:
   max_retries_per_task: 2
@@ -17,188 +22,199 @@ source_control:
   auto_pr: ask
 `;
 
-let tmpDir = '';
-let projectsDir = '';
-let origHomedir: typeof os.homedir;
-
-async function setup() {
-  tmpDir = await mkdtemp(path.join(os.tmpdir(), 'start-action-'));
-  const radorcDir = path.join(tmpDir, '.radorc');
-  // Write orchestration.yml under ~/.radorc/
+async function seedHome(): Promise<{ tmp: string }> {
+  const tmp = await mkdtemp(path.join(os.tmpdir(), 'start-action-'));
+  const radorcDir = path.join(tmp, '.radorc');
   await mkdir(radorcDir, { recursive: true });
   await writeFile(path.join(radorcDir, 'orchestration.yml'), VALID_YAML, 'utf-8');
-  projectsDir = path.join(radorcDir, 'projects');
-  await mkdir(path.join(projectsDir, 'DEMO-PROJECT'), { recursive: true });
-  origHomedir = os.homedir;
-  (os as unknown as { homedir: () => string }).homedir = () => tmpDir;
-  process.env.LAUNCH_CLAUDE_PROJECT_DRY_RUN = '1';
+  await mkdir(path.join(radorcDir, 'projects', 'DEMO-PROJECT'), { recursive: true });
+  return { tmp };
 }
 
-async function teardown() {
-  (os as unknown as { homedir: typeof os.homedir }).homedir = origHomedir;
-  delete process.env.LAUNCH_CLAUDE_PROJECT_DRY_RUN;
-  await rm(tmpDir, { recursive: true, force: true });
+interface SpawnRecord {
+  cmd: string;
+  args: string[];
 }
 
-async function invokePOST(body: unknown, name: string) {
-  const { POST } = await import('./route');
-  const req = new Request(`http://localhost/api/projects/${name}/start-action`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
+/** Intercepts the real `child_process.spawn` so no test spawns a real terminal. */
+function stubSpawn(): { calls: SpawnRecord[] } {
+  const calls: SpawnRecord[] = [];
+  mock.method(child_process, 'spawn', (cmd: string, args: string[]) => {
+    calls.push({ cmd, args });
+    const child = new EventEmitter() as EventEmitter & { unref: () => void };
+    child.unref = () => {};
+    return child as unknown as child_process.ChildProcess;
   });
-  // Next route handlers accept a Request and a context object.
-  return POST(req as unknown as NextRequest, { params: { name } });
+  return { calls };
 }
 
-(async () => {
-  await setup();
+/**
+ * Decodes the inner command the library built, keyed off the host's actual
+ * platform (the route never overrides `launchTerminal`'s platform option).
+ * Mirrors the decode idiom in lib/terminal-launch/tests/launch.test.ts.
+ */
+function deliveredPayload(calls: SpawnRecord[], index = 0): string {
+  const args = calls[index]!.args;
+  const platform = process.platform;
+  if (platform === 'win32') {
+    const idx = args.indexOf('-EncodedCommand');
+    if (idx === -1) return '';
+    const encoded = args[idx + 1] ?? '';
+    return Buffer.from(encoded, 'base64').toString('utf16le');
+  }
+  if (platform === 'darwin') {
+    const idx = args.indexOf('-e');
+    return args[idx + 1] ?? '';
+  }
+  const dashDash = args.indexOf('--');
+  const cIdx = args.indexOf('-c', dashDash);
+  return args[cIdx + 1] ?? '';
+}
+
+function jsonRequest(body: unknown, name: string): NextRequest {
+  return {
+    json: async () => body,
+    headers: new Headers(),
+    nextUrl: new URL(`http://localhost/api/projects/${name}/start-action`),
+  } as unknown as NextRequest;
+}
+
+function invokePOST(body: unknown, name: string) {
+  return POST(jsonRequest(body, name), { params: { name } });
+}
+
+afterEach(() => {
+  mock.restoreAll();
+});
+
+test('POST returns 404 for an unknown project', async () => {
+  const { tmp } = await seedHome();
   try {
-    // Unknown project → 404
-    {
+    await withHomedir(tmp, async () => {
       const res = await invokePOST({ action: 'start-brainstorming' }, 'NOPE');
       assert.equal(res.status, 404);
       const json = await res.json();
       assert.match(json.error, /not found/i);
-      console.log('✓ unknown project → 404 not found');
-    }
+    });
+  } finally { await rm(tmp, { recursive: true, force: true }); }
+});
 
-    // Invalid project-name format → 400
-    {
-      const res = await invokePOST({ action: 'start-brainstorming' }, 'bad..name');
-      assert.equal(res.status, 400);
-      console.log('✓ invalid project name format → 400');
-    }
+test('POST returns 400 for an invalid project name format', async () => {
+  const res = await invokePOST({ action: 'start-brainstorming' }, 'bad..name');
+  assert.equal(res.status, 400);
+});
 
-    // Unknown action → 400
-    {
+test('POST returns 400 for an unknown action', async () => {
+  const { tmp } = await seedHome();
+  try {
+    await withHomedir(tmp, async () => {
       const res = await invokePOST({ action: 'nope' }, 'DEMO-PROJECT');
       assert.equal(res.status, 400);
       const json = await res.json();
       assert.match(json.error, /action/i);
       assert.match(json.error, /execute-plan/);
-      console.log('✓ unknown action → 400');
-    }
+    });
+  } finally { await rm(tmp, { recursive: true, force: true }); }
+});
 
-    // Happy path start-brainstorming → 200 success:true platform string
-    {
-      const res = await invokePOST({ action: 'start-brainstorming' }, 'DEMO-PROJECT');
-      assert.equal(res.status, 200);
-      const json = await res.json();
-      assert.equal(json.success, true);
-      assert.equal(typeof json.platform, 'string');
-      console.log('✓ start-brainstorming happy path → 200 success:true platform string');
-    }
-
-    // Happy path start-planning → 200 success:true
-    {
-      const res = await invokePOST({ action: 'start-planning' }, 'DEMO-PROJECT');
-      assert.equal(res.status, 200);
-      const json = await res.json();
-      assert.equal(json.success, true);
-      console.log('✓ start-planning happy path → 200 success:true');
-    }
-
-    // home pointing to dir with no .radorc/projects/ subdir → 500
-    {
-      const emptyDir = await mkdtemp(path.join(os.tmpdir(), 'start-action-empty-'));
-      try {
-        (os as unknown as { homedir: () => string }).homedir = () => emptyDir;
-        const res = await invokePOST({ action: 'start-brainstorming' }, 'DEMO-PROJECT');
-        assert.equal(res.status, 500);
+for (const action of ['start-brainstorming', 'start-planning', 'execute-plan'] as const) {
+  test(`POST ${action} happy path returns 200 { success: true, platform } and fires exactly one spawn attempt`, async () => {
+    const { tmp } = await seedHome();
+    const { calls } = stubSpawn();
+    try {
+      await withHomedir(tmp, async () => {
+        const res = await invokePOST({ action }, 'DEMO-PROJECT');
+        assert.equal(res.status, 200);
         const json = await res.json();
-        assert.ok(typeof json.error === 'string', 'error must be a string');
-        assert.ok(!/[A-Z]:\\|\/home\//.test(json.error), 'error must not echo absolute host path');
-        console.log('✓ missing projects dir → 500, concise error, no path leakage');
-      } finally {
-        (os as unknown as { homedir: () => string }).homedir = () => tmpDir; // restore
-        await rm(emptyDir, { recursive: true, force: true });
-      }
-    }
+        assert.equal(json.success, true);
+        assert.equal(typeof json.platform, 'string');
+        assert.equal(calls.length, 1);
+      });
+    } finally { await rm(tmp, { recursive: true, force: true }); }
+  });
+}
 
-    // Forced launcher failure → 500 with structured error, no path leakage
-    {
-      process.env.LAUNCH_CLAUDE_PROJECT_FORCE_FAIL = '1';
+test('POST composes the /rad-execute prompt and reaches the launcher with claude --permission-mode auto and no --add-dir/--model', async () => {
+  const { tmp } = await seedHome();
+  const { calls } = stubSpawn();
+  try {
+    await withHomedir(tmp, async () => {
+      const res = await invokePOST({ action: 'execute-plan' }, 'DEMO-PROJECT');
+      assert.equal(res.status, 200);
+      const payload = deliveredPayload(calls);
+      assert.match(payload, /claude/);
+      assert.match(payload, /--permission-mode/);
+      assert.match(payload, /auto/);
+      assert.match(payload, /\/rad-execute DEMO-PROJECT/);
+      assert.doesNotMatch(payload, /--add-dir/);
+      assert.doesNotMatch(payload, /--model/);
+    });
+  } finally { await rm(tmp, { recursive: true, force: true }); }
+});
+
+test('POST composes the brainstorming/planning prompts unchanged from before the swap', async () => {
+  const { tmp } = await seedHome();
+  try {
+    await withHomedir(tmp, async () => {
+      {
+        const { calls } = stubSpawn();
+        await invokePOST({ action: 'start-brainstorming' }, 'DEMO-PROJECT');
+        assert.match(deliveredPayload(calls), /\/rad-brainstorm DEMO-PROJECT/);
+      }
+      mock.restoreAll();
+      {
+        const { calls } = stubSpawn();
+        await invokePOST({ action: 'start-planning' }, 'DEMO-PROJECT');
+        assert.match(deliveredPayload(calls), /\/rad-plan Start planning DEMO-PROJECT/);
+      }
+    });
+  } finally { await rm(tmp, { recursive: true, force: true }); }
+});
+
+test('POST returns 500 with a structured error and no path/env leakage when the projects directory cannot be enumerated', async () => {
+  const tmp = await mkdtemp(path.join(os.tmpdir(), 'start-action-empty-'));
+  try {
+    await withHomedir(tmp, async () => {
       const res = await invokePOST({ action: 'start-brainstorming' }, 'DEMO-PROJECT');
-      delete process.env.LAUNCH_CLAUDE_PROJECT_FORCE_FAIL;
+      assert.equal(res.status, 500);
+      const json = await res.json();
+      assert.ok(typeof json.error === 'string');
+      assert.ok(!/[A-Z]:\\|\/home\//.test(json.error), 'error must not echo absolute host path');
+    });
+  } finally { await rm(tmp, { recursive: true, force: true }); }
+});
+
+test('POST returns 500 with a sanitized message, no path leakage, when the launch directory no longer exists', async () => {
+  const { tmp } = await seedHome();
+  // Forces launchTerminal's own pre-spawn cwd check to fail, so the route's
+  // fixed `~/.radorc` cwd is reported missing even though seedHome() created
+  // it — exercising the one launcher error shape that names the cwd.
+  mock.method(fs, 'existsSync', () => false);
+  try {
+    await withHomedir(tmp, async () => {
+      const res = await invokePOST({ action: 'start-brainstorming' }, 'DEMO-PROJECT');
+      assert.equal(res.status, 500);
+      const json = await res.json();
+      assert.equal(json.success, false);
+      assert.equal(json.error, 'Launch directory no longer exists.');
+      assert.ok(!/[A-Z]:\\|\/home\//.test(json.error), 'error must not echo absolute host path');
+    });
+  } finally { await rm(tmp, { recursive: true, force: true }); }
+});
+
+test('POST returns 500 with the launcher error, no path/env leakage, on a forced launch failure', async () => {
+  const { tmp } = await seedHome();
+  mock.method(child_process, 'spawn', () => {
+    throw new Error('Forced failure for testing.');
+  });
+  try {
+    await withHomedir(tmp, async () => {
+      const res = await invokePOST({ action: 'start-brainstorming' }, 'DEMO-PROJECT');
       assert.equal(res.status, 500);
       const json = await res.json();
       assert.equal(json.success, false);
       assert.equal(typeof json.error, 'string');
       assert.ok(!/[A-Z]:\\|\/home\//.test(json.error), 'error must not echo absolute host path');
-      assert.ok(
-        !/LAUNCH_CLAUDE_PROJECT_FORCE_FAIL/.test(json.error),
-        'error must not echo env var name'
-      );
-      console.log('✓ forced launcher failure → 500, structured error, no path leakage');
-    }
-
-    // Happy path execute-plan → 200 success:true platform string (FR-4, FR-5)
-    {
-      const res = await invokePOST({ action: 'execute-plan' }, 'DEMO-PROJECT');
-      assert.equal(res.status, 200);
-      const json = await res.json();
-      assert.equal(json.success, true);
-      assert.equal(typeof json.platform, 'string');
-      console.log('✓ execute-plan happy path → 200 success:true platform string');
-    }
-
-    // execute-plan on unknown project → 404 (AD-4)
-    {
-      const res = await invokePOST({ action: 'execute-plan' }, 'NOPE');
-      assert.equal(res.status, 404);
-      console.log('✓ execute-plan unknown project → 404');
-    }
-
-    // execute-plan: invalid project name format → 400 (AD-4)
-    {
-      const res = await invokePOST({ action: 'execute-plan' }, 'bad..name');
-      assert.equal(res.status, 400);
-      console.log('✓ execute-plan invalid project name → 400');
-    }
-
-    // execute-plan: forced launcher failure → 500, no path/env leakage (NFR-2, NFR-3)
-    {
-      process.env.LAUNCH_CLAUDE_PROJECT_FORCE_FAIL = '1';
-      const res = await invokePOST({ action: 'execute-plan' }, 'DEMO-PROJECT');
-      delete process.env.LAUNCH_CLAUDE_PROJECT_FORCE_FAIL;
-      assert.equal(res.status, 500);
-      const json = await res.json();
-      assert.equal(json.success, false);
-      assert.equal(typeof json.error, 'string');
-      assert.ok(!/[A-Z]:\\|\/home\//.test(json.error), 'execute-plan error must not echo absolute host path');
-      assert.ok(
-        !/LAUNCH_CLAUDE_PROJECT_FORCE_FAIL/.test(json.error),
-        'execute-plan error must not echo env var name'
-      );
-      console.log('✓ execute-plan forced launcher failure → 500, no path/env leakage');
-    }
-
-    // execute-plan: route returns promptly under DRY_RUN (NFR-1: no wait on terminal)
-    {
-      const start = Date.now();
-      const res = await invokePOST({ action: 'execute-plan' }, 'DEMO-PROJECT');
-      const elapsedMs = Date.now() - start;
-      assert.equal(res.status, 200);
-      // The launcher runs under LAUNCH_CLAUDE_PROJECT_DRY_RUN=1 (set in setup);
-      // the route must return before any real terminal would render. This is
-      // a generous upper bound — true responsiveness is OS-level.
-      assert.ok(elapsedMs < 5000, `route must return promptly; took ${elapsedMs}ms`);
-      console.log(`✓ execute-plan route returns promptly (${elapsedMs}ms)`);
-    }
-
-    // projectsDir stays inside tmpDir (teardown safety)
-    assert.ok(
-      projectsDir.startsWith(tmpDir),
-      'projectsDir must be inside tmpDir so teardown does not escape the temp workspace',
-    );
-    console.log('✓ projectsDir stays inside tmpDir (teardown safety)');
-
-    console.log('\nAll start-action route tests passed');
-  } finally {
-    await teardown();
-  }
-})().catch(err => {
-  console.error(err);
-  process.exit(1);
+    });
+  } finally { await rm(tmp, { recursive: true, force: true }); }
 });

@@ -1,78 +1,289 @@
 # Repo Rules
 
-These rules govern every contributor and every agent working in the orchestration system repo. They are absolute — read them before editing, building, or invoking anything.
+This file is the map. It routes you to the module that owns what you are changing, and it carries
+the invariants that no single module can own. It deliberately does **not** explain how any module
+works — that is the job of the `AGENTS.md` inside it.
 
-## Canonical Source
-- The [harness-files/skills](./harness-files/skills/) folder is canonical source.
-- The [harness-files/agents](./harness-files/agents/) folder is canonical source.
-- The [.claude](./.claude/) tree is runtime compiled for testing.
-- The [.github](./.github/) tree is runtime compiled for testing.
+Read this before planning, designing, coding, or committing.
 
-## Never EXECUTE the pipeline from the Canonical source!
-- When invoking the orchestration pipeline to execute a project, never read or invoke the files from the canonical source.
-- Never read or invoke skills from the canonical source.
-- Never read or invoke agents from the canonical source.
-- The canonical source is uncompiled; running the pipeline from there bypasses the harness's resolved install root and produces incorrect path resolution for non-Claude harnesses.
+---
 
-## Only EDIT the Canonical Source!
-- When making code changes to improve the Rad Orchestration system, only edit the canonical source!
-- Editing files in the runtime compiled test trees is incorrect!
+## Before you change this system
 
-## DO NOT Add Requirements in Canonical Source
-- When making changes to the rad orchestration pipeline and markdown files, do not leave requirements (FR-N, NFR-N, AD-N, DD-N) in the files. These should only be used in project planning documents, not actual code or documentation. The only exception is that we're making changes to the rad-create-plans or rad-code-review skills (under `harness-files/skills/`) which leverage requirements as part of project planning and code review.
+Read [`docs/internals/system-architecture.md`](./docs/internals/system-architecture.md) before you
+**brainstorm, plan, write code that changes how the system works, or review a change that spans
+modules**. It carries the shape — what exists, how it connects, and which direction the
+dependencies run. For anything touching more than one module it is not optional background.
 
-## DO NOT Write Markdown-Shape Tests Without Explicit Instruction
-- Do not author tests that assert on the textual shape of markdown files — regex `assert.match` / `expect().toContain` against headings, prose, pinned numbers in tables, or specific phrasing.
-- These tests are brittle: every prose edit risks breaking them, and they pin the docs without testing code behavior.
-- Broad anti-regression scans (one forbidden token swept across many `.md` files at once) are the exception; pinned-shape checks on individual docs are not.
-- If a markdown invariant genuinely needs guarding, ask the user before adding the test.
+Then work the map below:
 
-## Codeblock Fences
-When writing markdown documents in this repo, default to plain fences (no language tag) for shell commands. Most repo examples (`node`, `git`, `npm`, `gh`) are shell-agnostic — adding a `bash` or `powershell` tag primes agents on Windows toward the wrong shell. Only tag the fence when the snippet actually uses shell-specific syntax (`$env:VAR`, heredocs, `Test-Path`).
+1. Find your entry point — by module, or by surface if your change is a feature rather than a place.
+2. Read that module's `AGENTS.md`. It owns the local conventions and the hazards.
+3. **Follow its co-change edges to closure.** A module declares what else moves when it moves. Do
+   not stop at the first hop.
+4. Say which modules you checked and cleared, including the ones you ruled out.
 
-Do:
+Step 3 is the one that gets skipped. Most breakage in this repo is not a bad edit — it is a correct
+edit that failed to carry its partner along.
+
+---
+
+## The map
+
+### Modules
+
+The `AGENTS.md` in each row is the contract you must read. *Detail* is the explanatory page behind
+it — read it when the module is unfamiliar or the change is structural, not for a routine edit.
+
+| Module | Owns | Detail |
+|---|---|---|
+| [`harness-files/`](./harness-files/AGENTS.md) | Canonical agent and skill source — the only authored copy | [the skill system](./docs/internals/skills.md) |
+| [`harness-adapters/`](./harness-adapters/AGENTS.md) | Per-harness projection of that source | [from canonical source to your machine](./docs/internals/system-architecture.md#from-canonical-source-to-your-machine) |
+| [`harness-installers/`](./harness-installers/AGENTS.md) | The shippable variants, and the build and hook seam they share | [from canonical source to your machine](./docs/internals/system-architecture.md#from-canonical-source-to-your-machine) |
+| [`runtime-config/`](./runtime-config/AGENTS.md) | What ships verbatim into `~/.radorc/` — config, review-tier templates, the action/event catalog, communication styles | [from canonical source to your machine](./docs/internals/system-architecture.md#from-canonical-source-to-your-machine) |
+| [`cli/`](./cli/AGENTS.md) | The `radorch` binary — every deterministic operation, one envelope shape | [internals](./docs/internals/cli.md) |
+| [`cli/src/lib/pipeline-engine/`](./cli/src/lib/pipeline-engine/AGENTS.md) | The state machine — mutations, the DAG walk, validation, scaffolding | [the agent–engine loop](./docs/internals/system-architecture.md#the-agentengine-loop) |
+| [`ui/`](./ui/AGENTS.md) | The Next.js dashboard and its live-update hub | [internals](./docs/internals/dashboard.md) |
+| [`lib/repo-registry/`](./lib/repo-registry/AGENTS.md) | Reading and writing the two-file repo registry | — |
+| [`lib/work-graph/`](./lib/work-graph/AGENTS.md) | Project-state derivation and relationships — one backend for both CLI and UI | — |
+| [`lib/telemetry/`](./lib/telemetry/AGENTS.md) | Usage capture and the observability read surface | — |
+| [`lib/terminal-launch/`](./lib/terminal-launch/AGENTS.md) | Platform-neutral terminal spawning | — |
+| [`tests/`](./tests/AGENTS.md) | Root-level workspace linkage and cross-surface cohesion guards | — |
+| [`cli/tests/behavioral/`](./cli/tests/behavioral/AGENTS.md) | A command's externally observable contract — the envelope, the resulting `state.json`, and the side-files it writes | [internals](./docs/internals/cli.md) |
+| [`harness-files/tests/`](./harness-files/tests/AGENTS.md) | Corpus-wide guards — skill call form, agent skill refs, corrective-cycle claims. Reach beyond canonical source into `runtime-config/action-events/` and `docs/` | [what holds the set together](./docs/internals/skills.md#what-holds-the-set-together) |
+| [`prompt-tests/`](./prompt-tests/README.md) | Operator-driven planner regression harness. Not CI, and it costs real tokens | — |
+| `.claude/skills/` · `.agents/skills/` | Dev-only skills, never shipped. See the carve-out under *Canonical source* | — |
+| [`graph-service/`](./graph-service/AGENTS.md) · `lib/graph-*/` · [`examples/`](./examples/AGENTS.md) | The **v3 engine — on hold, off limits.** Do not touch unless carrying that project forward | — |
+
+### Surfaces
+
+Features that span modules. Start here when your change is a capability rather than a place.
+
+| Surface | Spans | Detail |
+|---|---|---|
+| Ambient awareness | `cli/` · `lib/work-graph/` · `harness-installers/shared/hooks/` · `harness-installers/` · `runtime-config/` · `harness-files/skills/rad-init/` · `harness-files/skills/rad-portfolio/` · `ui/` | [internals](./docs/internals/ambient-awareness.md) |
+| Communication style | `cli/` · `harness-installers/shared/hooks/` · `runtime-config/communication-styles/` · `ui/` | [internals](./docs/internals/communication-style.md) |
+| Session tracking | `cli/` · `lib/telemetry/` · `lib/terminal-launch/` · `runtime-config/action-events/` · `harness-files/skills/rad-session/` · `ui/` | [internals](./docs/internals/session-tracking.md) |
+| Telemetry and observability | `lib/telemetry/` · `cli/` · `harness-installers/shared/hooks/` · `harness-installers/` · `runtime-config/` · `ui/` | [user-facing](./docs/observability.md) |
+| Project state | `lib/work-graph/` · `cli/` · `ui/` · `tests/` | — |
+| Amendments | `harness-files/skills/rad-amend/` · `harness-files/skills/rad-create-plans/` · `cli/src/commands/amendment/` · `cli/src/lib/amendment/` · `runtime-config/action-events/` · `ui/` | [internals](./docs/internals/system-architecture.md#amendments-write-outside-the-loop) |
+| Custom instructions | `runtime-config/action-events/` · `cli/src/commands/action-events/` · `cli/src/lib/pipeline-engine/` · `ui/` | [user-facing](./docs/custom-instructions.md) |
+| Visual documents | `harness-files/skills/rad-visual-docs/` · `harness-files/skills/rad-brainstorm/` · `ui/` | [user-facing](./docs/visual-docs.md) |
+| Distribution | `harness-files/` · `harness-adapters/` · `harness-installers/` · `runtime-config/` | [internals](./docs/internals/system-architecture.md#from-canonical-source-to-your-machine) |
+
+### Changing an `AGENTS.md`, or standing up a new module
+
+Load the **`agents-md`** skill (`.claude/skills/agents-md/`). It owns the shape every one of these
+files follows, how co-change edges are written, and the checklist for adding a module to this map.
+Do not improvise the format — a confidently wrong `AGENTS.md` is worse than a stale one, because
+the next agent inherits it as the pattern.
+
+---
+
+## Invariants
+
+These are the rules no single module can own. Everything else lives in the module it applies to.
+
+### Canonical source
+
+- [`harness-files/skills/`](./harness-files/skills/) and [`harness-files/agents/`](./harness-files/agents/)
+  are **canonical source**. Agent and skill edits happen here and nowhere else.
+- [`.claude/`](./.claude/) is runtime-compiled output, **with one carve-out**: the hand-authored
+  skills. Under `.claude/skills/` those are `agents-md`, `rad-dogfood-harness`, `rad-dogfood-plugin`,
+  `rad-release`, `rad-ui-dev`; under [`.agents/skills/`](./.agents/skills/), `rad-build-harness` and
+  `rad-build-ui`. All are dev-only. Edit any of them in place; never edit anything else under
+  `.claude/`. The split between the two folders is historical and carries no meaning — do not infer
+  a rule from it.
+- **Never move a dev skill into `harness-files/`.** That ships it to every user. If an automated
+  reviewer calls the `.claude/` tree "stray", it is wrong — say so and move on. This has already
+  happened once and had to be reverted.
+- [`.github/`](./.github/) is **hand-authored** — workflows, `CODEOWNERS`, and the issue and pull
+  request templates. Nothing under it is generated.
+- **Never read or invoke skills and agents from canonical source when running the pipeline.** It is
+  uncompiled, so it bypasses the resolved install root and breaks path resolution for non-Claude
+  harnesses. Run from the deployed harness root instead.
+
+### Per-module ownership
+
+Every module folder owns its own code, tests, and `AGENTS.md`. **Cross-module reach-ins are
+forbidden** — a module never imports, requires, or reads another module's internal files. Sharing
+happens only through documented seams. Read the target module's `AGENTS.md` before touching it.
+
+**Documented exceptions, one per file:** `tests/project-state-cohesion.test.ts` may reach
+into both `cli/src/` and `ui/` internals. Those two may not import each other, so this is the only
+place all the project-state surfaces can be exercised together. Its sibling
+`tests/project-kind-cohesion.test.ts` carries the same exception on a narrower scope — it reaches
+only into `ui/` internals, needing no `cli/` reach at all. Each exception is confined to its own
+one file — see [`tests/AGENTS.md`](./tests/AGENTS.md) for what makes them work and how to keep them
+contained.
+
+### The sanctioned cross-package seam
+
+`@rad-orchestration/repo-registry` (at [`lib/repo-registry/`](./lib/repo-registry/)) is the seam for
+registry reads and writes, consumed **by name** by `cli/`, `ui/`'s server-side routes, and
+`lib/work-graph`. Deep relative imports into its `src/` are prohibited. Its `dist/` must be compiled
+before anything bundles the CLI or builds the UI — the standard installer build does this as its
+`build-lib-dist` step.
+
+### stdout is the envelope channel
+
+The `radorch` bundle **inlines** `lib/repo-registry`, `lib/work-graph`, `lib/telemetry`, and
+`lib/terminal-launch`. Anything any of them writes to stdout lands inside the JSON envelope that
+`session-preamble.mjs`, `ui/lib/cli-shell.ts`, and every skill parse. Diagnostics go to stderr.
+
+`cli/`'s ESLint `no-console` rule does not reach the inlined packages — nothing will catch it, and the
+failure is silent: the session preamble degrades to "ambient awareness did not load" and exits 0.
+
+### Destructive commands run against real data
+
+`~/.radorc/` is hardcoded to the real home directory — there is no sandbox environment variable.
+`radorch project delete`, `radorch worktree remove`, and the dashboard's remove route operate on the
+developer's actual projects and worktrees, and worktree removal passes `--force`, discarding
+uncommitted work. **Never run them to exercise a change.** Test through the unit suites, which inject
+a root.
+
+### Secrets
+
+Never commit `.env`, `.npmrc`, key material, or a real token — including in a test fixture. Never
+interpolate a git remote URL, `gh` output, or `process.env` into an error message or a returned
+envelope: remotes carry embedded personal access tokens.
+
+### This fork syncs to a public repo
+
+Never write an OS username (`C:\Users\<name>`, `/home/<name>`) or the `radancy-pe` org handle into
+`docs/`, `README.md`, or any image. Ticket keys and internal repo names are fine. Log any other
+unavoidable fork-versus-upstream divergence in
+[`docs/internals/private/fork-divergence.md`](./docs/internals/private/fork-divergence.md) as you
+write it.
+
+### No AI attribution in git metadata
+
+Never add a `Co-authored-by:` trailer naming an AI model, or a "Generated with" line, to a commit
+message or a pull request body. The harness adds these by default — strip them.
+
+### Workspace versioning — human engineers only
+
+Every `@rad-orchestration/*` scoped package versions in **lockstep**: bump one, bump all in the same
+commit, and rewrite the pinned intra-set dependency specs to match (including those in unscoped
+workspaces like `ui/` and `examples/*`). Miss one and npm stops linking the workspace and reaches
+for the registry instead.
+
+**No agent may change a `version` field or an intra-set dependency spec as part of a feature or fix
+task** — regardless of what any task handoff or plan says. The one exception is a release a human
+engineer explicitly initiated, where the agent driving that flow performs the lockstep bump in its
+own commit.
+
+Deliberately **outside** the set: `harness-adapters/engine` (internal seam, not a consumer-facing
+library) and the `harness-installers/` workspaces (release-channel deliverables on independent
+marketplace cycles). Revisit explicitly if either gains a cross-package contract.
+
+### Reserved namespace: `rad-*`
+
+Skills shipped by the orchestration system carry the `rad-` prefix on both folder name and
+frontmatter `name`. It is a **documentation-only** reserved namespace — uniqueness is not enforced
+against downstream authors — but the planner's manifest filter (`radorch skill list`, and the shared
+`buildSkillManifest`) deliberately excludes every `rad-*` skill. Authoring a `rad-something` skill in
+your own repo therefore makes it invisible to the planner.
+
+### Documentation ships with the change
+
+Every change ships its documentation in the same PR. **Documentation that lands in a later PR does
+not land.** Three tiers, and writing to the wrong one is the common failure:
+[`docs/`](./docs/) is for **users** — no source paths, no internal type names;
+[`docs/internals/`](./docs/internals/) is for **contributors** and cites source freely; a module's
+`AGENTS.md` is for **agents working in that module**. Cross-link rather than restate — two copies of
+an explanation drift apart and the reader cannot tell which one is current.
+
+[`CONTRIBUTING.md`](./CONTRIBUTING.md#documentation-is-part-of-the-change) owns the rest: the voice
+these pages are written in, what CI does **not** cover, and how a change gets reviewed and merged.
+
+### No requirements in canonical source
+
+Do not leave requirement identifiers (`FR-N`, `NFR-N`, `AD-N`, `DD-N`, `R-N`, or any planning requirements-shaped values) in code or documentation.
+They belong in project planning documents only. The sole exception is the `rad-create-plans` and
+`rad-code-review` skills, which use them as subject matter.
+
+### No markdown-shape tests without explicit instruction
+
+Do not author tests that assert on the textual shape of markdown — regex matches against headings,
+prose, pinned numbers, or specific phrasing. They break on every prose edit and pin the docs without
+testing behavior. Broad anti-regression scans (one forbidden token swept across many files) are the
+exception; pinned-shape checks on individual documents are not. If a markdown invariant genuinely
+needs guarding, ask first.
+
+### Name the members, do not count them
+
+**Never write a count of things this repo contains.** Counts are facts about the codebase stored in
+prose: nothing tests them, and they rot silently the moment anything is added. This repo has chased
+drifted counts for skills, CLI command groups, API routes, and `AGENTS.md` files — every one of them
+was written as a number that later became a lie.
+
+Write the names instead. *"Two hooks ship: `session-preamble`, `telemetry-capture`"* becomes *"The
+hooks that ship: `session-preamble`, `telemetry-capture`."* The list is the count, it still signals
+completeness, and it can only become incomplete rather than wrong.
+
+Version numbers, ports, and schema versions are not counts. This rule is about enumerating things
+the repo holds.
+
+### Code fences
+
+Default to plain fences with no language tag for shell commands. Most examples here (`node`, `git`,
+`npm`, `gh`) are shell-agnostic, and a `bash` tag primes agents on Windows toward the wrong shell.
+Tag the fence only when the snippet uses shell-specific syntax (`$env:VAR`, heredocs, `Test-Path`).
+
+---
+
+## Common commands
+
+Repo-root commands only. **Each module's `AGENTS.md` carries its own build, test, and lint
+commands** — go there rather than looking for them here.
+
+### Build
+
 ```
-node example/build.js
+npm run build
 ```
 
-Don't:
-```bash
-node example/build.js
+Runs the standard installer build: projects canonical `harness-files/` through every adapter into
+`harness-installers/standard/output/<harness>/` and emits the per-harness manifests. It builds all
+harnesses in one pass and **does not deploy**.
+
+### Getting edits onto your machine
+
+Editing anything under `harness-files/` — or under `ui/` — does not change what your harness reads.
+Run the **`/rad-dogfood-harness`** skill. It builds, packs, uninstalls, and reinstalls, and the
+install step is what expands the `${PLUGIN_ROOT}` token into a concrete path. A plain file copy
+leaves the token literal and breaks command resolution.
+
+`~/.claude/` is **per-machine, not per-worktree** — only one branch's harness content is active at a
+time, so switching worktrees means redeploying. A fresh clone needs a redeploy before the in-repo
+session reads current content.
+
+### Before any test or typecheck
+
+The workspace libraries ship compiled `dist/` output that `tsc` and Vitest resolve at test time. A
+fresh checkout has none, so run this from the repo root first or everything fails confusingly:
+
+```
+npm run build -w @rad-orchestration/repo-registry -w @rad-orchestration/work-graph -w @rad-orchestration/telemetry -w @rad-orchestration/terminal-launch
 ```
 
-## Per-module ownership
-- Every module folder (`harness-files/`, `harness-adapters/`, each `harness-installers/<variant>/`, `runtime-config/`, `cli/`, `ui/`, `lib/repo-registry/`) owns its own code, tests, and `AGENTS.md`.
-- Cross-module reach-ins are forbidden. A module does not `require`, import, or read another module's internal files directly.
-- Cross-module sharing happens only through documented seams — the canonical example is `harness-installers/shared/build-helpers/`, which every installer variant consumes as a published-seam package.
-- Read the target module's `AGENTS.md` before touching it; it carries that module's local conventions, build commands, and seam contract.
+### Repo-wide guards
 
-## Sanctioned cross-package consumption seam: `@rad-orchestration/repo-registry`
+```
+node --test --import tsx "tests/*.test.mjs" "tests/*.test.ts"
+node --test harness-files/tests/*.test.mjs
+```
 
-The npm workspace package `@rad-orchestration/repo-registry` (at `lib/repo-registry/`) is the sanctioned seam for registry reads and writes. It is consumed by name by both the CLI (`cli/`) and the UI's server-side API routes (`ui/app/api/**`). npm workspaces establish a symlink at `node_modules/@rad-orchestration/repo-registry` pointing to `lib/repo-registry/`; consumers resolve against the package's compiled `dist/` (ESM + `.d.ts`), not raw source.
+The first covers workspace linkage, by-name package resolution, CI wiring, and cross-surface
+project-state cohesion. The second covers canonical source — skill call form, agent skill
+references, and forbidden corrective-cycle claims.
 
-Rules:
-- Import this library by name (`@rad-orchestration/repo-registry`) only. Deep relative imports that point into `lib/repo-registry/src/` from another module are prohibited.
-- The library's `dist/` must be compiled before any step that bundles the CLI or builds the UI. The standard-installer build (`node harness-installers/standard/build-scripts/build.js`) runs `npm run build -w @rad-orchestration/repo-registry` automatically as the `build-lib-dist` step before `emit-cli-bundle` and `emit-ui-bundle`.
+### Pre-land validation gates
 
-## Workspace versioning
-
-All `@rad-orchestration/*` scoped packages version in lockstep. When any one of them receives a version bump, every other package in the set must receive the same bump in the same commit. The governed set is:
-
-- `@rad-orchestration/repo-registry` (`lib/repo-registry/`)
-- `@rad-orchestration/work-graph` (`lib/work-graph/`)
-- `@rad-orchestration/telemetry` (`lib/telemetry/`)
-- `@rad-orchestration/cli` (`cli/`)
-
-**Deliberate in/out call on unscoped workspaces:**
-
-- `harness-adapters/engine` — **out**. This is an internal adapter seam, not a consumer-facing library, and does not participate in the lockstep version set.
-- `harness-installers/` workspaces (e.g., `harness-installers/standard/`, `harness-installers/claude-plugin/`, `harness-installers/copilot-cli-plugin/`) — **out**. These are release-channel deliverables with independent versioning driven by marketplace publish cycles.
-
-These in/out decisions are deliberate; revisit them explicitly if an unscoped workspace gains a cross-package contract.
-
-## Build and test validation gates
-
-Four installer/plugin builds and a standalone-trace gate remain enforced manually/locally. Run them in order from the repo root after a root `npm install`:
+Each installer build must exit 0 before landing changes that touch `cli/`, `ui/`, the shared build
+helpers, or any workspace library the bundle inlines — `lib/repo-registry/`, `lib/work-graph/`,
+`lib/telemetry/`, `lib/terminal-launch/`:
 
 ```
 node harness-installers/standard/build-scripts/build.js
@@ -80,172 +291,3 @@ node harness-installers/claude-plugin/build-scripts/build.js
 node harness-installers/copilot-cli-plugin/build-scripts/build.js
 node harness-installers/copilot-vscode-plugin/build-scripts/build.js
 ```
-
-Each must exit 0. The standard build produces its CLI esbuild output and the UI Next standalone; the plugin builders each produce their own CLI bundle. Automated enforcement is provided at the unit level by the CI lib job (which runs `lib/repo-registry` tests); the full installer builds are manual/local gates run before landing changes that touch `lib/repo-registry`, `cli/`, `ui/`, or the shared build-helpers.
-
-## Reserved Namespace: rad-*
-
-Skills shipped by the orchestration system carry the `rad-` prefix on both folder name and frontmatter `name`. The prefix is a **documentation-only reserved namespace** — the system does not hard-enforce uniqueness against downstream authors, but the planner-spawn manifest filter (the `radorch skill list` subcommand and its shared `buildSkillManifest` module) deliberately excludes any `rad-*` skill from the manifest. Authoring a `rad-something` skill in your own repo will therefore make it invisible to the planner.
-
-See `.agents/skills/rad-create-skill/SKILL.md` for the matching authoring convention.
-
-## Source Layout
-
-Canonical agent and skill source lives under `harness-files/` (at `harness-files/agents/` and `harness-files/skills/`), authored in Claude shape — the format Claude Code reads natively. Nothing is generated *at the repo root* by the build — `npm run build` projects adapter output into `harness-installers/standard/output/<harness>/` and does **not** deploy. Getting edits onto your machine (`~/.claude/` or `~/.copilot/`) is a separate reinstall step via `/rad-dogfood-harness`. Edit the canonical source; never edit the deployed output.
-
-The rest of the repo splits by job:
-
-- **`harness-adapters/`** — self-contained per-harness adapters (one folder per harness; see that folder's `AGENTS.md`).
-- **`harness-installers/<variant>/`** — one installer per shippable variant (`standard`, `claude-plugin`, `copilot-cli-plugin`), plus a `shared/` seam consumed by all of them. The `standard` build is also the repo-root `npm run build`, and the `/rad-dogfood-harness` dev loop reinstalls through it.
-- **`runtime-config/`** — `orchestration.yml` and tier templates shipped verbatim by every installer into the user's `~/.radorc/`.
-- **`cli/`, `ui/`, `docs/`, `prompt-tests/`, `.agents/`, `.githooks/`, `.github/`** — unchanged contributors to the system; see their own folders.
-
-The `rad-*` reserved-namespace rule above applies to `harness-files/skills/` — it does not change with the restructure.
-
-# Common Commands
-
-## Multi-harness build (repo root)
-
-`npm run build` runs the standard installer build (`node harness-installers/standard/build-scripts/build.js`), which projects the canonical `harness-files/` agents and skills through every adapter into `harness-installers/standard/output/<harness>/` and emits the per-harness manifests. It builds all three harnesses (`claude`, `copilot-vscode`, `copilot-cli`) in one pass and does **not** deploy anything to your user-level `~/.claude/` or `~/.copilot/`.
-
-```
-npm run build   # build standard installer output for all harnesses (no deploy)
-```
-
-## Deploying canonical edits to your machine (dogfood loop)
-
-After editing any file under `harness-files/`, get it onto your machine by **reinstalling through the standard installer** — this is the only path that expands the `${PLUGIN_ROOT}` content token to a concrete harness root, so installed skills reference an absolute `radorch.mjs` instead of a literal token that breaks command resolution. (A plain file-copy would leave the token unexpanded — a real bug this path avoids.)
-
-Run the `/rad-dogfood-harness` skill (`.claude/skills/rad-dogfood-harness/`). It builds and packs the `rad-orc` tarball, stops the UI, uninstalls the chosen harness, reinstalls it (expanding tokens), and restarts the UI. Pick one harness per run.
-
-**First clone of the repo requires a redeploy** before the in-repo Claude Code instance can read up-to-date canonical content from `~/.claude/`. Note that `~/.claude/` is shared across all worktrees of this repo and across all Claude Code projects — only one branch's content can be active at a time. Switch worktrees → redeploy to swap.
-
-**Be aware:** the system agents shipped from `harness-files/agents/` have bare names (no `rad-` prefix). If you have personal agents at `~/.claude/agents/` sharing those filenames, a reinstall will overwrite them. The installer's uninstall is manifest-scoped — it removes only the files the prior install recorded, so non-rad files outside the manifest are untouched.
-
-## Tests by sub-package
-
-**Build workspace libraries before running any test or typecheck command.** The libraries ship compiled `dist/` output that `tsc` and Vitest resolve at type-check and test time; without this step a fresh checkout with no committed `dist/` will fail. Run from the repo root first:
-
-```
-npm run build -w @rad-orchestration/repo-registry -w @rad-orchestration/work-graph -w @rad-orchestration/telemetry
-```
-
-This repo is a polyglot monorepo with several test runners. Pick the right one:
-
-- **Root workspace/integration guards** (`tests/`) — Node's built-in test runner. Run from repo root:
-  ```
-  node --test tests/*.test.mjs
-  ```
-  Covers by-name resolution of `@rad-orchestration/repo-registry`, npm workspace linkage, and CI workflow wiring. These also run as part of the `repo-registry` CI job.
-- **CLI bundle and pipeline engine** (`cli/`) — Vitest:
-  ```
-  cd cli && npm test                              # full suite
-  cd cli && npx vitest run path/to/file.test.ts   # single file
-  cd cli && npm run typecheck                     # tsc --noEmit
-  cd cli && npx eslint .                          # lint
-  ```
-- **Telemetry library** (`lib/telemetry/`) — Vitest:
-  ```
-  cd lib/telemetry && npm test
-  ```
-- **Adapters** (`harness-adapters/`) — Node's built-in test runner. Run from repo root:
-  ```
-  node --test harness-adapters/**/*.test.js
-  ```
-- **Harness files / cross-cutting guards** (`harness-files/tests/`) — Node's built-in test runner. Run from repo root:
-  ```
-  node --test harness-files/tests/*.test.mjs
-  ```
-  Covers corpus-wide invariants: agent skill-reference integrity (unprefixed legacy names), canonical CLI call form in shipped skills, and forbidden corrective-cycle claims across canonical source.
-- **Installer** (`harness-installers/standard/`) — Node test runner:
-  ```
-  cd harness-installers/standard && npm test
-  ```
-  The marketplace plugin builders (`harness-installers/claude-plugin/` and `harness-installers/copilot-cli-plugin/`) each carry their own test suite runnable the same way: `cd harness-installers/<variant> && npm test`.
-- **Dashboard UI** (`ui/`) — Node test runner via tsx, plus `next` for dev/build:
-  ```
-  cd ui && npm test
-  cd ui && npm run dev               # dev server (port 3000 — kill any prior occupant first)
-  cd ui && npm run dev:live          # dev server + RADORCH_CLI_PATH wired + auto-builds the @rad-orchestration/* lib dist
-  cd ui && npm run dev:live:watch    # dev:live, plus rebuild a lib + restart next dev on lib/*/src changes
-  cd ui && npm run build-and-start   # full production build + start
-  ```
-  Use `dev:live` to develop against a live UI with hot reload; it needs the CLI built (`cd cli && npm run build`). It rebuilds the UI's `@rad-orchestration/*` lib `dist/` on startup, so a lib source change that wasn't compiled no longer serves stale data through the dev server (Fast Refresh doesn't watch that external `dist`); `dev:live:watch` keeps it fresh on every lib edit, and `--skip-libs` opts out of the startup build. The `/rad-ui-dev` skill wraps this. See `ui/AGENTS.md` for the full UI module guide.
-
-## Prompt harnesses
-
-`prompt-tests/` is an operator-driven, on-demand regression harness for planner subagent outputs. It is **not** part of CI and costs real Opus tokens per run — re-run only when a planner prompt, skill workflow, or explosion-script change actually warrants a new baseline. See `prompt-tests/README.md` for the per-behavior runner protocol.
-
-# Architecture
-
-The repo ships a document-driven, multi-agent orchestration system plus everything needed to develop it across multiple AI coding harnesses.
-
-## Three execution layers
-
-1. **Agents and skills** (markdown) — the orchestration product itself. Five specialized agents (under `harness-files/agents/`) and ~18 reusable skills (under `harness-files/skills/`) communicate exclusively through structured markdown documents. There is no shared memory or message passing between agents — every interaction is mediated by a document on disk. Each document type has exactly one writer (sole-writer policy). The Coder reads only its self-contained Task Handoff.
-2. **Pipeline runtime** (TypeScript) at `cli/src/lib/pipeline-engine/`, exposed to skills as the `radorch pipeline signal` subcommand — a deterministic state machine. The main agent never makes routing decisions itself: it signals an event, parses the canonical envelope `{ ok, data, error }` from stdout, and dispatches on `data.action` against a fixed routing table. Routing, triage, and state validation are pure functions; LLM judgment is reserved for planning, coding, and review.
-3. **Dashboard** (Next.js) at `ui/` — a read-only visualizer that watches each project's `state.json` and renders pipeline progress, documents, and configuration in real time.
-
-## Multi-harness adapters
-
-The system targets multiple AI coding harnesses (Claude Code, GitHub Copilot in VS Code, GitHub Copilot CLI) from a single canonical source.
-
-- `harness-files/` is the **only** authored source — agents and skills written in Claude shape, which is also the format Claude Code reads natively.
-- `harness-adapters/<harness>/adapter.js` is a self-contained per-harness projection: filename rule, frontmatter shape, tool-name dictionary, and model alias map. Adapters never transform the body of agents or skills, never modify `rad-*` skill names, and never ship settings or top-level instruction files.
-- The standard installer build (`harness-installers/standard/build-scripts/build.js`, also `npm run build`) discovers adapters, runs them into `harness-installers/standard/output/<harness>/`, and emits per-harness manifests. Deploying that output to user-level (`~/.claude/`, `~/.copilot/`) happens through the installer's install flow — see the `/rad-dogfood-harness` dev loop.
-- Publish-time bundles that ship to end users are the deliverable of a follow-on iteration and are out of scope for this document.
-- A new harness is added by mirroring the template adapter under `harness-adapters/` (an empty scaffold with its own README and tests).
-
-## Pipeline runtime detail
-
-The pipeline runtime is the load-bearing piece. It lives at `cli/src/lib/pipeline-engine/`
-and is invoked by skills via `radorch pipeline signal`. The engine emits the canonical
-envelope `{ ok, data, error }`; the orchestrator dispatches on `data.action`. The
-action/event catalog at `runtime-config/action-events/`
-(16 actions) is the contract; the schema at
-`cli/src/lib/pipeline-engine/schemas/orchestration-state-v6.schema.json` validates
-every write.
-
-## Installer
-
-The repo ships three installer variants, each living under `harness-installers/`:
-
-- `harness-installers/standard/` — the `rad-orchestration` npm package end users `npx rad-orchestration` to install. It walks an interactive wizard, generates `orchestration.yml`, and optionally sets up the dashboard.
-- `harness-installers/claude-plugin/` — Claude marketplace plugin builder; produces a plugin tree the user installs through Claude Code's `/plugin` flow.
-- `harness-installers/copilot-cli-plugin/` — Copilot CLI marketplace plugin builder; produces a plugin tree the user installs through Copilot CLI's `/plugin` flow.
-
-All three consume `harness-installers/shared/build-helpers/` as the cross-variant seam, and all three ship `runtime-config/orchestration.yml` and `runtime-config/templates/` verbatim into the user's `~/.radorc/`. None of the installers ships settings files or top-level instruction files — those are user-owned.
-
-## Skill and agent loading
-
-The canonical sources at `harness-files/agents/` and `harness-files/skills/` are **not** what Claude Code loads at runtime — Claude Code reads from `~/.claude/agents/` and `~/.claude/skills/` (user-level, shared across all projects and worktrees on your machine). The `/rad-dogfood-harness` skill populates those paths by building the standard installer and reinstalling the harness, which runs the installer's `installManifestFiles` library — expanding `${PLUGIN_ROOT}` to the concrete harness root — to deploy. The same pattern applies to Copilot (`~/.copilot/`). After editing any agent or skill, redeploy before invoking it from the harness, otherwise the harness reads stale user-level content. When we edit project skills and agents, we are editing the canonical source at `harness-files/` — never edit the deployed output and expect those changes to survive a redeploy.
-
-## Where things live
-
-- `harness-files/` — canonical agent and skill source (committed)
-- `harness-adapters/<harness>/` — self-contained per-harness adapter (committed)
-- `harness-installers/standard/` — `rad-orc` npm installer package source; its build is repo-root `npm run build` and the `/rad-dogfood-harness` dev loop (committed)
-- `harness-installers/claude-plugin/` — Claude marketplace plugin source (committed)
-- `harness-installers/copilot-cli-plugin/` — Copilot CLI marketplace plugin source (committed)
-- `harness-installers/shared/build-helpers/` — installer-blind build helpers shared by every installer variant (committed)
-- `runtime-config/` — `orchestration.yml` and `templates/` shipped verbatim into installer outputs (committed)
-- `cli/` — CLI bundle source (committed)
-- `ui/` — Next.js dashboard (committed)
-- `prompt-tests/` — operator-driven planner regression harness (committed)
-- `harness-files/tests/` — repo-wide cross-cutting tests: agent skill-reference integrity, canonical CLI call form, and corrective-cycle claims (committed)
-- `tests/` — root-level workspace/integration guard tests: by-name resolution of `@rad-orchestration/repo-registry`, npm workspace linkage, and CI workflow wiring assertions (committed)
-- `docs/` — user-facing docs; `docs/internals/` for refactor design notes (committed)
-- `.agents/` — non-production / dev-only skills and prompts (e.g., `rad-create-skill` scaffolding) (committed)
-- `.githooks/`, `.github/` — git and CI configuration (committed)
-- `dist/` — **gitignored** generated build artifacts
-- `harness-installers/<plugin>/output/`, `harness-installers/<plugin>/dogfood-marketplace/` — **gitignored** build artifacts owned by each marketplace plugin builder
-- `~/.claude/`, `~/.copilot/`, `~/.radorc/` — **user-level destinations** that the build/installer write to (NOT in the repo)
-
-## Telemetry surface
-
-The `@rad-orchestration/telemetry` library provides opt-in, neutral usage capture. The feature spans four modules — consult each module's own `AGENTS.md` for full detail:
-
-- [`harness-installers/shared/hooks/`](./harness-installers/shared/hooks/) — single-source telemetry capture shim (`telemetry-capture.mjs`) and preamble shim (`session-preamble.mjs`), shared across all installer variants
-- [`harness-installers/standard/`](./harness-installers/standard/) — standard installer wiring: copies the hooks and registers the `PostToolUse`/`Stop`/`SessionEnd` hook entries
-- [`harness-installers/claude-plugin/`](./harness-installers/claude-plugin/) — Claude marketplace plugin wiring for the same hook set
-- [`ui/`](./ui/) — dashboard Observability toggle (`telemetry.enabled` Switch in the config editor) and the `· observability \`on\`` preamble indicator

@@ -1,9 +1,17 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { buildHookOutput, resolveRadorch, emitHookResult, serializeForStdout } from '../session-preamble.mjs';
+import {
+  buildHookOutput,
+  resolveRadorch,
+  emitHookResult,
+  serializeForStdout,
+  parseSessionIdentity,
+} from '../session-preamble.mjs';
 
 test('wraps the restyled structured preamble in additionalContext on ok envelope', () => {
   const preamble = '**Rad Orc — environment loaded**\n\n**Repos** (1) · `repo-one`\n**Config** · auto-commit `ask` · auto-pr `ask`';
@@ -178,4 +186,161 @@ test('main-execution block emits bare-JSON additionalContext under COPILOT_CLI=1
     'stdout is a JSON object with a non-empty top-level additionalContext',
   );
   assert.match(parsed.additionalContext, /ambient awareness/i, 'notice payload flows through the JSON wrapper');
+});
+
+test('Off-level empty preamble writes zero bytes under the nested Claude/Copilot-VSCode shape', () => {
+  const run = () => ({ status: 0, stdout: JSON.stringify({ ok: true, data: { preamble: '' } }) });
+  const out = buildHookOutput({ run });
+  assert.strictEqual(serializeForStdout(emitHookResult(out), {}), '');
+});
+
+test('Off-level empty preamble writes zero bytes under the bare Copilot CLI shape', () => {
+  const run = () => ({ status: 0, stdout: JSON.stringify({ ok: true, data: { preamble: '' } }) });
+  const out = buildHookOutput({ run });
+  assert.strictEqual(serializeForStdout(emitHookResult(out), { COPILOT_CLI: '1' }), '');
+});
+
+test('parseSessionIdentity prefers snake_case session_id over camelCase sessionId', () => {
+  const identity = parseSessionIdentity(JSON.stringify({ session_id: 'snake-id', sessionId: 'camel-id', cwd: '/repo' }), {});
+  assert.strictEqual(identity.sessionId, 'snake-id');
+  assert.strictEqual(identity.cwd, '/repo');
+});
+
+test('parseSessionIdentity falls back to camelCase sessionId when session_id is absent (Copilot CLI shape)', () => {
+  const identity = parseSessionIdentity(JSON.stringify({ sessionId: 'camel-id', cwd: '/repo' }), {});
+  assert.strictEqual(identity.sessionId, 'camel-id');
+  assert.strictEqual(identity.cwd, '/repo');
+});
+
+test('parseSessionIdentity degrades to empty id/cwd on unparseable stdin, never throws', () => {
+  const identity = parseSessionIdentity('not json', {});
+  assert.strictEqual(identity.sessionId, '');
+  assert.strictEqual(identity.cwd, '');
+});
+
+test('parseSessionIdentity degrades to empty id/cwd on absent stdin', () => {
+  const identity = parseSessionIdentity(undefined, {});
+  assert.strictEqual(identity.sessionId, '');
+  assert.strictEqual(identity.cwd, '');
+});
+
+test('parseSessionIdentity never throws on a valid-but-wrong-shape top-level JSON value (null)', () => {
+  const identity = parseSessionIdentity('null', {});
+  assert.strictEqual(identity.sessionId, '');
+  assert.strictEqual(identity.cwd, '');
+});
+
+test('parseSessionIdentity never throws on a valid-but-wrong-shape top-level JSON value (number)', () => {
+  const identity = parseSessionIdentity('42', {});
+  assert.strictEqual(identity.sessionId, '');
+  assert.strictEqual(identity.cwd, '');
+});
+
+test('parseSessionIdentity coerces non-string identity fields to empty rather than passing them through', () => {
+  const identity = parseSessionIdentity(JSON.stringify({ session_id: 12345, cwd: null }), {});
+  assert.strictEqual(identity.sessionId, '');
+  assert.strictEqual(identity.cwd, '');
+});
+
+test('parseSessionIdentity falls back to a string camelCase sessionId when session_id is a non-string', () => {
+  const identity = parseSessionIdentity(JSON.stringify({ session_id: 999, sessionId: 'camel-id' }), {});
+  assert.strictEqual(identity.sessionId, 'camel-id');
+});
+
+test('parseSessionIdentity harness derivation: COPILOT_CLI=1 wins over any plugin root', () => {
+  const identity = parseSessionIdentity('{}', { COPILOT_CLI: '1', CLAUDE_PLUGIN_ROOT: '/claude' });
+  assert.strictEqual(identity.harness, 'copilot');
+});
+
+test('parseSessionIdentity harness derivation: COPILOT_PLUGIN_ROOT set, CLAUDE_PLUGIN_ROOT unset → copilot', () => {
+  const identity = parseSessionIdentity('{}', { COPILOT_PLUGIN_ROOT: '/copilot' });
+  assert.strictEqual(identity.harness, 'copilot');
+});
+
+test('parseSessionIdentity harness derivation: Copilot-in-VS-Code (both plugin roots set) lands on claude, as documented', () => {
+  const identity = parseSessionIdentity('{}', { COPILOT_PLUGIN_ROOT: '/copilot', CLAUDE_PLUGIN_ROOT: '/claude' });
+  assert.strictEqual(identity.harness, 'claude');
+});
+
+test('parseSessionIdentity harness derivation: neither plugin root nor COPILOT_CLI set → claude', () => {
+  const identity = parseSessionIdentity('{}', {});
+  assert.strictEqual(identity.harness, 'claude');
+});
+
+/** Sets up a stub radorch.mjs under CLAUDE_PLUGIN_ROOT that echoes its own argv back through the
+ *  canonical envelope, so the real hook's spawned flags can be observed end-to-end. */
+function withStubRadorch(fn) {
+  const pluginRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sp-plugin-'));
+  const scriptDir = path.join(pluginRoot, 'skills', 'rad-orchestration', 'scripts');
+  fs.mkdirSync(scriptDir, { recursive: true });
+  const scriptPath = path.join(scriptDir, 'radorch.mjs');
+  fs.writeFileSync(
+    scriptPath,
+    "const args = process.argv.slice(2);\n" +
+      "process.stdout.write(JSON.stringify({ ok: true, data: { preamble: JSON.stringify(args) } }));\n",
+  );
+  try {
+    return fn(pluginRoot);
+  } finally {
+    fs.rmSync(pluginRoot, { recursive: true, force: true });
+  }
+}
+
+test('spawned args carry --session/--cwd/--harness derived from a piped session-start payload', () => {
+  withStubRadorch((pluginRoot) => {
+    const hookPath = fileURLToPath(new URL('../session-preamble.mjs', import.meta.url));
+    const env = { ...process.env, CLAUDE_PLUGIN_ROOT: pluginRoot };
+    delete env.COPILOT_PLUGIN_ROOT;
+    delete env.COPILOT_CLI;
+    const result = spawnSync(process.execPath, [hookPath], {
+      encoding: 'utf8',
+      env,
+      input: JSON.stringify({ session_id: 'sess-123', cwd: '/launch/dir' }),
+    });
+    assert.strictEqual(result.status, 0);
+    const parsed = JSON.parse(result.stdout);
+    const args = JSON.parse(parsed.hookSpecificOutput.additionalContext);
+    assert.deepStrictEqual(args, [
+      'session-context',
+      '--session', 'sess-123',
+      '--cwd', '/launch/dir',
+      '--harness', 'claude',
+    ]);
+  });
+});
+
+test('spawned args omit --session and --cwd when the piped payload carries no identity fields', () => {
+  withStubRadorch((pluginRoot) => {
+    const hookPath = fileURLToPath(new URL('../session-preamble.mjs', import.meta.url));
+    const env = { ...process.env, CLAUDE_PLUGIN_ROOT: pluginRoot };
+    delete env.COPILOT_PLUGIN_ROOT;
+    delete env.COPILOT_CLI;
+    const result = spawnSync(process.execPath, [hookPath], {
+      encoding: 'utf8',
+      env,
+      input: JSON.stringify({}),
+    });
+    assert.strictEqual(result.status, 0);
+    const parsed = JSON.parse(result.stdout);
+    const args = JSON.parse(parsed.hookSpecificOutput.additionalContext);
+    assert.deepStrictEqual(args, ['session-context', '--harness', 'claude']);
+  });
+});
+
+test('spawned args omit --session and --cwd when stdin is unparseable, and still never throw', () => {
+  withStubRadorch((pluginRoot) => {
+    const hookPath = fileURLToPath(new URL('../session-preamble.mjs', import.meta.url));
+    const env = { ...process.env, CLAUDE_PLUGIN_ROOT: pluginRoot };
+    delete env.COPILOT_PLUGIN_ROOT;
+    delete env.COPILOT_CLI;
+    const result = spawnSync(process.execPath, [hookPath], {
+      encoding: 'utf8',
+      env,
+      input: 'not json',
+    });
+    assert.strictEqual(result.status, 0);
+    const parsed = JSON.parse(result.stdout);
+    const args = JSON.parse(parsed.hookSpecificOutput.additionalContext);
+    assert.deepStrictEqual(args, ['session-context', '--harness', 'claude']);
+  });
 });

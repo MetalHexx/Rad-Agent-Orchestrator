@@ -26,7 +26,10 @@ function setupDom(): Root {
 }
 
 function summary(name: string): ProjectSummary {
-  return { name, tier: "execution", hasState: true, hasMalformedState: false, schemaVersion: "v5" };
+  return {
+    name, tier: "execution", state: "pending_review", stateLabel: "Pending Review",
+    hasState: true, hasMalformedState: false, schemaVersion: "v5",
+  };
 }
 
 function stateFor(name: string): ProjectStateV5 {
@@ -246,13 +249,65 @@ test("a live state_change for the selected project clears a stale owned error", 
       listener!({
         type: "state_change",
         timestamp: "2026-01-01T00:00:00Z",
-        payload: { projectName: "gamma", state: stateFor("gamma") },
+        payload: {
+          projectName: "gamma",
+          state: stateFor("gamma"),
+          projectState: { tier: "execution", state: "pending_review", label: "Pending Review" },
+        },
       } as SSEEvent);
     });
 
     assert.equal(latest!.error, null, "the live push must clear the stale error it supersedes");
     assert.equal(latest!.projectState?.owner, "gamma");
     assert.equal(latest!.stateSettledFor, "gamma");
+  } finally {
+    act(() => { root.unmount(); });
+    restore();
+  }
+});
+
+test("a live state_change clears a malformed-state verdict the list is still holding", async () => {
+  const malformed: ProjectSummary = {
+    name: "gamma", tier: "not_initialized", state: "not_initialized", stateLabel: "Not Initialized",
+    hasState: true, hasMalformedState: true, errorMessage: "Malformed state",
+  };
+  const restore = seedFetch([malformed], async () => new Response("{}", { status: 404 }));
+  const root = setupDom();
+  let listener: ((e: SSEEvent) => void) | null = null;
+  const sseValue = {
+    sseStatus: "connected" as const,
+    reconnect: () => {},
+    subscribe: (l: (e: SSEEvent) => void) => { listener = l; return () => { listener = null; }; },
+  };
+  try {
+    await act(async () => {
+      root.render(
+        <SSEContext.Provider value={sseValue}>
+          <Probe />
+        </SSEContext.Provider>,
+      );
+    });
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    assert.equal(latest!.projects[0]?.hasMalformedState, true);
+
+    // The server only publishes a state_change once state.json parsed, so the
+    // push proves the file is readable again.
+    await act(async () => {
+      listener!({
+        type: "state_change",
+        timestamp: "2026-01-01T00:00:00Z",
+        payload: {
+          projectName: "gamma",
+          state: stateFor("gamma"),
+          projectState: { tier: "execution", state: "pending_review", label: "Pending Review" },
+        },
+      } as SSEEvent);
+    });
+
+    const patched = latest!.projects[0];
+    assert.equal(patched.hasMalformedState, false, "the stale malformed verdict must not outlive the push");
+    assert.equal(patched.errorMessage, undefined);
+    assert.equal(patched.stateLabel, "Pending Review");
   } finally {
     act(() => { root.unmount(); });
     restore();
@@ -285,7 +340,11 @@ test("a live state_change for the selected project supersedes a straggling in-fl
       listener!({
         type: "state_change",
         timestamp: "2026-01-01T00:00:00Z",
-        payload: { projectName: "gamma", state: stateFor("gamma") },
+        payload: {
+          projectName: "gamma",
+          state: stateFor("gamma"),
+          projectState: { tier: "execution", state: "pending_review", label: "Pending Review" },
+        },
       } as SSEEvent);
     });
     assert.equal(latest!.projectState?.state.project.name, "gamma");

@@ -11,6 +11,23 @@ import { BufferedStage, MarkdownLayer } from './buffered-stage';
 
 const MD = { path: 'A.md', kind: 'markdown' as const, title: 'Doc', isMarkdown: true };
 
+// Slots are stacked in DOM order (0 then 1) regardless of which is front or
+// incoming, so `z-index` — 10 for the front slot, 20 for the incoming slot —
+// is the only reliable way to scope an assertion to a specific slot instead
+// of the whole two-slot markup (see the retargeted live-reload tests below).
+function layerAtZIndex(container: HTMLElement, zIndex: number): HTMLElement | undefined {
+  return Array.from(container.querySelectorAll<HTMLElement>('[data-stage-layer]'))
+    .find((el) => el.style.zIndex === String(zIndex));
+}
+
+function iframeSrcAtZIndex(container: HTMLElement, zIndex: number): string | null {
+  return layerAtZIndex(container, zIndex)?.querySelector('iframe')?.getAttribute('src') ?? null;
+}
+
+function iframeElAtZIndex(container: HTMLElement, zIndex: number): HTMLIFrameElement | null {
+  return layerAtZIndex(container, zIndex)?.querySelector('iframe') ?? null;
+}
+
 test('stage uses a dark backstop, not a white background (DD-8)', () => {
   const html = renderToStaticMarkup(createElement(BufferedStage, {
     projectName: 'DEMO', artifact: MD, markdownContent: '# Hi', activePulse: false,
@@ -68,7 +85,7 @@ test('html iframes stay sandboxed without allow-scripts (NFR-8)', () => {
   assert.ok(!/allow-scripts/.test(html), 'no script execution in the artifact iframe');
 });
 
-test('an open HTML document reloads its iframe in place when a live change lands (FR-1)', async () => {
+test('an open HTML document live-reloads the BACKGROUND slot, leaving the front slot\'s src unchanged (FR-1)', async () => {
   const dom = new JSDOM('<!doctype html><div id="root"></div>');
   const { window } = dom;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -80,29 +97,27 @@ test('an open HTML document reloads its iframe in place when a live change lands
   const { createRoot } = await import('react-dom/client');
   const { act } = await import('react');
   const htmlArt = { path: 'V.html', kind: 'html' as const, title: 'Visual', isMarkdown: false };
-  const root = createRoot(window.document.getElementById('root')!);
+  const container = window.document.getElementById('root')!;
+  const root = createRoot(container);
   await act(async () => {
     root.render(createElement(BufferedStage, {
       projectName: 'DEMO', artifact: htmlArt, markdownContent: null, activePulse: false, liveMtime: 0,
     } as never));
   });
-  // innerHTML HTML-encodes & as &amp; — decode to plain text for URL pattern matching.
-  const decode = (html: string) => html.replace(/&amp;/g, '&');
-  const before = decode(window.document.getElementById('root')!.innerHTML);
-  assert.ok(!/[?&]v=\d/.test(before), 'no live-reload cache-bust before any change lands');
+  assert.ok(!/[?&]v=\d/.test(iframeSrcAtZIndex(container, 10) ?? ''), 'no live-reload cache-bust before any change lands');
   await act(async () => {
     root.render(createElement(BufferedStage, {
       projectName: 'DEMO', artifact: htmlArt, markdownContent: null, activePulse: true, liveMtime: 1,
     } as never));
   });
-  // Flush any pending state updates triggered by effects (e.g. setLiveRefreshKey from the change effect).
+  // Flush any pending state updates triggered by effects (e.g. beginLiveReload from the change effect).
   await act(async () => {});
-  const after = decode(window.document.getElementById('root')!.innerHTML);
-  assert.ok(/[?&]v=1/.test(after), 'front iframe reloads (cache-bust) when the open HTML doc changes in place');
+  assert.ok(!/[?&]v=\d/.test(iframeSrcAtZIndex(container, 10) ?? ''), 'the front slot\'s src is unchanged by a live edit — no navigation-style reset');
+  assert.ok(/[?&]v=1/.test(iframeSrcAtZIndex(container, 20) ?? ''), 'the incoming (background) slot reloads at the next generation');
   await act(async () => { root.unmount(); });
 });
 
-test('a repeated change to the open HTML doc within the pulse window still advances the cache-bust (BUG 2)', async () => {
+test('a repeated change to the open HTML doc within the pulse window still advances the cache-bust on the background slot, front unchanged (BUG 2)', async () => {
   const dom = new JSDOM('<!doctype html><div id="root"></div>');
   const { window } = dom;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -114,8 +129,8 @@ test('a repeated change to the open HTML doc within the pulse window still advan
   const { createRoot } = await import('react-dom/client');
   const { act } = await import('react');
   const htmlArt = { path: 'V.html', kind: 'html' as const, title: 'Visual', isMarkdown: false };
-  const decode = (html: string) => html.replace(/&amp;/g, '&');
-  const root = createRoot(window.document.getElementById('root')!);
+  const container = window.document.getElementById('root')!;
+  const root = createRoot(container);
   await act(async () => {
     root.render(createElement(BufferedStage, {
       projectName: 'DEMO', artifact: htmlArt, markdownContent: null, activePulse: false, liveMtime: 0,
@@ -128,19 +143,134 @@ test('a repeated change to the open HTML doc within the pulse window still advan
     } as never));
   });
   await act(async () => {});
-  const afterFirst = decode(window.document.getElementById('root')!.innerHTML);
-  assert.ok(/[?&]v=1/.test(afterFirst), 'first change cache-busts to v=1');
+  assert.ok(/[?&]v=1/.test(iframeSrcAtZIndex(container, 20) ?? ''), 'first change cache-busts the background slot to v=1');
+  assert.ok(!/[?&]v=\d/.test(iframeSrcAtZIndex(container, 10) ?? ''), 'the front slot\'s src stays unbusted through the first change');
   // Second on-disk change lands BEFORE the pulse settles — pulse stays true (no new
-  // rising edge), only the mtime advances to 2. The iframe must still reload.
+  // rising edge), only the mtime advances to 2. The background slot must still reload.
   await act(async () => {
     root.render(createElement(BufferedStage, {
       projectName: 'DEMO', artifact: htmlArt, markdownContent: null, activePulse: true, liveMtime: 2,
     } as never));
   });
   await act(async () => {});
-  const afterSecond = decode(window.document.getElementById('root')!.innerHTML);
-  assert.ok(/[?&]v=2/.test(afterSecond), 'repeated same-window change advances the cache-bust to v=2');
-  assert.ok(!/[?&]v=1\b/.test(afterSecond), 'stale v=1 cache-bust is replaced');
+  const secondBackgroundSrc = iframeSrcAtZIndex(container, 20) ?? '';
+  assert.ok(/[?&]v=2/.test(secondBackgroundSrc), 'repeated same-window change advances the background slot\'s cache-bust to v=2');
+  assert.ok(!/[?&]v=1\b/.test(secondBackgroundSrc), 'stale v=1 cache-bust is replaced');
+  assert.ok(!/[?&]v=\d/.test(iframeSrcAtZIndex(container, 10) ?? ''), 'the front slot\'s src stays unbusted through the repeated change');
+  await act(async () => { root.unmount(); });
+});
+
+test('a live edit landing mid-navigation is retried once the navigation settles, not consumed', async () => {
+  const dom = new JSDOM('<!doctype html><div id="root"></div>');
+  const { window } = dom;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (globalThis as any).window = window;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (globalThis as any).document = window.document;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (globalThis as any).ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
+  const { createRoot } = await import('react-dom/client');
+  const { act } = await import('react');
+  const A = { path: 'A.html', kind: 'html' as const, title: 'Alpha', isMarkdown: false };
+  const B = { path: 'B.html', kind: 'html' as const, title: 'Beta', isMarkdown: false };
+  const container = window.document.getElementById('root')!;
+  const root = createRoot(container);
+  const srcs = () => Array.from(container.querySelectorAll('iframe')).map((el) => el.getAttribute('src') ?? '');
+  await act(async () => {
+    root.render(createElement(BufferedStage, {
+      projectName: 'DEMO', artifact: A, markdownContent: null, activePulse: false, liveMtime: 0,
+    } as never));
+  });
+  await act(async () => {});
+
+  // Navigate to B: it loads into the incoming slot; A is still the front.
+  await act(async () => {
+    root.render(createElement(BufferedStage, {
+      projectName: 'DEMO', artifact: B, markdownContent: null, activePulse: false, liveMtime: 0,
+    } as never));
+  });
+  await act(async () => {});
+  const incoming = iframeElAtZIndex(container, 20);
+  assert.ok(incoming, 'B loaded into the incoming (background) slot');
+
+  // An edit to B lands while B is STILL the incoming slot — the reload is rejected
+  // because the front is not B yet.
+  await act(async () => {
+    root.render(createElement(BufferedStage, {
+      projectName: 'DEMO', artifact: B, markdownContent: null, activePulse: true, liveMtime: 1,
+    } as never));
+  });
+  await act(async () => {});
+  assert.ok(srcs().every((s) => !/[?&]v=\d/.test(s)), 'nothing reloads while B has not settled to the front');
+
+  // The navigation settles and B becomes the front. The rejected edit must still
+  // read as new, or B sits on pre-edit content until some later edit happens to land.
+  await act(async () => { incoming!.dispatchEvent(new window.Event('load')); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 400)); });
+
+  assert.ok(srcs().some((s) => /path=B\.html/.test(s) && /[?&]v=1/.test(s)),
+    'the same mtime drives a reload of B once the front settles — the mid-navigation edit was not swallowed');
+  await act(async () => { root.unmount(); });
+});
+
+test('a live reload captures the front iframe\'s scroll offset and replays it on the incoming iframe before it swaps in (P02-T01 seam)', async () => {
+  const dom = new JSDOM('<!doctype html><div id="root"></div>');
+  const { window } = dom;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (globalThis as any).window = window;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (globalThis as any).document = window.document;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (globalThis as any).ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
+  const { createRoot } = await import('react-dom/client');
+  const { act } = await import('react');
+  const htmlArt = { path: 'V.html', kind: 'html' as const, title: 'Visual', isMarkdown: false };
+  const container = window.document.getElementById('root')!;
+  const root = createRoot(container);
+  await act(async () => {
+    root.render(createElement(BufferedStage, {
+      projectName: 'DEMO', artifact: htmlArt, markdownContent: null, activePulse: false, liveMtime: 0,
+    } as never));
+  });
+  // Flush the front slot's own natural jsdom load event before stubbing it.
+  await act(async () => {});
+
+  const frontIframe = iframeElAtZIndex(container, 10);
+  assert.ok(frontIframe, 'the front slot has a mounted iframe');
+  Object.defineProperty(frontIframe, 'contentWindow', {
+    configurable: true,
+    get() { return { scrollY: 250 }; },
+  });
+
+  // A live edit lands: the effect must read the front iframe's CURRENT scroll
+  // offset (via the stub above) before stashing it for the incoming slot.
+  await act(async () => {
+    root.render(createElement(BufferedStage, {
+      projectName: 'DEMO', artifact: htmlArt, markdownContent: null, activePulse: true, liveMtime: 1,
+    } as never));
+  });
+  // Flush the incoming slot's own natural jsdom load event before stubbing it.
+  await act(async () => {});
+
+  const incomingIframe = iframeElAtZIndex(container, 20);
+  assert.ok(incomingIframe, 'the live reload loaded the incoming (background) slot');
+  assert.notEqual(incomingIframe, frontIframe, 'the incoming iframe is a distinct physical slot from the front');
+
+  const scrollToCalls: Array<[number, number]> = [];
+  Object.defineProperty(incomingIframe, 'contentWindow', {
+    configurable: true,
+    get() {
+      return { scrollTo: (x: number, y: number) => scrollToCalls.push([x, y]) };
+    },
+  });
+
+  await act(async () => {
+    incomingIframe!.dispatchEvent(new window.Event('load'));
+  });
+
+  assert.deepEqual(scrollToCalls, [[0, 250]],
+    'the incoming slot replays the exact offset captured off the front iframe before the reload — the stage state → renderer scroll-threading seam, end to end');
+
   await act(async () => { root.unmount(); });
 });
 

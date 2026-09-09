@@ -5,6 +5,7 @@ title: Display plan approval gate
 description: Present the completed Master Plan to the operator and wait for approval before the pipeline proceeds to execution.
 category: gate
 completion_event: plan_approved
+completion_signalled_by: skill
 ---
 
 Present the Master Plan to the operator. Show the phase breakdown and task list so they can verify scope and sequencing before any code is written.

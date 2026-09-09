@@ -2,8 +2,7 @@ import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { composeActionPrompt, composeOrphanEventPrompt, deriveSignalLine } from '../../../src/lib/pipeline-engine/composer.js';
-import type { EventFrontmatter } from '../../../src/lib/pipeline-engine/action-event-loader.js';
+import { composeActionPrompt, composeOrphanEventPrompt } from '../../../src/lib/pipeline-engine/composer.js';
 
 function makeCatalog(): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ae-'));
@@ -82,7 +81,7 @@ describe('composeActionPrompt — customs', () => {
 });
 
 describe('composeActionPrompt — bare (no customs)', () => {
-  it('composes action body + When complete heading + signal line with flags', () => {
+  it('composes action body + event body + the shape-only completion block when no guidance is supplied', () => {
     const dir = makeCatalog();
     fs.writeFileSync(path.join(dir, 'action.spawn_planner.md'), [
       '---',
@@ -112,13 +111,17 @@ describe('composeActionPrompt — bare (no customs)', () => {
 
     expect(out.prompt.startsWith('## Step 1\n\nSpawn the planner agent now.')).toBe(true);
     expect(out.prompt).toContain('Signal this after the requirements doc lands on disk.');
-    expect(out.prompt.trim().endsWith('Signal: requirements_completed --doc-path <value>')).toBe(true);
+    // The shape-only block closes the section: the event to send and each flag
+    // it accepts, with no rendered command.
+    expect(out.prompt).toContain('`requirements_completed`');
+    expect(out.prompt).toContain('`--doc-path`');
+    expect(out.prompt).not.toContain('Signal:');
     expect(out.prompt).not.toContain('## Before doing this action');
     expect(out.prompt).not.toContain('## Before signaling');
     expect(out.prompt).not.toContain('## After signaling');
   });
 
-  it('emits Signal: <event-name> with no flags when signal_payload is empty', () => {
+  it('names the event and renders no flags when signal_payload is empty', () => {
     const dir = makeCatalog();
     fs.writeFileSync(path.join(dir, 'action.gate_open.md'), [
       '---',
@@ -142,7 +145,8 @@ describe('composeActionPrompt — bare (no customs)', () => {
       completionEvent: 'gate_approved',
       catalogRoot: dir,
     });
-    expect(out.prompt).toMatch(/Signal: gate_approved\s*$/);
+    expect(out.prompt).toContain('`gate_approved`');
+    expect(out.prompt).not.toMatch(/--\w/);
   });
 
   it('omits When complete and After signaling for terminal actions', () => {
@@ -215,7 +219,7 @@ describe('composeActionPrompt — Step-N numbering and has_custom_instructions',
     // No overlay for action.pre or event.pre — they collapse.
     // Step 1 = shipped action body, Step 2 = shipped event "when complete" block, Step 3 = post overlay.
     expect(result.prompt).toMatch(/^## Step 1\n\nfoo body\./);
-    expect(result.prompt).toMatch(/## Step 2\n\n[\s\S]*Signal: bar_done/);
+    expect(result.prompt).toMatch(/## Step 2\n\n[\s\S]*`bar_done`/);
     expect(result.prompt).toMatch(/## Step 3\n\nonly post\s*$/);
     expect(result.has_custom_instructions).toBe(true);
   });
@@ -230,7 +234,7 @@ describe('composeActionPrompt — Step-N numbering and has_custom_instructions',
     expect(result.has_custom_instructions).toBe(false);
     // Shipped body still numbered.
     expect(result.prompt).toMatch(/^## Step 1\n\nfoo body\./);
-    expect(result.prompt).toMatch(/## Step 2\n\n[\s\S]*Signal: bar_done/);
+    expect(result.prompt).toMatch(/## Step 2\n\n[\s\S]*`bar_done`/);
   });
 
   it('treats whitespace-only overlay content as absent for the flag (admission semantics)', () => {
@@ -276,33 +280,53 @@ describe('composeOrphanEventPrompt — Step-N numbering and flag', () => {
       catalogRoot: root,
       overlay: { 'event.kickoff.post': 'post' },
     });
-    expect(result.prompt).toMatch(/^## Step 1\n\n[\s\S]*Signal: kickoff/);
+    expect(result.prompt).toMatch(/^## Step 1\n\n[\s\S]*`kickoff`/);
     expect(result.prompt).toMatch(/## Step 2\n\npost\s*$/);
     expect(result.has_custom_instructions).toBe(true);
   });
 });
 
-describe('deriveSignalLine — array-shaped flags (AD-3)', () => {
-  it('renders an array flag as a single --repos <json> token', () => {
-    const fm = {
-      kind: 'event', name: 'task_completed', title: 'x', description: 'y',
-      signal_payload: {
-        repos: { required: true, array: true, description: 'per-repo commit results' },
-      },
-    } as unknown as EventFrontmatter;
-    expect(deriveSignalLine('task_completed', fm))
-      .toBe("Signal: task_completed --repos '<json>'");
+describe('shape-only completion block — array-shaped flags', () => {
+  function seedArrayFlagCatalog(): string {
+    const dir = makeCatalog();
+    fs.writeFileSync(path.join(dir, 'action.finish_task.md'), [
+      '---', 'kind: action', 'name: finish_task', 'title: t', 'description: d',
+      'category: agent-spawn', 'completion_event: task_completed', '---',
+      'Finish the task.', '',
+    ].join('\n'));
+    fs.writeFileSync(path.join(dir, 'event.task_completed.md'), [
+      '---', 'kind: event', 'name: task_completed', 'title: t', 'description: d',
+      'signal_payload:',
+      '  doc-path:',
+      '    required: true',
+      '    description: path to the handoff',
+      '  repos:',
+      '    required: true',
+      '    array: true',
+      '    item_keys: [name, commitHash]',
+      '    description: per-repo commit results',
+      '---',
+      'Event body.', '',
+    ].join('\n'));
+    return dir;
+  }
+
+  it('lists every payload flag in declaration order and marks the array-shaped one', () => {
+    const out = composeActionPrompt({
+      actionName: 'finish_task', completionEvent: 'task_completed', catalogRoot: seedArrayFlagCatalog(),
+    });
+    expect(out.prompt).toContain('`--repos` (JSON array)');
+    expect(out.prompt.indexOf('`--doc-path`')).toBeLessThan(out.prompt.indexOf('`--repos`'));
   });
 
-  it('keeps scalar flags rendered as --flag <value>', () => {
-    const fm = {
-      kind: 'event', name: 'phase_review_completed', title: 'x', description: 'y',
-      signal_payload: {
-        'doc-path': { required: true, description: 'path' },
-        phase: { required: false, description: 'phase' },
-      },
-    } as unknown as EventFrontmatter;
-    expect(deriveSignalLine('phase_review_completed', fm))
-      .toBe('Signal: phase_review_completed --doc-path <value> --phase <value>');
+  it('is replaced wholesale by caller-supplied guidance', () => {
+    const out = composeActionPrompt({
+      actionName: 'finish_task',
+      completionEvent: 'task_completed',
+      catalogRoot: seedArrayFlagCatalog(),
+      signalGuidance: 'RENDERED GUIDANCE',
+    });
+    expect(out.prompt).toContain('RENDERED GUIDANCE');
+    expect(out.prompt).not.toContain('`--repos` (JSON array)');
   });
 });

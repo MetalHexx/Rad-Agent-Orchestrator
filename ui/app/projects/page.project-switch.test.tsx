@@ -21,6 +21,7 @@ import { JSDOM } from 'jsdom';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import ProjectsPage from './[[...slug]]/page';
+import { PROJECT_VIEW_MODE_STORAGE_KEY } from '@/hooks/use-project-view-mode';
 import type { ProjectSummary } from '@/types/components';
 import type { ProjectStateV5 } from '@/types/state';
 
@@ -109,6 +110,18 @@ function setupDom(): { container: HTMLDivElement; root: Root } {
     addEventListener: () => {},
     removeEventListener: () => {},
   })) as unknown as typeof window.matchMedia;
+  // `useProjectViewMode` reads the bare global `localStorage` (the browser
+  // idiom, where that global is `window.localStorage`) — under Node it is not
+  // defined at all unless bridged here, same as the other window-scoped
+  // globals above.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (globalThis as any).localStorage = dom.window.localStorage;
+  // This suite predates the Overview (P03-T03) and pins the Pipeline
+  // sub-view's DAG-specific markup to assert on. Overview is now the global
+  // default, so seed the operator's view-mode preference to 'pipeline' up
+  // front — these tests are about cross-project state leakage during the
+  // plan branch's fetch races, not about which sub-view is selected.
+  dom.window.localStorage.setItem(PROJECT_VIEW_MODE_STORAGE_KEY, 'pipeline');
   const container = dom.window.document.getElementById('root') as HTMLDivElement;
   const root = createRoot(container);
   return { container, root };
@@ -141,11 +154,17 @@ function buildV5State(name: string): ProjectStateV5 {
 }
 
 function plannedSummary(name: string): ProjectSummary {
-  return { name, tier: 'execution', hasState: true, hasMalformedState: false, schemaVersion: 'v5' };
+  return {
+    name, tier: 'execution', state: 'pending_review', stateLabel: 'Pending Review',
+    hasState: true, hasMalformedState: false, schemaVersion: 'v5',
+  };
 }
 
 function unplannedSummary(name: string): ProjectSummary {
-  return { name, tier: 'not_initialized', hasState: false, hasMalformedState: false };
+  return {
+    name, tier: 'not_initialized', state: 'not_initialized', stateLabel: 'Not Initialized',
+    hasState: false, hasMalformedState: false,
+  };
 }
 
 // ─── Fetch stub ─────────────────────────────────────────────────────────────
@@ -264,9 +283,20 @@ function hasPipelineTimeline(el: HTMLElement): boolean {
   return el.querySelector('[role="listbox"][aria-label="Pipeline timeline"]') !== null;
 }
 
-function launchHeadingText(el: HTMLElement): string | null {
-  const h1 = el.querySelector('h1');
-  return h1 ? h1.textContent : null;
+/** The ProjectHeader project-name span — present on every branch (loading,
+ *  error, plan, and now the Overview's launch branch too), so it identifies
+ *  whichever project's header is currently mounted regardless of sub-view. */
+function headerProjectName(el: HTMLElement): string | null {
+  const span = el.querySelector('header span.text-lg.font-semibold');
+  return span ? span.textContent : null;
+}
+
+/** The Overview/Pipeline toggle only renders when `viewMode` is defined — the
+ *  launch branch passes `undefined` (a pipeline-less project has nothing to
+ *  switch to), so its absence is the reliable signal that the pipeline-less
+ *  Overview, not the plan branch, is on screen. */
+function hasViewToggle(el: HTMLElement): boolean {
+  return el.querySelector('[aria-label="Project view"]') !== null;
 }
 
 function hasStateErrorAlert(el: HTMLElement): boolean {
@@ -293,7 +323,7 @@ function findButtonByText(el: HTMLElement, text: string): HTMLButtonElement | un
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
-test("planned -> unplanned renders the launch screen with no trace of the first project's plan", async () => {
+test("planned -> unplanned renders the Overview with no trace of the first project's plan", async () => {
   const planned = plannedSummary('switch-planned-a');
   const unplanned = unplannedSummary('switch-unplanned-a');
   const stub = installFetchStub({
@@ -311,11 +341,12 @@ test("planned -> unplanned renders the launch screen with no trace of the first 
     assert.ok(hasPipelineTimeline(main), 'the planned project should render its plan');
 
     await selectProjectAndSettle(container, unplanned.name);
-    assert.strictEqual(launchHeadingText(main), unplanned.name, 'the launch screen should show the unplanned project');
+    assert.strictEqual(headerProjectName(main), unplanned.name, 'the Overview header should show the unplanned project');
+    assert.ok(!hasViewToggle(main), 'a pipeline-less project renders no toggle');
     assert.ok(!hasPipelineTimeline(main), "the outgoing project's plan must not remain on screen");
     assert.ok(
       !main.textContent?.includes(planned.name),
-      "no trace of the outgoing project's name should remain once the launch screen is on screen",
+      "no trace of the outgoing project's name should remain once the Overview is on screen",
     );
 
     act(() => { root.unmount(); });
@@ -324,7 +355,7 @@ test("planned -> unplanned renders the launch screen with no trace of the first 
   }
 });
 
-test('unplanned -> planned renders the plan with no trace of the launch screen', async () => {
+test("unplanned -> planned renders the plan with no trace of the unplanned project's Overview", async () => {
   const unplanned = unplannedSummary('switch-unplanned-b');
   const planned = plannedSummary('switch-planned-b');
   const stub = installFetchStub({
@@ -339,11 +370,17 @@ test('unplanned -> planned renders the plan with no trace of the launch screen',
     const main = mainContent(container);
 
     await selectProjectAndSettle(container, unplanned.name);
-    assert.strictEqual(launchHeadingText(main), unplanned.name, 'the unplanned project should show the launch screen');
+    assert.strictEqual(headerProjectName(main), unplanned.name, 'the unplanned project should show its Overview header');
+    assert.ok(!hasViewToggle(main), 'a pipeline-less project renders no toggle');
 
+    // Visiting the pipeline-less project just above pins the operator's
+    // view-mode preference to 'overview' (P03-T03) — so the planned project's
+    // plan renders as its own Overview here, not the DAG. The toggle now
+    // appearing (rather than DAG-specific markup) is what proves a real,
+    // owned plan resolved for it.
     await selectProjectAndSettle(container, planned.name);
-    assert.ok(hasPipelineTimeline(main), 'the planned project should render its plan');
-    assert.strictEqual(launchHeadingText(main), null, 'the launch screen must not remain once the plan is on screen');
+    assert.ok(hasViewToggle(main), 'the planned project should render its plan, with a toggle to switch to Pipeline');
+    assert.strictEqual(headerProjectName(main), planned.name, 'the header must read the planned project once its plan is on screen');
     assert.ok(
       !main.textContent?.includes(unplanned.name),
       'no trace of the outgoing unplanned project should remain',
@@ -397,7 +434,7 @@ test('a state response that resolves after the switch changes nothing', async ()
 });
 
 test("switching away before b's own /files settles must not resolve a stale (a-owned) document path under b", async () => {
-  // PlanningDocsList/LaunchScreen render `live.artifacts` (ArtifactLiveProvider's
+  // PlanningDocsList/OverviewPage render `live.artifacts` (ArtifactLiveProvider's
   // own, already-owner-guarded state), not the page's `fileList`/`modalDocs` — so
   // this test drives the one thing modalDocs alone controls: whether a deep-linked
   // doc path resolves to the real ArtifactViewerModal or the "not found" state.
@@ -484,7 +521,7 @@ test('a failed state fetch for the selected project renders the error with a wor
 
     assert.ok(hasStateErrorAlert(main), 'a failed state fetch should render the error alert rather than the skeleton');
     assert.ok(!hasPipelineTimeline(main), 'no plan should render for a failed load');
-    assert.strictEqual(launchHeadingText(main), null, 'a failed load must not resemble the launch screen');
+    assert.ok(hasViewToggle(main), 'a failed load still carries the view toggle, unlike the pipeline-less Overview');
 
     const retryButton = findStateRetryButton(main);
     assert.ok(retryButton, 'a retry control must be present');
@@ -497,7 +534,8 @@ test('a failed state fetch for the selected project renders the error with a wor
 
     await selectProjectAndSettle(container, unplanned.name);
     assert.ok(!hasStateErrorAlert(main), 'an unplanned project renders no error alert');
-    assert.strictEqual(launchHeadingText(main), unplanned.name, 'an unplanned project renders the launch screen');
+    assert.strictEqual(headerProjectName(main), unplanned.name, 'an unplanned project renders its Overview header');
+    assert.ok(!hasViewToggle(main), 'a pipeline-less project renders no toggle');
 
     act(() => { root.unmount(); });
   } finally {

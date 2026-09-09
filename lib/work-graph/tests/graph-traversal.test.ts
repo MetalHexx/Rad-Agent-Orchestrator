@@ -1,9 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { WorkGraph } from '../src/graph.js';
+import { PROJECT_STATE_LABELS } from '../src/index.js';
 import type { Node, Edge } from '../src/index.js';
 
-const grp = (id: string): Node => ({ id, kind: 'group', name: id, status: 'unknown' });
-const prj = (id: string, status: any): Node => ({ id, kind: 'project', name: id, status });
+const grp = (id: string): Node => ({ id, kind: 'group', name: id, status: 'unknown', state: 'not_initialized', stateLabel: PROJECT_STATE_LABELS.not_initialized });
+const prj = (id: string, status: any): Node => ({ id, kind: 'project', name: id, status, state: 'executing', stateLabel: PROJECT_STATE_LABELS.executing });
 
 describe('WorkGraph aggregate', () => {
   it('exposes children, parents, and relationship traversal by reference', () => {

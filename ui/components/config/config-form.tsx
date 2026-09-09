@@ -6,6 +6,7 @@ import { ConfigFieldRow } from "@/components/config/config-field-row";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CONFIG_FIELDS, type FieldMeta } from "@/lib/config-field-meta";
 import type { OrchestrationConfig, ConfigValidationErrors } from "@/types/config";
 
@@ -16,18 +17,21 @@ interface ConfigFormProps {
   errors: ConfigValidationErrors;
   /** Callback when a field value changes — (dotPath, newValue) */
   onChange: (path: string, value: unknown) => void;
+  /** Runtime-sourced options for 'select' fields whose optionsSource is 'communication-styles' */
+  styleOptions?: { value: string; label: string }[];
 }
 
 const SECTION_TITLES: Record<string, string> = {
   limits: "Pipeline Limits",
-  "human-gates": "Human Gates",
   "source-control": "Source Control",
   template: "Template",
+  "ambient-awareness": "Ambient Awareness",
   telemetry: "Observability",
   ui: "Dashboard",
+  "communication-style": "Communication Style",
 };
 
-const SECTION_ORDER = ["limits", "human-gates", "source-control", "template", "telemetry", "ui"];
+const SECTION_ORDER = ["limits", "source-control", "template", "ambient-awareness", "telemetry", "ui", "communication-style"];
 
 function getNestedValue(obj: Record<string, unknown>, path: string): unknown {
   return path.split(".").reduce<unknown>((acc, key) => {
@@ -38,15 +42,9 @@ function getNestedValue(obj: Record<string, unknown>, path: string): unknown {
   }, obj);
 }
 
-export function ConfigForm({ config, errors, onChange }: ConfigFormProps) {
-  const versionField = CONFIG_FIELDS.find((f) => f.section === "version");
-  const versionValue = versionField
-    ? getNestedValue(config as unknown as Record<string, unknown>, versionField.key)
-    : config.version;
-
+export function ConfigForm({ config, errors, onChange, styleOptions }: ConfigFormProps) {
   const fieldsBySection = new Map<string, FieldMeta[]>();
   for (const field of CONFIG_FIELDS) {
-    if (field.section === "version") continue;
     const existing = fieldsBySection.get(field.section) ?? [];
     existing.push(field);
     fieldsBySection.set(field.section, existing);
@@ -116,15 +114,25 @@ export function ConfigForm({ config, errors, onChange }: ConfigFormProps) {
             {String(value ?? "")}
           </span>
         );
+
+      case "select": {
+        const opts = field.optionsSource === 'communication-styles' ? (styleOptions ?? []) : [];
+        // Degrade, never empty: when the catalog is unreadable, still offer the configured value.
+        const items = opts.length ? opts : [{ value: String(value ?? ''), label: String(value ?? '') }];
+        return (
+          <Select id={field.key} value={(value as string) ?? ''} onValueChange={(v) => onChange(field.key, v)}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {items.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        );
+      }
     }
   }
 
   return (
     <div>
-      <p className="text-sm text-muted-foreground px-1 pb-2">
-        Schema version: {String(versionValue)}
-      </p>
-
       <Accordion
         multiple
         defaultValue={SECTION_ORDER}

@@ -122,3 +122,45 @@ test('Complete renders no PR link when pr_url is null', () => {
   const html = renderToStaticMarkup(createElement('div', null, view.render(ctx)));
   assert.ok(!html.includes('<a '), 'no PR anchor rendered');
 });
+
+test('Complete renders the second repo\'s PR even when the first repo has none — the repos[0] pin regression', () => {
+  const state = makeState('approved', 'reviews/FINAL.md', null);
+  state.pipeline.source_control = {
+    worktree_path: '/tmp/demo',
+    auto_commit: 'never',
+    auto_pr: 'never',
+    repos: [
+      { name: 'api', branch: 'b', base_branch: 'main', remote_url: null, compare_url: null, pr_url: null },
+      { name: 'ui', branch: 'b', base_branch: 'main', remote_url: null, compare_url: null, pr_url: 'https://github.com/o/ui/pull/5' },
+    ],
+  };
+  const { view, ctx } = resolveStateView(state, undefined, {
+    onDocClick: () => {},
+    compareUrlByRepo: {},
+    projectName: 'demo',
+  });
+  assert.deepEqual(ctx.prLinks, [{ repoName: 'ui', url: 'https://github.com/o/ui/pull/5' }]);
+  const html = renderToStaticMarkup(createElement('div', null, view.render(ctx)));
+  assert.match(html, /href="https:\/\/github\.com\/o\/ui\/pull\/5"/);
+});
+
+test('Complete disambiguates by repo name when more than one repo carries a PR', () => {
+  const state = makeState('approved', 'reviews/FINAL.md', null);
+  state.pipeline.source_control = {
+    worktree_path: '/tmp/demo',
+    auto_commit: 'never',
+    auto_pr: 'never',
+    repos: [
+      { name: 'api', branch: 'b', base_branch: 'main', remote_url: null, compare_url: null, pr_url: 'https://github.com/o/api/pull/4' },
+      { name: 'ui', branch: 'b', base_branch: 'main', remote_url: null, compare_url: null, pr_url: 'https://github.com/o/ui/pull/5' },
+    ],
+  };
+  const { view, ctx } = resolveStateView(state, undefined, {
+    onDocClick: () => {},
+    compareUrlByRepo: {},
+    projectName: 'demo',
+  });
+  const html = renderToStaticMarkup(createElement('div', null, view.render(ctx)));
+  assert.ok(html.includes('api PR #4'), 'repo name disambiguates the first link');
+  assert.ok(html.includes('ui PR #5'), 'repo name disambiguates the second link');
+});

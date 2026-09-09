@@ -516,9 +516,9 @@ test("final_approval_gate: gate_active=true → kind='approve' with final_approv
   assert.deepStrictEqual(desc, { kind: 'approve', event: 'final_approved', label: 'Approve Final Review' });
 });
 
-test("plan_approval_gate completed AND phase_loop not_started → kind='execute' (FR-2, AD-2)", () => {
+test("plan_approval_gate completed AND phase_loop not_started → kind='none' (AIOPS-266 pivot: launch buttons hidden)", () => {
   const desc = getRowButtonDescriptor('plan_approval_gate', gateCompleted, 'not_started');
-  assert.deepStrictEqual(desc, { kind: 'execute', label: 'Execute Plan' });
+  assert.deepStrictEqual(desc, { kind: 'none' });
 });
 
 test("plan_approval_gate completed AND phase_loop in_progress → kind='none' (FR-2: hides post-launch)", () => {
@@ -596,7 +596,9 @@ test("AD-2: descriptor receives phase_loop.status straight from nodes record (no
   };
   const phaseLoopStatus = nodes.phase_loop.status;
   const desc = getRowButtonDescriptor('plan_approval_gate', nodes.plan_approval_gate, phaseLoopStatus);
-  assert.strictEqual(desc.kind, 'execute');
+  // AIOPS-266 pivot: launch buttons (including the row-level Execute Plan
+  // button) are hidden, so this now resolves to 'none' rather than 'execute'.
+  assert.strictEqual(desc.kind, 'none');
 });
 
 test("AD-2: phase_loop missing → undefined → descriptor 'none' for FR-2 (defensive)", () => {

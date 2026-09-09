@@ -25,9 +25,11 @@ If `review_report_path` is in your context, re-open that file and adjudicate the
 
 ## Report
 
-Write to `{PROJECT-DIR}/reports/{NAME}-PHASE-REVIEW-P{NN}-{TITLE}.md` (or update `review_report_path` in place on a re-review).
+Every review report goes in `{PROJECT-DIR}/reports/`.
+
+Write `{NAME}-PHASE-REVIEW-P{NN}-{TITLE}.md` there (or update `review_report_path` in place on a re-review).
 
 Use the report shape in SKILL.md, with these phase additions:
-- Frontmatter adds `phase: {NN}` and `exit_criteria_met: true|false`; the title is `Phase {NN} — {PHASE-TITLE}`.
+- Frontmatter adds `phase`, a 1-based integer (`phase: 1` — not `P01`, and not zero-padded), and `exit_criteria_met: true|false`; the title is `Phase {PHASE-NUMBER} — {PHASE-TITLE}`.
 - Add an **`## Exit Criteria`** section: one row per criterion — `criterion | met? ✅/❌ | evidence (file:line or test name, or why unverifiable)`.
 - In each finding at a task seam, note the seam (e.g. `T1→T3`) in the evidence.

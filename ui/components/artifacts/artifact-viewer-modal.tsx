@@ -141,7 +141,7 @@ export function ArtifactViewerModal({
       onToggleFullScreen={onToggleFullScreen}
       dataState={dataState}
       footer={
-        <footer className="relative border-t border-border px-4 py-3">
+        <footer className="relative border-t border-border px-4 py-1">
           <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-12 bg-gradient-to-r from-card to-transparent" aria-hidden="true" />
           <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-12 bg-gradient-to-l from-card to-transparent" aria-hidden="true" />
           <Button variant="ghost" size="icon-sm" aria-label="Scroll filmstrip left"
@@ -154,12 +154,18 @@ export function ArtifactViewerModal({
             onClick={() => { const c = stripRef.current; if (c) c.scrollBy({ left: pageScrollDelta(c.clientWidth) }); }}>
             <ChevronRight className="size-4" aria-hidden="true" />
           </Button>
-          <div ref={stripRef as React.RefObject<HTMLDivElement>} role="tablist" aria-label="Artifacts" className="flex items-end gap-2 overflow-x-auto px-8">
+          {/* py-8 (32px) clears the .live-pulse-frame glow's own reach — its keyframe peaks
+              at `0 0 22px 4px` (blur + spread ≈ 26px past the cell's edge, see globals.css) —
+              with a few px to spare, so the pulse never clips against this scroll container's
+              own clip boundary (overflow-x-auto forces overflow-y to auto). The footer's own
+              padding is trimmed to py-1 to blunt the resulting height growth, same lever used
+              when this padding was first introduced. */}
+          <div ref={stripRef as React.RefObject<HTMLDivElement>} role="tablist" aria-label="Artifacts" className="flex items-end gap-2 overflow-x-auto px-8 py-8">
           {artifacts.map((artifact, index) => {
             const pulsing = activePulse?.has(artifact.path) ?? false;
             const isActive = artifact.path === activePath;
             return (
-            <ActivePulse key={artifact.path} active={pulsing} variant="frame" className="rounded-md">
+            <ActivePulse key={artifact.path} active={pulsing} variant="frame" className="shrink-0 rounded-md">
             <div
               data-filmstrip-cell
               id={`filmstrip-tab-${index}`}
@@ -172,13 +178,12 @@ export function ArtifactViewerModal({
               onClick={() => onSelect(artifact.path)}
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(artifact.path); } }}
               className={cn(
-                "flex h-16 w-24 shrink-0 cursor-pointer flex-col items-center overflow-hidden rounded-md border",
+                "flex h-16 w-24 shrink-0 cursor-pointer flex-col items-center overflow-hidden rounded-md border border-border",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                // Grey neutral ring marks the SELECTED doc; while it's being written the
-                // ActivePulse lavender glow takes over (supersedes grey), so drop the grey then.
-                !pulsing && isActive
-                  ? "border-2 ring-2 ring-ring border-ring"
-                  : "border-border",
+                // Selection and pulse are distinct marks: the neutral ring marks the SELECTED doc,
+                // and the ActivePulse lavender glow marks a doc being written. Both render when both
+                // states are true, composing without interfering.
+                isActive && "ring-2 ring-ring",
               )}
             >
               <div className="relative h-10 w-full shrink-0 overflow-hidden bg-background">

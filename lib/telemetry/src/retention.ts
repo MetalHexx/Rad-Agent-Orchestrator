@@ -2,14 +2,19 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { readSavedIndex } from './saved-sessions.js';
 
-export function pruneAgedPartitions(opts: { root: string; maxAgeDays: number; now: Date }): number {
+export function pruneAgedPartitions(opts: {
+  root: string; maxAgeDays: number; now: Date;
+  /** Extra session ids the CALLER declares sacred. Unioned with the saved-sessions
+   *  index — never replacing it. Absent behaves exactly as before. */
+  exemptSessionIds?: Iterable<string>;
+}): number {
   const usageDir = path.join(opts.root, 'usage');
   if (!fs.existsSync(usageDir)) return 0;
   const todayUtc = Date.UTC(opts.now.getUTCFullYear(), opts.now.getUTCMonth(), opts.now.getUTCDate());
   const cutoff = todayUtc - opts.maxAgeDays * 86_400_000;
   let pruned = 0;
   const liveSessions = new Set<string>();
-  const saved = new Set(readSavedIndex(opts.root).sessions.map((s) => s.sessionId)); // sacred (FR-10, AD-5)
+  const saved = new Set([...readSavedIndex(opts.root).sessions.map((s) => s.sessionId), ...(opts.exemptSessionIds ?? [])]); // sacred (FR-10, AD-5)
   for (const file of fs.readdirSync(usageDir)) {
     const m = /^usage-(\d{4}-\d{2}-\d{2})-(.+)\.ndjson$/.exec(file);
     if (!m) continue;

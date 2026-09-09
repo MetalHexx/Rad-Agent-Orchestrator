@@ -1,46 +1,118 @@
-# hooks/
+# `harness-installers/copilot-cli-plugin/hooks/`
 
-## Purpose
+The hook sources for the Copilot CLI plugin, the dispatcher they are launched through, and
+`hooks.json` — the file that decides which of them ever fire.
 
-Two hooks that ship inside the Copilot CLI plugin payload and manage install lifecycle and drift detection. They bridge Copilot CLI's hook system and the install state machine in `lib/install/`.
+> **This folder is published.** `emitHookBundle` copies `hooks.json`, `launcher.cjs`,
+> `drift-check.mjs`, and **this `AGENTS.md`** verbatim into `output/hooks/`, and `hooks/` is in the
+> tarball's `files` list, so everything here lands on a stranger's machine. No OS usernames, no org
+> handles, no internal hostnames, no ticket keys. Same rule the root `AGENTS.md` states for `docs/`.
 
 ## How it works
 
-**`bootstrap.mjs` — `userPromptSubmitted` hook**
+`hooks.json` is the whole registration surface for this variant. Event names are **camelCase** — the
+Copilot CLI contract — and every command string is the same form:
 
-Runs once on the user's first prompt after plugin installation. Calls `runInstall({ pluginRoot, radHome })` from `lib/install/run-install.js`. On success, writes a marker file at `~/.radorc/.copilot-cli-plugin-bootstrap.json` so the hook skips all subsequent runs (marker-file idempotency). On failure, writes an error marker (`status: "error"`) with the delivering version (per DD-14) so the next bootstrap invocation reads the marker, sees `status !== "success"`, and falls through to a retry (per DD-16). The marker is the last write in both success and failure paths, so its state always reflects the most recent outcome.
+| Event | Command | Target authored |
+|---|---|---|
+| `userPromptSubmitted` | `node hooks/launcher.cjs bootstrap.mjs` | here |
+| `sessionStart` | `node hooks/launcher.cjs drift-check.mjs`, then `node hooks/launcher.cjs session-preamble.mjs` | here · [`shared/hooks/`](../../shared/hooks/AGENTS.md) |
 
-Idempotency uses a marker file rather than rewriting `hooks.json` in place — Copilot CLI reads `hooks.json` from a disk cache at session start and does not re-read it mid-session, making mid-session `hooks.json` rewrites unsafe. The marker approach matches the platform's cache-and-read semantics.
+**`launcher.cjs` is the dispatcher.** Copilot CLI spawns hook commands directly through `node`, not
+through a shell, so no `%VAR%` or `$VAR` expansion is ever applied to the command string — an
+env-var reference embedded in `hooks.json` would arrive literal. `launcher.cjs` therefore takes the
+target script as `argv[2]`, builds an absolute path from `COPILOT_PLUGIN_ROOT` (injected by the
+runtime, with `__dirname` as the fallback), and re-spawns it. The relative `node hooks/launcher.cjs`
+prefix resolves against the process working directory the runtime chose.
 
-Path-resolution uses `import.meta.url` (no `COPILOT_CLI_PLUGIN_ROOT` env var injected by the platform — scripts self-resolve). `RAD_HOME` is optional (tests override it; production falls back to `~/.radorc`).
+`session-preamble.mjs` and `telemetry-capture.mjs` are **single-sourced** in `shared/hooks/` and
+staged into `output/hooks/` by the build. They are not in this folder and must never be copied into
+it — fix them at the source.
 
-**`drift-check.mjs` — `sessionStart` hook**
+`bootstrap.mjs` runs the install and then removes its own registration; `drift-check.mjs` is
+persistent and never self-uninstalls. What `bootstrap.mjs` actually installs is
+[`../lib/install/AGENTS.md`](../lib/install/AGENTS.md).
 
-Persistent — never self-uninstalls. Reads `plugin.json` at the plugin root for `pkg.version` (the delivering version) and `${RAD_HOME}/install.json` for the installed version, found at `installed.harnesses['copilot-cli-plugin'].version`. Writes a single line to stdout when the two differ; Copilot CLI injects that line as conversation context. Silent on match or when either version is unavailable. Must remain dependency-free.
+## Conventions
 
-**`hooks.json`**
+- **`bootstrap.mjs` is bundled; everything else here is copied verbatim.** esbuild inlines
+  `../lib/install/*` into a single self-contained `output/hooks/bootstrap.mjs`, so new imports need
+  no build-script change. `drift-check.mjs` and `launcher.cjs` get no such treatment — **Node
+  built-ins only**, or they ship broken.
+- **Event names stay camelCase.** Do not align them with the PascalCase the other two variants use;
+  the runtimes disagree and nothing validates the spelling.
+- **`bootstrap.mjs` and `drift-check.mjs` self-resolve their plugin root** from `import.meta.url`,
+  honouring an existing `COPILOT_CLI_PLUGIN_ROOT` so tests can redirect at a fixture root.
+  `bootstrap.mjs` also publishes it back to the environment for the modules inlined into it;
+  `drift-check.mjs` keeps it local. Never resolve a root from the working directory.
 
-Registers both hooks with Copilot CLI's hook system. Event names are camelCase per the Copilot CLI contract (`userPromptSubmitted`, `sessionStart`). The `cwd: "."` anchor is set on each entry. Scripts self-resolve their own path via `import.meta.url` rather than relying on a platform-injected env var.
+## Hazards
 
-## Build treatment
+### `selfUninstall` deletes exactly one key, matched exactly
 
-- `bootstrap.mjs` is bundled by `emitHookBundle`: esbuild inlines `lib/install/*` dependencies, producing a single self-contained file. It is never shipped as separate source modules.
-- `drift-check.mjs`, `hooks.json`, and this `AGENTS.md` are copied verbatim by `emitHookBundle`.
+On success `bootstrap.mjs` reads `hooks/hooks.json`, deletes `hooks.userPromptSubmitted`, and renames
+a tmp file into place. **There is no marker file** — idempotency lives in `hooks.json`, the same way
+it does in both sibling variants. The delete is a literal property lookup: rename or re-case the
+event on either side and it silently no-ops, the entry survives, and the bootstrap re-runs a full
+install on every prompt of every session. Nothing errors, because the install is idempotent.
 
-## Coding conventions
+### Raw stdout is discarded by this runtime
 
-- `bootstrap.mjs` uses a top-level `async main()` with `process.exit(await main())` so the hook exits with the correct code.
-- The marker-file write follows the same write-then-rename pattern used in `lib/install/`: write to a `.tmp-<pid>-<timestamp>` file, then `fs.renameSync`.
-- `drift-check.mjs` is synchronous and has no external dependencies — it must stay that way so it ships verbatim without bundling.
-- Both hooks resolve their plugin root via `import.meta.url`; they never rely on a CWD-relative path or a platform-injected env var for the root.
+`drift-check.mjs` cannot just print. Under `COPILOT_CLI=1` it emits `{"additionalContext": …}` — a
+**bare** top-level key, this runtime's shape, not the nested `hookSpecificOutput` form the VS Code
+sibling requires. Off-CLI it falls back to a raw line, which is what the tests observe. The same
+split governs `session-preamble.mjs`'s output; see
+[`docs/internals/ambient-awareness.md`](../../../docs/internals/ambient-awareness.md).
 
-## Rules for making updates
+### Telemetry ships here and is wired to nothing
 
-- If `bootstrap.mjs` gains new `lib/install/` imports, `emit-hook-bundle` in `build-scripts/build.js` handles them automatically via esbuild bundling — no build-script change needed.
-- Changes to `hooks.json` hook names or event types must match Copilot CLI's hook system contract. Event names are camelCase.
-- `drift-check.mjs` must remain dependency-free (Node built-ins only) so it can ship verbatim.
-- The marker file path (`~/.radorc/.copilot-cli-plugin-bootstrap.json`) is part of the install contract — do not rename it without updating `lib/install/run-install.js` and migration logic in `lib/install/install-json.js`.
+`telemetry-capture.mjs` is staged into `output/hooks/` by every plugin build. This variant's
+`hooks.json` registers no telemetry event. Do not write parity language on the strength of the shim
+shipping.
 
-## Seam to lib/install/
+### A shim failure is invisible by design
 
-`bootstrap.mjs` imports modules from `lib/install/` at source time; esbuild inlines them into the bundled artifact at build time. `lib/install/` is the only consumer of this seam — no other folder imports from it at build time.
+`session-preamble.mjs` degrades to a one-line "ambient awareness did not load" notice and exits 0. A
+wrong path, a renamed subcommand, an unregistered event, or a missing `launcher.cjs` produces no
+build error and no test failure.
+
+## When a change here ripples
+
+- **Changed `hooks.json`, or how `launcher.cjs` resolves a path?** Both are copied verbatim into
+  `output/hooks/` at build time, so nothing changes until a rebuild — and unlike the Claude variant
+  there is no source↔output parity suite here to notice a stale build. Detail:
+  [`../AGENTS.md`](../AGENTS.md)
+
+- **Changed what a shared shim expects from its environment, or which subcommand it calls?**
+  `session-preamble.mjs` belongs to `shared/hooks/`, is wired by each plugin variant's own
+  `hooks.json` plus the standard installer's `settings.json` merge, and fails silently on a user's
+  machine. Change the shim in `shared/hooks/`, then confirm this variant's `hooks.json` and that
+  merge still name the same command.
+  Detail: [`../../shared/hooks/AGENTS.md`](../../shared/hooks/AGENTS.md),
+  [`cli/AGENTS.md`](../../../cli/AGENTS.md)
+
+- **Added a per-plugin file to this folder?** `emitHookBundle` copies a hardcoded list —
+  `drift-check.mjs`, `hooks.json`, `launcher.cjs`, `AGENTS.md` — and silently skips anything else. A
+  new file here never reaches `output/`. Detail:
+  [`../../shared/build-helpers/AGENTS.md`](../../shared/build-helpers/AGENTS.md)
+
+## Commands
+
+```
+node --test harness-installers/copilot-cli-plugin/tests/bootstrap.test.mjs
+node --test harness-installers/copilot-cli-plugin/tests/drift-check.test.mjs
+npm test -w harness-installers/copilot-cli-plugin
+```
+
+**Never run `bootstrap.mjs` directly against your own home directory.** It writes into `~/.radorc/`,
+stops a running dashboard, and rewrites a `hooks.json`. Use the suites, which inject a temp home, or
+the `/rad-dogfood-plugin` skill.
+
+## Further reading
+
+- [`../../shared/hooks/AGENTS.md`](../../shared/hooks/AGENTS.md) — the shim this variant registers
+  but does not own
+- [`../lib/install/AGENTS.md`](../lib/install/AGENTS.md) — what `bootstrap.mjs` runs
+- [`docs/internals/ambient-awareness.md`](../../../docs/internals/ambient-awareness.md) — the
+  per-harness stdout contract the drift line and the preamble both obey
+- [`../AGENTS.md`](../AGENTS.md) — this variant's deltas

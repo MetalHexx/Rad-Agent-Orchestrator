@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const PLUGIN_DIRS = [
   'harness-installers/claude-plugin',
@@ -33,4 +34,22 @@ export async function runBuildAndValidate({ repoRoot, spawn = spawnSync }) {
     }
   }
   return { ok: true };
+}
+
+// -----------------------------------------------------------------------------
+// CLI entry point — `node build-and-validate.mjs [--repo-root <dir>]`
+// -----------------------------------------------------------------------------
+// SKILL.md step 4 invokes this file directly. Without this block the process
+// would exit 0 without building anything — a silent skip that looks exactly
+// like a passing build and ships whatever stale output/ happened to be on disk.
+
+if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
+  const i = process.argv.indexOf('--repo-root');
+  runBuildAndValidate({ repoRoot: i === -1 ? process.cwd() : process.argv[i + 1] }).then(
+    (res) => {
+      if (!res.ok) { console.error(res.error); process.exit(1); }
+      console.log('build + validate ok: standard, claude-plugin, copilot-cli-plugin, copilot-vscode-plugin');
+    },
+    (err) => { console.error(err.message); process.exit(1); },
+  );
 }

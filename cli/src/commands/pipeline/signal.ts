@@ -1,9 +1,10 @@
 import { processEvent } from '../../lib/pipeline-engine/engine.js';
 import {
-  readState, writeState, readConfig, readDocument, ensureDirectories,
+  readState, writeState, readConfig, readDocument, readDocumentRaw, writeDocument, ensureDirectories,
 } from '../../lib/pipeline-engine/state-io.js';
 import { resolvePathContext, resolveDiscoveredConfigPath } from '../../lib/pipeline-engine/path-context.js';
 import type { EventContext, IOAdapter, PathContext, PipelineResult } from '../../lib/pipeline-engine/types.js';
+import type { CompletionCommand } from '../../lib/pipeline-engine/completion-commands.js';
 import { defineCommand } from '../../framework/command.js';
 import type { CommandContext } from '../../framework/context.js';
 import { parseParseErrorFlag } from './parse-error.js';
@@ -26,12 +27,13 @@ export type PipelineSignalEnvelope =
         prompt?: string;
         completion_event?: string | null;
         has_custom_instructions?: boolean;
+        completion_commands?: CompletionCommand[];
       };
     }
   | { ok: false; data: { event: string; field?: string }; error: { type: 'user_error'; message: string } };
 
 export function makeDefaultIO(): IOAdapter {
-  return { readState, writeState, readConfig, readDocument, ensureDirectories };
+  return { readState, writeState, readConfig, readDocument, readDocumentRaw, writeDocument, ensureDirectories };
 }
 
 export async function pipelineSignal(input: PipelineSignalInput): Promise<PipelineSignalEnvelope> {
@@ -58,11 +60,17 @@ export async function pipelineSignal(input: PipelineSignalInput): Promise<Pipeli
     prompt?: string;
     completion_event?: string | null;
     has_custom_instructions?: boolean;
+    completion_commands?: CompletionCommand[];
   } = { action: result.action, context: result.context };
   if (result.prompt !== undefined) data.prompt = result.prompt;
   if (result.completion_event !== undefined) data.completion_event = result.completion_event;
   if (result.has_custom_instructions !== undefined) {
     data.has_custom_instructions = result.has_custom_instructions;
+  }
+  // An empty array is a meaningful value — it says "nothing to signal here" —
+  // so this guards on presence, never on length.
+  if (result.completion_commands !== undefined) {
+    data.completion_commands = result.completion_commands;
   }
   return { ok: true, data };
 }
@@ -98,7 +106,7 @@ export const pipelineSignalCommand = defineCommand({
     'gate-type': { description: 'Gate type for the gate_approved event: task | phase', type: 'string' },
     verdict: { description: 'Review verdict: approved | changes_requested | rejected', type: 'string' },
     branch: { description: 'Working branch name for source-control events', type: 'string' },
-    reason: { description: 'Free-text rejection reason for gate_rejected and review failures', type: 'string' },
+    reason: { description: 'Free-text reason for gate_rejected, final_rejected, final_corrective_requested, and review failures', type: 'string' },
     'pr-url': { description: 'PR URL recorded on pr_created', type: 'string' },
     template: { description: 'Pipeline template id (extra-high | high | medium | low) for the start event', type: 'string' },
     step: { description: 'Internal step identifier carried by *_started events from the v5 DAG walker', type: 'string' },

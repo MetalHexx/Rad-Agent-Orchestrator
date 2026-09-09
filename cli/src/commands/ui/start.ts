@@ -1,37 +1,16 @@
-import fs from 'node:fs';
 import path from 'node:path';
 import { resolveInstallRoot, installPaths } from '../../lib/paths.js';
 import { ensureDir } from '../../lib/fs-helpers.js';
-import { parseYaml } from '../../lib/yaml.js';
+import { resolveUiPort } from '../../lib/ui-address.js';
 import { readPidFile, removePidFile, writePidFile, isPidAlive } from './pid-file.js';
 import { probePortFree as defaultProbe, openLogFd, spawn as defaultSpawn } from './spawn.js';
 import { UserError, SystemError } from '../../framework/errors.js';
 
-const DEFAULT_UI_PORT = 1337;
+// Re-exported so existing importers of `resolveUiPort` from this module keep
+// working — `cli/tests/commands/ui.test.ts` imports it from here.
+export { resolveUiPort };
+
 const SCAN_WIDTH = 11; // preserves today's 11-port window (e.g. 3000-3010)
-
-interface OrchestrationUiConfig {
-  ui?: { port?: unknown };
-}
-
-// Only the deployed ~/.radorc/orchestration.yml is read here — never the
-// repo's runtime-config/orchestration.yml (that file is an install-time seed
-// only). An absent section/key, or a non-integer / out-of-range (1-65535)
-// value, degrades to DEFAULT_UI_PORT; start must never crash on bad config.
-export function resolveUiPort(root: string): number {
-  const configPath = path.join(root, 'orchestration.yml');
-  if (!fs.existsSync(configPath)) return DEFAULT_UI_PORT;
-  try {
-    const parsed = parseYaml<OrchestrationUiConfig>(fs.readFileSync(configPath, 'utf8'));
-    const port = parsed?.ui?.port;
-    if (typeof port === 'number' && Number.isInteger(port) && port >= 1 && port <= 65535) {
-      return port;
-    }
-    return DEFAULT_UI_PORT;
-  } catch {
-    return DEFAULT_UI_PORT;
-  }
-}
 
 export interface StartResult {
   pid: number;

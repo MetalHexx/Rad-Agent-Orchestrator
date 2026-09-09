@@ -18,12 +18,12 @@ async function run() {
   );
 
   assert.ok(
-    /LaunchScreen/.test(src),
-    'page.tsx imports/uses LaunchScreen (replaced NotStartedPaneV5 in P03-T03)',
+    /OverviewPage/.test(src),
+    'page.tsx imports/uses OverviewPage (replaced LaunchScreen in P03-T03)',
   );
   assert.ok(
-    /useStartAction/.test(src),
-    'page.tsx uses useStartAction for the spawn endpoint',
+    /onViewModeChange\(['"]overview['"]\)/.test(src),
+    'page.tsx pins the view-mode preference to overview for a pipeline-less project (P03-T03)',
   );
   assert.ok(
     /case 'launch'/.test(src),
@@ -38,7 +38,7 @@ async function run() {
     'empty-selection placeholder still present for the unselected case (FR-10)',
   );
 
-  console.log('✓ page.tsx wires LaunchScreen for selected Not-Started projects');
+  console.log('✓ page.tsx wires OverviewPage for selected Not-Started projects');
   console.log('\nAll /projects page structural tests passed');
 }
 

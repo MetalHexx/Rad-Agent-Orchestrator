@@ -21,6 +21,8 @@ function makeStubIO(_result: PipelineResult): { io: IOAdapter; calls: unknown[] 
                         source_control: { auto_commit: 'never', auto_pr: 'never' },
                         default_template: 'medium' }),
     readDocument: () => null,
+    readDocumentRaw: () => null,
+    writeDocument: () => { calls.push('writeDocument'); },
     ensureDirectories: () => { calls.push('ensureDirectories'); },
   };
   // result is unused here — pipelineSignal is wired with the real engine; the stubs above suffice
@@ -31,6 +33,7 @@ function makeStubIO(_result: PipelineResult): { io: IOAdapter; calls: unknown[] 
 const pathContext: PathContext = {
   scriptsDir: os.tmpdir(),
   templatesDir: path.resolve(__dirname, '..', '..', '..', '..', 'runtime-config', 'templates'),
+  scriptPath: path.join(os.tmpdir(), 'radorch.mjs'),
 };
 
 describe('pipelineSignal core function', () => {
@@ -39,7 +42,9 @@ describe('pipelineSignal core function', () => {
     const r = await pipelineSignal({ event: 'start', projectDir: '/tmp/proj', context: {}, io, pathContext });
     expect(r.ok).toBe(true);
     if (r.ok) {
-      expect(Object.keys(r.data).sort()).toEqual(['action', 'completion_event', 'context', 'has_custom_instructions', 'prompt']);
+      expect(Object.keys(r.data).sort()).toEqual(
+        ['action', 'completion_commands', 'completion_event', 'context', 'has_custom_instructions', 'prompt'],
+      );
     }
   });
 
@@ -150,9 +155,15 @@ async function runProcessEventToSignalEnvelope(
       writeState: () => { /* no-op */ },
       readConfig: () => DEFAULT_CONFIG,
       readDocument: () => null,
+      readDocumentRaw: () => null,
+      writeDocument: () => { /* no-op */ },
       ensureDirectories: () => { /* no-op */ },
     };
-    const pc: PathContext = { scriptsDir: projectDir, templatesDir: catalogRoot };
+    const pc: PathContext = {
+      scriptsDir: projectDir,
+      templatesDir: catalogRoot,
+      scriptPath: path.join(projectDir, 'radorch.mjs'),
+    };
     return await pipelineSignal({ event: opts.event, projectDir, context: {}, io, pathContext: pc }) as ReturnType<typeof pipelineSignal> extends Promise<infer T> ? T : never;
   } finally {
     fs.rmSync(projectDir, { recursive: true, force: true });
@@ -160,6 +171,68 @@ async function runProcessEventToSignalEnvelope(
     __setActionEventsRootForTests(null);
   }
 }
+
+/** Template whose only node is a phase loop pointing at a doc reference that
+ *  resolves to nothing, so the walker resolves no next action at all. */
+function makeUnresolvableTemplate(): string {
+  return [
+    `template:`,
+    `  id: ${SIGNAL_CORE_TEMPLATE_ID}`,
+    `  version: "1.0.0"`,
+    `  description: "Synthetic template whose walker resolves no action"`,
+    `nodes:`,
+    `  - id: phase_loop`,
+    `    kind: for_each_phase`,
+    `    source_doc_ref: nodes.absent_step.doc_path`,
+    `    total_field: total_phases`,
+    `    depends_on: []`,
+    `    body:`,
+    `      - id: task_executor`,
+    `        kind: step`,
+    `        action: foo`,
+    `        events: { completed: foo_done }`,
+    `        depends_on: []`,
+  ].join('\n') + '\n';
+}
+
+/** Catalog root carrying only a template — no action or event files at all, so
+ *  the resolved action has no catalog file on disk. */
+function seedCatalogWithoutFiles(template: string): string {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'signal-core-bare-'));
+  fs.mkdirSync(path.join(root, 'custom'), { recursive: true });
+  fs.writeFileSync(path.join(root, `${SIGNAL_CORE_TEMPLATE_ID}.yml`), template, 'utf8');
+  return root;
+}
+
+describe('pipeline signal envelope — completion_commands on the prompt-less paths', () => {
+  it('carries an empty array when the walker resolves no next action', async () => {
+    const envelope = await runProcessEventToSignalEnvelope({
+      event: 'start',
+      catalogRoot: seedCatalogWithoutFiles(makeUnresolvableTemplate()),
+      expectAction: '',
+    });
+    expect(envelope.ok).toBe(true);
+    if (envelope.ok) {
+      expect(envelope.data.action).toBeNull();
+      expect(envelope.data.completion_commands).toEqual([]);
+      expect(envelope.data.prompt).toBeUndefined();
+    }
+  });
+
+  it('carries an empty array when the resolved action has no catalog file', async () => {
+    const envelope = await runProcessEventToSignalEnvelope({
+      event: 'start',
+      catalogRoot: seedCatalogWithoutFiles(makeMinimalTemplate('foo')),
+      expectAction: 'foo',
+    });
+    expect(envelope.ok).toBe(true);
+    if (envelope.ok) {
+      expect(envelope.data.action).toBe('foo');
+      expect(envelope.data.completion_commands).toEqual([]);
+      expect(envelope.data.prompt).toBeUndefined();
+    }
+  });
+});
 
 describe('pipeline signal envelope — has_custom_instructions surfacing', () => {
   it('places has_custom_instructions inside data alongside prompt and completion_event when composer admits overlay', async () => {

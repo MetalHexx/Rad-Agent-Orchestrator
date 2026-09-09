@@ -5,12 +5,13 @@ import type {
 
 const VALID_EXECUTION_MODE: readonly string[] = ['ask', 'phase', 'task', 'autonomous'];
 const VALID_SOURCE_CONTROL_ACTION: readonly string[] = ['always', 'ask', 'never'];
+const VALID_AMBIENT_VERBOSITY: readonly string[] = ['verbose', 'minimal', 'silent', 'off'];
 
 function isSection(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-export function validateConfig(config: OrchestrationConfig): ConfigValidationErrors {
+export function validateConfig(config: OrchestrationConfig, knownStylePaths?: string[]): ConfigValidationErrors {
   const errors: ConfigValidationErrors = {};
 
   // 1. limits — integer constraint
@@ -56,12 +57,31 @@ export function validateConfig(config: OrchestrationConfig): ConfigValidationErr
     }
   }
 
+  // 10a. ambient_awareness (optional section)
+  if (config.ambient_awareness !== undefined) {
+    if (!isSection(config.ambient_awareness) || !VALID_AMBIENT_VERBOSITY.includes(config.ambient_awareness.verbosity as string)) {
+      errors['ambient_awareness.verbosity'] = 'Invalid ambient awareness verbosity';
+    }
+  }
+
   // 11. ui (optional section)
   if (config.ui !== undefined) {
     if (!isSection(config.ui)
         || !Number.isInteger(config.ui.port)
         || config.ui.port < 1 || config.ui.port > 65535) {
       errors['ui.port'] = 'Must be a whole number between 1 and 65535';
+    }
+  }
+
+  // communication_style (optional section)
+  if (config.communication_style !== undefined) {
+    if (!isSection(config.communication_style) || typeof config.communication_style.enabled !== 'boolean') {
+      errors['communication_style.enabled'] = 'Must be true or false';
+    }
+    if (!isSection(config.communication_style) || typeof config.communication_style.selected !== 'string' || !config.communication_style.selected.length) {
+      errors['communication_style.selected'] = 'Must be a non-empty string';
+    } else if (knownStylePaths && knownStylePaths.length > 0 && !knownStylePaths.includes(config.communication_style.selected)) {
+      errors['communication_style.selected'] = 'Selected style is not a known communication style';
     }
   }
 

@@ -1,33 +1,46 @@
-# Tooling Pre-flight Checks
+# `harness-installers/standard/lib/checks/`
 
-## Purpose
+Pre-flight tooling probes, run by `index.js` before the wizard starts. They exist so a user learns
+that `git` or `gh` is missing at install time rather than mid-pipeline weeks later — and they are
+deliberately **advisory**, because neither tool is required to install.
 
-Install-time checks that verify tooling availability before the wizard begins collecting configuration. The module exports functions that test for `git` and `gh` CLI presence and authentication state. Both checks are non-blocking — failures are surfaced to the user on stderr but do not halt the install flow. This follows NFR-6 (graceful warnings on missing tools) and ensures the installer completes even if the user hasn't yet set up all optional automation prerequisites.
+## Conventions
 
-## How it works
+- **`null | string`, never a throw.** `null` means healthy; a string is the message. Every probe is
+  wrapped in `try`/`catch` — a throw would be caught by `index.js`'s outer handler and reported as a
+  *failed install*, turning an advisory warning into an abort.
+- **Every message names the tool and the recovery step**, and says which capability it unblocks —
+  `git` for auto-commit, `gh` for auto-PR. A message that only reports absence gives the user nothing
+  to do.
+- **Pure with respect to state.** Probe, return, done. No config reads, no mutation, no caching.
+- **No dependency on `lib/install/`.** These run before any install decision is made and must not
+  acquire harness-specific knowledge.
 
-`tooling.js` exports two functions:
+## When a change here ripples
 
-- `checkGit()` — Runs `git --version` and returns `null` on success. On failure, returns a recovery message: "git not found on PATH — install git before running projects with auto_commit."
-- `checkGh()` — Runs `gh auth status` and returns `null` on success. On failure, distinguishes two cases: `ENOENT` (gh not installed) and any other error (gh installed but not authenticated). Returns a recovery message in each case.
+- **Added a probe for a tool the install or the pipeline depends on?** The equivalent post-install
+  surface is `cli/`'s `doctor`, which is where a user goes when something is already broken. A tool
+  probed here and not there is diagnosed once and never again; probed there and not here, and the
+  user finds out mid-run. Add both. Detail: [`cli/AGENTS.md`](../../../../cli/AGENTS.md)
 
-Each check is wrapped in `try`/`catch`. No exception is thrown; failures are converted to human-readable strings.
+- **Changed a message, or the capability a message names?** These strings name
+  `orchestration.yml` settings by field — `auto_commit`, `auto_pr` — and nothing resolves them. A
+  field renamed in the shipped config leaves the installer telling users to configure something that
+  no longer exists. Detail: [`runtime-config/AGENTS.md`](../../../../runtime-config/AGENTS.md)
 
-Return value contract: `null | string`. A return of `null` means the tool is available and healthy. A string return is the error message with recovery hint. The caller (`index.js`, before `runWizard`) logs the message to stderr and continues installation without interruption.
+- **Made a probe blocking, or gave it a non-`null`/`string` return?** `index.js` treats any returned
+  value as a warning to print and does not branch on it, so a new shape is silently ignored, while a
+  throw aborts the whole install with an "Installation failed" message. Change the caller in the same
+  edit. Detail: [`../../AGENTS.md`](../../AGENTS.md)
 
-## Coding standards
+## Commands
 
-- **Return shape**: Always `null` (success) or `string` (error message with recovery hint per NFR-11). Never throw.
-- **Non-blocking failures**: The wizard does not halt on missing git or gh. `auto_pr=ask` is the default in `orchestration.yml`; the user can disable automation or authenticate during project setup.
-- **Recovery hints**: Every error message names the missing tool and provides installation / authentication steps (NFR-11).
-- **No state mutation**: Checks are pure functions. They only invoke the tool and return a result.
+```
+node --test harness-installers/standard/tests/lib/checks-tooling.test.mjs
+```
 
-## Seams to other modules
+## Further reading
 
-**Called by**: `index.js` before `runWizard` completes setup.
-
-**Returns**: Error messages logged to stderr by caller; no exceptions thrown.
-
-**Never imports from**: `lib/install/` — the checks module is orthogonal to the install state machine and does not depend on harness-specific logic.
-
-**Seams to other modules**: Isolated utility; no dependencies on other lib or build-script modules.
+- [`../../AGENTS.md`](../../AGENTS.md) — the package these probes run inside
+- [`../install/AGENTS.md`](../install/AGENTS.md) — what runs after the wizard
+- [`cli/AGENTS.md`](../../../../cli/AGENTS.md) — `doctor`, the post-install equivalent

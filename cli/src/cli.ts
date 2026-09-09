@@ -3,10 +3,11 @@ import { runCommand } from './framework/command.js';
 import { doctorCommand } from './commands/doctor/index.js';
 import { uiStartCommand, uiStopCommand, uiStatusCommand } from './commands/ui/index.js';
 import { repoAddCommand, repoBindCommand, repoEditCommand, repoListCommand, repoRemoveCommand, repoShowCommand } from './commands/repo/index.js';
-import { projectListCommand, projectLocateCommand, projectShowCommand, projectWorktreesCommand } from './commands/project/index.js';
+import { projectDeleteCommand, projectListCommand, projectLocateCommand, projectShowCommand, projectWorktreesCommand } from './commands/project/index.js';
 import { worktreeCreateCommand, worktreeLaunchCommand, worktreeRemoveCommand } from './commands/worktree/index.js';
 import { sideProjectInitCommand } from './commands/side-project/index.js';
 import { planExplodeCommand, planResolveCommand, planPrepareCommand } from './commands/plan/index.js';
+import { amendmentValidateCommand, amendmentApplyCommand, amendmentStatusCommand } from './commands/amendment/index.js';
 import { migrateCommand } from './commands/migrate/index.js';
 import { skillListCommand } from './commands/skill/index.js';
 import { pipelineSignalCommand } from './commands/pipeline/index.js';
@@ -14,10 +15,13 @@ import { groupCreateCommand, groupEditCommand, groupAddCommand, groupRemoveComma
 import { groupCreateCommand as pgGroupCreateCommand, groupEditCommand as pgGroupEditCommand, groupAddCommand as pgGroupAddCommand, groupRemoveCommand as pgGroupRemoveCommand, groupDeleteCommand as pgGroupDeleteCommand, groupListCommand as pgGroupListCommand, groupShowCommand as pgGroupShowCommand } from './commands/project-group/index.js';
 import { sessionContextCommand } from './commands/session-context/index.js';
 import { graphShowCommand, graphLinkCommand, graphUnlinkCommand, graphPruneCommand } from './commands/graph/index.js';
-import { configCommand } from './commands/config/index.js';
+import { configCommand, configSetVerbosityCommand } from './commands/config/index.js';
 import { sourceControlInitCommand } from './commands/source-control/index.js';
+import { communicationStyleListCommand, communicationStyleLoadCommand, communicationStyleSetCommand, communicationStyleSaveCommand } from './commands/communication-style/index.js';
 import { executeResolveCommand, executePrepareCommand } from './commands/execute/index.js';
 import { telemetryCaptureCommand } from './commands/telemetry/index.js';
+import { sessionSaveCommand, sessionListCommand, sessionResumeCommand } from './commands/session/index.js';
+import { portfolioListCommand, portfolioShowCommand, portfolioCreateCommand, portfolioProvisionCommand } from './commands/portfolio/index.js';
 
 export function buildProgram(version: string): Command {
   const program = new Command('radorch');
@@ -43,14 +47,24 @@ export function buildProgram(version: string): Command {
       await runCommand(sessionContextCommand, { argv, env: process.env, isTTY: Boolean(process.stdin.isTTY), stderr: process.stderr });
     });
 
-  program
-    .command('config')
+  const config = program.command('config').description('Read and persist orchestration.yml config values');
+  config
+    .command('get')
     .description(configCommand.description)
     .allowUnknownOption()
     .allowExcessArguments(true)
     .action(async () => {
-      const argv = process.argv.slice(3);
+      const argv = process.argv.slice(4);
       await runCommand(configCommand, { argv, env: process.env, isTTY: Boolean(process.stdin.isTTY), stderr: process.stderr });
+    });
+  config
+    .command('set-verbosity')
+    .description(configSetVerbosityCommand.description)
+    .allowUnknownOption()
+    .allowExcessArguments(true)
+    .action(async () => {
+      const argv = process.argv.slice(4);
+      await runCommand(configSetVerbosityCommand, { argv, env: process.env, isTTY: Boolean(process.stdin.isTTY), stderr: process.stderr });
     });
 
   const ui = program.command('ui').description('UI server lifecycle');
@@ -288,6 +302,48 @@ export function buildProgram(version: string): Command {
       await runCommand(pgGroupEditCommand, { argv, env: process.env, isTTY: Boolean(process.stdin.isTTY), stderr: process.stderr });
     });
 
+  const portfolio = program.command('portfolio').description('Portfolio composite operations');
+  portfolio
+    .command('list')
+    .description(portfolioListCommand.description)
+    .helpOption(false)
+    .allowUnknownOption()
+    .allowExcessArguments(true)
+    .action(async () => {
+      const argv = process.argv.slice(4);
+      await runCommand(portfolioListCommand, { argv, env: process.env, isTTY: Boolean(process.stdin.isTTY), stderr: process.stderr });
+    });
+  portfolio
+    .command('show')
+    .description(portfolioShowCommand.description)
+    .helpOption(false)
+    .allowUnknownOption()
+    .allowExcessArguments(true)
+    .action(async () => {
+      const argv = process.argv.slice(4);
+      await runCommand(portfolioShowCommand, { argv, env: process.env, isTTY: Boolean(process.stdin.isTTY), stderr: process.stderr });
+    });
+  portfolio
+    .command('create')
+    .description(portfolioCreateCommand.description)
+    .helpOption(false)
+    .allowUnknownOption()
+    .allowExcessArguments(true)
+    .action(async () => {
+      const argv = process.argv.slice(4);
+      await runCommand(portfolioCreateCommand, { argv, env: process.env, isTTY: Boolean(process.stdin.isTTY), stderr: process.stderr });
+    });
+  portfolio
+    .command('provision')
+    .description(portfolioProvisionCommand.description)
+    .helpOption(false)
+    .allowUnknownOption()
+    .allowExcessArguments(true)
+    .action(async () => {
+      const argv = process.argv.slice(4);
+      await runCommand(portfolioProvisionCommand, { argv, env: process.env, isTTY: Boolean(process.stdin.isTTY), stderr: process.stderr });
+    });
+
   const graph = program.command('graph').description('Work-graph structure, relationships, and upkeep');
   graph
     .command('show')
@@ -330,7 +386,7 @@ export function buildProgram(version: string): Command {
       await runCommand(graphPruneCommand, { argv, env: process.env, isTTY: Boolean(process.stdin.isTTY), stderr: process.stderr });
     });
 
-  const project = program.command('project').description('Project state read operations');
+  const project = program.command('project').description('Project state read operations, plus project deletion');
   project
     .command('list')
     .description(projectListCommand.description)
@@ -370,6 +426,16 @@ export function buildProgram(version: string): Command {
     .action(async () => {
       const argv = process.argv.slice(4);
       await runCommand(projectWorktreesCommand, { argv, env: process.env, isTTY: Boolean(process.stdin.isTTY), stderr: process.stderr });
+    });
+  project
+    .command('delete')
+    .description(projectDeleteCommand.description)
+    .helpOption(false)
+    .allowUnknownOption()
+    .allowExcessArguments(true)
+    .action(async () => {
+      const argv = process.argv.slice(4);
+      await runCommand(projectDeleteCommand, { argv, env: process.env, isTTY: Boolean(process.stdin.isTTY), stderr: process.stderr });
     });
 
   const worktree = program.command('worktree').description('Worktree lifecycle operations');
@@ -428,6 +494,80 @@ export function buildProgram(version: string): Command {
       await runCommand(sourceControlInitCommand, { argv, env: process.env, isTTY: Boolean(process.stdin.isTTY), stderr: process.stderr });
     });
 
+  const session = program.command('session').description('Save, list, and resume agent session activity');
+  session
+    .command('save')
+    .description(sessionSaveCommand.description)
+    .helpOption(false)
+    .allowUnknownOption()
+    .allowExcessArguments(true)
+    .action(async () => {
+      const argv = process.argv.slice(4);
+      await runCommand(sessionSaveCommand, { argv, env: process.env, isTTY: Boolean(process.stdin.isTTY), stderr: process.stderr });
+    });
+  session
+    .command('list')
+    .description(sessionListCommand.description)
+    .helpOption(false)
+    .allowUnknownOption()
+    .allowExcessArguments(true)
+    .action(async () => {
+      const argv = process.argv.slice(4);
+      await runCommand(sessionListCommand, { argv, env: process.env, isTTY: Boolean(process.stdin.isTTY), stderr: process.stderr });
+    });
+  session
+    .command('resume')
+    .description(sessionResumeCommand.description)
+    .helpOption(false)
+    .allowUnknownOption()
+    .allowExcessArguments(true)
+    .action(async () => {
+      const argv = process.argv.slice(4);
+      await runCommand(sessionResumeCommand, { argv, env: process.env, isTTY: Boolean(process.stdin.isTTY), stderr: process.stderr });
+    });
+
+  const communicationStyle = program.command('communication-style').description('Catalog, select, and save agent communication styles');
+  communicationStyle
+    .command('list')
+    .description(communicationStyleListCommand.description)
+    .helpOption(false)
+    .allowUnknownOption()
+    .allowExcessArguments(true)
+    .action(async () => {
+      const argv = process.argv.slice(4);
+      await runCommand(communicationStyleListCommand, { argv, env: process.env, isTTY: Boolean(process.stdin.isTTY), stderr: process.stderr });
+    });
+  communicationStyle
+    .command('load')
+    .description(communicationStyleLoadCommand.description)
+    .helpOption(false)
+    .allowUnknownOption()
+    .allowExcessArguments(true)
+    .action(async () => {
+      const argv = process.argv.slice(4);
+      await runCommand(communicationStyleLoadCommand, { argv, env: process.env, isTTY: Boolean(process.stdin.isTTY), stderr: process.stderr });
+    });
+  communicationStyle
+    .command('set')
+    .description(communicationStyleSetCommand.description)
+    .helpOption(false)
+    .allowUnknownOption()
+    .allowExcessArguments(true)
+    .action(async () => {
+      const argv = process.argv.slice(4);
+      await runCommand(communicationStyleSetCommand, { argv, env: process.env, isTTY: Boolean(process.stdin.isTTY), stderr: process.stderr });
+    });
+  communicationStyle
+    .command('save')
+    .description(communicationStyleSaveCommand.description)
+    .helpOption(false)
+    .allowUnknownOption()
+    .allowExcessArguments(true)
+    .action(async () => {
+      const argv = process.argv.slice(4);
+      await runCommand(communicationStyleSaveCommand, { argv, env: process.env, isTTY: Boolean(process.stdin.isTTY), stderr: process.stderr });
+    });
+
   const execute = program.command('execute').description('Execution run-mode resolution and preparation');
   execute
     .command('resolve')
@@ -480,6 +620,38 @@ export function buildProgram(version: string): Command {
     .action(async () => {
       const argv = process.argv.slice(4);
       await runCommand(planPrepareCommand, { argv, env: process.env, isTTY: Boolean(process.stdin.isTTY), stderr: process.stderr });
+    });
+
+  const amendment = program.command('amendment').description('Amendment operations against a running plan');
+  amendment
+    .command('validate')
+    .description(amendmentValidateCommand.description)
+    .helpOption(false)
+    .allowUnknownOption()
+    .allowExcessArguments(true)
+    .action(async () => {
+      const argv = process.argv.slice(4);
+      await runCommand(amendmentValidateCommand, { argv, env: process.env, isTTY: Boolean(process.stdin.isTTY), stderr: process.stderr });
+    });
+  amendment
+    .command('apply')
+    .description(amendmentApplyCommand.description)
+    .helpOption(false)
+    .allowUnknownOption()
+    .allowExcessArguments(true)
+    .action(async () => {
+      const argv = process.argv.slice(4);
+      await runCommand(amendmentApplyCommand, { argv, env: process.env, isTTY: Boolean(process.stdin.isTTY), stderr: process.stderr });
+    });
+  amendment
+    .command('status')
+    .description(amendmentStatusCommand.description)
+    .helpOption(false)
+    .allowUnknownOption()
+    .allowExcessArguments(true)
+    .action(async () => {
+      const argv = process.argv.slice(4);
+      await runCommand(amendmentStatusCommand, { argv, env: process.env, isTTY: Boolean(process.stdin.isTTY), stderr: process.stderr });
     });
 
   program

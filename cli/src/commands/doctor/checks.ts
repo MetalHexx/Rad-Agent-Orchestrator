@@ -10,6 +10,7 @@ import { parseYaml } from '../../lib/yaml.js';
 import { scanUserLevelHarnesses, type HarnessInstallReport } from '../../lib/cross-harness-scan.js';
 import { getCliVersion } from '../../lib/package-version.js';
 import { readRegistry } from '@rad-orchestration/repo-registry';
+import { readConfig, type ConfigResult } from '../config/index.js';
 
 const pkg = { version: getCliVersion() };
 
@@ -25,6 +26,46 @@ export interface CheckResult {
 
 /** The four properties retired in 1.3 — present in old orchestration.yml files. */
 const RETIRED_KEYS = ['system.orch_root', 'projects.base_path', 'projects.naming', 'source_control.provider'] as const;
+
+/** Config-state checks. Pure: takes the already-read config, returns results.
+ *  Kept separate from runInstallChecks so it is unit-testable without a real ~/.radorc. */
+export function runConfigStateChecks(config: ConfigResult): CheckResult[] {
+  const out: CheckResult[] = [];
+
+  // 1. session-tracking-available — when `ambientVerbosity === 'off'`, session tracking is unavailable
+  if (config.ambientVerbosity === 'off') {
+    out.push({
+      category: 'Install',
+      name: 'session-tracking-available',
+      status: 'warn',
+      detail: 'ambient awareness set to off — session-start preamble renders no ambient block, session identity never reaches the agent, and session tracking is unavailable. Change `ambient_awareness.verbosity` in orchestration.yml to restore it.',
+    });
+  } else {
+    out.push({
+      category: 'Install',
+      name: 'session-tracking-available',
+      status: 'pass',
+    });
+  }
+
+  // 2. session-active-time — when `telemetryEnabled` is false, active time will not be reported
+  if (!config.telemetryEnabled) {
+    out.push({
+      category: 'Install',
+      name: 'session-active-time',
+      status: 'warn',
+      detail: 'telemetry disabled — active time will not be reported. It will appear once telemetry is enabled.',
+    });
+  } else {
+    out.push({
+      category: 'Install',
+      name: 'session-active-time',
+      status: 'pass',
+    });
+  }
+
+  return out;
+}
 
 export async function runEnvironmentChecks(): Promise<CheckResult[]> {
   const out: CheckResult[] = [];
@@ -47,6 +88,10 @@ export async function runEnvironmentChecks(): Promise<CheckResult[]> {
 export async function runInstallChecks(): Promise<CheckResult[]> {
   const p = userDataPaths();
   const out: CheckResult[] = [];
+
+  // Config-state checks (pure function that can be tested without a real ~/.radorc)
+  const config = readConfig({ root: p.root });
+  out.push(...runConfigStateChecks(config));
 
   // 1. radorch-home-exists
   const rootExists = await pathExists(p.root);

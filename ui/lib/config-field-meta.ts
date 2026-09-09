@@ -3,22 +3,14 @@ export interface FieldMeta {
   label: string;
   tooltip: string;
   section: string;
-  controlType: 'text' | 'number' | 'switch' | 'toggle-group' | 'readonly';
-  options?: string[];
+  controlType: 'text' | 'number' | 'switch' | 'toggle-group' | 'select' | 'readonly';
+  options?: string[];                       // static enums only
+  optionsSource?: 'communication-styles';   // runtime-sourced; the form supplies {value,label} pairs
   min?: number;
 }
 
 export const CONFIG_FIELDS: FieldMeta[] = [
-  // 1. Version (top-level, above accordion)
-  {
-    key: 'version',
-    label: 'Schema Version',
-    tooltip: 'Schema version identifier. Read-only.',
-    section: 'version',
-    controlType: 'readonly',
-  },
-
-  // 2. Pipeline Limits Section
+  // 1. Pipeline Limits Section
   {
     key: 'limits.max_retries_per_task',
     label: 'Max Retries per Task',
@@ -27,33 +19,6 @@ export const CONFIG_FIELDS: FieldMeta[] = [
     section: 'limits',
     controlType: 'number',
     min: 0,
-  },
-
-  // 6–8. Human Gates Section
-  {
-    key: 'human_gates.after_planning',
-    label: 'After Planning Gate',
-    tooltip:
-      'Pause for human approval after the planning phase completes. When off, the pipeline proceeds automatically.',
-    section: 'human-gates',
-    controlType: 'switch',
-  },
-  {
-    key: 'human_gates.execution_mode',
-    label: 'Execution Mode',
-    tooltip:
-      "Controls how much human oversight is required during execution. 'ask' = confirm each step, 'phase' = confirm per phase, 'task' = confirm per task, 'autonomous' = no confirmation.",
-    section: 'human-gates',
-    controlType: 'toggle-group',
-    options: ['ask', 'phase', 'task', 'autonomous'],
-  },
-  {
-    key: 'human_gates.after_final_review',
-    label: 'After Final Review Gate',
-    tooltip:
-      'Pause for human approval after the final comprehensive review. When off, the project completes automatically.',
-    section: 'human-gates',
-    controlType: 'switch',
   },
 
   // 9–10. Source Control Section
@@ -85,16 +50,30 @@ export const CONFIG_FIELDS: FieldMeta[] = [
     controlType: 'text',
   },
 
-  // 12. Telemetry Section
+  // 12. Ambient Awareness Section
+  {
+    key: 'ambient_awareness.verbosity',
+    label: 'Verbosity Level',
+    tooltip:
+      "Controls how much the session-start banner shows. 'verbose' = full banner every session, " +
+      "'minimal' = one line carrying the header — project, and portfolio when there is one " +
+      "(default), 'silent' = no visible banner (the agent still loads full context), 'off' = no " +
+      "ambient context loaded at session start at all.",
+    section: 'ambient-awareness',
+    controlType: 'toggle-group',
+    options: ['verbose', 'minimal', 'silent', 'off'],
+  },
+
+  // 13. Telemetry Section
   {
     key: 'telemetry.enabled',
-    label: 'Observability',
+    label: 'Enabled',
     tooltip: 'Capture neutral, non-attributed usage telemetry for harness sessions. Off by default; turning it on is opt-in.',
     section: 'telemetry',
     controlType: 'switch',
   },
 
-  // 13. Dashboard Section
+  // 14. Dashboard Section
   {
     key: 'ui.port',
     label: 'UI Port',
@@ -102,6 +81,23 @@ export const CONFIG_FIELDS: FieldMeta[] = [
     section: 'ui',
     controlType: 'number',
     min: 1,
+  },
+
+  // 15–16. Communication Style Section
+  {
+    key: 'communication_style.enabled',
+    label: 'Enabled',
+    tooltip: 'Apply the selected communication style to agent sessions.',
+    section: 'communication-style',
+    controlType: 'switch',
+  },
+  {
+    key: 'communication_style.selected',
+    label: 'Style',
+    tooltip: 'The active communication style. Use /rad-communication to create and edit styles.',
+    section: 'communication-style',
+    controlType: 'select',
+    optionsSource: 'communication-styles',
   },
 ];
 

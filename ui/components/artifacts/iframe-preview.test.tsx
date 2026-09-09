@@ -1,8 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { JSDOM } from 'jsdom';
 import React, { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { IframePreview, computeFitScale } from './iframe-preview';
+import { IframePreview, computeFitScale, StageIframe, readIframeScrollTop, applyIframeScrollTop } from './iframe-preview';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 (globalThis as any).React = React;
 
@@ -61,4 +62,135 @@ test('renders loading="lazy" by default (Issue B)', () => {
 test('renders loading="eager" when eager is passed (Issue B)', () => {
   const html = render({ projectName: 'DEMO', fileName: 'DEMO-BRAINSTORM.html', eager: true });
   assert.ok(html.includes('loading="eager"'), 'iframe eagerly loads when eager');
+});
+
+test('readIframeScrollTop reads contentWindow.scrollY', () => {
+  const el = { contentWindow: { scrollY: 150 } } as unknown as HTMLIFrameElement;
+  assert.equal(readIframeScrollTop(el), 150, 'reports the window-level scroll offset');
+});
+
+test('readIframeScrollTop degrades to 0 on a null element or missing contentWindow', () => {
+  assert.equal(readIframeScrollTop(null), 0, 'null element yields 0');
+  const el = { contentWindow: null } as unknown as HTMLIFrameElement;
+  assert.equal(readIframeScrollTop(el), 0, 'a not-yet-loaded iframe yields 0');
+});
+
+test('readIframeScrollTop degrades to 0 when contentWindow access throws (opaque origin)', () => {
+  const el = {} as HTMLIFrameElement;
+  Object.defineProperty(el, 'contentWindow', {
+    get() { throw new Error('cross-origin access denied'); },
+  });
+  assert.equal(readIframeScrollTop(el), 0, 'a throwing getter degrades to 0 rather than throwing');
+});
+
+test('applyIframeScrollTop calls contentWindow.scrollTo(0, top)', () => {
+  const calls: Array<[number, number]> = [];
+  const el = { contentWindow: { scrollTo: (x: number, y: number) => calls.push([x, y]) } } as unknown as HTMLIFrameElement;
+  applyIframeScrollTop(el, 321);
+  assert.deepEqual(calls, [[0, 321]], 'scrolls the iframe window to the given offset');
+});
+
+test('applyIframeScrollTop is a silent no-op on a null element or a throwing contentWindow getter', () => {
+  assert.doesNotThrow(() => applyIframeScrollTop(null, 200), 'null element is a silent no-op');
+  const el = {} as HTMLIFrameElement;
+  Object.defineProperty(el, 'contentWindow', {
+    get() { throw new Error('cross-origin access denied'); },
+  });
+  assert.doesNotThrow(() => applyIframeScrollTop(el, 200), 'a throwing getter degrades quietly, not a throw');
+});
+
+test('StageIframe applies initialScrollTop inside its own load handler before the caller onLoad fires', async () => {
+  const dom = new JSDOM('<!doctype html><div id="root"></div>');
+  const { window } = dom;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (globalThis as any).window = window;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (globalThis as any).document = window.document;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (globalThis as any).ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
+  const { createRoot } = await import('react-dom/client');
+  const { act } = await import('react');
+
+  const order: string[] = [];
+  const iframeRef = React.createRef<HTMLIFrameElement>();
+  const root = createRoot(window.document.getElementById('root')!);
+  await act(async () => {
+    root.render(createElement(StageIframe, {
+      projectName: 'DEMO',
+      fileName: 'V.html',
+      initialScrollTop: 240,
+      iframeRef,
+      onLoad: () => { order.push('onLoad'); },
+    } as never));
+  });
+
+  const iframeEl = iframeRef.current!;
+  assert.ok(iframeEl, 'iframeRef is populated once the slot mounts');
+  // jsdom fires its own real (unrelated) load event once the mounted iframe's
+  // src "navigates" — flush it and discard it before wiring the controlled
+  // contentWindow stub this assertion actually cares about.
+  await act(async () => {});
+  order.length = 0;
+  const scrollToCalls: Array<[number, number]> = [];
+  Object.defineProperty(iframeEl, 'contentWindow', {
+    configurable: true,
+    get() {
+      return { scrollTo: (x: number, y: number) => { order.push('scroll'); scrollToCalls.push([x, y]); } };
+    },
+  });
+
+  await act(async () => {
+    iframeEl.dispatchEvent(new window.Event('load'));
+  });
+
+  assert.deepEqual(scrollToCalls, [[0, 240]], 'the initialScrollTop offset reaches contentWindow.scrollTo');
+  assert.deepEqual(order, ['scroll', 'onLoad'], 'the scroll offset is applied before the caller onLoad runs');
+  await act(async () => { root.unmount(); });
+});
+
+test('StageIframe skips applying a scroll offset when initialScrollTop is omitted, but still fires onLoad', async () => {
+  const dom = new JSDOM('<!doctype html><div id="root"></div>');
+  const { window } = dom;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (globalThis as any).window = window;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (globalThis as any).document = window.document;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (globalThis as any).ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
+  const { createRoot } = await import('react-dom/client');
+  const { act } = await import('react');
+
+  let onLoadCount = 0;
+  const iframeRef = React.createRef<HTMLIFrameElement>();
+  const root = createRoot(window.document.getElementById('root')!);
+  await act(async () => {
+    root.render(createElement(StageIframe, {
+      projectName: 'DEMO',
+      fileName: 'V.html',
+      iframeRef,
+      onLoad: () => { onLoadCount += 1; },
+    } as never));
+  });
+
+  const iframeEl = iframeRef.current!;
+  // jsdom fires its own real (unrelated) load event once the mounted iframe's
+  // src "navigates" — flush and discard it so only the controlled dispatch
+  // below is measured.
+  await act(async () => {});
+  onLoadCount = 0;
+  let scrollToCalled = false;
+  Object.defineProperty(iframeEl, 'contentWindow', {
+    configurable: true,
+    get() {
+      return { scrollTo: () => { scrollToCalled = true; } };
+    },
+  });
+
+  await act(async () => {
+    iframeEl.dispatchEvent(new window.Event('load'));
+  });
+
+  assert.equal(scrollToCalled, false, 'no initialScrollTop means no scrollTo call');
+  assert.equal(onLoadCount, 1, 'the caller onLoad still fires once');
+  await act(async () => { root.unmount(); });
 });

@@ -2,6 +2,7 @@ import path from 'node:path';
 
 import type { SSEEvent, SSEEventType, SSEPayloadMap } from '@/types/events';
 import type { AnyProjectState } from '@/types/state';
+import { deriveProjectState } from '@rad-orchestration/work-graph';
 import { getProjectsRoot, getRegistryRoot, getTelemetryRoot } from '@/lib/path-resolver';
 import { getLiveRuntime } from '@/lib/live/live-hub-runtime';
 import { discoverConnectedProjectNames } from './discover-connected-projects';
@@ -89,6 +90,7 @@ export async function GET(request: Request) {
           createSSEEvent('state_change', {
             projectName: n.payload.projectName,
             state: n.payload.state as AnyProjectState,
+            projectState: deriveProjectState(n.payload.state),
           }),
         ),
       );
@@ -106,6 +108,9 @@ export async function GET(request: Request) {
       const unsubTranscripts = liveRuntime.subscribeTranscripts((n) =>
         enqueue(createSSEEvent('transcript_change', n.payload)),
       );
+      const unsubSessions = liveRuntime.subscribeAllSessionsTopics((n) =>
+        enqueue(createSSEEvent('sessions_change', n.payload)),
+      );
 
       // ── 4. Cleanup on disconnect ───────────────────────────────────
       function cleanup(): void {
@@ -120,6 +125,7 @@ export async function GET(request: Request) {
         unsubRegistry();
         unsubLifecycle();
         unsubTranscripts();
+        unsubSessions();
 
         try {
           controller.close();

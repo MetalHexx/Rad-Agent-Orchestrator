@@ -1,9 +1,12 @@
+export { ActivityTypeBadge } from "./activity-type-badge";
 export { PipelineTierBadge } from "./pipeline-tier-badge";
 export { SpinnerBadge } from "./spinner-badge";
 export { GateModeBadge } from "./gate-mode-badge";
 export { ReviewVerdictBadge } from "./review-verdict-badge";
 export { SeverityBadge } from "./severity-badge";
 export { RetryBadge } from "./retry-badge";
+export { AmendmentBadge } from "./amendment-badge";
+export { OperatorBadge } from "./operator-badge";
 export { WarningBadge } from "./warning-badge";
 export { ConnectionIndicator } from "./connection-indicator";
 export { LockBadge } from "./lock-badge";
@@ -13,3 +16,5 @@ export { CustomizedBadge } from "./customized-badge";
 export { PendingChangesBadge } from "./pending-changes-badge";
 export { ChangeBadge } from "./change-badge";
 export { PENDING_REVIEW_LABEL, PENDING_REVIEW_CSS_VAR } from "./pending-review";
+export { STATE_PRESENTATION } from "./project-state-presentation";
+export type { StatePresentation } from "./project-state-presentation";

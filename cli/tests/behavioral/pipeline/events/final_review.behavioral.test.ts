@@ -2,7 +2,7 @@
 // Covers final_review_started, final_review_completed (verdict=approved), and final_approved events
 // (FR-3, FR-9, DD-2, DD-4, DD-5).
 // NFR-5: if the state schema changes, update the seeded states below accordingly.
-import { describe, it, beforeEach, afterEach } from 'vitest';
+import { describe, it, beforeEach, afterEach, expect } from 'vitest';
 import path from 'node:path';
 import { buildWorld } from '../helpers/world.js';
 import { captureEnvelope } from '../helpers/capture.js';
@@ -172,6 +172,16 @@ describe('final_review_completed event with verdict=approved (FR-3, FR-9, DD-2, 
     });
     // FR-4, FR-23 — request_final_approval's completion event is final_approved.
     assertPromptForEvent(env, 'final_approved');
+
+    // The gate composes all three outcomes: approve, request changes, reject.
+    // Only the latter two carry an operator-supplied --reason.
+    const data = env.data as { completion_commands: Array<{ event: string; when?: string; command: string }> };
+    const commands = data.completion_commands;
+    expect(commands.map((c) => c.event)).toEqual(['final_approved', 'final_corrective_requested', 'final_rejected']);
+    expect(commands.every((c) => typeof c.when === 'string' && c.when.length > 0)).toBe(true);
+    expect(commands.find((c) => c.event === 'final_approved')!.command).not.toContain('--reason');
+    expect(commands.find((c) => c.event === 'final_corrective_requested')!.command).toContain('--reason');
+    expect(commands.find((c) => c.event === 'final_rejected')!.command).toContain('--reason');
   });
 });
 

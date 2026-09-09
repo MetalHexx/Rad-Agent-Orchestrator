@@ -20,7 +20,12 @@ describe('project-group commands', () => {
     expect(created.rev).toBe(1);
     const added = runGroupAdd({ root, group: 'group:mr', member: 'MR-1' });
     expect(added.rev).toBe(2);
-    expect(runGroupList({ root }).groups.map((g) => g.id)).toEqual(['group:mr']);
+    const [group] = runGroupList({ root }).groups;
+    expect(group.id).toBe('group:mr');
+    // The canonical pair rides through the envelope untouched — no hand-built projection strips it.
+    expect(typeof group.state).toBe('string');
+    expect(typeof group.stateLabel).toBe('string');
+    expect(group.stateLabel.length).toBeGreaterThan(0);
     const deleted = runGroupDelete({ root, group: 'group:mr' });
     expect(deleted.rev).toBe(3);
     expect(runGroupList({ root }).groups).toEqual([]);

@@ -10,7 +10,7 @@ import {
 } from '@/hooks/use-artifact-modal';
 import type { ModalDoc } from '@/lib/modal-doc-model';
 
-// Mirrors the page's wiring: the LaunchScreen/PlanningSection tiles are still
+// Mirrors the page's wiring: the OverviewPage/PlanningSection tiles are still
 // root-only Artifact[] (index -> fileName at the call site), but the modal
 // itself is driven by the unified ModalDoc[] list, keyed by path.
 
@@ -23,7 +23,7 @@ const arts: ModalDoc[] = [
 const pageSrc = readFileSync(path.join(process.cwd(), 'app', 'projects', '[[...slug]]', 'page.tsx'), 'utf-8');
 
 test('open converts the child index to a filename at the call site (open-by-filename)', () => {
-  // BrainstormingSection/LaunchScreen still hand up an index; the page turns it
+  // BrainstormingSection/OverviewPage still hand up an index; the page turns it
   // into the filename it opens the modal with.
   assert.ok(
     pageSrc.includes('openArtifactModal(artifacts[index].fileName)'),
@@ -146,8 +146,8 @@ test('urlDoc is reconstructed from every segment after docs/, not just the first
 });
 
 test('a missing document shows a load-gated not-found state, never while still loading', () => {
-  assert.ok(pageSrc.includes('filesLoaded && !modalDocs.some((d) => d.path === modal.activePath)'),
-    'not-found state is gated on filesLoaded and a path-absence check');
+  assert.ok(pageSrc.includes('live.snapshotLoaded && !modalDocs.some((d) => d.path === modal.activePath)'),
+    'not-found state is gated on the provider snapshot having settled and a path-absence check');
   assert.ok(pageSrc.includes('Document not found'),
     'a client-rendered document-not-found notice is present');
 });

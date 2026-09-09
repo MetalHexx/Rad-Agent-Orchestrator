@@ -24,6 +24,12 @@ const badgeVariants = cva(
           "border-transparent bg-[color:color-mix(in_srgb,var(--live)_15%,transparent)] text-[color:var(--live)]",
         success:
           "border-transparent bg-[color:color-mix(in_srgb,var(--model-green)_14%,transparent)] text-[color:var(--model-green)]",
+        provenance:
+          "border-transparent bg-[color:color-mix(in_srgb,var(--model-teal)_15%,transparent)] text-[color:var(--model-teal)]",
+        kindPortfolio:
+          "border-transparent bg-[color:color-mix(in_srgb,var(--kind-portfolio)_15%,transparent)] text-[color:var(--kind-portfolio)]",
+        kindSideProject:
+          "border-transparent bg-[color:color-mix(in_srgb,var(--kind-side-project)_15%,transparent)] text-[color:var(--kind-side-project)]",
       },
     },
     defaultVariants: {

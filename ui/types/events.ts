@@ -1,5 +1,6 @@
 import type { AnyProjectState } from './state';
 import type { ObservabilityUsageRow } from '@rad-orchestration/telemetry';
+import type { DerivedProjectState } from '@rad-orchestration/work-graph';
 
 /** SSE event types sent from server to client */
 export type SSEEventType =
@@ -12,7 +13,8 @@ export type SSEEventType =
   | 'live_degraded'
   | 'registry_change'
   | 'telemetry_rows'
-  | 'transcript_change';
+  | 'transcript_change'
+  | 'sessions_change';
 
 export interface SSEEvent<T extends SSEEventType = SSEEventType> {
   type: T;
@@ -24,6 +26,8 @@ export interface SSEPayloadMap {
   state_change: {
     projectName: string;
     state: AnyProjectState;   // was ProjectState — now accepts both v5 and v6
+    /** Server-derived canonical state — the client patches its badge from this, never recomputes it. */
+    projectState: DerivedProjectState;
   };
   project_added: {
     projectName: string;
@@ -45,6 +49,7 @@ export interface SSEPayloadMap {
   registry_change: Record<string, never>;
   telemetry_rows: { rows: ObservabilityUsageRow[] };
   transcript_change: { sessionId: string; agentId?: string; kind: 'added' | 'changed' | 'removed' };
+  sessions_change: { projectName: string };
 }
 
 /** Single-source-of-truth runtime array of all registered SSE event names.
@@ -61,6 +66,7 @@ export const EVENT_TYPES: SSEEventType[] = [
   'live_degraded',
   'telemetry_rows',
   'transcript_change',
+  'sessions_change',
 ];
 
 /** Connection status for the SSE client hook */

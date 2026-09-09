@@ -18,6 +18,9 @@
 export type SlotIndex = 0 | 1;
 export interface Layer {
   fileName: string;
+  /** Cache-bust generation for THIS slot's document. Per-layer, so reloading the
+   *  background slot cannot change the foreground slot's src. */
+  reloadKey?: number;
 }
 
 export interface StageState {
@@ -30,6 +33,9 @@ export interface StageState {
   incoming: SlotIndex | null;
   /** The incoming slot reported ready and is cross-fading in. */
   crossfading: boolean;
+  /** What the in-flight incoming slot is doing. A live reload of the same doc
+   *  must not read as a navigation, so it swaps on a shorter timer. */
+  mode: 'navigate' | 'live';
 }
 
 function other(slot: SlotIndex): SlotIndex {
@@ -37,7 +43,7 @@ function other(slot: SlotIndex): SlotIndex {
 }
 
 export function initStage(fileName: string): StageState {
-  return { slots: [{ fileName }, null], front: 0, incoming: null, crossfading: false };
+  return { slots: [{ fileName }, null], front: 0, incoming: null, crossfading: false, mode: 'navigate' };
 }
 
 /** File name of the foreground document, or null on an empty stage. */
@@ -56,7 +62,21 @@ export function beginNavigate(s: StageState, nextFileName: string): StageState {
   const bg = other(s.front);
   const slots: [Layer | null, Layer | null] = [s.slots[0], s.slots[1]];
   slots[bg] = { fileName: nextFileName };
-  return { slots, front: s.front, incoming: bg, crossfading: false };
+  return { slots, front: s.front, incoming: bg, crossfading: false, mode: 'navigate' };
+}
+
+/** Reload the SAME document into the background slot at a new cache-bust
+ *  generation, without disturbing the foreground slot's src (FR-1, DD-11).
+ *  A no-op when the file isn't the one currently on the stage's foreground,
+ *  or when a navigation is already in flight — a live edit must never clobber
+ *  a doc switch the user just asked for. */
+export function beginLiveReload(s: StageState, fileName: string, reloadKey: number): StageState {
+  if (frontFileName(s) !== fileName) return s;
+  if (s.incoming !== null && s.mode === 'navigate') return s;
+  const bg = other(s.front);
+  const slots: [Layer | null, Layer | null] = [s.slots[0], s.slots[1]];
+  slots[bg] = { fileName, reloadKey };
+  return { slots, front: s.front, incoming: bg, crossfading: false, mode: 'live' };
 }
 
 /** Incoming background slot reported ready → begin the cross-fade. The foreground
@@ -74,16 +94,5 @@ export function settleStage(s: StageState): StageState {
   const promoted = s.incoming;
   const slots: [Layer | null, Layer | null] = [s.slots[0], s.slots[1]];
   slots[other(promoted)] = null; // free the outgoing buffer
-  return { slots, front: promoted, incoming: null, crossfading: false };
-}
-
-export interface LiveUpdatePlan {
-  preserveScroll: boolean;
-  crossfade: boolean;
-}
-/** Same-file live update: re-render in place, preserve scroll, no cross-fade
- *  (DD-11). A different file is a navigation and uses the full cross-fade. */
-export function applyLiveUpdate(s: StageState, fileName: string): LiveUpdatePlan {
-  const sameFile = frontFileName(s) === fileName;
-  return { preserveScroll: sameFile, crossfade: !sameFile };
+  return { slots, front: promoted, incoming: null, crossfading: false, mode: s.mode };
 }

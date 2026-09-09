@@ -13,7 +13,7 @@ import { runInstall } from '../../lib/install/run-install.js';
 import { removeManifestFiles } from '../../lib/install/remove-files.js';
 import { loadManifest } from '../../lib/install/catalog.js';
 
-const VERSION = '1.0.0-alpha.13';
+const VERSION = '1.0.0-alpha.14';
 
 /** Runs the test body under a temp ${RAD_HOME} and a temp plugin root, then
  *  cleans up. The plugin root is pre-staged with the manifest catalog +

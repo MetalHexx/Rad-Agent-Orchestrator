@@ -2,8 +2,6 @@ export { ConfigEditorPanel } from "./config-editor-panel";
 export { ConfigSection } from "./config-section";
 export { ConfigForm } from "./config-form";
 export { ConfigFieldRow } from "./config-field-row";
-export { ConfigModeToggle } from "./config-mode-toggle";
-export { ConfigRawEditor } from "./config-raw-editor";
 export { ConfigFooter } from "./config-footer";
 export { ConfigErrorState } from "./config-error-state";
 export { ConfigInfoBanner } from "./config-info-banner";

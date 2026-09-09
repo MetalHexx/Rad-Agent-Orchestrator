@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { resolveWorktrees, type ResolveDeps } from '../src/derive/worktrees.js';
+import { resolveWorktrees, resolveWorktreeName, type ResolveDeps } from '../src/derive/worktrees.js';
 import type { WorktreeRef } from '../src/types.js';
 
 let root: string;
@@ -95,6 +95,34 @@ describe('worktree resolution', () => {
     writeState({ branch: 'MULTI-REPO-3', worktree_path: '/abs/wt/MULTI-REPO-3' });
     const refs = resolveWorktrees('DEMO-1', { projectsDir, worktreesDir, exec: () => '' });
     expect(refs).toEqual([{ repo: 'MULTI-REPO-3', path: '/abs/wt/MULTI-REPO-3', branch: 'MULTI-REPO-3', exists: false, resolvedVia: 'git' }]);
+  });
+  it('reports resolvedVia: convention when the recorded worktree_name equals the project name', () => {
+    writeState({ repos: [{ name: 'rad-orc-source' }], worktree_name: 'DEMO-1' });
+    const wtPath = path.join(worktreesDir, 'DEMO-1', 'rad-orc-source');
+    const refs = resolveWorktrees('DEMO-1', { projectsDir, worktreesDir, exec: () => '' });
+    expect(refs).toEqual([{ repo: 'rad-orc-source', path: wtPath, branch: null, exists: false, resolvedVia: 'convention' }]);
+  });
+});
+
+describe('resolveWorktreeName', () => {
+  it('returns the shared name when state.json records one', () => {
+    writeState({ repos: [{ name: 'rad-orc-source' }], worktree_name: 'PARENT-1' });
+    expect(resolveWorktreeName('DEMO-1', { projectsDir })).toBe('PARENT-1');
+  });
+  it('returns the project name when worktree_name is absent', () => {
+    writeState({ repos: [{ name: 'rad-orc-source' }] });
+    expect(resolveWorktreeName('DEMO-1', { projectsDir })).toBe('DEMO-1');
+  });
+  it('returns the project name when worktree_name is an empty string', () => {
+    writeState({ repos: [{ name: 'rad-orc-source' }], worktree_name: '' });
+    expect(resolveWorktreeName('DEMO-1', { projectsDir })).toBe('DEMO-1');
+  });
+  it('returns the project name when state.json is missing', () => {
+    expect(resolveWorktreeName('DEMO-1', { projectsDir })).toBe('DEMO-1');
+  });
+  it('returns the project name when state.json is unparseable', () => {
+    fs.writeFileSync(path.join(projectsDir, 'DEMO-1', 'state.json'), '{not json');
+    expect(resolveWorktreeName('DEMO-1', { projectsDir })).toBe('DEMO-1');
   });
 });
 

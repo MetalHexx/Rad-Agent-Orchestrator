@@ -9,7 +9,10 @@ const ci = fs.readFileSync(path.join(repoRoot, '.github/workflows/ci.yml'), 'utf
 const cli = fs.readFileSync(path.join(repoRoot, '.github/workflows/cli.yml'), 'utf8');
 
 test('ci.yml runs root workspace guard tests', () => {
-  assert.match(ci, /node --test tests\//, 'ci.yml must run root guard tests via node --test tests/');
+  // The .mjs glob alone would silently skip the TypeScript guards, so the command
+  // form itself is what this asserts: tsx loaded, and both globs passed.
+  assert.match(ci, /node --test --import tsx "tests\/\*\.test\.mjs" "tests\/\*\.test\.ts"/,
+    'ci.yml must run the root guards with tsx over both tests/*.test.mjs and tests/*.test.ts');
 });
 
 test('ci.yml builds and tests the library', () => {

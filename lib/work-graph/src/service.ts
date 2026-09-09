@@ -4,11 +4,21 @@ import { PROJECTION_SCHEMA } from './types.js';
 import { GraphIndex } from './store.js';
 import { WorkGraph } from './graph.js';
 import { listProjectNames, projectExists, deriveProject } from './derive/projects.js';
-import { resolveWorktrees as deriveWorktrees, type GitExec } from './derive/worktrees.js';
+import { combineProjectStates, PROJECT_STATE_LABELS, type ProjectState } from './derive/project-state.js';
+import { resolveWorktrees as deriveWorktrees, resolveWorktreeName as deriveWorktreeName, type GitExec } from './derive/worktrees.js';
 import { locate as deriveLocate, type LocateResult } from './derive/locate.js';
-import { groupId } from './ids.js';
+import {
+  listPortfolios as deriveListPortfolios, resolvePortfolioAmong as deriveResolvePortfolioAmong,
+  type PortfolioLifecycle, type PortfolioRef,
+} from './derive/portfolio.js';
+import { groupId, isGroupId } from './ids.js';
 import { validateNewEdge, validateNewGroupId } from './validate.js';
 import { pruneEdges } from './reconcile.js';
+import {
+  planProjectDeletion as planProjectDeletionImpl,
+  deleteProject as deleteProjectImpl,
+  type DeletionDeps, type DeletionPlan, type DeletionReport, type DeletionSkip,
+} from './delete-project.js';
 import { readRegistry } from '@rad-orchestration/repo-registry';
 
 export interface ServiceOpts { root: string; exec?: GitExec; worktreesDir?: string; sideProjectsDir?: string; }
@@ -34,9 +44,32 @@ export class WorkGraphService {
     const deps = { projectsDir: this.projectsDir(), worktreesDir: this.worktreesDir(), sideProjectsDir: this.sideProjectsDir(), registryLocalPaths: this.registryLocalPaths(), exec: this.opts.exec };
     const projects = listProjectNames(this.projectsDir())
       .map((n) => deriveProject(n, deps)).filter((p): p is Project => !!p);
-    const groups: Group[] = Object.entries(stored.groups)
-      .map(([id, g]) => ({ id, kind: 'group', name: g.name, description: g.description, status: 'unknown' }));
+    const projectStates = new Map(projects.map((p) => [p.id, p.state]));
+    const groups: Group[] = Object.entries(stored.groups).map(([id, g]) => {
+      const state = combineProjectStates(this.memberProjectStates(id, stored.edges, projectStates));
+      return { id, kind: 'group', name: g.name, description: g.description, status: 'unknown', state, stateLabel: PROJECT_STATE_LABELS[state] };
+    });
     return { graph: new WorkGraph([...groups, ...projects], stored.edges) };
+  }
+
+  /**
+   * The states of every project transitively reachable from `id` over `contains` edges,
+   * so a group holding only subgroups rolls up its descendants rather than reading empty.
+   */
+  private memberProjectStates(id: NodeId, edges: Edge[], projectStates: Map<NodeId, ProjectState>): ProjectState[] {
+    const states: ProjectState[] = [];
+    const seen = new Set<NodeId>([id]);
+    const walk = (from: NodeId) => {
+      for (const e of edges) {
+        if (e.type !== 'contains' || e.from !== from || seen.has(e.to)) continue;
+        seen.add(e.to);
+        const state = projectStates.get(e.to);
+        if (state) states.push(state);
+        else walk(e.to);
+      }
+    };
+    walk(id);
+    return states;
   }
 
   getGraph(scope?: { rootId?: NodeId; depth?: number }): GraphDTO {
@@ -73,8 +106,58 @@ export class WorkGraphService {
   listGroups(): Group[] {
     return this.compose().graph.allNodes().filter((n): n is Group => n.kind === 'group');
   }
+
+  /** Every portfolio under the projects directory. No graph composition. */
+  listPortfolios(filter?: { status?: PortfolioLifecycle }): PortfolioRef[] {
+    const refs = deriveListPortfolios(this.projectsDir());
+    return filter?.status === undefined ? refs : refs.filter((p) => p.status === filter.status);
+  }
+
+  /** The portfolio among the given project ids, or null. No graph composition. */
+  resolvePortfolioAmong(projectIds: readonly NodeId[]): PortfolioRef | null {
+    return deriveResolvePortfolioAmong(this.projectsDir(), projectIds);
+  }
+
+  /**
+   * The portfolio whose group contains `projectId`, or null when it has no containing group or
+   * that group holds no root project. One graph composition.
+   *
+   * No caller in this project, deliberately: it is the surface the dashboard iteration that
+   * follows this one consumes, and the preamble uses `resolvePortfolioAmong` instead precisely
+   * because it does not compose. Do not delete this as dead code.
+   */
+  portfolioForProject(projectId: NodeId): PortfolioRef | null {
+    const { graph } = this.compose();
+    const containing = graph.edges.find((e) => e.type === 'contains' && e.to === projectId && isGroupId(e.from));
+    if (!containing) return null;
+    const siblingIds = graph.edges
+      .filter((e) => e.type === 'contains' && e.from === containing.from)
+      .map((e) => e.to);
+    return this.resolvePortfolioAmong(siblingIds);
+  }
+
   resolveWorktrees(projectId: NodeId): WorktreeRef[] {
     return deriveWorktrees(projectId, { projectsDir: this.projectsDir(), worktreesDir: this.worktreesDir(), sideProjectsDir: this.sideProjectsDir(), registryLocalPaths: this.registryLocalPaths(), exec: this.opts.exec });
+  }
+
+  resolveWorktreeName(projectId: NodeId): string {
+    return deriveWorktreeName(projectId, { projectsDir: this.projectsDir() });
+  }
+
+  private deletionDeps(): DeletionDeps {
+    return {
+      projectsDir: this.projectsDir(),
+      worktreesDir: this.worktreesDir(),
+      sideProjectsDir: this.sideProjectsDir(),
+      registryLocalPaths: this.registryLocalPaths(),
+      exec: this.opts.exec,
+      index: this.index,
+    };
+  }
+
+  /** Preview: what deleting this project would remove. Touches nothing on disk. */
+  planProjectDeletion(projectId: NodeId): Result<DeletionPlan> {
+    return planProjectDeletionImpl(projectId, this.deletionDeps());
   }
 
   locate(cwd: string): LocateResult {
@@ -111,7 +194,10 @@ export class WorkGraphService {
     }
     const written = this.index.write(stored, stored.rev);
     if (!written.ok) return written;
-    return { ok: true, data: { node: { id, kind: 'group', name: input.name, description: input.description.trim(), status: 'unknown' }, rev: written.data.rev } };
+    // Write acknowledgement, not a read: `state` is a placeholder, never a rollup —
+    // the authoritative group state comes from a subsequent getNode/getGraph/listGroups.
+    const state = combineProjectStates([]);
+    return { ok: true, data: { node: { id, kind: 'group', name: input.name, description: input.description.trim(), status: 'unknown', state, stateLabel: PROJECT_STATE_LABELS[state] }, rev: written.data.rev } };
   }
 
   updateGroup(id: NodeId, patch: { name?: string; description?: string }): Result<{ node: Group; rev: number }> {
@@ -123,7 +209,10 @@ export class WorkGraphService {
     if (patch.description !== undefined) g.description = patch.description.trim();
     const written = this.index.write(stored, stored.rev);
     if (!written.ok) return written;
-    return { ok: true, data: { node: { id, kind: 'group', name: g.name, description: g.description, status: 'unknown' }, rev: written.data.rev } };
+    // An edited group may already hold member projects in any state, so the node is
+    // re-read for its real rollup rather than acknowledged with an empty one.
+    const node = this.getNode(id) as Group;
+    return { ok: true, data: { node, rev: written.data.rev } };
   }
 
   deleteGroup(id: NodeId): Result<{ rev: number }> {
@@ -135,6 +224,18 @@ export class WorkGraphService {
     const written = this.index.write(stored, stored.rev);
     if (!written.ok) return written;
     return { ok: true, data: { rev: written.data.rev } };
+  }
+
+  /**
+   * Computes the deletion plan itself — a caller never passes a plan back in —
+   * and carries it out item by item. A registry-clone worktree is never touched;
+   * per-item failures do not fail the call (see `DeletionReport.complete`).
+   */
+  deleteProject(
+    projectId: NodeId,
+    opts?: { rm?: (path: string) => void; skip?: DeletionSkip[] },
+  ): Result<DeletionReport> {
+    return deleteProjectImpl(projectId, this.deletionDeps(), opts);
   }
 
   addMember(groupId_: NodeId, nodeId: NodeId): Result<{ edge: Edge; rev: number }> {

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Settings } from "lucide-react";
+import { HelpCircle, Settings } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { ConnectionIndicator } from "@/components/badges";
@@ -81,6 +81,17 @@ export function AppHeader({ sseStatus, onReconnect, onConfigClick, navLinks = []
             Retry
           </Button>
         )}
+
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="Docs"
+          render={
+            <Link href="/docs">
+              <HelpCircle size={16} />
+            </Link>
+          }
+        />
 
         {onConfigClick !== undefined && (
           <Button variant="ghost" size="icon" aria-label="Configuration" onClick={onConfigClick}>

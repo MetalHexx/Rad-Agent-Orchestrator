@@ -44,6 +44,7 @@ import { resolveAutoCommit, resolveAutoPr } from '../source-control/index.js';
 import type { SourceControlState } from '../source-control/state-shape.js';
 import { deriveWorktreeConvention } from '../../lib/worktree-convention.js';
 import { readCloneFacts, type CloneFacts } from '../../lib/clone-facts.js';
+import { readWorktreeCommitFacts } from '../../lib/worktree-commit-facts.js';
 import { WorkGraphService } from '@rad-orchestration/work-graph';
 import { readRegistry } from '@rad-orchestration/repo-registry';
 import type { Project, Tier, NodeStatus, LocateResult } from '@rad-orchestration/work-graph';
@@ -92,6 +93,24 @@ export interface ResolveAsk {
   confirmDone?: boolean;
   /** "you're on <branch> in <repo>'s clone — bind <project> here and run on it?" */
   bindClone?: boolean;
+  /** "<project> has no workspace — create a new one, or continue in another project's?" */
+  worktreeSource?: boolean;
+}
+
+/** A project whose existing workspace this launch could continue in. */
+export interface ResolveWorktreeCandidate {
+  /** The project that owns the workspace — the only name the operator sees. */
+  project: string;
+  /** Workspace folder name; the value `execute prepare --worktree-name` takes. */
+  worktreeName: string;
+  /** Absolute workspace folder: `<worktreesDir>/<worktreeName>`. */
+  workspacePath: string;
+  /** Branch of the repo worktree that produced the newest commit; null when unreadable. */
+  branch: string | null;
+  /** Git's relative date for that commit ("3 hours ago"); null when unreadable. */
+  lastCommitRelative: string | null;
+  /** Repos THIS project needs that the candidate's workspace does not hold; [] when none. */
+  missingRepos: string[];
 }
 /**
  * The clone a project is being offered a binding to. A sibling of `derived`
@@ -124,6 +143,8 @@ export interface ExecuteResolveResult {
   derived: ResolveDerived | null;
   /** Set only on the clone-binding offer — the facts the operator confirms against. */
   cloneBinding?: ResolveCloneBinding;
+  /** Ranked, capped candidates; present (possibly empty) exactly when ask.worktreeSource is set. */
+  worktreeCandidates?: ResolveWorktreeCandidate[];
   /** Ordered bare radorch subcommands; the skill prepends the call-form. */
   next: string[];
   /** Operator-facing lines the skill relays verbatim before running `next`. */
@@ -152,6 +173,9 @@ export interface ExecuteResolveDeps {
   defaultBranch: (repo: string) => string;
   /** Read-only check: does `<worktreesDir>/<worktreeName>/<repo>` exist on disk? */
   worktreeExists: (worktreeName: string, repo: string) => boolean;
+  /** Last-commit facts for one repo worktree inside a workspace; null when absent or unreadable. */
+  worktreeCommitFacts: (worktreeName: string, repo: string) =>
+    { lastCommitAt: number; lastCommitRelative: string; branch: string | null } | null;
   /** Read-only check: is the project's plan_approval_gate already completed? */
   planApproved: (projectDir: string) => boolean;
   worktreesDir: string;
@@ -212,6 +236,87 @@ function rebuildIfMissing(
     },
     missingRepos,
   };
+}
+
+/** Candidate plus the sort key that never leaves this function. */
+type CandidateWithSortKey = ResolveWorktreeCandidate & { lastCommitAt: number | null };
+
+/**
+ * Find other projects' workspaces a fresh launch could continue in instead of
+ * creating its own — ranked newest-commit-first, capped at three.
+ *
+ * Pure and side-effect free: every fact it needs is injected, so the filter,
+ * rank, and cap rules are unit-testable without touching disk.
+ */
+export function findWorktreeCandidates(
+  deps: Pick<
+    ExecuteResolveDeps,
+    'listProjects' | 'readProjectRepos' | 'worktreeExists' | 'recordedSourceControl' | 'worktreeCommitFacts' | 'worktreesDir'
+  >,
+  forProject: string,
+  repos: string[],
+): ResolveWorktreeCandidate[] {
+  const byWorktreeName = new Map<string, CandidateWithSortKey>();
+
+  for (const candidate of deps.listProjects()) {
+    if (candidate.name === forProject) continue;
+    if (candidate.status === 'done' || candidate.status === 'skipped') continue;
+
+    let candidateRepos: string[];
+    try {
+      candidateRepos = deps.readProjectRepos(candidate.name).repos;
+    } catch {
+      continue;
+    }
+    if (!candidateRepos.some((r) => repos.includes(r))) continue;
+
+    const worktreeName = deps.recordedSourceControl(candidate.dir)?.worktreeName ?? candidate.name;
+
+    const onDisk = candidateRepos.filter((r) => deps.worktreeExists(worktreeName, r));
+    if (onDisk.length === 0) continue;
+
+    let lastCommitAt: number | null = null;
+    let lastCommitRelative: string | null = null;
+    let branch: string | null = null;
+    for (const repo of onDisk) {
+      const commitFacts = deps.worktreeCommitFacts(worktreeName, repo);
+      if (commitFacts && (lastCommitAt === null || commitFacts.lastCommitAt > lastCommitAt)) {
+        lastCommitAt = commitFacts.lastCommitAt;
+        lastCommitRelative = commitFacts.lastCommitRelative;
+        branch = commitFacts.branch;
+      }
+    }
+
+    const entry: CandidateWithSortKey = {
+      project: candidate.name,
+      worktreeName,
+      workspacePath: path.join(deps.worktreesDir, worktreeName),
+      branch,
+      lastCommitRelative,
+      missingRepos: repos.filter((r) => !deps.worktreeExists(worktreeName, r)),
+      lastCommitAt,
+    };
+
+    // Two projects sharing a workspace collapse to one option — the newest
+    // commit wins, ties broken by project name ascending.
+    const existing = byWorktreeName.get(worktreeName);
+    if (
+      !existing ||
+      (entry.lastCommitAt ?? -Infinity) > (existing.lastCommitAt ?? -Infinity) ||
+      ((entry.lastCommitAt ?? -Infinity) === (existing.lastCommitAt ?? -Infinity) && entry.project < existing.project)
+    ) {
+      byWorktreeName.set(worktreeName, entry);
+    }
+  }
+
+  return Array.from(byWorktreeName.values())
+    .sort((a, b) => {
+      const diff = (b.lastCommitAt ?? -Infinity) - (a.lastCommitAt ?? -Infinity);
+      if (diff !== 0) return diff;
+      return a.project < b.project ? -1 : a.project > b.project ? 1 : 0;
+    })
+    .slice(0, 3)
+    .map(({ lastCommitAt: _lastCommitAt, ...candidate }) => candidate);
 }
 
 export function executeResolve(deps: ExecuteResolveDeps): ExecuteResolveResult {
@@ -534,17 +639,23 @@ export function executeResolve(deps: ExecuteResolveDeps): ExecuteResolveResult {
 
   // Not in a real worktree at all (main clone / nowhere / standing in some
   // side-project dir) → launch a fresh worktree + session, fully questioned.
+  // Nothing about WHICH workspace this uses is decided silently either: the
+  // skill is always handed a ranked list of other projects' workspaces it
+  // could continue in instead, alongside the `{wt}` placeholder both `next`
+  // commands carry for whichever one the operator (or a default) picks.
   if (!inWorktree) {
     if (!deps.isClaudeHarness()) ask.launchFlavor = true;
     if (config.autoCommit === 'ask') ask.autoCommit = true;
     if (config.autoPr === 'ask') ask.autoPr = true;
+    ask.worktreeSource = true;
     const derived = deriveWorktreeConvention({ worktreeName: projectName, repos, worktreesDir: deps.worktreesDir, defaultBranch: deps.defaultBranch });
+    const worktreeCandidates = findWorktreeCandidates(deps, projectName, repos);
     const agent = deps.isClaudeHarness() ? 'claude' : '{flavor}';
     const next = [
-      `execute prepare --project ${projectName} --auto-commit ${ac} --auto-pr ${ap}`,
-      `worktree launch --agent ${agent} --worktree-path "${derived.launchDir}" --prompt "/rad-execute ${projectName}"`,
+      `execute prepare --project ${projectName} --worktree-name {wt} --auto-commit ${ac} --auto-pr ${ap}`,
+      `worktree launch --agent ${agent} --worktree-path "${path.join(deps.worktreesDir, '{wt}')}" --prompt "/rad-execute ${projectName}"`,
     ];
-    return { runMode: 'launch', project: projectName, projectDir, ask, derived, next };
+    return { runMode: 'launch', project: projectName, projectDir, ask, derived, worktreeCandidates, next };
   }
 
   // In a DIFFERENT project's worktree → offer to reuse it for this project
@@ -602,6 +713,7 @@ export const executeResolveCommand = defineCommand({
         return b;
       },
       worktreeExists: (worktreeName, repo) => fs.existsSync(path.join(paths.worktrees, worktreeName, repo)),
+      worktreeCommitFacts: (worktreeName, repo) => readWorktreeCommitFacts(path.join(paths.worktrees, worktreeName, repo)),
       planApproved: (projectDir) => {
         try {
           const s = JSON.parse(fs.readFileSync(path.join(projectDir, 'state.json'), 'utf8')) as { graph?: { nodes?: { plan_approval_gate?: { status?: string } } } };

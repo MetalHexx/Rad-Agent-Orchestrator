@@ -7,6 +7,12 @@ signal_payload:
   doc-path:
     required: true
     description: Path to the code review doc.
+  phase:
+    required: false
+    description: Phase number. Auto-resolved from the active in-progress phase when omitted.
+  task:
+    required: false
+    description: Task number. Auto-resolved from the active in-progress task when omitted.
 ---
 
 Confirm the review doc exists at the returned path and that its frontmatter carries a valid `verdict` (`approved` | `changes_requested` | `rejected`). Signaling commits the task loop to the reviewer's verdict — `changes_requested` births a corrective, `rejected` halts, `approved` advances.

@@ -1,13 +1,12 @@
 // cli/tests/behavioral/pipeline/helpers/prompt.ts
 //
-// Shared assertion helper for the per-envelope `data.prompt` + `data.completion_event`
-// contract (FR-4, FR-5, FR-9, FR-23). Every successful pipeline envelope under
-// behavioral/pipeline/events/ carries these two fields. Non-terminal actions
-// must include a `Signal: <event>` line in the composed prompt (the completion
-// event the orchestrator is expected to signal next); terminal actions (e.g.
-// display_halted, display_complete) carry `completion_event: null` and the
-// composed prompt omits both the `## When complete` heading and the
-// `Signal:` line entirely.
+// Shared assertion helper for the per-envelope `data.prompt`,
+// `data.completion_event` and `data.completion_commands` contract. Every
+// successful pipeline envelope under behavioral/pipeline/events/ carries these
+// fields. A non-terminal action carries a runnable command for the completion
+// event the orchestrator is expected to signal next; a terminal action (e.g.
+// display_halted, display_complete) carries `completion_event: null` and an
+// empty command array.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -24,12 +23,22 @@ function getData(env: Envelope): Record<string, unknown> {
   return data!;
 }
 
-/** Assert the envelope's prompt + completion_event contract for a NON-terminal
- *  action. Per FR-7 prompt and completion_event live at the top level of
+type CompletionCommandRow = { event?: unknown; command?: unknown; when?: unknown };
+
+function completionCommands(data: Record<string, unknown>): CompletionCommandRow[] {
+  expect(data, 'data should carry completion_commands').toHaveProperty('completion_commands');
+  const commands = data['completion_commands'];
+  expect(Array.isArray(commands), 'data.completion_commands is an array').toBe(true);
+  return commands as CompletionCommandRow[];
+}
+
+/** Assert the envelope's prompt + completion_event + completion_commands
+ *  contract for a NON-terminal action. All three live at the top level of
  *  `data` (alongside `action` and `context`). Anchors:
  *    - data.prompt is a non-empty string
  *    - data.completion_event === expectedEvent
- *    - data.prompt contains `Signal: ${expectedEvent}` (FR-23 — composed signal line) */
+ *    - data.completion_commands carries a runnable command for expectedEvent,
+ *      or is empty when another skill — not the orchestrator — sends the event */
 export function assertPromptForEvent(env: Envelope, expectedEvent: string): void {
   const data = getData(env);
   expect(data, 'data should carry prompt').toHaveProperty('prompt');
@@ -37,15 +46,20 @@ export function assertPromptForEvent(env: Envelope, expectedEvent: string): void
   expect((data['prompt'] as string).length, 'data.prompt.length').toBeGreaterThan(0);
   expect(data, 'data should carry completion_event').toHaveProperty('completion_event');
   expect(data['completion_event'], 'data.completion_event').toBe(expectedEvent);
-  expect(data['prompt'] as string, 'data.prompt should contain Signal line').toContain(
-    `Signal: ${expectedEvent}`,
-  );
+  const commands = completionCommands(data);
+  if (catalogSignalledBySkill(data['action'] as string)) {
+    expect(commands, 'skill-signalled action composes no command').toEqual([]);
+    return;
+  }
+  const match = commands.find((c) => c.event === expectedEvent);
+  expect(match, `completion_commands should carry an entry for ${expectedEvent}`).toBeDefined();
+  expect(typeof match!.command, 'entry.command typeof').toBe('string');
+  expect((match!.command as string).length, 'entry.command.length').toBeGreaterThan(0);
 }
 
-/** Assert the envelope's prompt + completion_event contract for a TERMINAL
- *  action (FR-5). Terminal actions have `data.completion_event: null` and the
- *  composed prompt must omit both the `## When complete` heading and the
- *  `Signal:` line. */
+/** Assert the envelope's prompt + completion_event + completion_commands
+ *  contract for a TERMINAL action: `data.completion_event: null` and an empty
+ *  command array — there is nothing left to signal. */
 export function assertPromptForTerminalAction(env: Envelope): void {
   const data = getData(env);
   expect(data, 'data should carry prompt').toHaveProperty('prompt');
@@ -53,10 +67,7 @@ export function assertPromptForTerminalAction(env: Envelope): void {
   expect((data['prompt'] as string).length, 'data.prompt.length').toBeGreaterThan(0);
   expect(data, 'data should carry completion_event').toHaveProperty('completion_event');
   expect(data['completion_event'], 'data.completion_event').toBeNull();
-  expect(data['prompt'] as string, 'terminal prompt should omit ## When complete').not.toContain(
-    '## When complete',
-  );
-  expect(data['prompt'] as string, 'terminal prompt should omit Signal:').not.toContain('Signal:');
+  expect(completionCommands(data), 'terminal completion_commands').toEqual([]);
 }
 
 /** Read the catalog's `action.<name>.md` frontmatter and return its
@@ -76,6 +87,17 @@ export function catalogCompletionEvent(actionName: string): string | null {
   const raw = match[1]!.trim();
   if (raw === 'null') return null;
   return raw;
+}
+
+/** True when the catalog says another skill sends the action's completion
+ *  event. Those actions leave `completion_commands` empty — there is no
+ *  command for the orchestrator to run. Same minimal line extractor as
+ *  `catalogCompletionEvent`. */
+export function catalogSignalledBySkill(actionName: string): boolean {
+  const file = path.join(realCatalogRoot(), `action.${actionName}.md`);
+  const text = fs.readFileSync(file, 'utf8');
+  const match = /^completion_signalled_by:\s*(.+)$/m.exec(text);
+  return match !== null && match[1]!.trim() === 'skill';
 }
 
 /** Branching helper: assert the envelope according to whether the action

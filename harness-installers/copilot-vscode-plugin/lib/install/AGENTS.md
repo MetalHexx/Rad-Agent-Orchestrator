@@ -1,85 +1,143 @@
-# lib/install/
+# `harness-installers/copilot-vscode-plugin/lib/install/`
 
-## Purpose
+Everything in the Copilot in VS Code plugin channel that touches a user's disk, plus the token bake
+that is unique to this variant. `hooks/bootstrap.mjs` is the only importer; esbuild inlines this
+whole folder into the bundled hook, so nothing here ships as a file a user could see or a test could
+resolve at runtime.
 
-Install state machine for the Copilot in VS Code plugin. `bootstrap.mjs` imports these modules at build time; esbuild inlines them into the bundled hook. No file in this folder ships as a standalone artifact in the plugin payload.
+> **The install-side rules that hold across all three plugin variants** — `user-config` seed-once,
+> the `custom/` refusal, the pre-flight UI stop, and the single-manifest upgrade gap — are in
+> [`../../../AGENTS.md`](../../../AGENTS.md) — the near-copies section and the manifest hazards.
+> Read that first; this file carries what is specific to this variant.
 
 ## How it works
 
-**`run-install.js` — `runInstall(opts)`**
+`run-install.js` is the entry point. `bake-paths.js` is this variant's addition to the module set —
+see the hazard below.
 
-Entry point. `opts` shape: `{ pluginRoot: string, radHome?: string, force?: boolean, stderr?: (msg:string)=>void }`.
+Where files land: every manifest entry in this channel destinates under `${RAD_HOME}/…`. The plugin's
+own `agents/` and `skills/` are not installed anywhere — the harness reads them in place from the
+plugin root, which is why the manifests catalog only what
+[`runtime-config/`](../../../../runtime-config/AGENTS.md) and the shipped documentation corpus
+contribute, and why the bake has to edit the payload rather than an installed copy.
 
-Flow:
-1. Resolves paths via `userDataPaths({ radHome })`.
-2. Reads `${pluginRoot}/plugin.json` for `deliveringVersion` (falls back to `${pluginRoot}/package.json` if `plugin.json` is absent or has no `version` field).
-3. Reads `install.json` via `loadRegistry`; always returns a valid `{ harnesses: {} }` shape even when the file is absent or malformed.
-4. Checks for the pipeline sentinel at `${pluginRoot}/skills/rad-orchestration/scripts/radorch.mjs`.
-5. **Three-partner bidirectional coexistence**: emits a warning if any of `copilot-cli`, `copilot-vscode`, or `copilot-cli-plugin` is present alongside `copilot-vscode-plugin`, naming every partner in the message. The warning for `copilot-cli-plugin` includes the model-routing failure-mode prose: CLI-shaped model identifiers are not recognized by VS Code's resolver, and load-order ambiguity may let either plugin's agent files win at runtime.
-6. **Same-version fast path**: if prior version matches delivering version and sentinel exists and `!opts.force`, logs `noop` and returns.
-7. **Downgrade noop**: if `cmpSemver(deliveringVersion, installedVersionBefore) < 0` and `!opts.force`, logs `downgrade-noop` and returns.
-8. **Upgrade or fresh install**: reads the prior manifest from the new payload's bundled per-version catalog (`loadManifest(pluginRoot, priorVersion)`) — VS Code's flat `agentPlugins/` install path has no peer per-version directory from a prior install, so the manifest must come from the new payload; removes prior manifest files via `removeManifestFiles`, installs new files via `installManifestFiles` (sourcePaths read from `${pluginRoot}/_install-source/...`), extracts `${pluginRoot}/_install-source/ui.tgz` to `paths.ui` if present (the UI ships as a gzipped tarball so `node_modules/` and `.next/` survive the satellite `.gitignore` and `npm pack`'s hardcoded `node_modules` strip), then deletes `${pluginRoot}/_install-source/` so no shadow of `~/.radorc/` state (orchestration.yml, templates, ui) remains at the plugin install root. Writes updated `ij` via `writeInstallJson` and returns `action: 'upgrade-complete'` or `'fresh-install'`.
-9. Logs every outcome (including errors) via `appendInstallLog`.
+What is different here, against the sibling variants:
 
-Returns `{ action, deliveringVersion, installedVersionBefore }`.
+- **Install key `copilot-vscode-plugin`**, written by `buildCopilotVscodePluginEntry`.
+- **The coexistence probe names `copilot-vscode`, `copilot-cli`, and `copilot-cli-plugin`** — and the `copilot-cli-plugin` case adds a model-routing note, because VS Code
+  cross-discovers CLI plugins and their CLI-shaped model identifiers are not resolvable here.
+- **There is no `migrateInstallJson`.** This install key postdates every legacy registry shape;
+  `loadRegistry` covers the absent-or-malformed case on its own.
+- **The delivering version comes from the payload's synthesized `package.json`.** `run-install.js`
+  probes a payload-root `plugin.json` first, but this build writes the manifest only to
+  `.claude-plugin/plugin.json`, so that probe never matches. `drift-check.mjs` reads `package.json`
+  directly for the same reason.
+- **There is no `telemetry` key** in `user-data-paths.js` and no telemetry skip in `remove-files.js`.
+  `claude-plugin/` and the standard installer both carry that protection; `copilot-cli-plugin/`
+  does not have it either.
 
-**`install-json.js`**
+## Conventions
 
-- `readInstallJson(file)` — reads and parses; returns `null` if absent.
-- `writeInstallJson(file, value)` — atomic write-then-rename (`${file}.tmp-<pid>-<timestamp>`); strips `state_schema_version` from every write.
-- `isCurrentShape(ij)` — returns `true` if `ij.harnesses` is a non-null object (structural detection; no version field consulted).
-- `loadRegistry(installJsonPath)` — robust loader; returns `{ harnesses: {} }` on any read/parse failure.
-- `buildCopilotVscodePluginEntry(version)` — returns `{ version, channel: 'copilot-vscode-plugin', installed_at, last_writer_version }`.
+- **Everything is path-injected.** `radHome` arrives as a parameter and flows through
+  `userDataPaths({ radHome })`. Nothing in this folder reads the environment — env reads happen in
+  `hooks/bootstrap.mjs` only, which is what lets the suites run against a temp home.
+- **`install.json` is the answer to "is this installed?"** Never infer it from files on disk.
+  `loadRegistry` degrades a missing, unreadable, or shape-drifted file to `{ harnesses: {} }` rather
+  than throwing.
+- **State files are written tmp-then-rename**, and so is every file the bake rewrites.
+  Manifest-driven copying is not atomic — it goes entry by entry.
+- **Log writes never propagate.** `appendInstallLog` wraps its whole body and swallows.
+- **`userDataPaths` is where this folder constructs a `~/.radorc/` sub-path.** Add new ones there,
+  never inline in a caller. Outside this folder, `hooks/drift-check.mjs` builds its own. There is no
+  marker-file path: `UserPromptSubmit` idempotency lives in `hooks.json` itself, and `bootstrap.mjs`
+  unlinks the marker an earlier design wrote, best-effort, so upgraded installs do not keep an orphan.
 
-Note: unlike the CLI plugin, there is no `migrateInstallJson` here. The VS Code plugin's install key (`copilot-vscode-plugin`) is new; no legacy shape predates it. `loadRegistry` handles the absent-or-malformed case.
+## Hazards
 
-**`install-files.js` — `installManifestFiles(manifest, pluginRoot, opts)`**
+### `bake-paths.js` rewrites shipped payload files, and its scope is narrow
 
-Iterates `manifest.files`. For each entry, expands `${RAD_HOME}` tokens in `entry.destinationPath` via `paths.root`, guards against destination escape (`!dest.startsWith(paths.root)` throws — NFR-1), creates parent dirs, and copies.
+`bakeAbsolutePaths` walks the payload's `skills/` tree, and only its Markdown files, replacing the
+literal `${COPILOT_VSCODE_PLUGIN_ROOT}` token with the forward-slashed absolute install path. That
+form survives both bash and PowerShell double-quoting. It is idempotent — after a bake there are no
+literals left to match — and an upgrade re-triggers it because the new payload reintroduces the token.
 
-**`remove-files.js` — `removeManifestFiles(manifest, opts)`**
+Two things follow. First, **the token string here and the one `expand-tokens` emits must match
+exactly**; they are coupled by nothing but convention, and a mismatch leaves the literal token in
+every shipped skill with no error anywhere. Second, **a token written outside the payload's `skills/`
+Markdown is never baked** — hook files, action-event files, communication styles, and tier templates
+all ship it literally.
 
-Removes every non-`user-config` entry. Skips paths under `paths.projects`. After removals, prunes empty parent directories upward toward `paths.root`.
+The hook files reference the same token in their own environment logic and prose, which is exactly
+why the scope excludes them. Do not widen it.
 
-**`install-log.js` — `appendInstallLog(file, { action, deliveringVersion, installedVersionBefore }, opts)`**
+### `ui-stop.js` sends a real SIGTERM to the user's dashboard
 
-Best-effort append (entire body is in a `try/catch`; never throws). Valid `action` values are the six members of `INSTALL_LOG_ACTIONS`: `fresh-install`, `upgrade-complete`, `noop`, `downgrade-noop`, `cancelled-modified-files`, `error`. Each log line is a JSON object with `at`, `channel`, `action`, `delivering_version`, `installed_version_before`.
+Exercising an install here against a live machine kills a dashboard you are using, and one that will
+not die aborts the install outright. This file is currently byte-identical in all three plugin
+variants and shares no code with `cli/`'s own `ui stop`. Detail:
+[`../../../AGENTS.md`](../../../AGENTS.md#the-plugin-variants-are-near-copies-of-one-another)
 
-**`catalog.js` — `loadManifest(pluginRoot, version)`**
+### The containment guard is written differently in each variant
 
-Reads `${pluginRoot}/manifests/v${version}.json`. Throws if absent. The manifest is always read from the new payload's bundled catalog because VS Code's flat `agentPlugins/` install path has no peer per-version directory from a prior install.
+`installManifestFiles` here rejects an escaping destination with
+`startsWith(resolvedRoot + path.sep)`. `claude-plugin/` uses a `path.relative` test instead, and that
+is the prescribed idiom — the standard installer documents it as such. Before "aligning" any of them,
+read the variant you are actually in.
 
-**`bake-paths.js` — `bakeAbsolutePaths(pluginRoot)`**
+### `cmpSemver` is local to this file and is not the sibling's
 
-Post-install fix-up that closes the VS Code agent-chat-shell gap. Walks `${pluginRoot}/skills/**/*.md` synchronously and substitutes the literal token `${COPILOT_VSCODE_PLUGIN_ROOT}` with `pluginRoot` normalized to forward slashes. Forward-slashed form survives both bash and PowerShell double-quoted arguments to native commands (notably `node`). Atomic tmp + rename per file. Idempotent — once baked, no token literals remain, so subsequent runs are no-ops at the file scan. Scope is intentionally `skills/` only: `hooks/bootstrap.mjs`, `hooks/drift-check.mjs`, and `hooks/AGENTS.md` reference the same token in their own env-var logic and prose and must not be substituted. Called by `bootstrap.mjs` between `runInstall()` success and `selfUninstall()` — see `hooks/AGENTS.md` for sequencing and the root `AGENTS.md` for the full "why this is VS Code-only" rationale.
+Each plugin variant carries its own version comparator with its own prerelease handling — this one
+splits release from prerelease before comparing, the other two do not. A change to downgrade
+behaviour here changes nothing in the other two, and a statement about downgrade behaviour written
+once for "the plugin installers" is wrong somewhere.
 
-**`user-data-paths.js` — `userDataPaths(opts)`**
+## When a change here ripples
 
-Returns a path bundle derived from `opts.radHome ?? path.join(os.homedir(), '.radorc')`: `root`, `installJson`, `orchestrationYml`, `templates`, `ui`, `projects`, `logs`, `installLog`.
+- **Changed the token `bake-paths.js` matches?** `build-scripts/build.js`'s `expand-tokens` step
+  produces the literal it looks for. Change one side only and the bake silently finds nothing.
+  Detail: [`../../build-scripts/AGENTS.md`](../../build-scripts/AGENTS.md),
+  [`harness-files/AGENTS.md`](../../../../harness-files/AGENTS.md)
 
-Idempotency for the `UserPromptSubmit` bootstrap lives in `hooks.json` itself (self-uninstall pattern), not in a marker file under `~/.radorc/`. `bootstrap.mjs` removes any legacy marker file from the prior idempotency design on a best-effort basis.
+- **Changed the manifest shape, a destination token, or which paths are protected?** The catalog
+  this folder reads is **hand-authored for the `runtime-config/` half** — no drift gate — and
+  uninstall removes only what one records. The documentation-corpus half is generated: the build's
+  `merge-docs-manifest` step folds it into the `output/manifests/` copy the install actually loads,
+  and the committed file never carries it. `../../tests/manifest-payload-parity.test.mjs` compares
+  the built `_install-source/` tree against that built catalog in both directions and is the only
+  thing that catches a mismatch. Detail: [`runtime-config/AGENTS.md`](../../../../runtime-config/AGENTS.md),
+  [`../../../AGENTS.md`](../../../AGENTS.md)
 
-## Coding conventions
+- **Changed `install.json`'s shape, the entry builder, or the coexistence probe?** The standard
+  installer and the two sibling plugins write the same file, and `cli/` reads it to report what is
+  installed. A shape change on one side is invisible until a user has two channels installed. Detail:
+  [`../../../standard/lib/install/AGENTS.md`](../../../standard/lib/install/AGENTS.md),
+  [`cli/AGENTS.md`](../../../../cli/AGENTS.md)
 
-- Atomic writes only: `writeInstallJson` uses write-to-tmp then `fs.renameSync` (and so does `selfUninstall` in `bootstrap.mjs` when rewriting `hooks.json`). No in-place overwrites of state files.
-- Log writes are best-effort: `appendInstallLog` wraps its entire body in `try/catch` and never propagates failures to the caller.
-- Destination escape guard: every file copy in `installManifestFiles` checks that the resolved destination starts with `paths.root` before writing.
-- No global state: all context flows through function parameters; `radHome` is always injected, never read from the environment inside this folder (env reads happen in `bootstrap.mjs` only).
-- Shape detection is structural: `loadRegistry` checks for the presence of `harnesses`, not a version literal.
-- Three-partner coexistence warning names all potential partners (`copilot-cli`, `copilot-vscode`, `copilot-cli-plugin`) and includes the model-routing failure-mode prose when `copilot-cli-plugin` is present.
+- **Fixed a bug in any file here other than `bake-paths.js`?** The other two plugin variants carry
+  their own copy of the same module and nothing links them — no shared module, no cross-variant
+  test — so the fix reaches one release channel and the same bug ships on the other two. Open the
+  sibling files, decide per variant whether the fix applies, and say which ones you cleared. Detail:
+  [`../../../AGENTS.md`](../../../AGENTS.md)
 
-## Rules for making updates
+## Commands
 
-- The six `INSTALL_LOG_ACTIONS` values are a closed set. Adding a new action requires updating the `Set` in `install-log.js` and ensuring callers pass the new string.
-- `userDataPaths` is the single source of truth for all `~/.radorc/` sub-paths. Add new paths here rather than constructing them ad-hoc in callers.
-- All modules are imported by `bootstrap.mjs` and bundled by esbuild; they must stay ESM compatible (`"type": "module"` in the parent `package.json`). Do not introduce dynamic `require` calls.
-- Tests in `tests/` exercise this module; run them after any change here.
-- The manifest lookup always reads from the new payload's bundled catalog. Never attempt to read from a peer per-version directory — VS Code's flat `agentPlugins/` path has no such peer.
+```
+npm test -w harness-installers/copilot-vscode-plugin
+node --test harness-installers/copilot-vscode-plugin/tests/run-install.test.mjs
+node --test harness-installers/copilot-vscode-plugin/tests/bake-paths.test.mjs
+```
 
-## Seam to bootstrap.mjs
+**Never exercise a change against your real home directory.** `~/.radorc/` is not sandboxed, the
+removal paths delete, `ui-stop.js` will kill a dashboard you are using, and the bake edits files in
+place. Every suite here injects a temp home; do the same.
 
-`bootstrap.mjs` is the sole importer of this folder's modules. They are bundled by esbuild at build time and do not appear as separate files in the plugin payload.
+## Further reading
 
-## Seam to userDataPaths
-
-`userDataPaths` is the single anchor for every `~/.radorc/` path. There is no `bootstrapMarker` entry — the `UserPromptSubmit` idempotency lives inside `hooks.json` itself (the bootstrap self-uninstalls its own entry on success).
+- [`../../../AGENTS.md`](../../../AGENTS.md) — the shared plugin install shape and its hazards
+- [`../../AGENTS.md`](../../AGENTS.md) — why this variant bakes at all, and the manifest layout
+- [`../../hooks/AGENTS.md`](../../hooks/AGENTS.md) — the hook that calls `runInstall` and the bake,
+  and the order it calls them in
+- [`../../../standard/lib/install/AGENTS.md`](../../../standard/lib/install/AGENTS.md) — the other
+  channel writing the same `install.json`
+- [`runtime-config/AGENTS.md`](../../../../runtime-config/AGENTS.md) — the only source these
+  manifests catalog

@@ -31,11 +31,32 @@ let tmpDir = '';
 const FAKE_CLI_PATH = '/fake/install/skills/rad-orchestration/scripts/radorch.mjs';
 const ORIGINAL_CLI_PATH = process.env.RADORCH_CLI_PATH;
 
+const PORTFOLIO_ROOT_DOC = '---\nstatus: active\n---\nBody\n';
+
+/**
+ * A stubbed homedir holding PROJECT-X's `state.json`, plus whatever work-graph
+ * registry the scenario needs. `detectPortfolio` now reads membership straight
+ * out of `~/.radorc/`, so a member, a non-member, and a corrupt registry are
+ * three different fixtures rather than three different stubbed CLI envelopes.
+ */
+async function seedHome(opts: { workGraph?: string; portfolioRoot?: boolean } = {}): Promise<string> {
+  const home = await mkdtemp(path.join(os.tmpdir(), 'gate-route-test-'));
+  const projectsDir = path.join(home, '.radorc', 'projects');
+  await mkdir(path.join(projectsDir, 'PROJECT-X'), { recursive: true });
+  await writeFile(path.join(projectsDir, 'PROJECT-X', 'state.json'), MINIMAL_V5_STATE, 'utf-8');
+  if (opts.workGraph !== undefined) {
+    await writeFile(path.join(home, '.radorc', 'work-graph.yml'), opts.workGraph, 'utf-8');
+  }
+  if (opts.portfolioRoot) {
+    const rootDir = path.join(projectsDir, 'PORTFOLIO-ROOT');
+    await mkdir(rootDir, { recursive: true });
+    await writeFile(path.join(rootDir, 'PORTFOLIO-ROOT.md'), PORTFOLIO_ROOT_DOC, 'utf-8');
+  }
+  return home;
+}
+
 before(async () => {
-  tmpDir = await mkdtemp(path.join(os.tmpdir(), 'gate-route-test-'));
-  const projectDir = path.join(tmpDir, '.radorc', 'projects', 'PROJECT-X');
-  await mkdir(projectDir, { recursive: true });
-  await writeFile(path.join(projectDir, 'state.json'), MINIMAL_V5_STATE, 'utf-8');
+  tmpDir = await seedHome();
 });
 
 after(async () => {
@@ -140,6 +161,100 @@ test('gate route returns 500 with clear error when RADORCH_CLI_PATH is missing',
     const body = await res.json();
     assert.match(JSON.stringify(body), /RADORCH_CLI_PATH/);
   });
+});
+
+// ── Portfolio detection on final_approved ────────────────────────────────────
+
+const MEMBER_WORK_GRAPH = `version: 1
+rev: 0
+groups:
+  "group:portfolio":
+    name: Portfolio
+    description: The portfolio
+edges:
+  - type: contains
+    from: "group:portfolio"
+    to: PORTFOLIO-ROOT
+  - type: contains
+    from: "group:portfolio"
+    to: PROJECT-X
+`;
+
+const NON_MEMBER_WORK_GRAPH = `version: 1
+rev: 0
+groups:
+  "group:portfolio":
+    name: Portfolio
+    description: The portfolio
+edges:
+  - type: contains
+    from: "group:portfolio"
+    to: PORTFOLIO-ROOT
+`;
+
+async function postGate(home: string, event: string): Promise<{ status: number; body: unknown }> {
+  let status = 0;
+  let body: unknown;
+  await withHomedir(home, async () => {
+    const req = new NextRequest('http://localhost/api/projects/PROJECT-X/gate', {
+      method: 'POST', body: JSON.stringify({ event }),
+    });
+    const res = await POST(req, { params: Promise.resolve({ name: 'PROJECT-X' }) });
+    status = res.status;
+    body = await res.json();
+  });
+  return { status, body };
+}
+
+test('gate route reports portfolio membership on a successful final_approved for a member project', async (t) => {
+  t.after(() => mock.restoreAll());
+  const home = await seedHome({ workGraph: MEMBER_WORK_GRAPH, portfolioRoot: true });
+  stubExecFile(JSON.stringify({ ok: true, data: { action: 'final_approved' }, exit_code: 0 }));
+  try {
+    const { status, body } = await postGate(home, 'final_approved');
+    assert.strictEqual(status, 200);
+    assert.deepEqual(body, { success: true, action: 'final_approved', portfolio: { name: 'PORTFOLIO' } });
+  } finally { await rm(home, { recursive: true, force: true }); }
+});
+
+test('gate route carries no portfolio key on a successful final_approved for a non-member project', async (t) => {
+  t.after(() => mock.restoreAll());
+  const home = await seedHome({ workGraph: NON_MEMBER_WORK_GRAPH, portfolioRoot: true });
+  stubExecFile(JSON.stringify({ ok: true, data: { action: 'final_approved' }, exit_code: 0 }));
+  try {
+    const { status, body } = await postGate(home, 'final_approved');
+    assert.strictEqual(status, 200);
+    assert.deepEqual(body, { success: true, action: 'final_approved' });
+    assert.ok(!('portfolio' in (body as object)), 'a non-member response must carry exactly today\'s shape, no portfolio key');
+  } finally { await rm(home, { recursive: true, force: true }); }
+});
+
+test('gate route never carries a portfolio key for plan_approved, even for a portfolio-member project', async (t) => {
+  t.after(() => mock.restoreAll());
+  // The same fixture the member test above resolves a portfolio from, so an
+  // absent portfolio key here can only come from the plan_approved branch.
+  const home = await seedHome({ workGraph: MEMBER_WORK_GRAPH, portfolioRoot: true });
+  const { calls } = stubExecFile(JSON.stringify({ ok: true, data: { action: 'plan_approved' }, exit_code: 0 }));
+  try {
+    const { status, body } = await postGate(home, 'plan_approved');
+    assert.strictEqual(status, 200);
+    assert.deepEqual(body, { success: true, action: 'plan_approved' });
+    assert.strictEqual(calls.length, 1, 'only the gate approval itself shells out');
+  } finally { await rm(home, { recursive: true, force: true }); }
+});
+
+test('isolation invariant: a detectPortfolio failure must not turn a landed final_approved into a 500', async (t) => {
+  t.after(() => mock.restoreAll());
+  // An unparseable work-graph.yml makes the library throw while composing the
+  // graph — the hardest failure detectPortfolio has to absorb. The approval has
+  // already landed by the time detection runs, so it must come back untouched.
+  const home = await seedHome({ workGraph: 'groups: "unterminated\nedges: []\n' });
+  stubExecFile(JSON.stringify({ ok: true, data: { action: 'final_approved' }, exit_code: 0 }));
+  try {
+    const { status, body } = await postGate(home, 'final_approved');
+    assert.strictEqual(status, 200, 'a detectPortfolio failure must still return the landed approval');
+    assert.deepEqual(body, { success: true, action: 'final_approved' });
+  } finally { await rm(home, { recursive: true, force: true }); }
 });
 
 test('withHomedir restores os.homedir even when fn throws (AD-9)', async () => {

@@ -3,14 +3,14 @@
 import * as React from "react";
 import { MarkdownRenderer } from "@/components/documents/markdown-renderer";
 import { DocumentMetadata } from "@/components/documents/document-metadata";
-import { StageIframe } from "./iframe-preview";
+import { StageIframe, readIframeScrollTop } from "./iframe-preview";
 import { ActivePulse } from "./active-pulse";
 import {
   initStage,
   beginNavigate,
+  beginLiveReload,
   markIncomingReady,
   settleStage,
-  applyLiveUpdate,
   type SlotIndex,
 } from "./stage-transition";
 import type { ModalDoc } from "@/lib/modal-doc-model";
@@ -22,6 +22,12 @@ import { cn } from "@/lib/utils";
  *  the promotion happens only after the fade has visually completed. A little
  *  slack avoids freeing the outgoing layer one frame early. */
 const CROSSFADE_MS = 320;
+
+/** How long a same-file live reload waits before promoting the background
+ *  slot. Short, because the doc never actually changed identity — this is a
+ *  swap, not a navigation, and must not read as one. Must match the
+ *  `duration-[120ms]` class `renderSlot` applies while `stage.mode === 'live'`. */
+const LIVE_SWAP_MS = 120;
 
 /** Markdown layer: reports ready via a layout effect once the body is committed
  *  to the DOM — a deterministic signal that does NOT depend on a <div onLoad>,
@@ -88,7 +94,15 @@ export function BufferedStage({
   const scrollRef0 = React.useRef<HTMLDivElement>(null);
   const scrollRef1 = React.useRef<HTMLDivElement>(null);
   const scrollRefs = [scrollRef0, scrollRef1] as const;
-  const [liveRefreshKey, setLiveRefreshKey] = React.useState(0);
+  // One stable iframe ref per physical slot so a live reload can read the
+  // outgoing (front) slot's scroll offset before handing it to the incoming slot.
+  const iframeRef0 = React.useRef<HTMLIFrameElement>(null);
+  const iframeRef1 = React.useRef<HTMLIFrameElement>(null);
+  const iframeRefs = [iframeRef0, iframeRef1] as const;
+  // Per-slot stashed scroll offset for the slot's next live-reload load. Read
+  // only while `stage.mode === 'live'` (renderSlot), so a later ordinary
+  // navigation into the same physical slot never inherits a stale offset.
+  const pendingScrollTopRef = React.useRef<[number | null, number | null]>([null, null]);
   const prevMtimeRef = React.useRef(liveMtime);
   const prevMtimeFileRef = React.useRef(artifact.path);
 
@@ -98,28 +112,61 @@ export function BufferedStage({
   }, [artifact.path]);
 
   // Once the incoming slot reports ready and the fade starts, promote it after
-  // the fade duration. Re-keyed on `incoming` so an interrupted navigation (a new
+  // the fade duration — shorter for a live reload (LIVE_SWAP_MS) than a full
+  // navigation cross-fade (CROSSFADE_MS), so a same-doc reload doesn't read as
+  // a navigation. Re-keyed on `incoming` so an interrupted navigation (a new
   // beginNavigate resets crossfading) cancels the stale promotion.
   React.useEffect(() => {
     if (!stage.crossfading) return;
-    const t = setTimeout(() => setStage((s) => settleStage(s)), CROSSFADE_MS);
+    const duration = stage.mode === 'live' ? LIVE_SWAP_MS : CROSSFADE_MS;
+    const t = setTimeout(() => setStage((s) => settleStage(s)), duration);
     return () => clearTimeout(t);
-  }, [stage.crossfading, stage.incoming]);
+  }, [stage.crossfading, stage.incoming, stage.mode]);
 
   // A live change just landed on the open document — detected via the monotonic
   // per-file mtime advancing (fires for EVERY change, including a repeat inside
-  // the pulse-settle window where activePulse never drops, BUG 2). For a same-file
-  // update, reload the foreground iframe in place — preserve scroll, no cross-fade
-  // (DD-11). Markdown re-renders in place via its content prop without a remount.
+  // the pulse-settle window where activePulse never drops, BUG 2). Markdown
+  // re-renders in place via its content prop without a remount, so it needs no
+  // action here. HTML captures the front iframe's current scroll offset, stashes
+  // it for the incoming (background) slot, and reloads that slot at the next
+  // generation — the foreground iframe's src never changes, so its scroll is
+  // never disturbed (FR-1, DD-11).
   React.useEffect(() => {
     const sameFile = prevMtimeFileRef.current === artifact.path;
-    if (sameFile && liveMtime > prevMtimeRef.current) {
-      const plan = applyLiveUpdate(stage, artifact.path);
-      if (plan.preserveScroll) setLiveRefreshKey((k) => k + 1);
+    if (!sameFile) {
+      // A different doc holds the stage now — re-baseline to its own mtime; there is
+      // no pending change to apply for a doc that was just opened.
+      prevMtimeRef.current = liveMtime;
+    } else if (liveMtime > prevMtimeRef.current && !artifact.isMarkdown) {
+      const bg = stage.front === 0 ? 1 : 0;
+      // Derive from whichever slot currently holds the freshest known generation
+      // of this doc: the incoming slot when a prior live reload is still in
+      // flight (its reloadKey is the latest one issued), otherwise the front
+      // layer. Deriving from the front layer alone would replay the SAME
+      // generation for a second edit landing before the first one settles —
+      // breaking the monotonic cache-bust a repeat inside the pulse-settle
+      // window relies on (BUG 2).
+      const currentLayer = stage.incoming !== null ? stage.slots[bg] : stage.slots[stage.front];
+      const nextGen = (currentLayer?.reloadKey ?? 0) + 1;
+      const next = beginLiveReload(stage, artifact.path, nextGen);
+      // Only an ACCEPTED reload consumes this mtime. beginLiveReload no-ops while
+      // this file is still the *incoming*, not-yet-settled slot; advancing
+      // prevMtimeRef there would swallow the edit — this effect re-runs when the
+      // navigation settles `stage`, and the same mtime must still read as new for
+      // the reload to be retried against the now-settled front, or the doc sits on
+      // pre-edit content until some later edit happens to land.
+      if (next !== stage) {
+        pendingScrollTopRef.current[bg] = readIframeScrollTop(iframeRefs[stage.front].current);
+        // Functional form, not a bare `setStage(next)`: `next` was derived from the
+        // `stage` this effect closed over. Guarding `s === stage` means a state
+        // update from another effect landing in the same commit can never be
+        // clobbered by a `next` computed against an already-stale snapshot.
+        setStage((s) => (s === stage ? next : s));
+        prevMtimeRef.current = liveMtime;
+      }
     }
-    prevMtimeRef.current = liveMtime;
     prevMtimeFileRef.current = artifact.path;
-  }, [liveMtime, stage, artifact.path]);
+  }, [liveMtime, stage, artifact.path, artifact.isMarkdown]);
 
   const onReady = React.useCallback(() => setStage((s) => markIncomingReady(s)), []);
 
@@ -148,6 +195,11 @@ export function BufferedStage({
     const matchesActiveFile = markdownContentFileName === undefined || fileName === markdownContentFileName;
     const layerContent = matchesActiveFile ? markdownContent : null;
     const layerFrontmatter = matchesActiveFile ? frontmatter : null;
+    // A live reload swaps on a shorter timer than a navigation cross-fade
+    // (LIVE_SWAP_MS vs CROSSFADE_MS) — the transition duration class must match
+    // whichever timer is driving the current swap, or settle frees the outgoing
+    // layer mid-fade.
+    const durationClass = stage.mode === "live" ? "duration-[120ms]" : "duration-300";
     return (
       <div
         key={slotIdx}
@@ -160,7 +212,7 @@ export function BufferedStage({
           // opacity/blur/scale on a just-emptied layer is the post-cross-fade flicker.
           // The incoming slot already has content (and its transition) before it
           // fades in, so the entrance animation is preserved.
-          fileName !== null && "transition-all duration-300",
+          fileName !== null && `transition-all ${durationClass}`,
           visible ? "opacity-100 blur-0 scale-100" : "opacity-0 blur-sm scale-[0.98]",
         )}
       >
@@ -177,13 +229,19 @@ export function BufferedStage({
             projectName={projectName}
             fileName={fileName}
             onLoad={reportReady}
-            // Cache-bust is keyed to the live edit count, NOT to front-promotion. The
-            // incoming slot renders with the same reloadKey it will keep as front, so
-            // settle (front flip) never mutates the src → no reload/flicker when the
-            // cross-fade completes. A genuine live edit still bumps liveRefreshKey and
-            // reloads the front doc in place (BUG 2). liveRefreshKey starts at 0 (falsy),
-            // so there's no `&v=` until a real change lands.
-            reloadKey={liveRefreshKey}
+            // Cache-bust is per-layer (layer.reloadKey), NOT a shared counter —
+            // reloading the background slot for a live edit must never change the
+            // still-visible foreground slot's src (the seam this task exists for).
+            // The incoming slot renders with the same reloadKey it will keep as
+            // front, so settle (front flip) never mutates the src → no reload/
+            // flicker when the swap completes. reloadKey is undefined until a real
+            // change lands, so there's no `&v=` until then.
+            reloadKey={layer?.reloadKey}
+            // Only ever meaningful for the incoming slot of an in-flight live
+            // reload — an ordinary navigation's incoming slot must land at the
+            // top, not inherit a stale offset stashed by a past live reload.
+            initialScrollTop={isIncoming && stage.mode === "live" ? pendingScrollTopRef.current[slotIdx] ?? undefined : undefined}
+            iframeRef={iframeRefs[slotIdx]}
           />
         )}
       </div>

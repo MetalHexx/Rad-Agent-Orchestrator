@@ -1,3 +1,9 @@
 # CLAUDE.md
 
-**Read [`AGENTS.md`](./AGENTS.md) instead.** This file is intentionally empty; all contributor and agent orientation lives there. Any agent reading this file MUST follow the link before taking any action.
+Always-on context for Claude Code. This file is intentionally thin — the full
+contributor contract lives in [`AGENTS.md`](./AGENTS.md). **Read AGENTS.md before
+planning, designing, coding, or committing.** The essentials below are surfaced
+here so they're in context from turn one; AGENTS.md is authoritative and wins on
+any detail.
+
+@AGENTS.md

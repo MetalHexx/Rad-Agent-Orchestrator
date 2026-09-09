@@ -56,3 +56,16 @@ describe('userDataPaths.actionEvents', () => {
     expect(p.actionEvents).not.toContain(path.sep + 'runtime' + path.sep);
   });
 });
+
+describe('userDataPaths.communicationStyles', () => {
+  it('resolves to ~/.radorc/communication-styles', () => {
+    const p = userDataPaths();
+    expect(p.communicationStyles).toBe(path.join(os.homedir(), '.radorc', 'communication-styles'));
+  });
+  it('is a sibling of root, not nested under templates or runtime', () => {
+    const p = userDataPaths();
+    expect(p.communicationStyles.startsWith(p.root + path.sep)).toBe(true);
+    expect(p.communicationStyles).not.toContain(path.sep + 'templates' + path.sep);
+    expect(p.communicationStyles).not.toContain(path.sep + 'runtime' + path.sep);
+  });
+});

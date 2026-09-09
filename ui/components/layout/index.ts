@@ -4,8 +4,6 @@ export { AppHeaderShell } from "./app-header-shell";
 export { ProjectsPlaceholderView } from "./projects-placeholder-view";
 export { NotStartedPaneV5 } from "./not-started-pane-v5";
 export type { NotStartedPaneV5Props } from "./not-started-pane-v5";
-export { LaunchScreen } from "./launch-screen";
-export type { LaunchScreenProps } from "./launch-screen";
 export { START_ACTION_KINDS } from "./start-action-kinds";
 export type { StartActionKind } from "./start-action-kinds";
 export { PageSubHeader } from './page-sub-header';

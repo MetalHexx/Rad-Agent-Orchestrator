@@ -90,6 +90,9 @@ export interface GateApproveRequest {
 export interface GateApproveResponse {
   success: true;
   action: string;
+  /** Present only for a successful `final_approved` on a project that belongs
+   *  to a portfolio. Absent — not null — in every other case. */
+  portfolio?: { name: string };
 }
 
 /** POST /api/projects/[name]/gate — error response (HTTP 400/404/409/500). */
@@ -183,6 +186,7 @@ export interface IterationEntry {
   doc_path?: string | null;
   repos: RepoCommitEntry[];
   complexity?: string;                    // 'simple' | 'standard' | 'complex'
+  amendment?: number;                     // 1-based amendment number; absent on planned work
 }
 
 export interface CorrectiveTaskEntry {
@@ -193,6 +197,8 @@ export interface CorrectiveTaskEntry {
   nodes: NodesRecord;
   doc_path?: string | null;
   repos: RepoCommitEntry[];
+  origin?: 'operator';                    // set only on a corrective the operator requested directly (e.g. from the
+                                           // final-approval gate); absent means reviewer-driven — the common case
 }
 
 // ─── v5 Source Control ───────────────────────────────────────────────────────

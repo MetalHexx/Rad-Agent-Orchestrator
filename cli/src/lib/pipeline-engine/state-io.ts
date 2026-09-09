@@ -153,6 +153,19 @@ export function readDocument(
   };
 }
 
+export function readDocumentRaw(docPath: string): string | null {
+  try {
+    return fs.readFileSync(docPath, 'utf-8');
+  } catch (err: unknown) {
+    if (isEnoent(err)) return null;
+    throw err;
+  }
+}
+
+export function writeDocument(docPath: string, contents: string): void {
+  fs.writeFileSync(docPath, contents, 'utf-8');
+}
+
 export function ensureDirectories(projectDir: string): void {
   fs.mkdirSync(projectDir, { recursive: true });
   for (const subdir of ['phases', 'tasks', 'reports', 'reviews']) {

@@ -38,6 +38,20 @@ List a project's resolved worktrees (repo, path, branch, exists):
 node "${PLUGIN_ROOT}/skills/rad-orchestration/scripts/radorch.mjs" project worktrees --id <project-id>
 ```
 
+Preview what deleting a project would remove — a registered clone and other protected items are reported but untouched, and nothing is deleted:
+
+```
+node "${PLUGIN_ROOT}/skills/rad-orchestration/scripts/radorch.mjs" project delete --id <project-id> --preview
+```
+
+Delete a project and its workspaces:
+
+```
+node "${PLUGIN_ROOT}/skills/rad-orchestration/scripts/radorch.mjs" project delete --id <project-id>
+```
+
+A non-zero exit means at least one item could not be removed — check `data.items` for the ones that failed or were held back, fix the underlying issue, and re-run the same command to finish.
+
 ## `project-group` operations
 
 List all project-groups:

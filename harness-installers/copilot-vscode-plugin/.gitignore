@@ -4,7 +4,7 @@
 output/
 node_modules/
 
-# Ephemeral dogfood marketplace tree — created by rad-test-copilot-vscode-plugin
+# Ephemeral dogfood marketplace tree — created by rad-dogfood-plugin
 # for local VS Code plugin install testing. Same gitignore posture the
 # claude-plugin and copilot-cli-plugin siblings take.
 dogfood-marketplace/

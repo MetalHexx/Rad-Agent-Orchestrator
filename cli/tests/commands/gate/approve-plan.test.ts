@@ -33,13 +33,14 @@ async function scaffoldToPlanApprovalGate(dir: string): Promise<void> {
   // a state where plan_approved is the next legal event. Mirrors the
   // bring-up sequence in tests/fixtures/parity-states.ts.
   const { processEvent } = await import('../../../src/lib/pipeline-engine/engine.js');
-  const { readState, writeState, readConfig, readDocument, ensureDirectories } =
+  const { readState, writeState, readConfig, readDocument, readDocumentRaw, writeDocument, ensureDirectories } =
     await import('../../../src/lib/pipeline-engine/state-io.js');
   const pathContext = {
     scriptsDir: path.resolve(__dirname, '..', '..', '..', 'src', 'lib', 'pipeline-engine'),
     templatesDir: TEMPLATES_DIR,
+    scriptPath: path.resolve(__dirname, '..', '..', '..', 'radorch.mjs'),
   };
-  const io = { readState, writeState, readConfig, readDocument, ensureDirectories };
+  const io = { readState, writeState, readConfig, readDocument, readDocumentRaw, writeDocument, ensureDirectories };
 
   processEvent('start', dir, { template: 'medium' }, io, pathContext);
 

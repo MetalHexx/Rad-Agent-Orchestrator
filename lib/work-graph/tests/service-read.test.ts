@@ -41,3 +41,34 @@ describe('WorkGraphService reads', () => {
     expect(svc().getNode('GHOST')).toBeNull();
   });
 });
+
+describe('WorkGraphService group state rollup', () => {
+  beforeEach(() => {
+    const dir = path.join(root, 'projects', 'MR-3');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'state.json'), JSON.stringify({
+      project: { name: 'MR-3' }, pipeline: { current_tier: 'halted' },
+      graph: { status: 'halted', nodes: { a: { status: 'halted' } } } }));
+    const index = new GraphIndex(root);
+    const stored = index.read();
+    index.write({ ...stored,
+      groups: {
+        'group:top': { name: 'Top', description: 'holds only a subgroup' },
+        'group:sub': { name: 'Sub', description: 'holds the projects' },
+      },
+      edges: [
+        { type: 'contains', from: 'group:top', to: 'group:sub' },
+        { type: 'contains', from: 'group:sub', to: 'MR-1' },
+        { type: 'contains', from: 'group:sub', to: 'MR-3' },
+      ] }, stored.rev);
+  });
+
+  it('rolls a subgroup-only parent up over its transitive projects', () => {
+    const nodes = new WorkGraphService({ root, exec: () => '' }).getGraph().nodes;
+    const state = (id: string) => nodes.find((n) => n.id === id)?.state;
+    expect(state('MR-3')).toBe('halted');
+    expect(state('group:sub')).toBe('halted');
+    expect(state('group:top')).toBe('halted');
+    expect(nodes.find((n) => n.id === 'group:top')?.stateLabel).toBe('Halted');
+  });
+});

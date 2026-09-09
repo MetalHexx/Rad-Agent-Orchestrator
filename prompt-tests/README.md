@@ -36,10 +36,6 @@ Mirror `extra-high-pipeline-e2e/`: a behavior folder with its own `README.md`, `
 
 Run outputs under `output/` are gitignored per behavior — see the existing blocks in the repo-root `.gitignore` for the established pattern. Narrower `!` exceptions re-include operator-committed baselines; everything else regenerates on each run. Each new behavior needs its own gitignore entry.
 
-## Design reference
-
-Iteration design rationale lives at `docs/internals/cheaper-execution/iter-06-prompt-harness.md`. The harness is scope-locked there; broader architectural context for the refactor lives in `docs/internals/CHEAPER-EXECUTION-REFACTOR.md` and `CHEAPER-EXECUTION-REFACTOR-PROGRESS.md`.
-
 ## Tools
 
 - `tools/lint-requirements.mjs` — structural linter for `{PROJECT}-REQUIREMENTS.md` docs

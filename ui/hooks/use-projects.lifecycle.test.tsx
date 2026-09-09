@@ -31,7 +31,10 @@ function setupDom(): Root {
 }
 
 function summary(name: string): ProjectSummary {
-  return { name, tier: "execution", hasState: true, hasMalformedState: false, schemaVersion: "v5" };
+  return {
+    name, tier: "execution", state: "pending_review", stateLabel: "Pending Review",
+    hasState: true, hasMalformedState: false, schemaVersion: "v5",
+  };
 }
 
 /** Serves /api/projects from a mutable list (so a test can simulate the

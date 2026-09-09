@@ -41,7 +41,7 @@ import { fileURLToPath } from 'node:url';
 // Carrier inventory
 // -----------------------------------------------------------------------------
 
-// 1. Wrapper package.json files (18) — JSON, in-place `version` bump. Any
+// 1. Wrapper package.json files — JSON, in-place `version` bump. Any
 // intra-repo `@rad-orchestration/*` dependency pin equal to `from` is rewritten
 // to `to` in the same pass (see `bumpJsonFile`) so workspace resolution stays intact.
 export const WRAPPER_JSON_FILES = [
@@ -50,6 +50,7 @@ export const WRAPPER_JSON_FILES = [
   'lib/repo-registry/package.json',
   'lib/telemetry/package.json',
   'lib/work-graph/package.json',
+  'lib/terminal-launch/package.json',
   'harness-adapters/engine/package.json',
   'harness-installers/standard/package.json',
   'harness-installers/shared/build-helpers/package.json',
@@ -66,7 +67,7 @@ export const WRAPPER_JSON_FILES = [
   'examples/node-blind-fixture/package.json',
 ];
 
-// 2. Plugin authoritative version sources (3) — JSON, in-place `version` bump.
+// 2. Plugin authoritative version sources — JSON, in-place `version` bump.
 // The Claude plugin and the Copilot-VSCode plugin store the authoritative
 // plugin.json under `.claude-plugin/`; the Copilot-CLI plugin keeps it at the
 // package root.
@@ -76,7 +77,7 @@ export const PLUGIN_JSON_FILES = [
   'harness-installers/copilot-vscode-plugin/.claude-plugin/plugin.json',
 ];
 
-// 3a. Per-plugin manifest catalog directories (3) — each holds exactly one
+// 3a. Per-plugin manifest catalog directories — each holds exactly one
 // hand-authored `v<version>.json` for the in-tree version; `git mv`-renamed +
 // internal `version` field bumped on every release (see file header).
 export const PLUGIN_MANIFEST_DIRS = [
@@ -85,7 +86,7 @@ export const PLUGIN_MANIFEST_DIRS = [
   'harness-installers/copilot-vscode-plugin/manifests',
 ];
 
-// 3b. Standard-installer per-harness manifest catalog directories (3) — AD-4
+// 3b. Standard-installer per-harness manifest catalog directories — AD-4
 // accumulation; never touched by this engine (see file header).
 export const STANDARD_MANIFEST_DIRS = [
   'harness-installers/standard/manifests/claude',
@@ -96,7 +97,7 @@ export const STANDARD_MANIFEST_DIRS = [
 // Combined, for the stray-carrier guard's historical-file allowance.
 export const MANIFEST_DIRS = [...PLUGIN_MANIFEST_DIRS, ...STANDARD_MANIFEST_DIRS];
 
-// 4. Hardcoded-literal files (22) — bare `from` string replaced everywhere.
+// 4. Hardcoded-literal files — bare `from` string replaced everywhere.
 // These embed the version as a literal (manifest filenames like
 // `v<version>.json`, or `version: '<version>'` assertions in tests / build
 // helpers) rather than reading it from a package.json. NOTE: never write a
@@ -115,6 +116,7 @@ export const HARDCODED_LITERAL_FILES = [
   'harness-installers/copilot-vscode-plugin/tests/helpers/run-build.js',
   'harness-installers/standard/tests/build/action-events-bundling.test.mjs',
   'harness-installers/standard/tests/build/build.test.mjs',
+  'harness-installers/standard/tests/build/docs-corpus-bundling.test.mjs',
   'harness-installers/standard/tests/build/emit-manifest.test.mjs',
   'harness-installers/standard/tests/build/standard-manifest-no-parallel.test.mjs',
   'harness-installers/standard/tests/build/validate.test.mjs',
@@ -128,15 +130,26 @@ export const HARDCODED_LITERAL_FILES = [
   'lib/graph-node-types/tests/dependency-direction.test.ts',
 ];
 
-// 5. Nested per-workspace lockfiles (3) — committed `package-lock.json` files
-// that live under an individually-packed workspace (cli / ui / the harness
-// adapter engine). The repo-root lockfile is git-ignored; these three are
-// tracked and carry the workspace version in exactly two fields: top-level
-// `version` and `packages[""].version`. A version-only bump never changes their
-// resolved dependency tree (intra-repo deps resolve through the workspace
-// parent and are not enumerated here), so both fields are rewritten
-// deterministically rather than regenerated via `npm install`.
+// 5. Lockfiles — all tracked, all release carriers. Two distinct shapes, both
+// handled by `bumpLockfileVersionFields`:
+//
+//   - The ROOT `package-lock.json` is the authoritative workspace lockfile. It
+//     has NO top-level version; instead every workspace appears as its own
+//     `packages["<dir>"]` entry carrying a `version` plus its intra-repo
+//     `@rad-orchestration/*` pins. Miss it and the stray-carrier guard below
+//     fails the NEXT release, because the file is tracked and still holds the
+//     prior version in ~35 places.
+//
+//   - The per-workspace lockfiles (cli / ui / the harness adapter engine) carry
+//     the workspace version at the top level and again on `packages[""]`.
+//
+// A version-only bump never changes a resolved dependency tree, so these are
+// rewritten deterministically rather than regenerated via `npm install`. The
+// bump is idempotent: a lockfile already at `to` is left alone rather than
+// failing the release. A per-workspace lockfile sitting at some third,
+// unexpected version is real drift and still throws.
 export const LOCKFILE_JSON_FILES = [
+  'package-lock.json',
   'cli/package-lock.json',
   'ui/package-lock.json',
   'harness-adapters/engine/package-lock.json',
@@ -246,15 +259,34 @@ function bumpLockfileVersionFields(repoRoot, relPath, from, to) {
     throw new Error(`lockfile not found: ${relPath}`);
   }
   const lock = readJson(abs);
-  if (lock.version !== from) {
+
+  // A per-workspace lockfile declares its version at the top level. The root
+  // workspace lockfile has none, so `undefined` is legitimate there and must
+  // not be mistaken for drift. Anything that is neither `from` nor `to` is.
+  if (lock.version !== undefined && lock.version !== from && lock.version !== to) {
     throw new Error(
       `lockfile ${relPath} has version "${lock.version}", expected "${from}"`,
     );
   }
-  lock.version = to;
-  if (lock.packages && lock.packages[''] && lock.packages[''].version === from) {
-    lock.packages[''].version = to;
+
+  let rewrites = 0;
+  if (lock.version === from) {
+    lock.version = to;
+    rewrites += 1;
   }
+  // Every `packages` entry may carry both its own version and intra-repo pins:
+  // `packages[""]` for a per-workspace lockfile, `packages["<dir>"]` per
+  // workspace for the root one. One walk covers both shapes.
+  for (const entry of Object.values(lock.packages || {})) {
+    if (!entry || typeof entry !== 'object') continue;
+    if (entry.version === from) {
+      entry.version = to;
+      rewrites += 1;
+    }
+    rewrites += rewriteIntraRepoPins(entry, from, to);
+  }
+
+  if (rewrites === 0) return; // already at target — nothing to do.
   writeJsonPreservingTrailingNewline(abs, lock);
 }
 

@@ -11,6 +11,10 @@ export interface ComposeInput {
   /** Starting step number. Defaults to 1. The engine's orphan-prepend path
    *  uses startStep: 2 so the prepended orphan-post can occupy Step 1. */
   startStep?: number;
+  /** Rendered guidance for the commands on the envelope, closing the completion
+   *  section. Absent on preview surfaces and wherever no command is composed
+   *  for the orchestrator to run — those get the shape-only block instead. */
+  signalGuidance?: string;
 }
 
 export interface ComposeResult {
@@ -65,13 +69,18 @@ function makeCustomReader(overlay: Record<string, string> | undefined) {
   };
 }
 
-export function deriveSignalLine(eventName: string, fm: EventFrontmatter): string {
+/** Shape-only completion block: the event to send and the flags it accepts,
+ *  with no rendered command. Used wherever the caller supplies no guidance —
+ *  the `action-events compose` preview surfaces, and actions another skill
+ *  signals. */
+function staticSignalBlock(eventName: string, fm: EventFrontmatter): string {
   const entries = Object.entries(fm.signal_payload ?? {});
-  if (entries.length === 0) return `Signal: ${eventName}`;
-  const flags = entries
-    .map(([k, def]) => (def.array ? `--${k} '<json>'` : `--${k} <value>`))
-    .join(' ');
-  return `Signal: ${eventName} ${flags}`;
+  const head = `Completion event: \`${eventName}\`.`;
+  if (entries.length === 0) return `${head} It takes no payload flags.`;
+  const flags = entries.map(([flag, def]) => (
+    `- \`--${flag}\`${def.array ? ' (JSON array)' : ''} — ${def.description}`
+  ));
+  return [`${head} Payload flags:`, ...flags].join('\n');
 }
 
 function trimBody(s: string): string {
@@ -146,7 +155,10 @@ export function composeActionPrompt(input: ComposeInput): ComposeResult {
         `Composer validation: expected catalog file 'event.${completionEvent}.md' under '${catalogRoot}'.`,
       );
     }
-    const whenCompleteBody = trimBody(evt.body) + '\n\n' + deriveSignalLine(completionEvent, evt.fm);
+    const guidance = input.signalGuidance?.trim()
+      ? input.signalGuidance.trim()
+      : staticSignalBlock(completionEvent, evt.fm);
+    const whenCompleteBody = trimBody(evt.body) + '\n\n' + guidance;
     const whenAdmitted = admit(whenCompleteBody);
     if (whenAdmitted !== null) sections.push({ body: whenAdmitted, isOverlay: false });
 
@@ -220,7 +232,7 @@ export function composeOrphanEventPrompt(input: OrphanComposeInput): ComposeResu
   if (!evt) {
     throw new Error(`Composer validation: expected catalog file 'event.${eventName}.md' under '${catalogRoot}'.`);
   }
-  const whenCompleteBody = trimBody(evt.body) + '\n\n' + deriveSignalLine(eventName, evt.fm);
+  const whenCompleteBody = trimBody(evt.body) + '\n\n' + staticSignalBlock(eventName, evt.fm);
   const whenAdmitted = admit(whenCompleteBody);
   if (whenAdmitted !== null) sections.push({ body: whenAdmitted, isOverlay: false });
 

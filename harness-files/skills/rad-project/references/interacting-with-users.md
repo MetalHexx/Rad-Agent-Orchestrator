@@ -20,7 +20,7 @@ If the user mentions a cluster of related projects, offer to create a project-gr
 
 ## Lineage interview
 
-When recording `follows` or `spawned-from` edges, ask the user to describe the relationship in their own words before writing anything. The description they give becomes the group's `--description` or the edge's rationale — it must be load-bearing, not a placeholder.
+When recording `follows`, `depends-on`, or `spawned-from` edges, ask the user to describe the relationship in their own words before writing anything. The description they give becomes the group's `--description` or the edge's rationale — it must be load-bearing, not a placeholder.
 
 Example prompts:
 - "What does this project continue from the previous one?"
@@ -33,8 +33,8 @@ Never fabricate or auto-generate the description.
 A correction project is an offshoot created to address a specific problem in a parent project. When the user requests one:
 
 1. Record `spawned-from <parent-id>` on the correction project via `graph link`.
-2. The correction project's worktrees **point at the parent's worktrees** (same `worktree_name` as the parent — see [where-to-work.md](where-to-work.md)).
-3. The skill does **not** create the correction project or any worktree. It records the relationship and surfaces the existing paths. (FR-5)
+2. The correction project's workspace is selected at `/rad-execute` time.
+3. The skill does **not** create the correction project or any worktree. It records the relationship and surfaces the existing paths.
 
 ## Destructive ops — confirm first
 
@@ -47,4 +47,4 @@ State what will change (e.g. "This will remove the group; member projects remain
 
 ## Writes are overlay-only
 
-The skill writes only via the validated CLI commands documented in [cli-commands.md](cli-commands.md). It never mutates project state files directly. All writes are overlay-only and library-validated. (NFR-4)
+The skill writes only via the validated CLI commands documented in [cli-commands.md](cli-commands.md). It never mutates project state files directly. All writes are overlay-only and library-validated.

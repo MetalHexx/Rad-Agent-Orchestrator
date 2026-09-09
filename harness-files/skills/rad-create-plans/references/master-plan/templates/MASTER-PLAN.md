@@ -31,6 +31,12 @@ mini-table. A phase may span repos; each task targets one.}
 | T01 | {repo-a} | standard | {one-line purpose} |
 | T02 | {repo-b} | simple | {one-line purpose} |
 
+**P02 · {Second Phase Title}** · repos: {repo-a} · order: T01
+
+| Task | Repo | Complexity | Purpose |
+|---|---|---|---|
+| T01 | {repo-a} | standard | {one-line purpose} |
+
 ## P01: {Phase Title}
 
 **Intent**
@@ -117,3 +123,40 @@ library, service, or module defined elsewhere; omit for greenfield / self-define
 
 **Testing**
 - {What to cover; what to skip — by judgment.}
+
+## P02: {Second Phase Title}
+
+**Intent**
+{One to two sentences: the capability that exists when the phase completes, and
+why it matters. Not a restatement of the task titles below.}
+
+**Exit criteria**
+- {A concrete, checkable condition that means the phase is done — what phase
+  review verifies against the diff.}
+
+**Integration seams**
+- {A cross-task or cross-repo boundary this phase knits together, for phase
+  review to check beyond each task's own correctness.}
+
+No task table here — the explosion generates it.
+
+### P02-T01: {Imperative task title, 4–7 words}
+
+{2–3 sentence human preamble in plain language, for someone skimming the run: the
+goal, and what exists once it lands.}
+
+**Task type:** code
+**Complexity:** standard
+**Target repo:** {repo-a}
+
+**Files**
+- Modify: `{repo-relative/path}` ({what changes}).
+
+**The change**
+- {The contract: the signature / endpoint / type / data shape.}
+
+**Done when**
+- {Concrete, observable acceptance — what is true when the task is complete.}
+
+**Testing**
+- {What's worth covering — the behavior and contracts that carry risk.}

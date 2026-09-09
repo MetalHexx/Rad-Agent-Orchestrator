@@ -24,9 +24,9 @@ console.log('\nconfig-field-meta tests\n');
 
 // --- CONFIG_FIELDS array ---
 
-test('CONFIG_FIELDS is an array of exactly 10 entries', () => {
+test('CONFIG_FIELDS is an array of exactly 9 entries', () => {
   assert.ok(Array.isArray(CONFIG_FIELDS));
-  assert.strictEqual(CONFIG_FIELDS.length, 10);
+  assert.strictEqual(CONFIG_FIELDS.length, 9);
 });
 
 test('every entry conforms to FieldMeta interface', () => {
@@ -36,7 +36,7 @@ test('every entry conforms to FieldMeta interface', () => {
     assert.ok(typeof field.tooltip === 'string', `tooltip missing on ${field.key}`);
     assert.ok(typeof field.section === 'string', `section missing on ${field.key}`);
     assert.ok(
-      ['text', 'number', 'switch', 'toggle-group', 'readonly'].includes(field.controlType),
+      ['text', 'number', 'switch', 'toggle-group', 'select', 'readonly'].includes(field.controlType),
       `invalid controlType on ${field.key}: ${field.controlType}`,
     );
   }
@@ -44,9 +44,9 @@ test('every entry conforms to FieldMeta interface', () => {
 
 // --- CONFIG_FIELD_MAP ---
 
-test('CONFIG_FIELD_MAP contains exactly 10 keys matching CONFIG_FIELDS', () => {
+test('CONFIG_FIELD_MAP contains exactly 9 keys matching CONFIG_FIELDS', () => {
   const keys = Object.keys(CONFIG_FIELD_MAP);
-  assert.strictEqual(keys.length, 10);
+  assert.strictEqual(keys.length, 9);
   for (const field of CONFIG_FIELDS) {
     assert.ok(keys.includes(field.key), `missing key in map: ${field.key}`);
   }
@@ -69,22 +69,32 @@ test('limits.max_retries_per_task has correct metadata', () => {
   assert.strictEqual(f.min, 0);
 });
 
+test('the version field and all three human_gates.* fields are removed', () => {
+  assert.strictEqual(CONFIG_FIELD_MAP['version'], undefined);
+  assert.strictEqual(CONFIG_FIELD_MAP['human_gates.after_planning'], undefined);
+  assert.strictEqual(CONFIG_FIELD_MAP['human_gates.execution_mode'], undefined);
+  assert.strictEqual(CONFIG_FIELD_MAP['human_gates.after_final_review'], undefined);
+  assert.strictEqual(CONFIG_FIELDS.some(f => f.section === 'version'), false);
+  assert.strictEqual(CONFIG_FIELDS.some(f => f.section === 'human-gates'), false);
+});
 
-test('human_gates.after_planning is switch with no options or min', () => {
-  const f = CONFIG_FIELD_MAP['human_gates.after_planning'];
+test('communication_style.enabled is a switch in the communication-style section', () => {
+  const f = CONFIG_FIELD_MAP['communication_style.enabled'];
   assert.ok(f);
+  assert.strictEqual(f.label, 'Enabled');
+  assert.strictEqual(f.section, 'communication-style');
   assert.strictEqual(f.controlType, 'switch');
-  assert.strictEqual(f.options, undefined);
-  assert.strictEqual(f.min, undefined);
 });
 
-test('version is readonly with section "version"', () => {
-  const f = CONFIG_FIELD_MAP['version'];
+test('communication_style.selected is a select sourced from communication-styles', () => {
+  const f = CONFIG_FIELD_MAP['communication_style.selected'];
   assert.ok(f);
-  assert.strictEqual(f.controlType, 'readonly');
-  assert.strictEqual(f.section, 'version');
+  assert.strictEqual(f.label, 'Style');
+  assert.strictEqual(f.section, 'communication-style');
+  assert.strictEqual(f.controlType, 'select');
+  assert.strictEqual(f.optionsSource, 'communication-styles');
+  assert.strictEqual(f.options, undefined);
 });
-
 
 // --- Number field min values ---
 
@@ -111,11 +121,11 @@ test('ui.port has correct metadata', () => {
 
 // --- Toggle-group option values ---
 
-test('all three toggle-group fields have correct options', () => {
+test('all three remaining toggle-group fields have correct options', () => {
   const expected: Record<string, string[]> = {
-    'human_gates.execution_mode': ['ask', 'phase', 'task', 'autonomous'],
     'source_control.auto_commit': ['always', 'ask', 'never'],
     'source_control.auto_pr': ['always', 'ask', 'never'],
+    'ambient_awareness.verbosity': ['verbose', 'minimal', 'silent', 'off'],
   };
   for (const [key, opts] of Object.entries(expected)) {
     const f = CONFIG_FIELD_MAP[key];
@@ -136,9 +146,9 @@ test('no field has both options and min defined', () => {
 // --- Case-sensitive option values ---
 
 test('option values are case-sensitive correct', () => {
-  const exec = CONFIG_FIELD_MAP['human_gates.execution_mode'];
-  assert.ok(exec.options!.includes('ask'), "'ask' must be lowercase");
-  assert.ok(!exec.options!.includes('Ask'), "'Ask' must not appear");
+  const autoCommit = CONFIG_FIELD_MAP['source_control.auto_commit'];
+  assert.ok(autoCommit.options!.includes('ask'), "'ask' must be lowercase");
+  assert.ok(!autoCommit.options!.includes('Ask'), "'Ask' must not appear");
 });
 
 // --- Retired rows pruning ---
@@ -158,6 +168,15 @@ test('Projects section is gone entirely', () => {
 
 test('default_template row present', () => {
   assert.ok(CONFIG_FIELD_MAP['default_template']);
+});
+
+test('ambient_awareness.verbosity has correct metadata', () => {
+  const f = CONFIG_FIELD_MAP['ambient_awareness.verbosity'];
+  assert.ok(f);
+  assert.strictEqual(f.label, 'Verbosity Level');
+  assert.strictEqual(f.section, 'ambient-awareness');
+  assert.strictEqual(f.controlType, 'toggle-group');
+  assert.deepStrictEqual(f.options, ['verbose', 'minimal', 'silent', 'off']);
 });
 
 // --- Summary ---

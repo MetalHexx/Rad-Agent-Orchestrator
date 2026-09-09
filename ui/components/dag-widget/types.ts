@@ -6,6 +6,7 @@ import type {
   CorrectiveTaskEntry,
   RepoCommitEntry,
 } from '@/types/state';
+import type { PrLink } from '@/components/dag-timeline/source-control-helpers';
 
 /**
  * The set of card states the resolver can name. Each concrete state view is a
@@ -79,8 +80,13 @@ export interface StateViewContext {
   wholeGraphProgress: { completed: number; total: number } | null;
   /** Repos of the enclosing iteration / corrective entry (empty when none). */
   repos: RepoCommitEntry[];
-  /** PR URL surfaced by the completion states; `null` when unavailable. */
-  prUrl: string | null;
+  /**
+   * Every repo carrying a live pull request, surfaced by the completion
+   * states — one entry per repo with a non-empty `pr_url`, in `repos[]`
+   * order; `[]` when none. Repo-aware so a multi-repo project's pull
+   * requests are never collapsed onto a single link.
+   */
+  prLinks: PrLink[];
   onDocClick: (path: string) => void;
   compareUrlByRepo: Record<string, string | null>;
   projectName: string;

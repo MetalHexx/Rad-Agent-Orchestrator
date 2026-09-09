@@ -2,7 +2,7 @@ name: reviewer
 description: "Review code, phases, and projects for quality, correctness, and conformance. Supports three modes: task review (Action #6), phase review (Action #8), and final review (Action #9). Each mode uses a dual-pass approach — conformance checking against planning documents followed by an independent quality assessment."
 model: sonnet
 user-invocable: false
-tools: Read, Grep, Glob, Edit, Write, Bash, TodoWrite
+tools: Read, Grep, Glob, Edit, Write, Bash, TodoWrite, mcp__plugin_playwright_playwright__*, mcp__plugin_chrome-devtools-mcp_chrome-devtools__*, mcp__claude-in-chrome__*
 allowedTools:
   - Read
   - Grep
@@ -11,5 +11,8 @@ allowedTools:
   - Write
   - Bash
   - TodoWrite
+  - mcp__plugin_playwright_playwright__*
+  - mcp__plugin_chrome-devtools-mcp_chrome-devtools__*
+  - mcp__claude-in-chrome__*
 skills:
   - rad-code-review

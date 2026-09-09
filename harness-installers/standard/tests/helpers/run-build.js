@@ -61,6 +61,33 @@ function stageFixture(root) {
   fs.writeFileSync(path.join(aeDir, 'event.task_completed.md'), '# task_completed\n');
   fs.writeFileSync(path.join(aeDir, 'custom/action.user_added.pre.md'), '# user-authored — must not ship\n');
 
+  // communication-styles/ — shipped style files + an empty custom/ slot with a
+  // synthetic user file that must NOT be copied into the bundle, mirroring
+  // action-events/.
+  const csDir = path.join(rcDir, 'communication-styles');
+  fs.mkdirSync(path.join(csDir, 'custom'), { recursive: true });
+  for (const style of ['direct.md', 'caveman.md', 'high-level.md', 'socratic.md']) {
+    fs.writeFileSync(path.join(csDir, style), `# ${style}\n`);
+  }
+  fs.writeFileSync(path.join(csDir, 'custom/mine.md'), '# user-authored — must not ship\n');
+
+  // Documentation corpus — README.md, docs/, assets/ at the fixture root
+  // (repoRoot == root for the copy-docs-corpus build step). Stages a page
+  // under each excluded prefix (internals/, internals/private/, research/)
+  // plus a sibling top-level page, so the exclusion test has something to
+  // assert against.
+  fs.writeFileSync(path.join(root, 'README.md'), '# fixture repo\n');
+  const docsDir = path.join(root, 'docs');
+  fs.mkdirSync(path.join(docsDir, 'internals/private'), { recursive: true });
+  fs.mkdirSync(path.join(docsDir, 'research'), { recursive: true });
+  fs.writeFileSync(path.join(docsDir, 'getting-started.md'), '# getting started\n');
+  fs.writeFileSync(path.join(docsDir, 'internals/system-architecture.md'), '# internals\n');
+  fs.writeFileSync(path.join(docsDir, 'internals/private/fork-divergence.md'), '# private\n');
+  fs.writeFileSync(path.join(docsDir, 'research/some-research.md'), '# research\n');
+  const assetsDir = path.join(root, 'assets');
+  fs.mkdirSync(assetsDir, { recursive: true });
+  fs.writeFileSync(path.join(assetsDir, 'diagram.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+
   // cli/ — esbuild needs a real entry to bundle.
   fs.mkdirSync(path.join(root, 'cli/src/bin'), { recursive: true });
   fs.writeFileSync(path.join(root, 'cli/src/bin/radorch.ts'), 'console.log("radorch");\n');
@@ -87,7 +114,7 @@ function stageFixture(root) {
     path.join(installerSrc, 'package.json'),
     JSON.stringify({
       name: '@rad-orchestration/standard-source',
-      version: '1.0.0-alpha.13',
+      version: '1.0.0-alpha.14',
       private: true,
       type: 'module',
       description: 'Standard installer source wrapper (fixture).',
